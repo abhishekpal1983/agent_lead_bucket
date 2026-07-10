@@ -213,12 +213,23 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
+  const month = req.query.month || "";
   const agentId = req.query.agent || "";
-  const agentEmail = agentId && CACHE.owners[agentId] ? (CACHE.owners[agentId].email || "").toLowerCase() : "";
+  let agentEmail = (req.query.agentEmail || "").toLowerCase();
+  if (!agentEmail && agentId && CACHE.owners[agentId]) agentEmail = (CACHE.owners[agentId].email || "").toLowerCase();
   const rows = SHEET.rows.filter(r =>
     (!creator || (r.creator_username || "") === creator) &&
-    (!agentEmail || (r.owner_email || "").toLowerCase() === agentEmail)
+    (!agentEmail || (r.owner_email || "").toLowerCase() === agentEmail) &&
+    (!month || (r.date || "").slice(0, 7) === month)
   );
+  const optMonths = {}, optAgents = {}, optCreators = {};
+  SHEET.rows.forEach(r => {
+    const m = (r.date || "").slice(0, 7);
+    if (m) optMonths[m] = 1;
+    const em = (r.owner_email || "").toLowerCase();
+    if (em) optAgents[em] = r.sales_rep || em;
+    if (r.creator_username) optCreators[r.creator_username] = (optCreators[r.creator_username] || 0) + 1;
+  });
   const thisMonth = new Date().toISOString().slice(0, 7);
   function bucketize(keyFn){
     const m = {};
@@ -246,6 +257,11 @@ app.get("/api/enrolments", (req, res) => {
   rows.forEach(r => { if (r.consumer_email) students[r.consumer_email.toLowerCase()] = 1; });
   res.json({
     loadedAt: SHEET.loadedAt, error: SHEET.error,
+    options: {
+      months: Object.keys(optMonths).sort().reverse(),
+      agents: Object.entries(optAgents).map(([email, name]) => ({ email, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      creators: Object.entries(optCreators).sort((a, b) => b[1] - a[1]).map(([u, n]) => ({ u, n }))
+    },
     totals: {
       enrol: rows.length,
       students: Object.keys(students).length,

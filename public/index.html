@@ -281,11 +281,15 @@ document.addEventListener("change", async function(e){
     if (VIEW==="enr") showEnrolments();
   }
   if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); if (VIEW==="enr") showEnrolments(); }
+  if (e.target.id==="enrM"){ ENR.m = e.target.value; showEnrolments(); }
+  if (e.target.id==="enrC"){ ENR.c = e.target.value; showEnrolments(); }
+  if (e.target.id==="enrA"){ ENR.a = e.target.value; showEnrolments(); }
 });
 document.addEventListener("click", function(e){
   if (e.target.id==="tabDash") setView("dash");
   if (e.target.id==="tabSum") setView("sum");
   if (e.target.id==="tabEnr") setView("enr");
+  if (e.target.id==="enrClear"){ ENR = { m:"", c:"", a:"" }; showEnrolments(); }
   if (e.target.id==="refbtn"){ fetch("/api/refresh",{method:"POST"}); e.target.textContent="Sync started..."; setTimeout(function(){ location.reload(); }, 60000); }
 });
 
@@ -445,20 +449,39 @@ async function showSummary(){
   v.innerHTML = h;
 }
 function inr(n){ return "₹" + Math.round(n).toLocaleString("en-IN"); }
+let ENR = { m:"", c:null, a:"" };
+function monthName(m){ if(!m) return ""; const d=new Date(m+"-15"); return isNaN(d)?m:d.toLocaleString("en-IN",{month:"long",year:"numeric"}); }
 async function showEnrolments(){
   const v = document.getElementById("viewEnr");
   v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Loading enrolments from the sheet...</div>';
+  const creatorParam = ENR.c===null ? FC : ENR.c;
+  const agentParam = ENR.a ? "" : (document.getElementById("fagent").value||"");
   let j;
-  try { j = await api("/api/enrolments?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")); }
+  try { j = await api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)); }
   catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
   if (j.error && !j.loadedAt){ v.innerHTML = '<div class="dload">Sheet not connected: '+esc(j.error)+". Set the SHEET_CSV_URL env var on the server.</div>"; return; }
-  const t = j.totals;
-  let h = '<div class="cards">'+
-    card(t.enrol.toLocaleString(),"Enrolment payments","c-blue")+
-    card(t.students.toLocaleString(),"Unique students","c-teal")+
-    card(inr(t.revenue),"Revenue (price_inr)","c-green")+
-    card(t.monthEnrol.toLocaleString(),"Payments this month","c-blue")+
-    card(inr(t.monthRevenue),"Revenue this month","c-green")+"</div>";
+  const t = j.totals, o = j.options||{months:[],agents:[],creators:[]};
+  let h = '<div class="controls" style="margin-bottom:12px">'+
+    '<label>Month <select id="enrM"><option value="">All months</option>'+
+      o.months.map(function(m){ return '<option value="'+m+'"'+(ENR.m===m?" selected":"")+'>'+monthName(m)+"</option>"; }).join("")+"</select></label>"+
+    '<label>Creator <select id="enrC"><option value="">All creators</option>'+
+      o.creators.map(function(c){ return '<option value="'+esc(c.u)+'"'+(creatorParam===c.u?" selected":"")+'>'+esc(c.u)+" ("+c.n+")</option>"; }).join("")+"</select></label>"+
+    '<label>Sales agent <select id="enrA"><option value="">All agents</option>'+
+      o.agents.map(function(a){ return '<option value="'+esc(a.email)+'"'+(ENR.a===a.email?" selected":"")+'>'+esc(a.name)+"</option>"; }).join("")+"</select></label>"+
+    (ENR.m||creatorParam||ENR.a ? '<button class="mini" id="enrClear">Clear filters</button>' : "")+"</div>";
+  if (ENR.m){
+    h += '<div class="cards">'+
+      card(t.enrol.toLocaleString(),"Payments in "+monthName(ENR.m),"c-blue")+
+      card(t.students.toLocaleString(),"Unique students","c-teal")+
+      card(inr(t.revenue),"Revenue in "+monthName(ENR.m),"c-green")+"</div>";
+  } else {
+    h += '<div class="cards">'+
+      card(t.enrol.toLocaleString(),"Enrolment payments","c-blue")+
+      card(t.students.toLocaleString(),"Unique students","c-teal")+
+      card(inr(t.revenue),"Revenue (price_inr)","c-green")+
+      card(t.monthEnrol.toLocaleString(),"Payments this month","c-blue")+
+      card(inr(t.monthRevenue),"Revenue this month","c-green")+"</div>";
+  }
   h += '<div class="dgrid">';
   h += '<div class="dblock"><h3>By agent (matched on owner_email)</h3><table class="mini"><tr><th>Agent</th><th>Payments</th><th>Students</th><th>Revenue</th><th>Completed</th><th>Ongoing</th><th>Loan</th><th>This month</th></tr>'+
     j.byAgent.map(function(b){
