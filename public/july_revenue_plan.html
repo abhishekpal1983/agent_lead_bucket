@@ -41,11 +41,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .stbl tr:last-child td{border-bottom:none;font-weight:600;background:#F9FAFB}
 .arow{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #F9FAFB}
 .arow:last-of-type{border-bottom:none}
-.arow .al{font-size:11px;color:#374151;flex:0 0 170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow .al{font-size:11px;color:#374151;flex:0 0 160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .arow input[type=range]{flex:1;accent-color:#6366F1}
 .arow .ap{font-size:11.5px;font-weight:700;color:#6366F1;min-width:44px;text-align:right}
 .arow .ar{font-size:10.5px;color:#9CA3AF;min-width:150px;text-align:right}
-.aftr{display:flex;justify-content:space-between;align-items:center;padding-top:8px;margin-top:4px;border-top:1px solid #F3F4F6}
+.arow .rm{border:none;background:#FEE2E2;color:#991B1B;border-radius:6px;width:20px;height:20px;font-size:12px;font-weight:700;cursor:pointer;line-height:1}
+.aftr{display:flex;justify-content:space-between;align-items:center;padding-top:8px;margin-top:4px;border-top:1px solid #F3F4F6;flex-wrap:wrap;gap:10px}
+.addbar{display:flex;gap:8px;align-items:center}
+.addbar select{border:1px solid #D1D5DB;border-radius:6px;padding:4px 8px;font-size:12px;background:#fff;max-width:230px}
+.addbar button{border:1px solid #C7D2FE;background:#EEF2FF;color:#4338CA;border-radius:6px;padding:4px 12px;font-size:11.5px;font-weight:600;cursor:pointer}
+.addbar button.reset{background:#F3F4F6;color:#6B7280;border-color:#E5E7EB}
 .chev{transition:transform .2s;font-size:12px;color:#9CA3AF}
 .section.open .chev{transform:rotate(180deg)}
 .pbar{height:4px;background:#E5E7EB;border-radius:2px;overflow:hidden;margin-top:4px}
@@ -54,6 +59,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .na{font-size:10.5px;color:#DC2626;margin-top:6px;font-style:italic}
 .shdr2{font-size:11px;font-weight:600;color:#374151;margin:14px 0 6px}
 .livebadge{background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
+.st{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.st.ok{background:#D1FAE5;color:#065F46}.st.beh{background:#FEE2E2;color:#991B1B}.st.cov{background:#DBEAFE;color:#1E40AF}
 </style>
 </head>
 <body>
@@ -76,7 +83,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="card"><div class="l">Revenue Target</div><div class="v ci" id="cTgt"></div><div class="s">July 2026</div></div>
   <div class="card"><div class="l">Enrollments Needed</div><div class="v cg" id="cEnr"></div><div class="s">First payments</div></div>
   <div class="card"><div class="l">HS Leads Needed</div><div class="v" id="cLeads"></div><div class="s">New HubSpot leads</div></div>
-  <div class="card"><div class="l">Active Creators</div><div class="v">11</div><div class="s">With June history</div></div>
+  <div class="card"><div class="l">July Leads Received</div><div class="v ci" id="cRecd">—</div><div class="s" id="cRecdS">Live from HubSpot</div></div>
+  <div class="card"><div class="l">Active Creators</div><div class="v" id="cActive"></div><div class="s">In this plan</div></div>
   <div class="card"><div class="l">Wtd Avg Price/Enr.</div><div class="v" id="cAvg"></div><div class="s">June baseline</div></div>
   <div class="card" id="cOtherWrap" style="display:none"><div class="l">July from other creators</div><div class="v cg" id="cOther"></div><div class="s">Live, outside this plan</div></div>
 </div>
@@ -88,7 +96,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="cbody" style="display:block;padding:14px 18px">
     <div id="sliders"></div>
     <div class="aftr">
-      <span style="font-size:10.5px;color:#9CA3AF" id="sliderHint">Drag sliders to adjust each creator's share</span>
+      <div class="addbar">
+        <select id="addSel"></select>
+        <button id="addBtn">+ Add creator</button>
+        <button id="resetBtn" class="reset">Reset plan</button>
+      </div>
       <span style="font-size:11.5px">Total: <b id="aTotal">100.0%</b></span>
     </div>
   </div>
@@ -98,20 +110,45 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 const JUNE_DATA={"ajay_shenoy": {"enr_count": 16, "enr_revenue": 502089, "bal_count": 2, "bal_revenue": 35409, "total_revenue": 537498, "hs_leads": 67, "conv_rate": 23.881, "avg_rev_per_enr": 31381, "source_mix": {"Import": 8, "Forms": 4, "Webinar": 2, "Unknown": 1, "Digital Product": 1}}, "ankita_gulati": {"enr_count": 8, "enr_revenue": 317000, "bal_count": 1, "bal_revenue": 509, "total_revenue": 317509, "hs_leads": 1514, "conv_rate": 0.528, "avg_rev_per_enr": 39625, "source_mix": {"Import": 3, "Forms": 2, "1:1 Video call": 2, "Digital Product": 1}}, "ayush_singh13": {"enr_count": 72, "enr_revenue": 7039905, "bal_count": 26, "bal_revenue": 1299053, "total_revenue": 8338958, "hs_leads": 3013, "conv_rate": 2.39, "avg_rev_per_enr": 97776, "source_mix": {"Digital Product": 37, "Forms": 24, "Revspot": 6, "Unknown": 4, "CRM UI": 1}}, "kartikkapoorconsultation": {"enr_count": 25, "enr_revenue": 828250, "bal_count": 1, "bal_revenue": 42500, "total_revenue": 870750, "hs_leads": 204, "conv_rate": 12.255, "avg_rev_per_enr": 33130, "source_mix": {"1:1 Video call": 10, "Forms": 7, "Unknown": 6, "Topmate": 1, "Marketing webinar": 1}}, "manasbichoo": {"enr_count": 4, "enr_revenue": 105000, "bal_count": 5, "bal_revenue": 117000, "total_revenue": 222000, "hs_leads": 65, "conv_rate": 6.154, "avg_rev_per_enr": 26250, "source_mix": {"Import": 3, "Marketing webinar": 1}}, "payal": {"enr_count": 2, "enr_revenue": 90000, "bal_count": 0, "bal_revenue": 0, "total_revenue": 90000, "hs_leads": 0, "conv_rate": 0, "avg_rev_per_enr": 45000, "source_mix": {"Import": 1, "Forms": 1}}, "payalineurope": {"enr_count": 24, "enr_revenue": 623500, "bal_count": 12, "bal_revenue": 422500, "total_revenue": 1046000, "hs_leads": 451, "conv_rate": 5.322, "avg_rev_per_enr": 25979, "source_mix": {"Forms": 14, "Import": 2, "CRM UI": 2, "Digital Product": 2, "Webinar": 2, "Topmate": 2}}, "riyazsayyad": {"enr_count": 1, "enr_revenue": 18900, "bal_count": 2, "bal_revenue": 18339, "total_revenue": 37239, "hs_leads": 42, "conv_rate": 2.381, "avg_rev_per_enr": 18900, "source_mix": {"Webinar": 1}}, "technomanagers": {"enr_count": 12, "enr_revenue": 355858, "bal_count": 5, "bal_revenue": 122204, "total_revenue": 478062, "hs_leads": 0, "conv_rate": 0, "avg_rev_per_enr": 29655, "source_mix": {"Forms": 8, "1:1 Video call": 3, "Unknown": 1}}, "vijaychandola": {"enr_count": 6, "enr_revenue": 230000, "bal_count": 2, "bal_revenue": 55000, "total_revenue": 285000, "hs_leads": 962, "conv_rate": 0.624, "avg_rev_per_enr": 38333, "source_mix": {"Forms": 4, "Import": 2}}, "wanderess_priyanka": {"enr_count": 15, "enr_revenue": 798201, "bal_count": 5, "bal_revenue": 369800, "total_revenue": 1168001, "hs_leads": 402, "conv_rate": 3.731, "avg_rev_per_enr": 53213, "source_mix": {"Unknown": 6, "1:1 Video call": 3, "Forms": 3, "Topmate": 2, "Digital Product": 1}}};
 const JUNE_TOTAL=13490017;
-const CR_LIST=["ayush_singh13", "wanderess_priyanka", "payalineurope", "kartikkapoorconsultation", "ajay_shenoy", "technomanagers", "ankita_gulati", "vijaychandola", "manasbichoo", "payal", "riyazsayyad"];
-const CR_LABELS={"ayush_singh13": "ayush singh13", "wanderess_priyanka": "wanderess priyanka", "payalineurope": "payalineurope", "kartikkapoorconsultation": "kartikkapoorconsultation", "ajay_shenoy": "ajay shenoy", "technomanagers": "technomanagers", "ankita_gulati": "ankita gulati", "vijaychandola": "vijaychandola", "manasbichoo": "manasbichoo", "payal": "payal", "riyazsayyad": "riyazsayyad"};
+const DEFAULT_LIST=["ayush_singh13", "wanderess_priyanka", "payalineurope", "kartikkapoorconsultation", "ajay_shenoy", "technomanagers", "ankita_gulati", "vijaychandola", "manasbichoo", "payal", "riyazsayyad"];
 
 const fmt=n=>(Math.round(n)||0).toLocaleString('en-IN');
 const rupee=v=>{v=Math.round(v||0);return v>=1e7?(v/1e7).toFixed(2)+'Cr':v>=1e5?(v/1e5).toFixed(1)+'L':'₹'+fmt(v);};
-let allocs={};
-let LIVE=null;
-function initAllocs(){
-  const tot=CR_LIST.reduce((s,c)=>s+(JUNE_DATA[c]?.total_revenue||0),0);
-  CR_LIST.forEach(c=>{allocs[c]=tot>0?((JUNE_DATA[c]?.total_revenue||0)/tot*100):0;});
+function srcKey(label){return String(label||'').trim().toLowerCase();}
+function srcLabel(key){
+  if(key==='crm ui')return 'CRM UI';
+  if(key==='1:1 video call')return '1:1 Video call';
+  return String(key||'').replace(/\b\w/g,c=>c.toUpperCase());
 }
-initAllocs();
+let PLAN, allocs, LIVE=null, LEADS=null;
+try{PLAN=JSON.parse(localStorage.getItem('jrp_list'))||null;}catch(e){PLAN=null;}
+try{allocs=JSON.parse(localStorage.getItem('jrp_allocs'))||null;}catch(e){allocs=null;}
+if(!PLAN||!Array.isArray(PLAN)||!PLAN.length)PLAN=DEFAULT_LIST.slice();
+function initAllocs(){
+  allocs={};
+  const tot=PLAN.reduce((s,c)=>s+(JUNE_DATA[c]?JUNE_DATA[c].total_revenue:0),0);
+  PLAN.forEach(c=>{allocs[c]=tot>0?((JUNE_DATA[c]?JUNE_DATA[c].total_revenue:0)/tot*100):(100/PLAN.length);});
+}
+if(!allocs)initAllocs();
+PLAN.forEach(c=>{if(allocs[c]===undefined)allocs[c]=0;});
+function persist(){localStorage.setItem('jrp_list',JSON.stringify(PLAN));localStorage.setItem('jrp_allocs',JSON.stringify(allocs));}
+function renorm(){
+  const tot=PLAN.reduce((s,c)=>s+(allocs[c]||0),0);
+  if(tot>0)PLAN.forEach(c=>{allocs[c]=allocs[c]/tot*100;});
+  else PLAN.forEach(c=>{allocs[c]=100/PLAN.length;});
+}
 function getT(){return parseFloat(document.getElementById('tInput').value)||30000000;}
 function liveOf(c){return (LIVE&&LIVE.byCreator[c])||{rev:0,n:0};}
+function leadsOf(c){return (LEADS&&LEADS.creators[c])||{total:0,bySrc:{}};}
+function dataOf(c){
+  if(JUNE_DATA[c])return JUNE_DATA[c];
+  const lv=liveOf(c),ld=leadsOf(c);
+  const avg=lv.n>0?lv.rev/lv.n:45000;
+  const conv=(ld.total>0&&lv.n>0)?+(100*lv.n/ld.total).toFixed(3):0;
+  const mix={};Object.keys(ld.bySrc).forEach(k=>{mix[srcLabel(k)]=ld.bySrc[k];});
+  return {enr_count:0,enr_revenue:0,bal_count:0,bal_revenue:0,total_revenue:0,hs_leads:ld.total,conv_rate:conv,avg_rev_per_enr:Math.round(avg),source_mix:mix,_synthetic:true};
+}
+function monthFrac(){const now=new Date();const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();return {day:now.getDate(),dim:dim,frac:now.getDate()/dim};}
 function renderAll(){
   const t=getT();
   document.getElementById('jDisp').textContent='₹'+rupee(JUNE_TOTAL);
@@ -121,6 +158,8 @@ function renderAll(){
   gEl.textContent=(gap>=0?'+':'')+rupee(Math.abs(gap));
   gEl.style.color=gap>=0?'#DC2626':'#059669';
   document.getElementById('cTgt').textContent='₹'+rupee(t);
+  document.getElementById('cActive').textContent=PLAN.length;
+  const mf=monthFrac();
   if(LIVE){
     const act=LIVE.total||0;
     document.getElementById('mtdDisp').textContent='₹'+rupee(act);
@@ -128,79 +167,115 @@ function renderAll(){
     const achEl=document.getElementById('achDisp');
     achEl.textContent=pct.toFixed(1)+'%';
     achEl.style.color=pct>=60?'#059669':pct>=30?'#D97706':'#DC2626';
-    const now=new Date();
-    const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-    const proj=now.getDate()>0?act/now.getDate()*dim:0;
+    const proj=mf.day>0?act/mf.day*mf.dim:0;
     const pEl=document.getElementById('projDisp');
     pEl.textContent='₹'+rupee(proj);
     pEl.style.color=proj>=t?'#059669':'#DC2626';
-    const others=Object.keys(LIVE.byCreator).filter(c=>CR_LIST.indexOf(c)<0);
+    const others=Object.keys(LIVE.byCreator).filter(c=>PLAN.indexOf(c)<0);
     const oRev=others.reduce((s,c)=>s+LIVE.byCreator[c].rev,0);
-    if(oRev>0){
-      document.getElementById('cOtherWrap').style.display='block';
-      document.getElementById('cOther').textContent='₹'+rupee(oRev);
-    }
+    document.getElementById('cOtherWrap').style.display=oRev>0?'block':'none';
+    document.getElementById('cOther').textContent='₹'+rupee(oRev);
     document.getElementById('liveBadge').style.display='inline-block';
-    document.getElementById('hdrSub').textContent='Baseline: June 2026 actuals · July actuals live from enrolments sheet (synced '+(LIVE.loadedAt?new Date(LIVE.loadedAt).toLocaleTimeString():'')+') · price_inr';
+    document.getElementById('hdrSub').textContent='Baseline: June 2026 actuals · July actuals live from enrolments sheet (synced '+(LIVE.loadedAt?new Date(LIVE.loadedAt).toLocaleTimeString():'')+')'+(LEADS&&LEADS.loadedAt?' · July leads live from HubSpot':'')+' · price_inr';
   }
-  let tEnr=0,tLeads=0;
-  CR_LIST.forEach(c=>{
-    const d=JUNE_DATA[c]||{};const crT=t*(allocs[c]||0)/100;
+  let tEnr=0,tLeads=0,tRecd=0;
+  PLAN.forEach(c=>{
+    const d=dataOf(c);const crT=t*(allocs[c]||0)/100;
     const rem=LIVE?Math.max(0,crT-liveOf(c).rev):crT;
     const enr=d.avg_rev_per_enr>0?Math.ceil(rem/d.avg_rev_per_enr):0;
     const leads=d.conv_rate>0?Math.ceil(enr/(d.conv_rate/100)):null;
     tEnr+=enr;if(leads)tLeads+=leads;
+    tRecd+=leadsOf(c).total;
   });
   document.getElementById('cEnr').textContent=fmt(tEnr);
   document.getElementById('cEnr').nextElementSibling.textContent=LIVE?'Still needed (net of live actuals)':'First payments';
   document.getElementById('cLeads').textContent=tLeads>0?fmt(tLeads):'—';
   document.getElementById('cLeads').nextElementSibling.textContent=LIVE?'Still needed for remaining gap':'New HubSpot leads';
-  const wa=CR_LIST.reduce((s,c)=>(JUNE_DATA[c]?.avg_rev_per_enr||0)*(JUNE_DATA[c]?.enr_count||0)+s,0)/
-           Math.max(1,CR_LIST.reduce((s,c)=>s+(JUNE_DATA[c]?.enr_count||0),0));
-  document.getElementById('cAvg').textContent='₹'+fmt(wa);
+  if(LEADS){
+    document.getElementById('cRecd').textContent=fmt(tRecd);
+    document.getElementById('cRecdS').textContent=Math.round(mf.frac*100)+'% of July elapsed';
+  }
+  const wa=PLAN.reduce((s,c)=>{const d=dataOf(c);return s+(d.avg_rev_per_enr||0)*(d.enr_count||0);},0)/
+           Math.max(1,PLAN.reduce((s,c)=>s+(dataOf(c).enr_count||0),0));
+  document.getElementById('cAvg').textContent='₹'+fmt(wa||45000);
   let sh='';
-  CR_LIST.forEach(c=>{
+  PLAN.forEach(c=>{
     const pct=allocs[c]||0;const rev=t*pct/100;
     const lv=liveOf(c);
     const liveTxt=LIVE?` · <b style="color:#059669">₹${rupee(lv.rev)}</b>`:'';
-    sh+=`<div class="arow"><span class="al" title="${c}">${CR_LABELS[c]||c}</span>
+    sh+=`<div class="arow"><span class="al" title="${c}">${c.replace(/_/g,' ')}${dataOf(c)._synthetic?' <span style="color:#9CA3AF;font-size:9px">(new)</span>':''}</span>
       <input type="range" min="0" max="100" step="0.1" value="${pct.toFixed(1)}"
-        oninput="allocs['${c}']=parseFloat(this.value);renderAll()">
-      <span class="ap">${pct.toFixed(1)}%</span><span class="ar">₹${rupee(rev)}${liveTxt}</span></div>`;
+        oninput="allocs['${c}']=parseFloat(this.value);persist();renderAll()">
+      <span class="ap">${pct.toFixed(1)}%</span><span class="ar">₹${rupee(rev)}${liveTxt}</span>
+      <button class="rm" title="Remove ${c} from plan" onclick="delCr('${c}')">×</button></div>`;
   });
   document.getElementById('sliders').innerHTML=sh;
-  if(LIVE) document.getElementById('sliderHint').textContent='Drag sliders to adjust shares · grey = target, green = live July actual';
-  const tot=Object.values(allocs).reduce((a,b)=>a+b,0);
+  const candidates=(function(){
+    const set={};
+    Object.keys(JUNE_DATA).forEach(c=>set[c]=1);
+    if(LIVE)Object.keys(LIVE.byCreator).forEach(c=>set[c]=1);
+    if(LEADS)Object.keys(LEADS.creators).forEach(c=>set[c]=1);
+    return Object.keys(set).filter(c=>PLAN.indexOf(c)<0).sort();
+  })();
+  document.getElementById('addSel').innerHTML=candidates.length?candidates.map(c=>`<option value="${c}">${c}${LIVE&&LIVE.byCreator[c]?' (Jul ₹'+rupee(LIVE.byCreator[c].rev)+')':''}</option>`).join(''):'<option value="">No creators to add</option>';
+  const tot=PLAN.reduce((s,c)=>s+(allocs[c]||0),0);
   const atEl=document.getElementById('aTotal');
   atEl.textContent=tot.toFixed(1)+'%';
   atEl.style.color=Math.abs(tot-100)<0.5?'#059669':'#DC2626';
   let ch='';
-  CR_LIST.forEach(c=>{
-    const d=JUNE_DATA[c]||{};const crT=t*(allocs[c]||0)/100;
-    const lv=liveOf(c);
+  PLAN.forEach(c=>{
+    const d=dataOf(c);const crT=t*(allocs[c]||0)/100;
+    const lv=liveOf(c);const ld=leadsOf(c);
     const rem=LIVE?Math.max(0,crT-lv.rev):crT;
     const enr=d.avg_rev_per_enr>0?Math.ceil(rem/d.avg_rev_per_enr):0;
     const leads=d.conv_rate>0?Math.ceil(enr/(d.conv_rate/100)):null;
-    const noConv=!d.conv_rate||!d.hs_leads;
+    const noConv=!d.conv_rate;
     const cvBadge=d.conv_rate>5?'bg':d.conv_rate>1?'ba':'br';
     const junePct=crT>0?Math.min(100,d.total_revenue/crT*100):0;
     const livePct=crT>0?Math.min(100,lv.rev/crT*100):0;
     const sm=d.source_mix||{};const smTot=Object.values(sm).reduce((a,b)=>a+b,0);
     let srcHtml='';
     if(Object.keys(sm).length>0&&leads){
-      let rows='',srcSum=0;
+      let rows='',srcSum=0,recdSum=0;
+      const usedKeys={};
       Object.entries(sm).sort((a,b)=>b[1]-a[1]).forEach(([src,cnt])=>{
         const pct=smTot>0?cnt/smTot:0;const sl=Math.ceil(leads*pct);srcSum+=sl;
-        rows+=`<tr><td>${src}</td><td>${cnt}</td><td>${(pct*100).toFixed(1)}%</td><td style="font-weight:700;color:#4338CA">${fmt(sl)}</td></tr>`;
+        const key=srcKey(src);usedKeys[key]=1;
+        const recd=LEADS?(ld.bySrc[key]||0):null;
+        if(recd!==null)recdSum+=recd;
+        let stHtml='<td class="mut">—</td><td>—</td>';
+        if(recd!==null){
+          const delta=Math.max(0,sl-recd);
+          const paceNeed=Math.ceil(sl*mf.frac);
+          let st;
+          if(recd>=sl)st='<span class="st cov">Covered</span>';
+          else if(recd>=paceNeed)st='<span class="st ok">On track</span>';
+          else st='<span class="st beh">Behind '+fmt(paceNeed-recd)+'</span>';
+          stHtml='<td style="font-weight:700;color:#059669">'+fmt(recd)+'</td><td style="font-weight:600;color:'+(delta>0?'#DC2626':'#059669')+'">'+fmt(delta)+'</td><td>'+st+'</td>';
+        } else stHtml='<td class="mut">syncing</td><td>—</td><td>—</td>';
+        rows+=`<tr><td>${src}</td><td>${(pct*100).toFixed(1)}%</td><td style="font-weight:700;color:#4338CA">${fmt(sl)}</td>${stHtml}</tr>`;
       });
-      rows+=`<tr><td>TOTAL</td><td>${smTot}</td><td>100%</td><td style="color:#4338CA">${fmt(srcSum)}</td></tr>`;
-      srcHtml=`<div class="shdr2">Source-wise Lead Requirement — ${LIVE?'remaining July gap':'July'}</div>
-        <table class="stbl"><tr><th>Source</th><th>Jun Enr.</th><th>Mix %</th><th>Leads Needed</th></tr>${rows}</table>`;
+      let extraRow='';
+      if(LEADS){
+        const extra=Object.keys(ld.bySrc).filter(k=>!usedKeys[k]).reduce((s,k)=>s+ld.bySrc[k],0);
+        if(extra>0)extraRow=`<tr><td class="mut">Other sources (not in June mix)</td><td>—</td><td>—</td><td style="color:#059669;font-weight:600">${fmt(extra)}</td><td>—</td><td>—</td></tr>`;
+      }
+      const totDelta=Math.max(0,srcSum-(LEADS?recdSum:0));
+      rows+=`<tr><td>TOTAL</td><td>100%</td><td style="color:#4338CA">${fmt(srcSum)}</td><td style="color:#059669">${LEADS?fmt(recdSum):'—'}</td><td style="color:${totDelta>0?'#DC2626':'#059669'}">${LEADS?fmt(totDelta):'—'}</td><td>${LEADS?(recdSum>=Math.ceil(srcSum*mf.frac)?'<span class="st ok">On track</span>':'<span class="st beh">Behind</span>'):'—'}</td></tr>`;
+      srcHtml=`<div class="shdr2">Source-wise Lead Requirement vs Received — July (${Math.round(mf.frac*100)}% of month elapsed)</div>
+        <table class="stbl"><tr><th>Source</th><th>Mix %</th><th>Leads Needed</th><th>Received Jul</th><th>Delta</th><th>Status</th></tr>${rows}${extraRow}</table>`;
+    } else if(LEADS&&ld.total>0){
+      srcHtml=`<div class="shdr2">July leads received (no requirement computable${noConv?', no conversion data':''})</div>
+        <table class="stbl"><tr><th>Source</th><th>Received Jul</th></tr>`+
+        Object.entries(ld.bySrc).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<tr><td>${srcLabel(k)}</td><td>${fmt(n)}</td></tr>`).join('')+
+        `<tr><td>TOTAL</td><td>${fmt(ld.total)}</td></tr></table>`;
     }
     const diff=crT-d.total_revenue;
     const liveRows=LIVE?`
             <div class="kv"><span class="k">Achieved so far (live)</span><span class="v cg">₹${fmt(lv.rev)} · ${lv.n} pay</span></div>
             <div class="kv"><span class="k">Remaining to target</span><span class="v ${rem>0?'cr':'cg'}">₹${fmt(rem)}</span></div>`:'';
+    const leadRows=LEADS?`
+            <div class="kv"><span class="k">July leads received (live)</span><span class="v ci">${fmt(ld.total)}</span></div>`:'';
     const liveBar=LIVE?`
             <div style="margin-top:8px">
               <div style="font-size:9.5px;color:#059669;margin-bottom:3px;font-weight:600">July actual: ${livePct.toFixed(1)}% of target (live)</div>
@@ -208,56 +283,72 @@ function renderAll(){
             </div>`:'';
     ch+=`<div class="section" id="sec_${c}">
       <div class="shdr" onclick="tog(this)">
-        <h3>${CR_LABELS[c]||c}</h3>
+        <h3>${c.replace(/_/g,' ')}${d._synthetic?' <span style="color:#9CA3AF;font-size:10px">(added, live baseline)</span>':''}</h3>
         <div class="meta">
           <span class="badge bi">Target ₹${rupee(crT)}</span>
           ${LIVE?`<span class="badge bg">Jul ₹${rupee(lv.rev)} (${livePct.toFixed(0)}%)</span>`:''}
+          ${LEADS?`<span class="badge bi">${fmt(ld.total)} Jul leads</span>`:''}
           <span class="badge ba">Jun ₹${rupee(d.total_revenue)}</span>
-          <span class="badge ${cvBadge}">${noConv?'No HS data':'Conv '+d.conv_rate+'%'}</span>
+          <span class="badge ${cvBadge}">${noConv?'No conv data':'Conv '+d.conv_rate+'%'}</span>
           <span class="chev">▼</span>
         </div>
       </div>
       <div class="cbody">
         <div class="grid2">
-          <div class="box"><h4>June 2026 — Actual</h4>
+          <div class="box"><h4>${d._synthetic?'Baseline (live July, no June history)':'June 2026 — Actual'}</h4>
             <div class="kv"><span class="k">Total Revenue</span><span class="v">₹${fmt(d.total_revenue)}</span></div>
-            <div class="kv"><span class="k">Enr. Revenue</span><span class="v cg">₹${fmt(d.enr_revenue)}</span></div>
-            <div class="kv"><span class="k">Bal. Revenue</span><span class="v ca">₹${fmt(d.bal_revenue)}</span></div>
             <div class="kv"><span class="k">Enrollments</span><span class="v cg">${d.enr_count}</span></div>
-            <div class="kv"><span class="k">Balance Payments</span><span class="v ca">${d.bal_count}</span></div>
-            <div class="kv"><span class="k">HS Leads (Jun)</span><span class="v">${fmt(d.hs_leads)||'—'}</span></div>
+            <div class="kv"><span class="k">HS Leads</span><span class="v">${fmt(d.hs_leads)||'—'}</span></div>
             <div class="kv"><span class="k">Conv. Rate</span><span class="v ${d.conv_rate>5?'cg':d.conv_rate>1?'ca':'cr'}">${d.conv_rate}%</span></div>
             <div class="kv"><span class="k">Avg Price / Enr.</span><span class="v">₹${fmt(d.avg_rev_per_enr)}</span></div>
           </div>
           <div class="box"><h4>July 2026 — Plan${LIVE?' vs Live':''}</h4>
-            <div class="kv"><span class="k">Revenue Target</span><span class="v ci">₹${fmt(Math.round(crT))}</span></div>${liveRows}
+            <div class="kv"><span class="k">Revenue Target</span><span class="v ci">₹${fmt(Math.round(crT))}</span></div>${liveRows}${leadRows}
             <div class="kv"><span class="k">Enrollments ${LIVE?'still ':''}needed</span><span class="v cg">${enr||'—'}</span></div>
             <div class="kv"><span class="k">HS Leads ${LIVE?'still ':''}needed</span><span class="v ci">${leads!=null?fmt(leads):'N/A'}</span></div>
             <div class="kv"><span class="k">vs June</span><span class="v" style="color:${diff>=0?'#DC2626':'#059669'}">${diff>=0?'+':'-'}₹${rupee(Math.abs(diff))}</span></div>${liveBar}
-            <div style="margin-top:8px">
-              <div style="font-size:9.5px;color:#9CA3AF;margin-bottom:3px">June achieved ${junePct.toFixed(1)}% of July target</div>
-              <div class="pbar"><div class="pfill" style="width:${junePct.toFixed(1)}%"></div></div>
-            </div>
-            ${noConv?'<div class="na">⚠ No HubSpot lead data — leads needed cannot be estimated</div>':''}
+            ${noConv?'<div class="na">⚠ No conversion data — leads needed cannot be estimated</div>':''}
           </div>
         </div>${srcHtml}
       </div></div>`;
   });
   document.getElementById('crCards').innerHTML=ch;
 }
+function delCr(c){
+  PLAN=PLAN.filter(x=>x!==c);delete allocs[c];
+  if(!PLAN.length){PLAN=DEFAULT_LIST.slice();initAllocs();}
+  renorm();persist();renderAll();
+}
+function addCr(){
+  const c=document.getElementById('addSel').value;
+  if(!c||PLAN.indexOf(c)>=0)return;
+  PLAN.push(c);
+  const share=(LIVE&&LIVE.total>0&&LIVE.byCreator[c])?Math.max(1,100*LIVE.byCreator[c].rev/LIVE.total):2;
+  allocs[c]=share;
+  renorm();persist();renderAll();
+}
 function tog(hdr){
   const sec=hdr.closest('.section');sec.classList.toggle('open');
   sec.querySelector('.cbody').style.display=sec.classList.contains('open')?'block':'none';
 }
 document.getElementById('tInput').addEventListener('input',renderAll);
+document.getElementById('addBtn').addEventListener('click',addCr);
+document.getElementById('resetBtn').addEventListener('click',function(){
+  localStorage.removeItem('jrp_list');localStorage.removeItem('jrp_allocs');
+  PLAN=DEFAULT_LIST.slice();initAllocs();renderAll();
+});
 renderAll();
 (function(){
   const m=new Date().toISOString().slice(0,7);
-  fetch('/api/enrolments?month='+m).then(function(r){return r.json();}).then(function(j){
+  fetch('/api/enrolments?month='+m).then(r=>r.json()).then(function(j){
     if(!j||!j.totals)return;
-    const by={};
-    (j.byCreator||[]).forEach(function(b){by[b.key]={rev:b.revenue,n:b.enrol};});
+    const by={};(j.byCreator||[]).forEach(function(b){by[b.key]={rev:b.revenue,n:b.enrol};});
     LIVE={byCreator:by,total:j.totals.revenue,n:j.totals.enrol,loadedAt:j.loadedAt};
+    renderAll();
+  }).catch(function(){});
+  fetch('/api/leads-created?month='+m).then(r=>r.json()).then(function(j){
+    if(!j||!j.creators)return;
+    LEADS=j;
     renderAll();
   }).catch(function(){});
 })();

@@ -536,6 +536,21 @@ app.get("/api/payment-analysis", (req, res) => {
   });
 });
 
+app.get("/api/leads-created", (req, res) => {
+  const month = req.query.month || new Date().toISOString().slice(0, 7);
+  const out = {};
+  Object.keys(COHORT.counts).forEach(cr => {
+    const ym = COHORT.counts[cr][month];
+    if (!ym) return;
+    const bySrc = {}; let total = 0;
+    Object.keys(ym).forEach(src => {
+      Object.keys(ym[src]).forEach(seg => { bySrc[src] = (bySrc[src] || 0) + ym[src][seg]; total += ym[src][seg]; });
+    });
+    out[cr] = { total, bySrc };
+  });
+  res.json({ month, loadedAt: COHORT.loadedAt, syncing: COHORT.syncing, error: COHORT.error, creators: out });
+});
+
 app.get("/api/summary", (req, res) => {
   const rows = filt(req.query.creator, req.query.agent);
   const now = Date.now(), d30 = now - 30 * 86400000;
