@@ -151,6 +151,89 @@ async function sync(){
   }
 }
 
+/* ---------- payment-analysis cohort data (HubSpot contacts per sheet creator) ---------- */
+const COHORT_MINUTES = parseInt(process.env.COHORT_MINUTES || "60", 10);
+let COHORT = { emails: new Map(), phones: new Map(), counts: {}, loadedAt: null, syncing: false, error: null };
+
+function ymOf(ms){ if (!ms) return ""; const d = new Date(ms); return isNaN(d) ? "" : d.toISOString().slice(0, 7); }
+function normPhone(v){ const d = String(v || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; }
+function normSrc(v){
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return "unknown";
+  const main = ["import","digital product","marketing webinar","forms","1:1 video call","revspot","webinar","integration","thinksage webinar","topmate","crm ui","text query"];
+  return main.indexOf(s) >= 0 ? s : "other";
+}
+function segOf(v){
+  const c = (function(s){
+    s = (s || "").trim().toLowerCase();
+    if (!s || s === "na" || s === "n/a" || s === "none" || s === "-" || s === "no") return "?";
+    if (/(student|fresher|intern|graduat|college|final year|^yes$|^s$)/.test(s)) return "S";
+    if (/(professional|working|^pro$|freelanc|employe|engineer|developer|analyst|manager|consultant)/.test(s)) return "P";
+    return "?";
+  })(v);
+  return c === "S" ? "Student" : c === "P" ? "Professional" : "Unknown";
+}
+
+async function fetchCohortRange(creator, from, to, sink){
+  // recursive: split window if it would hit the 10k search cap
+  const filters = [{ propertyName: "topmate_username", operator: "EQ", value: creator }];
+  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
+  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && from && to && (to - from) > 86400000) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchCohortRange(creator, from, mid, sink);
+    await fetchCohortRange(creator, mid, to, sink);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters }],
+      properties: ["createdate", "actual_source", "tm_student_or_professional", "email", "phone"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(r => sink(r.properties));
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+}
+
+async function syncCohorts(){
+  if (!TOKEN || COHORT.syncing) return;
+  if (!SHEET.rows.length) return; // needs sheet creators
+  COHORT.syncing = true;
+  try {
+    const creators = Array.from(new Set(SHEET.rows.map(r => r.creator_username).filter(Boolean)));
+    const emails = new Map(), phones = new Map(), counts = {};
+    const now = Date.now();
+    for (const cr of creators) {
+      const sink = p => {
+        const ym = ymOf(parseInt(p.createdate) || Date.parse(p.createdate));
+        if (!ym) return;
+        const src = normSrc(p.actual_source), seg = segOf(p.tm_student_or_professional);
+        if (!counts[cr]) counts[cr] = {};
+        if (!counts[cr][ym]) counts[cr][ym] = {};
+        if (!counts[cr][ym][src]) counts[cr][ym][src] = {};
+        counts[cr][ym][src][seg] = (counts[cr][ym][src][seg] || 0) + 1;
+        const rec = ym + "|" + src + "|" + seg + "|" + cr;
+        const em = (p.email || "").toLowerCase();
+        if (em && !emails.has(em)) emails.set(em, rec);
+        const ph = normPhone(p.phone);
+        if (ph && !phones.has(ph)) phones.set(ph, rec);
+      };
+      try { await fetchCohortRange(cr, Date.parse("2024-01-01"), now + 86400000, sink); }
+      catch (e) { console.error("cohort " + cr + ": " + e.message); }
+    }
+    COHORT = { emails, phones, counts, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Cohort sync: " + emails.size + " contacts across " + creators.length + " creators");
+  } catch (e) {
+    COHORT.syncing = false; COHORT.error = e.message;
+    console.error("Cohort sync failed: " + e.message);
+  }
+}
+
 /* ---------- aggregation helpers ---------- */
 function ts(v){ if (!v) return 0; const n = Date.parse(v); if (!isNaN(n)) return n; const f = parseFloat(v); return (!isNaN(f) && f > 1e11) ? f : 0; }
 function num(v){ const f = parseFloat(v); return isNaN(f) ? 0 : f; }
@@ -209,7 +292,8 @@ function agentMetrics(rows){
 /* ---------- API ---------- */
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
-  sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error }));
+  sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
+  cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -371,6 +455,87 @@ app.get("/api/leads", (req, res) => {
   res.json({ rows });
 });
 
+app.get("/api/payment-analysis", (req, res) => {
+  const fCreator = req.query.creator || "", fSource = req.query.source || "", fSegment = req.query.segment || "";
+  // enrich payments: match to HubSpot contact, classify, mark first payment (enrolment)
+  const seen = new Set();
+  const pays = SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).map(r => {
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const rec = (em && COHORT.emails.get(em)) || (ph && COHORT.phones.get(ph)) || "";
+    const [cym, src, seg] = rec ? rec.split("|") : ["", "", ""];
+    const pym = (r.date || "").slice(0, 7);
+    let cls = "Not in HubSpot";
+    if (rec) cls = cym === pym ? "New Lead" : (cym < pym ? "Old Lead" : "Lead After Payment");
+    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    const isEnrol = !seen.has(key); seen.add(key);
+    return { pym, cym, price: r.price, creator: r.creator_username || "(none)", agent: r.sales_rep || r.owner_email || "(none)",
+      src: rec ? src : "Not in HubSpot", seg: rec ? seg : "Unknown", cls, isEnrol };
+  }).filter(p => p.pym &&
+    (!fCreator || p.creator === fCreator) &&
+    (!fSource || p.src === fSource) &&
+    (!fSegment || p.seg === fSegment));
+
+  const CLS = ["New Lead", "Old Lead", "Lead After Payment", "Not in HubSpot"];
+  function blank(){ const o = { total:0, enrol:0, bal:0, revenue:0, enrolRev:0, balRev:0 }; CLS.forEach(c => o[c] = 0); return o; }
+  function acc(o, p){
+    o.total++; o.revenue += p.price; o[p.cls]++;
+    if (p.isEnrol) { o.enrol++; o.enrolRev += p.price; } else { o.bal++; o.balRev += p.price; }
+  }
+  const byMonth = {}, bySrc = {}, byCreator = {}, byAgent = {};
+  pays.forEach(p => {
+    if (!byMonth[p.pym]) byMonth[p.pym] = blank(); acc(byMonth[p.pym], p);
+    const mSel = req.query.month || "";
+    if (!mSel || p.pym === mSel) {
+      if (!bySrc[p.src]) bySrc[p.src] = blank(); acc(bySrc[p.src], p);
+      if (!byCreator[p.creator]) byCreator[p.creator] = blank(); acc(byCreator[p.creator], p);
+      if (!byAgent[p.agent]) byAgent[p.agent] = blank(); acc(byAgent[p.agent], p);
+    }
+  });
+
+  // cohort matrix: rows = contact create month, cols = enrolment (first payment) month
+  const payMonths = Object.keys(byMonth).sort();
+  const cohortEnrol = {}; // cym -> pym -> n
+  pays.forEach(p => {
+    if (!p.isEnrol || !p.cym) return;
+    if (!cohortEnrol[p.cym]) cohortEnrol[p.cym] = { _n: 0 };
+    cohortEnrol[p.cym][p.pym] = (cohortEnrol[p.cym][p.pym] || 0) + 1;
+    cohortEnrol[p.cym]._n++;
+  });
+  const hsByYm = {};
+  Object.keys(COHORT.counts).forEach(cr => {
+    if (fCreator && cr !== fCreator) return;
+    Object.keys(COHORT.counts[cr]).forEach(ym => {
+      Object.keys(COHORT.counts[cr][ym]).forEach(src => {
+        if (fSource && src !== fSource) return;
+        Object.keys(COHORT.counts[cr][ym][src]).forEach(seg => {
+          if (fSegment && seg !== fSegment) return;
+          hsByYm[ym] = (hsByYm[ym] || 0) + COHORT.counts[cr][ym][src][seg];
+        });
+      });
+    });
+  });
+  const cohortMonths = Array.from(new Set(Object.keys(hsByYm).concat(Object.keys(cohortEnrol)))).sort();
+  const cohort = cohortMonths.map(cym => {
+    const row = { cym, hs: hsByYm[cym] || 0, enrol: (cohortEnrol[cym] && cohortEnrol[cym]._n) || 0, cols: {} };
+    payMonths.forEach(pm => { row.cols[pm] = (cohortEnrol[cym] && cohortEnrol[cym][pm]) || 0; });
+    row.conv = row.hs ? +(100 * row.enrol / row.hs).toFixed(2) : null;
+    return row;
+  });
+
+  const srcOptions = Array.from(new Set(pays.map(p => p.src))).sort();
+  const crOptions = Array.from(new Set(SHEET.rows.map(r => r.creator_username).filter(Boolean))).sort();
+  res.json({
+    sheetLoadedAt: SHEET.loadedAt, cohortLoadedAt: COHORT.loadedAt, cohortSyncing: COHORT.syncing,
+    sheetError: SHEET.error, cohortError: COHORT.error,
+    options: { months: payMonths.slice().reverse(), sources: srcOptions, creators: crOptions, segments: ["Student", "Professional", "Unknown"] },
+    byMonth: payMonths.map(m => Object.assign({ month: m }, byMonth[m])),
+    bySrc: Object.entries(bySrc).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
+    byCreator: Object.entries(byCreator).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
+    byAgent: Object.entries(byAgent).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
+    cohort, payMonths
+  });
+});
+
 app.get("/api/summary", (req, res) => {
   const rows = filt(req.query.creator, req.query.agent);
   const now = Date.now(), d30 = now - 30 * 86400000;
@@ -397,7 +562,9 @@ app.get("/api/summary", (req, res) => {
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
-  sync(); syncSheet();
+  sync();
+  syncSheet().then(() => syncCohorts());
   setInterval(sync, SYNC_MINUTES * 60 * 1000);
   setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
+  setInterval(syncCohorts, COHORT_MINUTES * 60 * 1000);
 });
