@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Lead Bucket Health</title>
+<style>
+  :root { color-scheme: light;
+    --bg:#f5f6f8; --card:#ffffff; --text:#191c20; --muted:#68707c; --line:#e4e7ec;
+    --green:#15803d; --greenbg:#e8f6ee; --amber:#92600a; --amberbg:#fdf3d8;
+    --red:#b91c1c; --redbg:#fdecec; --purple:#6d28d9; --purplebg:#f1eafe;
+    --blue:#1d4ed8; --bluebg:#e9effc;
+    --shadow:0 1px 2px rgba(16,24,40,.05);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:22px; background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .page { max-width:1360px; margin:0 auto; }
+  h1 { font-size:21px; margin:0 0 4px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); font-size:12.5px; margin-bottom:16px; }
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 15px; min-width:116px; box-shadow:var(--shadow); border-top:3px solid var(--line); }
+  .card.c-blue { border-top-color:#93b4f5; } .card.c-green { border-top-color:#86d3a2; }
+  .card.c-red { border-top-color:#f1a8a8; } .card.c-amber { border-top-color:#f0d48a; }
+  .card.c-teal { border-top-color:#8fd0c9; }
+  .card .v { font-size:21px; font-weight:700; }
+  .card .l { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-top:1px; }
+  #err { display:none; background:var(--redbg); color:var(--red); border:1px solid #f3c4c4; border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:13px; }
+  #loading { padding:48px; text-align:center; color:var(--muted); }
+  .spin { width:28px; height:28px; border:3px solid var(--line); border-top-color:var(--blue); border-radius:50%; margin:0 auto 12px; animation:sp .9s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .controls { display:flex; gap:14px; align-items:center; margin-bottom:12px; font-size:13px; color:var(--muted); flex-wrap:wrap;
+    background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; box-shadow:var(--shadow); }
+  .controls label { display:flex; align-items:center; gap:6px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  .controls select, .controls input[type=number] { border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:13px; background:#fbfcfd; color:var(--text); max-width:240px; font-weight:400; text-transform:none; letter-spacing:0; }
+  .controls input[type=number] { width:68px; }
+  .chip { background:var(--bluebg); color:var(--blue); border-radius:999px; padding:3px 11px; font-size:12px; font-weight:600; }
+  .tblwrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }
+  table.main { width:100%; border-collapse:collapse; }
+  table.main th { font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted);
+    padding:9px 9px; text-align:right; border-bottom:1px solid var(--line); cursor:pointer; user-select:none; white-space:nowrap; background:#fafbfc; position:sticky; top:0; z-index:1; }
+  table.main th:first-child { text-align:left; padding-left:14px; }
+  table.main td { padding:8px 9px; text-align:right; border-bottom:1px solid #eef0f3; white-space:nowrap; font-size:13px; }
+  table.main td:first-child { text-align:left; padding-left:14px; }
+  table.main tr.agent { cursor:pointer; }
+  table.main tr.agent:hover { background:#f1f5fb; }
+  .aname { font-weight:600; }
+  .amail { color:var(--muted); font-size:11.5px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; }
+  .b-green { background:var(--greenbg); color:var(--green); }
+  .b-amber { background:var(--amberbg); color:var(--amber); }
+  .b-red { background:var(--redbg); color:var(--red); }
+  .b-purple { background:var(--purplebg); color:var(--purple); }
+  .b-blue { background:var(--bluebg); color:var(--blue); }
+  .warn { color:var(--red); font-weight:600; }
+  .spmini { font-size:11px; color:var(--muted); }
+  tr.detail > td { background:#f8fafc; padding:16px 18px; white-space:normal; border-bottom:2px solid var(--line); }
+  .dgrid { display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; }
+  .dblock { min-width:235px; max-width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); }
+  .dblock h3 { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 8px; padding-bottom:5px; border-bottom:1px solid var(--line); }
+  .dblock h3.mt { margin-top:14px; }
+  table.mini { border-collapse:collapse; font-size:12px; }
+  table.mini th, table.mini td { padding:3.5px 8px; text-align:right; border-bottom:1px solid #eef0f3; white-space:nowrap; }
+  table.mini th:first-child, table.mini td:first-child { text-align:left; }
+  table.mini th { color:var(--muted); font-weight:600; font-size:10.5px; text-transform:uppercase; }
+  .rbar { display:flex; align-items:center; gap:7px; margin-bottom:4px; font-size:12px; }
+  .rbar .lab { width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rbar .trk { flex:0 0 85px; height:8px; background:#eceff3; border-radius:4px; overflow:hidden; }
+  .rbar .trk i { display:block; height:100%; background:linear-gradient(90deg,#3b6fe0,#6f9af0); }
+  .rbar .n { color:var(--muted); min-width:26px; }
+  .dload { color:var(--muted); font-size:12.5px; padding:8px 0; }
+  button.mini { border:1px solid #c9d7f5; background:var(--bluebg); color:var(--blue); border-radius:8px; padding:6px 13px; font-size:12.5px; font-weight:600; cursor:pointer; }
+  button.mini:hover { background:#dbe6fb; }
+  button:disabled { opacity:.55; cursor:default; }
+  .verdict { max-width:340px; font-size:12.8px; }
+  .foot { color:var(--muted); font-size:11.5px; margin-top:16px; max-width:960px; line-height:1.55; }
+  .sortmark { font-size:9px; }
+  .pill { display:inline-block; background:#eceff3; border-radius:5px; padding:0 6px; font-size:11px; color:var(--muted); margin-left:6px; }
+  .expl { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  .expl select { border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:12.5px; background:#fbfcfd; }
+  .aggline { font-size:12.3px; color:var(--muted); margin:7px 0; line-height:1.5; }
+  .split { display:flex; height:10px; border-radius:5px; overflow:hidden; background:#eceff3; margin:4px 0 6px; max-width:260px; }
+  .split .s1 { background:#4f8bf0; } .split .s2 { background:#12a08f; } .split .s3 { background:#d3d8df; }
+  .legend { font-size:11.5px; color:var(--muted); }
+  .legend b { color:var(--text); }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tabs button { border:1px solid var(--line); background:var(--card); color:var(--muted); border-radius:9px; padding:7px 15px; font-size:13px; font-weight:600; cursor:pointer; }
+  .tabs button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .sumagent { background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); margin-bottom:14px; padding:13px 16px; }
+  .sumhead { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+  .sumhead .nm { font-size:15px; font-weight:700; }
+  .sumhead .em { color:var(--muted); font-size:12px; }
+  .sumcred { border-top:1px solid #eef0f3; padding:10px 0 8px; }
+  .sumcred .crow { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .sumcred .cn { font-weight:600; font-size:13px; }
+  .sumcred .cs { color:var(--muted); font-size:12px; }
+  .tag { display:inline-block; padding:1.5px 8px; border-radius:999px; font-size:10.5px; font-weight:700; text-transform:uppercase; }
+  .challenge { font-size:12.8px; margin:5px 0 3px; }
+  .acts { margin:3px 0 0 0; padding-left:17px; font-size:12.5px; }
+  .acts li { margin-bottom:2px; }
+  .sumnote { color:var(--muted); font-size:12px; margin:8px 0 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<h1>Agent Lead Bucket Health</h1>
+<div class="sub" id="asof">Loading...</div>
+<div id="err"></div>
+<div id="loading"><div class="spin"></div><span id="lmsg">Loading dashboard data...</span></div>
+<div id="app" style="display:none">
+  <div class="controls">
+    <label>Creator <select id="fcreator"><option value="">All creators</option></select></label>
+    <label>Agent <select id="fagent"><option value="">All agents</option></select></label>
+    <label>Min leads <input type="number" id="minleads" min="0" step="10" value="50"></label>
+    <span id="shown"></span>
+    <span class="chip" id="fchip" style="display:none"></span>
+    <button class="mini" id="refbtn" title="Trigger a HubSpot re-sync on the server">Re-sync</button>
+  </div>
+  <div class="tabs">
+    <button id="tabDash" class="on">Dashboard</button>
+    <button id="tabSum">Challenges &amp; actionables</button>
+  </div>
+  <div id="viewDash">
+    <div class="cards" id="cards"></div>
+    <div class="tblwrap"><table class="main"><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+  <div id="viewSum" style="display:none"></div>
+  <div class="foot">
+    <b>Definitions.</b> Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
+    NI post-counselling = previous stage was Discovery / pitched / Counselled / Payment prospect / IFC / any Follow up stage, or counselling recorded done. Student vs professional is classified from the free text field tm_student_or_professional.
+    Data syncs from HubSpot on the server every 30 minutes; use Re-sync to force a refresh.
+  </div>
+</div>
+</div>
+<script>
+const ACTIVE_S = ["rcb_requested_callback","discovery","program_pitched","pricing_pitched","counselled","Follow up","FU_DNP","FU_RCB","payment_prospect"];
+const STAGE_LABEL = {rcb_requested_callback:"RCB", discovery:"Discovery", program_pitched:"Program pitched", pricing_pitched:"Pricing pitched",
+  counselled:"Counselled", "Follow up":"Follow up", FU_DNP:"FU-DNP", FU_RCB:"FU-RCB", payment_prospect:"Payment prospect", IFC:"Interested future",
+  deal_won:"Deal won", dnp_did_not_pick:"DNP", ghosted:"Ghosted", ni_not_interested:"NI", disqualified:"Disqualified"};
+const STAGE_ORDER = Object.keys(STAGE_LABEL);
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/'/g,"&#39;").replace(/"/g,"&quot;"); }
+function fdate(ms){ if(!ms) return ""; const d=new Date(ms); return isNaN(d)?"":d.toLocaleDateString()+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
+
+let AGENTS = [], CREATORS = [], FC = "", META = {}, VIEW = "dash";
+let HS_URL = "#";
+async function api(path){ const r = await fetch(path); if(!r.ok) throw new Error("API "+r.status); return r.json(); }
+
+async function loadMetrics(){
+  const j = await api("/api/agents?creator="+encodeURIComponent(FC));
+  const e = document.getElementById("err");
+  if (j.error){ e.style.display="block"; e.textContent = "Server sync issue: "+j.error; } else e.style.display="none";
+  CREATORS = j.creators || [];
+  AGENTS = (j.agents||[]).map(function(a){
+    a.ratio = a.churned ? a.workable/a.churned : (a.workable?9.99:0);
+    a.spKnown = a.stu + a.pro;
+    a.stuShare = a.spKnown ? a.stu/a.spKnown : -1;
+    if (!a.active) { a.badge=["Reassign","b-purple"]; a.verdict="Owner is deactivated but still holds leads. Reassign this bucket."; }
+    else if (a.total>300 && a.totCalls>50 && a.ownCalls < 0.05*a.totCalls) { a.badge=["Not working bucket","b-blue"]; a.verdict="Nearly all logged calls came from previous owners; the bucket looks inherited and untouched."; }
+    else if (a.ratio<0.5) { a.badge=["Starved","b-red"]; a.verdict="Mostly churned leads; not enough workable pipeline. Needs fresh allocation."; }
+    else if (a.ratio<1) { a.badge=["Thin","b-amber"]; a.verdict="Workable pipeline is smaller than the churned pile."; }
+    else { a.badge=["Healthy","b-green"]; a.verdict="More workable leads than churned; main risk is execution backlog."; }
+    if (a.overdue > 0.4*a.workable && a.workable>50) a.verdict += " Heavy overdue follow up backlog.";
+    if (a.age30 < 0.1*a.total && a.total>100) a.verdict += " Very few fresh leads; the bucket is aging.";
+    if (a.spKnown > 30 && a.stuShare > 0.5) a.verdict += " Bucket skews student ("+Math.round(a.stuShare*100)+"% of known).";
+    a.drill = null;
+    return a;
+  });
+}
+async function boot(){
+  META = await api("/api/meta");
+  HS_URL = "https://"+META.uiDomain+"/contacts/"+META.portalId+"/record/0-1/";
+  if (!META.loadedAt){
+    document.getElementById("lmsg").textContent = META.error ? ("Server error: "+META.error) : "Server is syncing from HubSpot for the first time; this can take a few minutes...";
+    setTimeout(boot, 5000);
+    return;
+  }
+  await loadMetrics();
+  const cs = document.getElementById("fcreator");
+  cs.innerHTML = '<option value="">All creators</option>';
+  CREATORS.forEach(function(c){ const o=document.createElement("option"); o.value=c.u; o.textContent=c.u+" ("+c.n+")"; cs.appendChild(o); });
+  fillAgentSelect(); drawAll();
+  document.getElementById("loading").style.display="none";
+  document.getElementById("app").style.display="block";
+}
+function fillAgentSelect(){
+  const sel = document.getElementById("fagent"); const cur = sel.value;
+  sel.innerHTML = '<option value="">All agents</option>';
+  AGENTS.slice().sort(function(a,b){return b.total-a.total;}).forEach(function(a){
+    const o=document.createElement("option"); o.value=a.id; o.textContent=a.name+" ("+a.total+")"; sel.appendChild(o);
+  });
+  sel.value = AGENTS.some(function(a){return a.id===cur;}) ? cur : "";
+}
+function drawAll(){
+  drawCards(); drawHead(); drawBody();
+  const chip = document.getElementById("fchip");
+  if (FC){ chip.style.display="inline-block"; chip.textContent = "Creator: "+FC; } else chip.style.display="none";
+  document.getElementById("asof").textContent = "Data synced from HubSpot "+(META.loadedAt?new Date(META.loadedAt).toLocaleString():"")+" · "+META.contacts+" staged leads · "+AGENTS.length+" agents. Click a row for full drill down.";
+}
+const COLS = [
+  ["name","Agent"],["total","Total"],["workable","Workable"],["churned","Churned"],["ratio","W:C"],
+  ["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
+  ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["badge","Health"]
+];
+let sortKey = "total", sortDir = -1;
+function card(v,l,c){ return '<div class="card '+(c||"")+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+function selAgents(){
+  const aid = document.getElementById("fagent").value;
+  return aid ? AGENTS.filter(function(a){return a.id===aid;}) : AGENTS;
+}
+function drawCards(){
+  const sel = selAgents();
+  function s(k){ return sel.reduce(function(t,a){return t+a[k];},0); }
+  const known = s("stu")+s("pro");
+  document.getElementById("cards").innerHTML =
+    card(sel.length,"Agents","c-blue")+card(s("total").toLocaleString(),"Staged leads","c-blue")+
+    card(s("workable").toLocaleString(),"Workable","c-green")+card(s("churned").toLocaleString(),"Churned","c-red")+
+    card(s("age30").toLocaleString(),"Fresh ≤30d","c-green")+card(s("overdue").toLocaleString(),"Overdue FU","c-amber")+
+    card(s("niPost").toLocaleString(),"NI post-couns","c-red")+card(s("niPre").toLocaleString(),"NI pre-couns","c-amber")+
+    card(known?Math.round(100*s("stu")/known)+"% stu":"n/a","Student share (known)","c-teal");
+}
+function drawHead(){
+  document.getElementById("thead").innerHTML = "<tr>"+COLS.map(function(c){
+    const mark = sortKey===c[0] ? ' <span class="sortmark">'+(sortDir<0?"▼":"▲")+'</span>' : "";
+    return '<th data-k="'+c[0]+'">'+c[1]+mark+"</th>";
+  }).join("")+"</tr>";
+  document.querySelectorAll("#thead th").forEach(function(th){
+    th.onclick = function(){
+      const k = th.getAttribute("data-k");
+      if (sortKey===k) sortDir=-sortDir; else { sortKey=k; sortDir=-1; }
+      drawHead(); drawBody();
+    };
+  });
+}
+function spCell(a){
+  if (!a.spKnown) return '<span class="spmini">n/a</span>';
+  return a.stu+" / "+a.pro+' <span class="spmini">('+Math.round(100*a.stu/a.spKnown)+"% stu)</span>";
+}
+function drawBody(){
+  const aid = document.getElementById("fagent").value;
+  const min = aid ? 0 : (parseInt(document.getElementById("minleads").value)||0);
+  const arr = selAgents().filter(function(a){ return a.total>=min; })
+    .sort(function(x,y){
+      let a=x[sortKey], b=y[sortKey];
+      if (sortKey==="badge"){a=x.badge[0];b=y.badge[0];}
+      if (typeof a==="string") return a.localeCompare(b)*sortDir;
+      return (a-b)*sortDir;
+    });
+  document.getElementById("shown").textContent = arr.length+" of "+AGENTS.length+" agents shown";
+  const tb = document.getElementById("tbody"); tb.innerHTML="";
+  arr.forEach(function(a){
+    const tr = document.createElement("tr"); tr.className="agent";
+    tr.innerHTML = '<td><span class="aname">'+esc(a.name)+"</span>"+(a.active?"":' <span class="pill">deactivated</span>')+
+      (a.email?'<div class="amail">'+esc(a.email)+"</div>":"")+"</td>"+
+      "<td>"+a.total.toLocaleString()+"</td><td>"+a.workable+"</td><td>"+a.churned+"</td><td>"+a.ratio.toFixed(2)+"</td>"+
+      "<td"+(a.age30<0.1*a.total&&a.total>100?' class="warn"':"")+">"+a.age30+"</td><td>"+a.old90+"</td>"+
+      "<td"+(a.overdue>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.overdue+"</td>"+
+      "<td"+(a.nofu>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.nofu+"</td>"+
+      "<td"+(a.churnEffort>=25?' class="warn"':"")+">"+a.churnEffort+"</td>"+
+      "<td"+(a.niPost>=20?' class="warn"':"")+">"+a.niPost+"</td><td>"+a.niPre+"</td>"+
+      "<td>"+spCell(a)+"</td>"+
+      '<td><span class="badge '+a.badge[1]+'">'+a.badge[0]+"</span></td>";
+    tr.onclick = function(){ toggleDetail(tr, a); };
+    tb.appendChild(tr);
+  });
+}
+document.addEventListener("input", function(e){
+  if (e.target.id==="minleads"){ drawBody(); drawCards(); }
+});
+document.addEventListener("change", async function(e){
+  if (e.target.id==="fcreator"){
+    FC = e.target.value;
+    document.getElementById("app").style.opacity=".45";
+    try { await loadMetrics(); } catch(err){}
+    fillAgentSelect(); drawAll();
+    document.getElementById("app").style.opacity="1";
+    if (VIEW==="sum") showSummary();
+  }
+  if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); }
+});
+document.addEventListener("click", function(e){
+  if (e.target.id==="tabDash") setView("dash");
+  if (e.target.id==="tabSum") setView("sum");
+  if (e.target.id==="refbtn"){ fetch("/api/refresh",{method:"POST"}); e.target.textContent="Sync started..."; setTimeout(function(){ location.reload(); }, 60000); }
+});
+
+async function drill(a){
+  const key = FC||"";
+  if (a.drill && a.drill.key===key) return a.drill;
+  const j = await api("/api/drill/"+a.id+"?creator="+encodeURIComponent(FC));
+  j.key = key;
+  a.drill = j;
+  return j;
+}
+function bars(list){
+  if (!list || !list.length) return '<div class="dload">None recorded.</div>';
+  const mx = Math.max.apply(null, list.map(function(r){return r.n;}).concat([1]));
+  return list.slice(0,8).map(function(r){
+    return '<div class="rbar"><span class="lab" title="'+esc(r.l)+'">'+esc(r.l)+'</span><span class="trk"><i style="width:'+Math.round(100*r.n/mx)+'%"></i></span><span class="n">'+r.n+"</span></div>";
+  }).join("");
+}
+function spLine(sp){
+  if (!sp) return "";
+  const tot = sp.S+sp.P+sp.U;
+  if (!tot) return "";
+  const known = sp.S+sp.P;
+  return '<div class="split" style="margin-top:2px"><span class="s1" style="flex:'+sp.S+'"></span><span class="s2" style="flex:'+sp.P+'"></span><span class="s3" style="flex:'+sp.U+'"></span></div>'+
+    '<div class="legend" style="margin-bottom:7px"><b>'+sp.S+'</b> students · <b>'+sp.P+'</b> professionals · '+sp.U+" unknown"+
+    (known?" · <b>"+Math.round(100*sp.S/known)+"%</b> of known are students":"")+"</div>";
+}
+async function toggleDetail(tr, a){
+  if (tr.nextSibling && tr.nextSibling.className==="detail"){ tr.nextSibling.remove(); return; }
+  document.querySelectorAll("tr.detail").forEach(function(d){d.remove();});
+  const d = document.createElement("tr"); d.className="detail";
+  d.innerHTML = '<td colspan="'+COLS.length+'"><div class="dload">Loading '+esc(a.name)+"'s detail...</div></td>";
+  tr.parentNode.insertBefore(d, tr.nextSibling);
+  let dr;
+  try { dr = await drill(a); } catch(e){ d.firstChild.innerHTML = '<div class="dload">Drill down failed: '+esc(e.message||e)+"</div>"; return; }
+  const crRows = dr.creators.slice(0,12).map(function(k){
+    return "<tr><td>"+esc(k.u)+"</td><td>"+k.t+"</td><td>"+k.w+"</td><td>"+k.c+"</td><td>"+k.rcb+"</td><td>"+k.dnp+"</td><td>"+k.ni+"</td><td>"+k.dq+"</td><td>"+k.couns+"</td><td>"+k.ifc+"</td><td>"+k.won+"</td></tr>";
+  }).join("");
+  const rest = dr.creators.slice(12);
+  const restRow = rest.length ? "<tr><td>+"+rest.length+" more</td><td>"+rest.reduce(function(t,k){return t+k.t;},0)+"</td><td colspan='9'></td></tr>" : "";
+  const stRows = STAGE_ORDER.filter(function(st){ const x=dr.stageAgg[st]; return x && x.n>0; }).map(function(st){
+    const x = dr.stageAgg[st];
+    const depth = x.n ? x.calls/x.n : 0;
+    const apd = x.days ? depth/x.days : 0;
+    return "<tr><td>"+STAGE_LABEL[st]+"</td><td>"+x.n+"</td><td>"+x.calls+"</td><td>"+x.own+"</td><td>"+depth.toFixed(1)+"</td><td>"+(x.days?x.days.toFixed(0):"–")+"</td><td>"+(apd?apd.toFixed(2):"–")+"</td></tr>";
+  }).join("");
+  const mx = Math.max.apply(null, dr.months.map(function(m){return m.n;}).concat([1]));
+  const ageRows = dr.months.slice(-12).map(function(m){
+    return '<div class="rbar"><span class="lab" style="width:60px">'+m.m+'</span><span class="trk"><i style="width:'+Math.round(100*m.n/mx)+'%"></i></span><span class="n">'+m.n+"</span></div>";
+  }).join("") || '<div class="dload">No create date data.</div>';
+  const spKnown = dr.sp.S+dr.sp.P;
+  const spHtml = (dr.sp.S+dr.sp.P+dr.sp.U) ? spLine(dr.sp)+(dr.spTop.length?'<div style="margin-top:7px">'+bars(dr.spTop)+"</div>":"") : '<div class="dload">No student/professional data.</div>';
+  const stageOpts = STAGE_ORDER.map(function(st){ return '<option value="'+st+'">'+STAGE_LABEL[st]+"</option>"; }).join("");
+  const credOpts = '<option value="">'+(FC?esc(FC)+" (filtered)":"All creators")+"</option>"+
+    (FC ? "" : dr.creators.slice(0,50).map(function(k){ return '<option value="'+esc(k.u)+'">'+esc(k.u)+" ("+k.t+")</option>"; }).join(""));
+  d.firstChild.innerHTML =
+    '<div class="dgrid">'+
+    '<div class="dblock"><h3>Stage mix by creator</h3><table class="mini"><tr><th>Creator</th><th>Total</th><th>Work</th><th>Churn</th><th>RCB</th><th>DNP</th><th>NI</th><th>DQ</th><th>Couns</th><th>IFC</th><th>Won</th></tr>'+crRows+restRow+"</table>"+
+      '<h3 class="mt">Calls by stage</h3><table class="mini"><tr><th>Stage</th><th>Leads</th><th>Calls all</th><th>Calls own</th><th>Avg depth</th><th>Avg days</th><th>Att/day</th></tr>'+stRows+"</table></div>"+
+    '<div class="dblock"><h3>Student vs professional</h3>'+spHtml+
+      '<h3 class="mt">NI reasons, post counselling ('+a.niPost+')</h3>'+spLine(dr.niPostSP)+bars(dr.post)+
+      '<h3 class="mt">NI reasons, pre counselling ('+a.niPre+')</h3>'+spLine(dr.niPreSP)+bars(dr.pre)+"</div>"+
+    '<div class="dblock"><h3>Leads by create month</h3>'+ageRows+
+      '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Fresh ≤30d: '+a.age30+" · 30-90d: "+a.age90+" · Older: "+a.old90+"</div>"+
+      '<h3 class="mt">Verdict</h3><div class="verdict">'+a.verdict+"</div></div>"+
+    '<div class="dblock" style="flex-basis:100%"><h3>Lead explorer, per lead call depth</h3>'+
+      '<div class="expl">Stage <select id="xstage">'+stageOpts+"</select> Creator <select id=\"xcred\">"+credOpts+'</select> <button class="mini" id="xgo">Load leads</button></div>'+
+      '<div id="xout" class="dload">Pick a stage and load: each lead with calls in stage, calls by this owner, days in stage, attempts per day, student/professional, last call and next follow up.</div></div>'+
+    "</div>";
+  d.querySelector("#xgo").onclick = function(ev){ ev.stopPropagation(); explore(a, d.querySelector("#xstage").value, d.querySelector("#xcred").value, d.querySelector("#xout"), d.querySelector("#xgo")); };
+  d.onclick = function(ev){ ev.stopPropagation(); };
+}
+function classifySPc(v){
+  const s = (v||"").trim().toLowerCase();
+  if (!s || s==="na" || s==="n/a" || s==="none" || s==="-" || s==="no") return "?";
+  if (/(student|fresher|intern|graduat|college|final year|^yes$|^s$)/.test(s)) return "S";
+  if (/(professional|working|^pro$|freelanc|employe|engineer|developer|analyst|manager|consultant)/.test(s)) return "P";
+  return "?";
+}
+async function explore(a, stage, cred, out, btn){
+  btn.disabled = true; out.className="dload"; out.textContent = "Loading leads...";
+  try {
+    const j = await api("/api/leads?owner="+a.id+"&stage="+encodeURIComponent(stage)+"&creator="+encodeURIComponent(FC||cred||""));
+    if (!j.rows.length){ out.textContent = "No leads in "+STAGE_LABEL[stage]+"."; btn.disabled=false; return; }
+    const nowMs = Date.now();
+    const L = j.rows.map(function(p){
+      const days = p.entered ? Math.max(1, Math.round((nowMs-p.entered)/86400000)) : 0;
+      const sp = classifySPc(p.spRaw);
+      return { id:p.id, name:p.name, cred:p.cred, sp: sp==="S"?"Student":(sp==="P"?"Prof":"?"), spRaw:p.spRaw,
+        created:p.created?new Date(p.created).toLocaleDateString():"", days:days, calls:p.calls, own:p.own,
+        apd: days?(p.calls/days):0, last:fdate(p.last), fu:fdate(p.fu), fuOver: p.fu && p.fu < nowMs };
+    }).sort(function(x,y){ return y.calls-x.calls; });
+    const n = L.length;
+    const avg = function(f){ return (L.reduce(function(t,l){return t+f(l);},0)/n); };
+    const noFu = L.filter(function(l){return !l.fu;}).length, over = L.filter(function(l){return l.fuOver;}).length;
+    const stuN = L.filter(function(l){return l.sp==="Student";}).length, proN = L.filter(function(l){return l.sp==="Prof";}).length;
+    let h = '<div class="aggline"><b>'+n+" leads</b> · avg <b>"+avg(function(l){return l.calls;}).toFixed(1)+"</b> calls in stage ("+avg(function(l){return l.own;}).toFixed(1)+" by this owner) · avg <b>"+avg(function(l){return l.days;}).toFixed(0)+"</b> days in stage · avg <b>"+avg(function(l){return l.apd;}).toFixed(2)+"</b> attempts/day · "+stuN+" students / "+proN+" professionals · "+over+" overdue FU · "+noFu+" no FU set</div>";
+    h += '<div style="max-height:340px;overflow:auto"><table class="mini"><tr><th>Lead</th><th>Creator</th><th>Stu/Pro</th><th>Created</th><th>Days in stage</th><th>Calls</th><th>Own</th><th>Att/day</th><th>Last call</th><th>Next FU</th></tr>'+
+      L.map(function(l){
+        const nm = l.id ? '<a href="'+HS_URL+l.id+'" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none">'+esc(l.name)+' <span style="font-size:10px">↗</span></a>' : esc(l.name);
+        return "<tr><td>"+nm+"</td><td>"+esc(l.cred)+"</td><td title=\""+esc(l.spRaw)+"\">"+l.sp+"</td><td>"+l.created+"</td><td>"+l.days+"</td><td>"+l.calls+"</td><td>"+l.own+"</td><td>"+l.apd.toFixed(2)+"</td><td>"+esc(l.last||"never")+"</td><td"+(l.fuOver?' class="warn"':"")+">"+esc(l.fu||"none")+"</td></tr>";
+      }).join("")+"</table></div>";
+    out.className=""; out.innerHTML = h;
+  } catch(e){ out.textContent = "Failed: "+(e.message||e); }
+  btn.disabled = false;
+}
+function diagnose(c, act){
+  const tags = [], acts = [];
+  const cpw = c.work ? c.own/c.work : 0;
+  const workShare = c.total ? c.work/c.total : 0;
+  const churnShare = c.total ? c.churn/c.total : 0;
+  let challenge = "";
+  function tag(l,cl){ if(!tags.some(function(t){return t[0]===l;})) tags.push([l,cl]); }
+  if (!act){ tag("Reassign","b-purple"); acts.push("Owner is deactivated; reassign these "+c.total+" leads to an active agent."); challenge = "Gap: ownership. Leads are parked with a deactivated agent."; }
+  if (c.tot>30 && c.own < 0.05*c.tot){ tag("Inherited","b-blue"); acts.push("Almost all "+c.tot+" logged calls are from previous owners; start working this bucket or hand it back."); if(!challenge) challenge = "Gap: effort. Inherited bucket, current agent has barely touched these leads."; }
+  if (c.work < 15 || workShare < 0.25){ tag("Leads gap","b-red"); acts.push("Only "+c.work+" workable leads left ("+Math.round(workShare*100)+"% of this bucket). Request fresh allocation from this creator or shift focus."); if(!challenge) challenge = "Gap: leads. Not enough workable pipeline from this creator to generate counsellings."; }
+  if (c.work>=15 && cpw < 1){ tag("Effort gap","b-amber"); acts.push("Only "+cpw.toFixed(1)+" own calls per workable lead; raise the attempt rate before asking for more leads."); if(!challenge) challenge = "Gap: effort. Enough workable leads, too few call attempts on them."; }
+  if (c.rcbun >= 10){ tag("Effort gap","b-amber"); acts.push("Call the "+c.rcbun+" RCB leads that have never been called; they asked for a callback."); if(!challenge) challenge = "Gap: effort. Requested callbacks are sitting uncalled."; }
+  if (c.work>15 && c.overdue > 0.4*c.work){ tag("FU backlog","b-amber"); acts.push("Clear "+c.overdue+" overdue follow ups before they ghost."); if(!challenge) challenge = "Gap: process. Pipeline exists but follow ups are slipping past their dates."; }
+  if (c.work>15 && c.nofu > 0.4*c.work){ tag("No FU set","b-amber"); acts.push("Schedule follow up dates on "+c.nofu+" workable leads that have none."); if(!challenge) challenge = "Gap: process. Most workable leads have no next step booked."; }
+  if (c.total>=50 && c.fresh < 0.1*c.total){ tag("Aging","b-amber"); acts.push("Only "+c.fresh+" of these leads were created in the last 30 days; push for fresher allocation."); if(!challenge) challenge = "Gap: freshness. This creator's bucket is aging out."; }
+  if (churnShare > 0.6 && cpw >= 1.5){ tag("Lead quality","b-red"); acts.push("High churn despite real effort ("+cpw.toFixed(1)+" calls per workable lead); review targeting or lead quality from this creator."); if(!challenge) challenge = "Gap: lead quality. Effort is there, the leads are not converting."; }
+  if (!tags.length){ tag("Healthy","b-green"); acts.push("Keep working the pipeline; main risk is follow up discipline as volume grows."); challenge = "No major gap. Supply and effort look balanced for this creator."; }
+  return {tags:tags, acts:acts.slice(0,4), challenge:challenge};
+}
+async function showSummary(){
+  const v = document.getElementById("viewSum");
+  v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Building agent × creator challenge summary...</div>';
+  let j;
+  try { j = await api("/api/summary?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")); }
+  catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
+  const MINCELL = 15;
+  const byOwner = {};
+  j.cells.filter(function(c){ return c.total >= MINCELL; }).forEach(function(c){ (byOwner[c.owner] = byOwner[c.owner]||[]).push(c); });
+  const amap = {}; AGENTS.forEach(function(a){ amap[a.id]=a; });
+  const order = Object.keys(byOwner).sort(function(x,y){
+    return byOwner[y].reduce(function(t,c){return t+c.total;},0) - byOwner[x].reduce(function(t,c){return t+c.total;},0);
+  });
+  let h = '<div class="sumnote">One block per agent, one row per creator (combinations under '+MINCELL+' leads are skipped). Computed from the latest sync and respects the filters above.</div>';
+  if (!order.length) h += '<div class="dload">No agent × creator combinations match the current filters.</div>';
+  order.forEach(function(oid){
+    const a = amap[oid] || {name:"Owner "+oid, email:"", active:true, badge:["","b-green"]};
+    h += '<div class="sumagent"><div class="sumhead"><span class="nm">'+esc(a.name)+"</span>"+
+      (a.active===false?'<span class="pill">deactivated</span>':"")+
+      (a.email?'<span class="em">'+esc(a.email)+"</span>":"")+
+      (a.badge&&a.badge[0]?'<span class="badge '+a.badge[1]+'">'+a.badge[0]+"</span>":"")+"</div>";
+    byOwner[oid].sort(function(x,y){return y.total-x.total;}).forEach(function(c){
+      const d = diagnose(c, a.active!==false);
+      h += '<div class="sumcred"><div class="crow"><span class="cn">'+esc(c.cred)+'</span>'+
+        '<span class="cs">'+c.total+" leads · "+c.work+" workable · "+c.churn+" churned · "+c.fresh+" fresh ≤30d · "+(c.work?(c.own/c.work).toFixed(1):"0")+" own calls/workable · "+c.rcbun+" RCB uncalled · "+c.overdue+" overdue FU</span>"+
+        d.tags.map(function(t){ return '<span class="tag '+t[1]+'">'+t[0]+"</span>"; }).join(" ")+"</div>"+
+        '<div class="challenge">'+d.challenge+"</div>"+
+        '<ul class="acts">'+d.acts.map(function(x){ return "<li>"+esc(x)+"</li>"; }).join("")+"</ul></div>";
+    });
+    h += "</div>";
+  });
+  v.innerHTML = h;
+}
+function setView(view){
+  VIEW = view;
+  document.getElementById("tabDash").className = view==="dash" ? "on" : "";
+  document.getElementById("tabSum").className = view==="sum" ? "on" : "";
+  document.getElementById("viewDash").style.display = view==="dash" ? "" : "none";
+  document.getElementById("viewSum").style.display = view==="sum" ? "" : "none";
+  if (view==="sum") showSummary();
+}
+boot().catch(function(e){
+  document.getElementById("loading").innerHTML = "Failed to load: "+esc(e.message||e);
+});
+</script>
+</body>
+</html>
