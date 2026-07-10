@@ -19,6 +19,17 @@ Live HubSpot dashboard for sales agent lead bucket health: workable vs churned p
 4. Deploy. First sync takes a few minutes (it pages through every owner's staged contacts); the page auto-retries until data is ready.
 5. Railway gives you a public URL. Put it behind access control (Railway private networking, an auth proxy, or at minimum an unguessable domain) since the dashboard exposes lead names and phone-level activity.
 
+## Background sync every 10 minutes
+
+The web service already re-syncs itself every `SYNC_MINUTES` (default 10) while running. If you also want Railway-managed cron (useful if the service ever sleeps, or you want sync on a strict schedule):
+
+1. In the same Railway project: New > Service > from this same GitHub repo.
+2. On the new service, set Settings > Start Command to `node cron.js` and Settings > Cron Schedule to `*/10 * * * *`.
+3. Add env var `APP_URL` = the public URL of the dashboard service (e.g. `https://your-app.up.railway.app`).
+4. Optional hardening: set `REFRESH_KEY` to the same random string on BOTH services so only the cron job can trigger `/api/refresh`. Note: if you set it, the UI Re-sync button will be blocked (403), which is fine.
+
+The cron service runs, POSTs `/api/refresh` on the web service, and exits. The web service does the actual HubSpot sync in the background.
+
 ## Local run
 
 ```

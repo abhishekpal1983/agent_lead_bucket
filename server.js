@@ -15,7 +15,8 @@ const app = express();
 
 const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
 const PORT = process.env.PORT || 3000;
-const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "30", 10);
+const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "10", 10);
+const REFRESH_KEY = process.env.REFRESH_KEY || "";
 const PORTAL_ID = process.env.HS_PORTAL_ID || "244132076";
 const UI_DOMAIN = process.env.HS_UI_DOMAIN || "app-na2.hubspot.com";
 const HS = "https://api.hubapi.com";
@@ -165,7 +166,11 @@ function agentMetrics(rows){
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN }));
 
-app.post("/api/refresh", (req, res) => { sync(); res.json({ ok: true }); });
+app.post("/api/refresh", (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  sync();
+  res.json({ ok: true, syncing: true });
+});
 
 app.get("/api/agents", (req, res) => {
   const rows = filt(req.query.creator, null);
