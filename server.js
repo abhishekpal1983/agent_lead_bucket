@@ -13,7 +13,7 @@
 const express = require("express");
 const app = express();
 
-const TOKEN = process.env.HUBSPOT_TOKEN;
+const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
 const PORT = process.env.PORT || 3000;
 const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "30", 10);
 const PORTAL_ID = process.env.HS_PORTAL_ID || "244132076";
@@ -87,7 +87,7 @@ async function fetchContactsForOwner(ownerId){
 }
 
 async function sync(){
-  if (!TOKEN) { CACHE.error = "HUBSPOT_TOKEN env var is not set"; return; }
+  if (!TOKEN) { CACHE.error = "HUBSPOT_TOKEN (or HUBSPOT_ACCESS_TOKEN) env var is not set"; return; }
   if (CACHE.syncing) return;
   CACHE.syncing = true;
   try {
