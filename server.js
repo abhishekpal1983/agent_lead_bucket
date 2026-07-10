@@ -33,7 +33,51 @@ const WORKABLE = ["rcb_requested_callback","discovery","program_pitched","pricin
 const CHURN = ["dnp_did_not_pick","ghosted","ni_not_interested","disqualified"];
 const POST_STAGES = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","IFC","FU_DNP","FU_RCB","Follow up"];
 
+const SHEET_CSV_URL = process.env.SHEET_CSV_URL || "";
+
 let CACHE = { contacts: [], owners: {}, loadedAt: null, syncing: false, error: null };
+let SHEET = { rows: [], loadedAt: null, error: null };
+
+function parseCSV(text){
+  const rows = []; let row = [], cur = "", inQ = false;
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (inQ){
+      if (ch === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else inQ = false; }
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ",") { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r"){
+      if (ch === "\r" && text[i+1] === "\n") i++;
+      row.push(cur); cur = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else cur += ch;
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+async function syncSheet(){
+  if (!SHEET_CSV_URL) { SHEET.error = "SHEET_CSV_URL env var is not set"; return; }
+  try {
+    const res = await fetch(SHEET_CSV_URL, { redirect: "follow" });
+    if (!res.ok) throw new Error("Sheet fetch " + res.status);
+    const grid = parseCSV(await res.text());
+    if (grid.length < 2) throw new Error("Sheet is empty");
+    const head = grid[0].map(h => h.trim().toLowerCase());
+    const rows = grid.slice(1).map(r => {
+      const o = {};
+      head.forEach((h, i) => o[h] = (r[i] || "").trim());
+      o.price = parseFloat(String(o.price_inr).replace(/[^0-9.\-]/g, "")) || 0;
+      return o;
+    }).filter(o => o.date);
+    SHEET = { rows, loadedAt: new Date().toISOString(), error: null };
+    console.log("Sheet synced: " + rows.length + " rows");
+  } catch (e) {
+    SHEET.error = e.message;
+    console.error("Sheet sync failed: " + e.message);
+  }
+}
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 async function hs(path, opts, attempt){
@@ -164,11 +208,64 @@ function agentMetrics(rows){
 
 /* ---------- API ---------- */
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
-  contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN }));
+  contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
+  sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error }));
+
+app.get("/api/enrolments", (req, res) => {
+  const creator = req.query.creator || "";
+  const agentId = req.query.agent || "";
+  const agentEmail = agentId && CACHE.owners[agentId] ? (CACHE.owners[agentId].email || "").toLowerCase() : "";
+  const rows = SHEET.rows.filter(r =>
+    (!creator || (r.creator_username || "") === creator) &&
+    (!agentEmail || (r.owner_email || "").toLowerCase() === agentEmail)
+  );
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  function bucketize(keyFn){
+    const m = {};
+    rows.forEach(r => {
+      const k = keyFn(r) || "(unknown)";
+      if (!m[k]) m[k] = { key: k, enrol: 0, revenue: 0, students: {}, completed: 0, ongoing: 0, loan: 0, monthRev: 0, monthEnrol: 0 };
+      const b = m[k];
+      b.enrol++; b.revenue += r.price;
+      if (r.consumer_email) b.students[r.consumer_email.toLowerCase()] = 1;
+      const st = (r.status || "").toLowerCase();
+      if (st === "completed") b.completed++; else if (st === "ongoing") b.ongoing++; else if (st === "loan" || (r.booking_type||"").toLowerCase() === "loan") b.loan++;
+      if ((r.date || "").slice(0, 7) === thisMonth) { b.monthRev += r.price; b.monthEnrol++; }
+    });
+    return Object.values(m).map(b => { b.students = Object.keys(b.students).length; return b; })
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+  const byDay = {};
+  rows.forEach(r => {
+    const d = (r.date || "").slice(0, 10);
+    if (!d) return;
+    if (!byDay[d]) byDay[d] = { d, n: 0, rev: 0 };
+    byDay[d].n++; byDay[d].rev += r.price;
+  });
+  const students = {};
+  rows.forEach(r => { if (r.consumer_email) students[r.consumer_email.toLowerCase()] = 1; });
+  res.json({
+    loadedAt: SHEET.loadedAt, error: SHEET.error,
+    totals: {
+      enrol: rows.length,
+      students: Object.keys(students).length,
+      revenue: rows.reduce((t, r) => t + r.price, 0),
+      monthEnrol: rows.filter(r => (r.date || "").slice(0, 7) === thisMonth).length,
+      monthRevenue: rows.filter(r => (r.date || "").slice(0, 7) === thisMonth).reduce((t, r) => t + r.price, 0)
+    },
+    byAgent: bucketize(r => r.owner_email ? (r.sales_rep || r.owner_email) + "|" + r.owner_email : r.sales_rep),
+    byCreator: bucketize(r => r.creator_username),
+    byDay: Object.values(byDay).sort((a, b) => a.d < b.d ? -1 : 1).slice(-45),
+    recent: rows.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 30).map(r => ({
+      date: r.date, rep: r.sales_rep, creator: r.creator_username, consumer: r.consumer_name,
+      service: r.service_title, price: r.price, status: r.status, type: r.booking_type, source: r.source
+    }))
+  });
+});
 
 app.post("/api/refresh", (req, res) => {
   if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
-  sync();
+  sync(); syncSheet();
   res.json({ ok: true, syncing: true });
 });
 
@@ -284,6 +381,7 @@ app.get("/api/summary", (req, res) => {
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
-  sync();
+  sync(); syncSheet();
   setInterval(sync, SYNC_MINUTES * 60 * 1000);
+  setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
 });

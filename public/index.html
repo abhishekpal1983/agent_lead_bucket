@@ -119,12 +119,14 @@
   <div class="tabs">
     <button id="tabDash" class="on">Dashboard</button>
     <button id="tabSum">Challenges &amp; actionables</button>
+    <button id="tabEnr">Enrolments &amp; revenue</button>
   </div>
   <div id="viewDash">
     <div class="cards" id="cards"></div>
     <div class="tblwrap"><table class="main"><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
   </div>
   <div id="viewSum" style="display:none"></div>
+  <div id="viewEnr" style="display:none"></div>
   <div class="foot">
     <b>Definitions.</b> Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
     NI post-counselling = previous stage was Discovery / pitched / Counselled / Payment prospect / IFC / any Follow up stage, or counselling recorded done. Student vs professional is classified from the free text field tm_student_or_professional.
@@ -274,12 +276,14 @@ document.addEventListener("change", async function(e){
     fillAgentSelect(); drawAll();
     document.getElementById("app").style.opacity="1";
     if (VIEW==="sum") showSummary();
+    if (VIEW==="enr") showEnrolments();
   }
-  if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); }
+  if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); if (VIEW==="enr") showEnrolments(); }
 });
 document.addEventListener("click", function(e){
   if (e.target.id==="tabDash") setView("dash");
   if (e.target.id==="tabSum") setView("sum");
+  if (e.target.id==="tabEnr") setView("enr");
   if (e.target.id==="refbtn"){ fetch("/api/refresh",{method:"POST"}); e.target.textContent="Sync started..."; setTimeout(function(){ location.reload(); }, 60000); }
 });
 
@@ -438,13 +442,54 @@ async function showSummary(){
   });
   v.innerHTML = h;
 }
+function inr(n){ return "₹" + Math.round(n).toLocaleString("en-IN"); }
+async function showEnrolments(){
+  const v = document.getElementById("viewEnr");
+  v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Loading enrolments from the sheet...</div>';
+  let j;
+  try { j = await api("/api/enrolments?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")); }
+  catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
+  if (j.error && !j.loadedAt){ v.innerHTML = '<div class="dload">Sheet not connected: '+esc(j.error)+". Set the SHEET_CSV_URL env var on the server.</div>"; return; }
+  const t = j.totals;
+  let h = '<div class="cards">'+
+    card(t.enrol.toLocaleString(),"Enrolment payments","c-blue")+
+    card(t.students.toLocaleString(),"Unique students","c-teal")+
+    card(inr(t.revenue),"Revenue (price_inr)","c-green")+
+    card(t.monthEnrol.toLocaleString(),"Payments this month","c-blue")+
+    card(inr(t.monthRevenue),"Revenue this month","c-green")+"</div>";
+  h += '<div class="dgrid">';
+  h += '<div class="dblock"><h3>By agent (matched on owner_email)</h3><table class="mini"><tr><th>Agent</th><th>Payments</th><th>Students</th><th>Revenue</th><th>Completed</th><th>Ongoing</th><th>Loan</th><th>This month</th></tr>'+
+    j.byAgent.map(function(b){
+      const nm = b.key.split("|")[0];
+      return "<tr><td>"+esc(nm)+"</td><td>"+b.enrol+"</td><td>"+b.students+"</td><td>"+inr(b.revenue)+"</td><td>"+b.completed+"</td><td>"+b.ongoing+"</td><td>"+b.loan+"</td><td>"+inr(b.monthRev)+"</td></tr>";
+    }).join("")+"</table></div>";
+  h += '<div class="dblock"><h3>By creator (creator_username)</h3><table class="mini"><tr><th>Creator</th><th>Payments</th><th>Students</th><th>Revenue</th><th>This month</th></tr>'+
+    j.byCreator.map(function(b){
+      return "<tr><td>"+esc(b.key)+"</td><td>"+b.enrol+"</td><td>"+b.students+"</td><td>"+inr(b.revenue)+"</td><td>"+inr(b.monthRev)+"</td></tr>";
+    }).join("")+"</table></div>";
+  const mx = Math.max.apply(null, j.byDay.map(function(d){return d.rev;}).concat([1]));
+  h += '<div class="dblock"><h3>Revenue by day (last 45)</h3>'+
+    j.byDay.map(function(d){
+      return '<div class="rbar"><span class="lab" style="width:78px">'+d.d.slice(5)+'</span><span class="trk"><i style="width:'+Math.round(100*d.rev/mx)+'%"></i></span><span class="n" style="min-width:80px">'+inr(d.rev)+" ("+d.n+")</span></div>";
+    }).join("")+"</div>";
+  h += '<div class="dblock" style="flex-basis:100%"><h3>Latest payments</h3><div style="max-height:320px;overflow:auto"><table class="mini"><tr><th>Date</th><th>Agent</th><th>Creator</th><th>Student</th><th>Service</th><th>Amount</th><th>Status</th><th>Type</th></tr>'+
+    j.recent.map(function(r){
+      return "<tr><td>"+esc(r.date)+"</td><td>"+esc(r.rep||"")+"</td><td>"+esc(r.creator||"")+"</td><td>"+esc(r.consumer||"")+"</td><td>"+esc((r.service||"").slice(0,45))+"</td><td>"+inr(r.price)+"</td><td>"+esc(r.status||"")+"</td><td>"+esc(r.type||"")+"</td></tr>";
+    }).join("")+"</table></div>"+
+    '<div class="sumnote" style="margin-top:8px">Sheet last synced '+(j.loadedAt?new Date(j.loadedAt).toLocaleString():"never")+(j.error?" · last sync error: "+esc(j.error):"")+". Revenue = price_inr. Agent match uses owner_email; creator match uses creator_username (same as topmate_username).</div></div>";
+  h += "</div>";
+  v.innerHTML = h;
+}
 function setView(view){
   VIEW = view;
   document.getElementById("tabDash").className = view==="dash" ? "on" : "";
   document.getElementById("tabSum").className = view==="sum" ? "on" : "";
+  document.getElementById("tabEnr").className = view==="enr" ? "on" : "";
   document.getElementById("viewDash").style.display = view==="dash" ? "" : "none";
   document.getElementById("viewSum").style.display = view==="sum" ? "" : "none";
+  document.getElementById("viewEnr").style.display = view==="enr" ? "" : "none";
   if (view==="sum") showSummary();
+  if (view==="enr") showEnrolments();
 }
 boot().catch(function(e){
   document.getElementById("loading").innerHTML = "Failed to load: "+esc(e.message||e);

@@ -12,7 +12,8 @@ Live HubSpot dashboard for sales agent lead bucket health: workable vs churned p
 1. Create a HubSpot **private app** token: HubSpot > Settings > Integrations > Private Apps > Create app. Scopes needed: `crm.objects.contacts.read`, `crm.objects.owners.read`.
 2. In Railway: New Project > Deploy from GitHub repo > pick this repo.
 3. Add environment variables:
-   - `HUBSPOT_TOKEN` = your private app token (required, keep it only in Railway, never commit it)
+   - `HUBSPOT_TOKEN` (or `HUBSPOT_ACCESS_TOKEN`) = your private app token (required, keep it only in Railway, never commit it)
+   - `SHEET_CSV_URL` = published-to-web CSV link of the enrolments Google Sheet (powers the Enrolments & revenue tab; synced every SYNC_MINUTES)
    - `SYNC_MINUTES` = 30 (optional)
    - `HS_PORTAL_ID` = 244132076 (optional, for HubSpot record links)
    - `HS_UI_DOMAIN` = app-na2.hubspot.com (optional)
