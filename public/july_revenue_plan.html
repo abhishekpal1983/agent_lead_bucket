@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>July 2026 Revenue Plan</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F8F9FA;color:#1A1A2E;font-size:13px;line-height:1.5}
+.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.hdr h1{font-size:15px;font-weight:700;color:#111827}.hdr p{font-size:11px;color:#9CA3AF}
+.wrap{max-width:1400px;margin:0 auto;padding:16px 20px}
+.tbar{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:16px 20px;margin-bottom:14px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.tbar label{font-size:10px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px}
+.tbar input[type=number]{padding:6px 12px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:15px;font-weight:600;color:#111827;width:195px;outline:none}
+.tbar input:focus{border-color:#6366F1}
+.big{font-size:21px;font-weight:700}.lbl{font-size:10px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px 16px}
+.card .l{font-size:9.5px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;font-weight:500;margin-bottom:2px}
+.card .v{font-size:19px;font-weight:700;color:#111827}.card .s{font-size:9.5px;color:#9CA3AF;margin-top:2px}
+.section{background:#fff;border:1px solid #E5E7EB;border-radius:10px;margin-bottom:10px;overflow:hidden}
+.shdr{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid #F3F4F6;cursor:pointer;user-select:none}
+.shdr h3{font-size:13px;font-weight:600;color:#111827}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px}
+.bg{background:#D1FAE5;color:#065F46}.bi{background:#EEF2FF;color:#4338CA}
+.ba{background:#FEF3C7;color:#92400E}.br{background:#FEE2E2;color:#991B1B}
+.cbody{padding:14px 18px;display:none}
+.section.open .cbody{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.box{background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px}
+.box h4{font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;color:#9CA3AF;margin-bottom:8px}
+.kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F3F4F6;font-size:11.5px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:#6B7280}.kv .v{font-weight:600;color:#111827}
+.cg{color:#059669}.ci{color:#4338CA}.ca{color:#D97706}.cr{color:#EF4444}
+.stbl{width:100%;border-collapse:collapse;margin-top:10px;font-size:11.5px}
+.stbl th{background:#F3F4F6;padding:5px 10px;text-align:left;font-size:10px;font-weight:600;color:#6B7280;text-transform:uppercase}
+.stbl th:not(:first-child){text-align:right}
+.stbl td{padding:5px 10px;border-bottom:1px solid #F9FAFB}
+.stbl td:not(:first-child){text-align:right}
+.stbl tr:last-child td{border-bottom:none;font-weight:600;background:#F9FAFB}
+.arow{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #F9FAFB}
+.arow:last-of-type{border-bottom:none}
+.arow .al{font-size:11px;color:#374151;flex:0 0 170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow input[type=range]{flex:1;accent-color:#6366F1}
+.arow .ap{font-size:11.5px;font-weight:700;color:#6366F1;min-width:44px;text-align:right}
+.arow .ar{font-size:10.5px;color:#9CA3AF;min-width:95px;text-align:right}
+.aftr{display:flex;justify-content:space-between;align-items:center;padding-top:8px;margin-top:4px;border-top:1px solid #F3F4F6}
+.chev{transition:transform .2s;font-size:12px;color:#9CA3AF}
+.section.open .chev{transform:rotate(180deg)}
+.pbar{height:4px;background:#E5E7EB;border-radius:2px;overflow:hidden;margin-top:4px}
+.pfill{height:100%;border-radius:2px;background:#6366F1;transition:width .3s}
+.na{font-size:10.5px;color:#DC2626;margin-top:6px;font-style:italic}
+.shdr2{font-size:11px;font-weight:600;color:#374151;margin:14px 0 6px}</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>July 2026 Revenue Plan</h1>
+  <p>Baseline: June 2026 actuals (Sales data v4) &nbsp;·&nbsp; price_inr &nbsp;·&nbsp; Adjust target &amp; creator splits interactively</p>
+</div>
+<div class="wrap">
+<div class="tbar">
+  <div><label>Revenue Target (₹)</label><input type="number" id="tInput" value="30000000" step="500000"></div>
+  <div><div class="lbl">June Actual</div><div class="big" id="jDisp" style="color:#374151"></div></div>
+  <div><div class="lbl">Scale Factor</div><div class="big" id="scDisp" style="color:#D97706"></div></div>
+  <div><div class="lbl">Gap vs June</div><div class="big" id="gDisp"></div></div>
+</div>
+<div class="cards">
+  <div class="card"><div class="l">Revenue Target</div><div class="v ci" id="cTgt"></div><div class="s">July 2026</div></div>
+  <div class="card"><div class="l">Enrollments Needed</div><div class="v cg" id="cEnr"></div><div class="s">First payments</div></div>
+  <div class="card"><div class="l">HS Leads Needed</div><div class="v" id="cLeads"></div><div class="s">New HubSpot leads</div></div>
+  <div class="card"><div class="l">Active Creators</div><div class="v">11</div><div class="s">With June history</div></div>
+  <div class="card"><div class="l">Wtd Avg Price/Enr.</div><div class="v" id="cAvg"></div><div class="s">June baseline</div></div>
+</div>
+<div class="section open">
+  <div class="shdr" onclick="tog(this)">
+    <h3>Creator Revenue Allocation</h3>
+    <div class="meta"><span class="chev">▼</span></div>
+  </div>
+  <div class="cbody" style="display:block;padding:14px 18px">
+    <div id="sliders"></div>
+    <div class="aftr">
+      <span style="font-size:10.5px;color:#9CA3AF">Drag sliders to adjust each creator's share</span>
+      <span style="font-size:11.5px">Total: <b id="aTotal">100.0%</b></span>
+    </div>
+  </div>
+</div>
+<div id="crCards"></div>
+</div>
+<script>
+const JUNE_DATA={"ajay_shenoy": {"enr_count": 16, "enr_revenue": 502089, "bal_count": 2, "bal_revenue": 35409, "total_revenue": 537498, "hs_leads": 67, "conv_rate": 23.881, "avg_rev_per_enr": 31381, "source_mix": {"Import": 8, "Forms": 4, "Webinar": 2, "Unknown": 1, "Digital Product": 1}}, "ankita_gulati": {"enr_count": 8, "enr_revenue": 317000, "bal_count": 1, "bal_revenue": 509, "total_revenue": 317509, "hs_leads": 1514, "conv_rate": 0.528, "avg_rev_per_enr": 39625, "source_mix": {"Import": 3, "Forms": 2, "1:1 Video call": 2, "Digital Product": 1}}, "ayush_singh13": {"enr_count": 72, "enr_revenue": 7039905, "bal_count": 26, "bal_revenue": 1299053, "total_revenue": 8338958, "hs_leads": 3013, "conv_rate": 2.39, "avg_rev_per_enr": 97776, "source_mix": {"Digital Product": 37, "Forms": 24, "Revspot": 6, "Unknown": 4, "CRM UI": 1}}, "kartikkapoorconsultation": {"enr_count": 25, "enr_revenue": 828250, "bal_count": 1, "bal_revenue": 42500, "total_revenue": 870750, "hs_leads": 204, "conv_rate": 12.255, "avg_rev_per_enr": 33130, "source_mix": {"1:1 Video call": 10, "Forms": 7, "Unknown": 6, "Topmate": 1, "Marketing webinar": 1}}, "manasbichoo": {"enr_count": 4, "enr_revenue": 105000, "bal_count": 5, "bal_revenue": 117000, "total_revenue": 222000, "hs_leads": 65, "conv_rate": 6.154, "avg_rev_per_enr": 26250, "source_mix": {"Import": 3, "Marketing webinar": 1}}, "payal": {"enr_count": 2, "enr_revenue": 90000, "bal_count": 0, "bal_revenue": 0, "total_revenue": 90000, "hs_leads": 0, "conv_rate": 0, "avg_rev_per_enr": 45000, "source_mix": {"Import": 1, "Forms": 1}}, "payalineurope": {"enr_count": 24, "enr_revenue": 623500, "bal_count": 12, "bal_revenue": 422500, "total_revenue": 1046000, "hs_leads": 451, "conv_rate": 5.322, "avg_rev_per_enr": 25979, "source_mix": {"Forms": 14, "Import": 2, "CRM UI": 2, "Digital Product": 2, "Webinar": 2, "Topmate": 2}}, "riyazsayyad": {"enr_count": 1, "enr_revenue": 18900, "bal_count": 2, "bal_revenue": 18339, "total_revenue": 37239, "hs_leads": 42, "conv_rate": 2.381, "avg_rev_per_enr": 18900, "source_mix": {"Webinar": 1}}, "technomanagers": {"enr_count": 12, "enr_revenue": 355858, "bal_count": 5, "bal_revenue": 122204, "total_revenue": 478062, "hs_leads": 0, "conv_rate": 0, "avg_rev_per_enr": 29655, "source_mix": {"Forms": 8, "1:1 Video call": 3, "Unknown": 1}}, "vijaychandola": {"enr_count": 6, "enr_revenue": 230000, "bal_count": 2, "bal_revenue": 55000, "total_revenue": 285000, "hs_leads": 962, "conv_rate": 0.624, "avg_rev_per_enr": 38333, "source_mix": {"Forms": 4, "Import": 2}}, "wanderess_priyanka": {"enr_count": 15, "enr_revenue": 798201, "bal_count": 5, "bal_revenue": 369800, "total_revenue": 1168001, "hs_leads": 402, "conv_rate": 3.731, "avg_rev_per_enr": 53213, "source_mix": {"Unknown": 6, "1:1 Video call": 3, "Forms": 3, "Topmate": 2, "Digital Product": 1}}};
+const JUNE_TOTAL=13490017;
+const CR_LIST=["ayush_singh13", "wanderess_priyanka", "payalineurope", "kartikkapoorconsultation", "ajay_shenoy", "technomanagers", "ankita_gulati", "vijaychandola", "manasbichoo", "payal", "riyazsayyad"];
+const CR_LABELS={"ayush_singh13": "ayush singh13", "wanderess_priyanka": "wanderess priyanka", "payalineurope": "payalineurope", "kartikkapoorconsultation": "kartikkapoorconsultation", "ajay_shenoy": "ajay shenoy", "technomanagers": "technomanagers", "ankita_gulati": "ankita gulati", "vijaychandola": "vijaychandola", "manasbichoo": "manasbichoo", "payal": "payal", "riyazsayyad": "riyazsayyad"};
+
+
+const fmt=n=>(Math.round(n)||0).toLocaleString('en-IN');
+const rupee=v=>{v=Math.round(v||0);return v>=1e7?(v/1e7).toFixed(2)+'Cr':v>=1e5?(v/1e5).toFixed(1)+'L':'₹'+fmt(v);};
+let allocs={};
+function initAllocs(){
+  const tot=CR_LIST.reduce((s,c)=>s+(JUNE_DATA[c]?.total_revenue||0),0);
+  CR_LIST.forEach(c=>{allocs[c]=tot>0?((JUNE_DATA[c]?.total_revenue||0)/tot*100):0;});
+}
+initAllocs();
+function getT(){return parseFloat(document.getElementById('tInput').value)||30000000;}
+function renderAll(){
+  const t=getT();
+  document.getElementById('jDisp').textContent='₹'+rupee(JUNE_TOTAL);
+  document.getElementById('scDisp').textContent=(t/JUNE_TOTAL).toFixed(2)+'x';
+  const gap=t-JUNE_TOTAL;
+  const gEl=document.getElementById('gDisp');
+  gEl.textContent=(gap>=0?'+':'')+rupee(Math.abs(gap));
+  gEl.style.color=gap>=0?'#DC2626':'#059669';
+  document.getElementById('cTgt').textContent='₹'+rupee(t);
+  let tEnr=0,tLeads=0;
+  CR_LIST.forEach(c=>{
+    const d=JUNE_DATA[c]||{};const crT=t*(allocs[c]||0)/100;
+    const enr=d.avg_rev_per_enr>0?Math.ceil(crT/d.avg_rev_per_enr):0;
+    const leads=d.conv_rate>0?Math.ceil(enr/(d.conv_rate/100)):null;
+    tEnr+=enr;if(leads)tLeads+=leads;
+  });
+  document.getElementById('cEnr').textContent=fmt(tEnr);
+  document.getElementById('cLeads').textContent=tLeads>0?fmt(tLeads):'—';
+  const wa=CR_LIST.reduce((s,c)=>(JUNE_DATA[c]?.avg_rev_per_enr||0)*(JUNE_DATA[c]?.enr_count||0)+s,0)/
+           Math.max(1,CR_LIST.reduce((s,c)=>s+(JUNE_DATA[c]?.enr_count||0),0));
+  document.getElementById('cAvg').textContent='₹'+fmt(wa);
+  let sh='';
+  CR_LIST.forEach(c=>{
+    const pct=allocs[c]||0;const rev=t*pct/100;
+    sh+=`<div class="arow"><span class="al" title="${c}">${CR_LABELS[c]||c}</span>
+      <input type="range" min="0" max="100" step="0.1" value="${pct.toFixed(1)}"
+        oninput="allocs['${c}']=parseFloat(this.value);renderAll()">
+      <span class="ap">${pct.toFixed(1)}%</span><span class="ar">₹${rupee(rev)}</span></div>`;
+  });
+  document.getElementById('sliders').innerHTML=sh;
+  const tot=Object.values(allocs).reduce((a,b)=>a+b,0);
+  const atEl=document.getElementById('aTotal');
+  atEl.textContent=tot.toFixed(1)+'%';
+  atEl.style.color=Math.abs(tot-100)<0.5?'#059669':'#DC2626';
+  let ch='';
+  CR_LIST.forEach(c=>{
+    const d=JUNE_DATA[c]||{};const crT=t*(allocs[c]||0)/100;
+    const enr=d.avg_rev_per_enr>0?Math.ceil(crT/d.avg_rev_per_enr):0;
+    const leads=d.conv_rate>0?Math.ceil(enr/(d.conv_rate/100)):null;
+    const noConv=!d.conv_rate||!d.hs_leads;
+    const cvBadge=d.conv_rate>5?'bg':d.conv_rate>1?'ba':'br';
+    const junePct=crT>0?Math.min(100,d.total_revenue/crT*100):0;
+    const sm=d.source_mix||{};const smTot=Object.values(sm).reduce((a,b)=>a+b,0);
+    let srcHtml='';
+    if(Object.keys(sm).length>0&&leads){
+      let rows='',srcSum=0;
+      Object.entries(sm).sort((a,b)=>b[1]-a[1]).forEach(([src,cnt])=>{
+        const pct=smTot>0?cnt/smTot:0;const sl=Math.ceil(leads*pct);srcSum+=sl;
+        rows+=`<tr><td>${src}</td><td>${cnt}</td><td>${(pct*100).toFixed(1)}%</td><td style="font-weight:700;color:#4338CA">${fmt(sl)}</td></tr>`;
+      });
+      rows+=`<tr><td>TOTAL</td><td>${smTot}</td><td>100%</td><td style="color:#4338CA">${fmt(srcSum)}</td></tr>`;
+      srcHtml=`<div class="shdr2">Source-wise Lead Requirement — July</div>
+        <table class="stbl"><tr><th>Source</th><th>Jun Enr.</th><th>Mix %</th><th>Leads Needed</th></tr>${rows}</table>`;
+    }
+    const diff=crT-d.total_revenue;
+    ch+=`<div class="section" id="sec_${c}">
+      <div class="shdr" onclick="tog(this)">
+        <h3>${CR_LABELS[c]||c}</h3>
+        <div class="meta">
+          <span class="badge bi">Target ₹${rupee(crT)}</span>
+          <span class="badge bg">Jun ₹${rupee(d.total_revenue)}</span>
+          <span class="badge ${cvBadge}">${noConv?'No HS data':'Conv '+d.conv_rate+'%'}</span>
+          <span class="chev">▼</span>
+        </div>
+      </div>
+      <div class="cbody">
+        <div class="grid2">
+          <div class="box"><h4>June 2026 — Actual</h4>
+            <div class="kv"><span class="k">Total Revenue</span><span class="v">₹${fmt(d.total_revenue)}</span></div>
+            <div class="kv"><span class="k">Enr. Revenue</span><span class="v cg">₹${fmt(d.enr_revenue)}</span></div>
+            <div class="kv"><span class="k">Bal. Revenue</span><span class="v ca">₹${fmt(d.bal_revenue)}</span></div>
+            <div class="kv"><span class="k">Enrollments</span><span class="v cg">${d.enr_count}</span></div>
+            <div class="kv"><span class="k">Balance Payments</span><span class="v ca">${d.bal_count}</span></div>
+            <div class="kv"><span class="k">HS Leads (Jun)</span><span class="v">${fmt(d.hs_leads)||'—'}</span></div>
+            <div class="kv"><span class="k">Conv. Rate</span><span class="v ${d.conv_rate>5?'cg':d.conv_rate>1?'ca':'cr'}">${d.conv_rate}%</span></div>
+            <div class="kv"><span class="k">Avg Price / Enr.</span><span class="v">₹${fmt(d.avg_rev_per_enr)}</span></div>
+          </div>
+          <div class="box"><h4>July 2026 — Plan</h4>
+            <div class="kv"><span class="k">Revenue Target</span><span class="v ci">₹${fmt(Math.round(crT))}</span></div>
+            <div class="kv"><span class="k">Enrollments Needed</span><span class="v cg">${enr||'—'}</span></div>
+            <div class="kv"><span class="k">HS Leads Needed</span><span class="v ci">${leads!=null?fmt(leads):'N/A'}</span></div>
+            <div class="kv"><span class="k">vs June</span><span class="v" style="color:${diff>=0?'#DC2626':'#059669'}">${diff>=0?'+':'-'}₹${rupee(Math.abs(diff))}</span></div>
+            <div style="margin-top:8px">
+              <div style="font-size:9.5px;color:#9CA3AF;margin-bottom:3px">June achieved ${junePct.toFixed(1)}% of July target</div>
+              <div class="pbar"><div class="pfill" style="width:${junePct.toFixed(1)}%"></div></div>
+            </div>
+            ${noConv?'<div class="na">⚠ No HubSpot lead data — leads needed cannot be estimated</div>':''}
+          </div>
+        </div>${srcHtml}
+      </div></div>`;
+  });
+  document.getElementById('crCards').innerHTML=ch;
+}
+function tog(hdr){
+  const sec=hdr.closest('.section');sec.classList.toggle('open');
+  sec.querySelector('.cbody').style.display=sec.classList.contains('open')?'block':'none';
+}
+document.getElementById('tInput').addEventListener('input',renderAll);
+renderAll();
+</script>
+<script>
+(function(){
+  function rup(n){ return "₹" + Math.round(n).toLocaleString("en-IN"); }
+  fetch("/api/enrolments").then(function(r){ return r.json(); }).then(function(j){
+    if (!j || !j.totals) return;
+    var m = new Date().toLocaleString("en-IN", {month:"long", year:"numeric"});
+    var top = (j.byCreator||[]).filter(function(b){return b.monthRev>0;}).sort(function(a,b){return b.monthRev-a.monthRev;}).slice(0,6);
+    var el = document.createElement("div");
+    el.style.cssText = "background:#111827;color:#fff;padding:9px 22px;font:12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;gap:16px;flex-wrap:wrap;align-items:center";
+    var chips = top.map(function(b){ return '<span style="background:#374151;border-radius:12px;padding:1px 10px;white-space:nowrap">'+b.key+" "+rup(b.monthRev)+" ("+b.monthEnrol+")</span>"; }).join(" ");
+    el.innerHTML = '<span style="background:#059669;border-radius:4px;padding:1px 8px;font-weight:700;letter-spacing:.04em">LIVE</span>'+
+      "<span><b>"+m+" actuals from sheet:</b> "+j.totals.monthEnrol+" payments · <b>"+rup(j.totals.monthRevenue)+"</b></span>"+chips+
+      '<span style="color:#9CA3AF">synced '+(j.loadedAt?new Date(j.loadedAt).toLocaleTimeString():"n/a")+' · figures below are the static snapshot</span>';
+    document.body.insertBefore(el, document.body.firstChild);
+  }).catch(function(){});
+})();
+</script>
+
+</body>
+</html>
