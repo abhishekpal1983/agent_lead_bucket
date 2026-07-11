@@ -44,7 +44,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .arow .al{font-size:11px;color:#374151;flex:0 0 160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .arow input[type=range]{flex:1;accent-color:#6366F1}
 .arow .ap{font-size:11.5px;font-weight:700;color:#6366F1;min-width:44px;text-align:right}
-.arow .ar{font-size:10.5px;color:#9CA3AF;min-width:150px;text-align:right}
+.arow .ar{font-size:10.5px;color:#9CA3AF;min-width:96px;text-align:right}
+.arow .tin{width:112px;border:1.5px solid #D1D5DB;border-radius:6px;padding:3px 8px;font-size:11.5px;text-align:right;font-weight:600;color:#111827;outline:none}
+.arow .tin:focus{border-color:#6366F1}
 .arow .rm{border:none;background:#FEE2E2;color:#991B1B;border-radius:6px;width:20px;height:20px;font-size:12px;font-weight:700;cursor:pointer;line-height:1}
 .aftr{display:flex;justify-content:space-between;align-items:center;padding-top:8px;margin-top:4px;border-top:1px solid #F3F4F6;flex-wrap:wrap;gap:10px}
 .addbar{display:flex;gap:8px;align-items:center}
@@ -203,11 +205,14 @@ function renderAll(){
   PLAN.forEach(c=>{
     const pct=allocs[c]||0;const rev=t*pct/100;
     const lv=liveOf(c);
-    const liveTxt=LIVE?` · <b style="color:#059669">₹${rupee(lv.rev)}</b>`:'';
+    const liveTxt=LIVE?`<span class="ar">live <b style="color:#059669">₹${rupee(lv.rev)}</b></span>`:'';
     sh+=`<div class="arow"><span class="al" title="${c}">${c.replace(/_/g,' ')}${dataOf(c)._synthetic?' <span style="color:#9CA3AF;font-size:9px">(new)</span>':''}</span>
       <input type="range" min="0" max="100" step="0.1" value="${pct.toFixed(1)}"
         oninput="allocs['${c}']=parseFloat(this.value);persist();renderAll()">
-      <span class="ap">${pct.toFixed(1)}%</span><span class="ar">₹${rupee(rev)}${liveTxt}</span>
+      <span class="ap">${pct.toFixed(1)}%</span>
+      <input type="number" class="tin" min="0" step="10000" value="${Math.round(rev)}" title="Type the ₹ target for ${c} and press Enter or click away"
+        onchange="setTarget('${c}',this.value)">
+      ${liveTxt}
       <button class="rm" title="Remove ${c} from plan" onclick="delCr('${c}')">×</button></div>`;
   });
   document.getElementById('sliders').innerHTML=sh;
@@ -314,6 +319,12 @@ function renderAll(){
       </div></div>`;
   });
   document.getElementById('crCards').innerHTML=ch;
+}
+function setTarget(c,v){
+  const t=getT();
+  const val=Math.max(0,parseFloat(v)||0);
+  allocs[c]=t>0?val/t*100:0;
+  persist();renderAll();
 }
 function delCr(c){
   PLAN=PLAN.filter(x=>x!==c);delete allocs[c];
