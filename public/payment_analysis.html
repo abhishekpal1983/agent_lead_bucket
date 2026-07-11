@@ -74,6 +74,11 @@ tr.tot td{background:#F9FAFB;font-weight:700}
     </div>
     <div class="sec"><h3>By sales agent</h3><div class="sub">sales_rep from the sheet<span id="mNote3"></span></div><div id="tAg"></div></div>
     <div class="sec">
+      <h3>Counselling → enrolment conversion</h3>
+      <div class="sub">Counselled = first entry into Discovery / Program pitched / Pricing pitched / Counselled / Payment prospect / any Follow up stage (from stage history, owned staged leads). Converted = matched enrolment in the payment tracker. Lifetime metric; only the creator filter applies.</div>
+      <div id="tConv" class="load" style="padding:14px">Loading conversion...</div>
+    </div>
+    <div class="sec">
       <h3>Lead cohort matrix</h3>
       <div class="sub">Rows: HubSpot leads by create month (denominator respects creator/source/segment filters). Columns: how many of those leads made their first payment in each month. Conv % = unique enrolments / leads created.</div>
       <div class="cohwrap" id="tCoh"></div>
@@ -149,6 +154,26 @@ async function render(){
     (j.notMatched?'<div style="font-size:10.5px;color:#9CA3AF;margin-top:7px">Note: '+j.notMatched+" payments from consumers not found in HubSpot are excluded from this matrix; they appear in the summary tables as Not in HubSpot.</div>":"");
   document.getElementById("load").style.display="none";
   document.getElementById("app").style.display="block";
+  renderConv();
+}
+async function renderConv(){
+  const el=document.getElementById("tConv");
+  try{
+    const r=await fetch("/api/conversion?creator="+encodeURIComponent(F.c));
+    const cv=await r.json();
+    if(!cv.loadedAt){el.innerHTML='<span class="mut">Stage history still syncing; numbers appear after the first pass completes.</span>';return;}
+    function tbl(arr,hdr){
+      return '<div style="min-width:280px"><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
+        arr.slice(0,12).map(function(b){
+          const c=b.conv>=15?"cg":(b.conv<5&&b.counselled>=20?"cr":"");
+          return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td></tr>";
+        }).join("")+"</table></div>";
+    }
+    el.className="";
+    el.innerHTML='<div style="font-size:12.5px;margin-bottom:10px"><b>'+cv.totals.counselled+"</b> counselled · <b>"+cv.totals.converted+"</b> enrolled · overall <b class='cg'>"+cv.totals.conv+"%</b>"+(cv.syncing?' <span class="mut">(re-syncing)</span>':"")+"</div>"+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
+      tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+tbl(cv.byMonth.map(function(b){b.label=mn(b.month);return b;}),"Counselled month")+"</div>";
+  }catch(e){el.innerHTML='<span class="mut">Conversion unavailable: '+esc(e.message||e)+"</span>";}
 }
 document.addEventListener("change",function(e){
   if(e.target.id==="fM"){F.m=e.target.value;render();}

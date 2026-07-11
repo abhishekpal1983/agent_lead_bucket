@@ -22,6 +22,7 @@ const UI_DOMAIN = process.env.HS_UI_DOMAIN || "app-na2.hubspot.com";
 const HS = "https://api.hubapi.com";
 
 const PROPS = [
+  "email","phone",
   "hubspot_owner_id","contact_engagement_stage","topmate_username",
   "callscurrent_stage","call_in_current_stage_by_current_owner",
   "createdate","follow_up_date_and_time","last_call_date_and_time",
@@ -148,6 +149,44 @@ async function sync(){
   } catch (e) {
     CACHE.syncing = false; CACHE.error = e.message;
     console.error("Sync failed: " + e.message);
+  }
+}
+
+/* ---------- counselling detection via engagement stage history ---------- */
+const COUNSELLED_SET = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","Follow up","FU_DNP","FU_RCB"];
+let COUNSEL = { byId: {}, loadedAt: null, syncing: false, error: null };
+
+async function syncCounsel(){
+  if (!TOKEN || COUNSEL.syncing) return;
+  if (!CACHE.contacts.length) return;
+  COUNSEL.syncing = true;
+  try {
+    const ids = CACHE.contacts.map(c => c.id);
+    const byId = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const inputs = ids.slice(i, i + 50).map(id => ({ id }));
+      try {
+        const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST",
+          body: JSON.stringify({ propertiesWithHistory: ["contact_engagement_stage"], properties: ["contact_engagement_stage"], inputs }) });
+        (j.results || []).forEach(r => {
+          const h = (r.propertiesWithHistory && r.propertiesWithHistory.contact_engagement_stage) || [];
+          let first = 0;
+          h.forEach(e => {
+            if (COUNSELLED_SET.indexOf(e.value) >= 0) {
+              const t = Date.parse(e.timestamp);
+              if (t && (!first || t < first)) first = t;
+            }
+          });
+          if (first) byId[r.id] = first;
+        });
+      } catch (e) { console.error("counsel batch @" + i + ": " + e.message); }
+      await sleep(130);
+    }
+    COUNSEL = { byId, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Counsel history: " + Object.keys(byId).length + " counselled of " + ids.length + " owned staged leads");
+  } catch (e) {
+    COUNSEL.syncing = false; COUNSEL.error = e.message;
+    console.error("Counsel sync failed: " + e.message);
   }
 }
 
@@ -299,7 +338,8 @@ function agentMetrics(rows){
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
   sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
-  cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error }));
+  cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error,
+  counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -371,7 +411,7 @@ app.get("/api/enrolments", (req, res) => {
 
 app.post("/api/refresh", (req, res) => {
   if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
-  sync(); syncSheet();
+  sync(); syncSheet(); syncCounsel();
   res.json({ ok: true, syncing: true });
 });
 
@@ -549,6 +589,47 @@ app.get("/api/payment-analysis", (req, res) => {
   });
 });
 
+app.get("/api/conversion", (req, res) => {
+  const fCreator = req.query.creator || "", fAgent = req.query.agent || "";
+  // enrolment identity sets from the payment tracker (first payment per consumer per creator)
+  const seen = new Set(), eEmails = new Set(), ePhones = new Set();
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (em) eEmails.add(em);
+    if (ph) ePhones.add(ph);
+  });
+  const byAgent = {}, byCreator = {}, byMonth = {};
+  let tot = 0, conv = 0;
+  CACHE.contacts.forEach(c => {
+    const ts = COUNSEL.byId[c.id];
+    if (!ts) return;
+    if (fCreator && (c.topmate_username || "") !== fCreator) return;
+    if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
+    const converted = (em && eEmails.has(em)) || (ph && ePhones.has(ph));
+    tot++; if (converted) conv++;
+    const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0 }; m[k].counselled++; if (converted) m[k].converted++; };
+    add(byAgent, c.hubspot_owner_id);
+    add(byCreator, c.topmate_username || "(no creator)");
+    add(byMonth, ymOf(ts) || "(unknown)");
+  });
+  const out = (m, keyName, labelFn) => Object.entries(m).map(([k, v]) => {
+    const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0 };
+    o[keyName] = k; o.label = labelFn ? labelFn(k) : k;
+    return o;
+  }).sort((a, b) => b.counselled - a.counselled);
+  res.json({
+    loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
+    totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0 },
+    byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id)),
+    byCreator: out(byCreator, "creator"),
+    byMonth: out(byMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1))
+  });
+});
+
 app.get("/api/leads-created", (req, res) => {
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const out = {};
@@ -590,9 +671,10 @@ app.get("/api/summary", (req, res) => {
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
-  sync();
+  sync().then(() => syncCounsel());
   syncSheet().then(() => syncCohorts());
   setInterval(sync, SYNC_MINUTES * 60 * 1000);
   setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
   setInterval(syncCohorts, COHORT_MINUTES * 60 * 1000);
+  setInterval(syncCounsel, COHORT_MINUTES * 60 * 1000);
 });

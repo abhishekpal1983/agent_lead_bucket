@@ -150,11 +150,21 @@ let HS_URL = "#";
 async function api(path){ const r = await fetch(path); if(!r.ok) throw new Error("API "+r.status); return r.json(); }
 
 async function loadMetrics(){
-  const j = await api("/api/agents?creator="+encodeURIComponent(FC));
+  const both = await Promise.all([
+    api("/api/agents?creator="+encodeURIComponent(FC)),
+    api("/api/conversion?creator="+encodeURIComponent(FC)).catch(function(){return null;})
+  ]);
+  const j = both[0], cv = both[1];
+  const CONV = {};
+  if (cv && cv.byAgent) cv.byAgent.forEach(function(b){ CONV[b.id] = b; });
   const e = document.getElementById("err");
   if (j.error){ e.style.display="block"; e.textContent = "Server sync issue: "+j.error; } else e.style.display="none";
   CREATORS = j.creators || [];
   AGENTS = (j.agents||[]).map(function(a){
+    const c = CONV[a.id];
+    a.counselled = c ? c.counselled : 0;
+    a.converted = c ? c.converted : 0;
+    a.convPct = c && c.counselled ? c.conv : -1;
     a.ratio = a.churned ? a.workable/a.churned : (a.workable?9.99:0);
     a.spKnown = a.stu + a.pro;
     a.stuShare = a.spKnown ? a.stu/a.spKnown : -1;
@@ -203,7 +213,7 @@ function drawAll(){
 const COLS = [
   ["name","Agent"],["total","Total"],["workable","Workable"],["churned","Churned"],["ratio","W:C"],
   ["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
-  ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["badge","Health"]
+  ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["convPct","Couns→Enr %"],["badge","Health"]
 ];
 let sortKey = "total", sortDir = -1;
 function card(v,l,c){ return '<div class="card '+(c||"")+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
@@ -262,6 +272,7 @@ function drawBody(){
       "<td"+(a.churnEffort>=25?' class="warn"':"")+">"+a.churnEffort+"</td>"+
       "<td"+(a.niPost>=20?' class="warn"':"")+">"+a.niPost+"</td><td>"+a.niPre+"</td>"+
       "<td>"+spCell(a)+"</td>"+
+      "<td>"+(a.convPct>=0 ? a.convPct+'% <span class="spmini">('+a.converted+"/"+a.counselled+")</span>" : '<span class="spmini">–</span>')+"</td>"+
       '<td><span class="badge '+a.badge[1]+'">'+a.badge[0]+"</span></td>";
     tr.onclick = function(){ toggleDetail(tr, a); };
     tb.appendChild(tr);
@@ -456,8 +467,16 @@ async function showEnrolments(){
   v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Loading enrolments from the sheet...</div>';
   const creatorParam = ENR.c===null ? FC : ENR.c;
   const agentParam = ENR.a ? "" : (document.getElementById("fagent").value||"");
-  let j;
-  try { j = await api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)); }
+  let convAgent = agentParam;
+  if (ENR.a){ const hit = AGENTS.filter(function(a){return (a.email||"").toLowerCase()===ENR.a.toLowerCase();})[0]; convAgent = hit ? hit.id : ""; }
+  let j, cv = null;
+  try {
+    const both = await Promise.all([
+      api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)),
+      api("/api/conversion?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(convAgent)).catch(function(){return null;})
+    ]);
+    j = both[0]; cv = both[1];
+  }
   catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
   if (j.error && !j.loadedAt){ v.innerHTML = '<div class="dload">Sheet not connected: '+esc(j.error)+". Set the SHEET_CSV_URL env var on the server.</div>"; return; }
   const t = j.totals, o = j.options||{months:[],agents:[],creators:[]};
@@ -502,6 +521,24 @@ async function showEnrolments(){
       return "<tr><td>"+esc(r.date)+"</td><td>"+esc(r.rep||"")+"</td><td>"+esc(r.creator||"")+"</td><td>"+esc(r.consumer||"")+"</td><td>"+esc((r.service||"").slice(0,45))+"</td><td>"+inr(r.price)+"</td><td>"+esc(r.status||"")+"</td><td>"+esc(r.type||"")+"</td></tr>";
     }).join("")+"</table></div>"+
     '<div class="sumnote" style="margin-top:8px">Sheet last synced '+(j.loadedAt?new Date(j.loadedAt).toLocaleString():"never")+(j.error?" · last sync error: "+esc(j.error):"")+". Revenue = price_inr. Agent match uses owner_email; creator match uses creator_username (same as topmate_username).</div></div>";
+  if (cv && cv.totals){
+    function cvTbl(arr,hdr){
+      return '<table class="mini"><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
+        arr.slice(0,15).map(function(b){
+          const cls = b.conv>=15?"good":(b.conv<5&&b.counselled>=20?"warn":"");
+          return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+cls+'">'+b.conv+"%</td></tr>";
+        }).join("")+"</table>";
+    }
+    h += '<div class="dblock" style="flex-basis:100%;margin-top:14px"><h3>Counselling → enrolment conversion</h3>'+
+      '<div class="aggline"><b>'+cv.totals.counselled+"</b> leads ever counselled (stage history: Discovery / pitched / Counselled / Payment prospect / any Follow up, first event) · <b>"+cv.totals.converted+"</b> enrolled via payment tracker · overall <b>"+cv.totals.conv+"%</b>"+
+      (cv.loadedAt?' · history synced '+new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing now":"")+"</div>"+
+      (cv.loadedAt?'<div class="dgrid" style="margin-top:6px">'+
+        '<div class="dblock"><h3>By agent (current owner)</h3>'+cvTbl(cv.byAgent,"Agent")+"</div>"+
+        '<div class="dblock"><h3>By creator</h3>'+cvTbl(cv.byCreator,"Creator")+"</div>"+
+        '<div class="dblock"><h3>By counselling month</h3>'+cvTbl(cv.byMonth.map(function(b){b.label=monthName(b.month)||b.month;return b;}),"First counselled in")+"</div>"+
+      "</div>":'<div class="dload">Stage history is still syncing; conversion numbers appear once the first pass completes (a few minutes after deploy).</div>')+
+      '<div class="sumnote" style="margin-top:6px">Lifetime metric: counselled pool from owned staged leads; conversion counts a counselled lead whose email/phone matches an enrolment (first payment) in the payment tracker. Month filter above does not apply here; the by-month table uses the counselling date itself.</div></div>';
+  }
   h += "</div>";
   v.innerHTML = h;
 }
