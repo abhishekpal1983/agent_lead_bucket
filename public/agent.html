@@ -70,12 +70,22 @@ counselled:"Counselled","Follow up":"Follow up",FU_DNP:"FU-DNP",FU_RCB:"FU-RCB",
 deal_won:"Deal won",dnp_did_not_pick:"DNP",ghosted:"Ghosted",ni_not_interested:"NI",disqualified:"Disqualified"};
 const STAGE_ORDER=Object.keys(STAGE_LABEL);
 async function boot(){
-  const id=new URLSearchParams(location.search).get("id");
+  const p=new URLSearchParams(location.search);
+  const id=p.get("id");
   if(!id){return picker();}
-  const r=await fetch("/api/agent/"+encodeURIComponent(id));
+  const creator=p.get("creator")||"";
+  const r=await fetch("/api/agent/"+encodeURIComponent(id)+"?creator="+encodeURIComponent(creator));
   if(!r.ok){document.getElementById("loading").textContent="Could not load agent "+id;return;}
   const j=await r.json();
   render(j);
+}
+function setCreator(v){
+  const p=new URLSearchParams(location.search);
+  if(v)p.set("creator",v);else p.delete("creator");
+  history.replaceState(null,"",location.pathname+"?"+p.toString());
+  document.getElementById("loading").style.display="block";
+  document.getElementById("page").style.display="none";
+  boot();
 }
 async function picker(){
   const r=await fetch("/api/agents?creator=");
@@ -132,7 +142,25 @@ function render(j){
     '<div class="rank">Counselling→enrolment <b>'+(conv.conv===null?"–":conv.conv+"%")+"</b>"+(j.ranks.conversion?" · rank <b>#"+j.ranks.conversion+"</b>":"")+"</div>"+
     "</div></div>"+
   '<div class="wrap">'+
-    '<div class="kpis">'+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12.5px">'+
+      '<b style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7280">Creator</b>'+
+      '<select onchange="setCreator(this.value)" style="border:1px solid #D1D5DB;border-radius:7px;padding:5px 9px;font-size:12.5px;background:#fbfcfd;max-width:260px">'+
+        '<option value="">All my creators</option>'+
+        (j.creatorOptions||[]).map(function(c){return '<option value="'+esc(c.u)+'"'+(j.filterCreator===c.u?" selected":"")+'>'+esc(c.u)+" ("+c.n+")</option>";}).join("")+
+      "</select>"+
+      (j.filterCreator?'<span style="color:#6B7280">Showing only '+esc(j.filterCreator)+" · ranks in the header stay team-wide across all creators</span>":"")+
+    "</div>"+
+    '<div class="sec"><h2>Counselling activity</h2><div class="sub">A counselling = the first time one of your leads entered Discovery / pitched / Counselled / Payment prospect / Follow up. Payment figures from the tracker.</div>'+
+      '<div class="kpis" style="margin:0">'+
+      kpi(j.activity.counsel.today,"Counselled today",j.activity.counsel.today?"good":"")+
+      kpi(j.activity.counsel.week,"Counselled this week")+
+      kpi(j.activity.counsel.month,"Counselled this month")+
+      kpi(j.activity.counsel.total,"Counselled overall")+
+      kpi(j.activity.newLeads.week,"New leads this week")+
+      kpi(j.activity.payments.today+(j.activity.payments.todayRev?" · "+rupee(j.activity.payments.todayRev):""),"Payments today",j.activity.payments.today?"good":"")+
+      kpi(j.activity.payments.week+(j.activity.payments.weekRev?" · "+rupee(j.activity.payments.weekRev):""),"Payments this week")+
+      "</div></div>"+
+    '<div class="kpis" style="margin-top:0">'+
     kpi(m.total,"Total leads")+kpi(m.workable,"Workable","good")+kpi(m.churned,"Churned")+
     kpi(m.age30,"Fresh ≤30d",m.age30<0.1*m.total&&m.total>100?"warn":"good")+
     kpi(m.freshRcb,"RCB never called",m.freshRcb>=10?"warn":"")+

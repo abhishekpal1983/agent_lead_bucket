@@ -684,14 +684,20 @@ app.get("/api/leads-created", (req, res) => {
 
 app.get("/api/agent/:id", (req, res) => {
   const id = req.params.id;
+  const fCreator = req.query.creator || "";
   const o = CACHE.owners[id] || {};
   const email = (o.email || "").toLowerCase();
   const now = Date.now(), month = new Date().toISOString().slice(0, 7), w7 = now - 7 * 86400000, d30 = now - 30 * 86400000;
-  const mine = CACHE.contacts.filter(c => c.hubspot_owner_id === id);
+  const mineAll = CACHE.contacts.filter(c => c.hubspot_owner_id === id);
+  const crCounts = {};
+  mineAll.forEach(c => { const u = c.topmate_username || "(no creator)"; crCounts[u] = (crCounts[u] || 0) + 1; });
+  const creatorOptions = Object.entries(crCounts).map(([u, n]) => ({ u, n })).sort((a, b) => b.n - a.n);
+  const mine = fCreator ? mineAll.filter(c => (c.topmate_username || "(no creator)") === fCreator) : mineAll;
   const allAgents = agentMetrics(CACHE.contacts);
-  const me = allAgents.filter(a => a.id === id)[0] || { id, total: 0, workable: 0, churned: 0, overdue: 0, nofu: 0, stale: 0, churnEffort: 0, freshRcb: 0, age30: 0, age90: 0, old90: 0, ni: 0, niPost: 0, niPre: 0, ownCalls: 0, totCalls: 0, stu: 0, pro: 0 };
+  const me = agentMetrics(mine).filter(a => a.id === id)[0] || { id, total: 0, workable: 0, churned: 0, overdue: 0, nofu: 0, stale: 0, churnEffort: 0, freshRcb: 0, age30: 0, age90: 0, old90: 0, ni: 0, niPost: 0, niPre: 0, ownCalls: 0, totCalls: 0, stu: 0, pro: 0 };
   // revenue from payment tracker
-  const pays = SHEET.rows.filter(r => (r.owner_email || "").toLowerCase() === email && email);
+  const pays = SHEET.rows.filter(r => (r.owner_email || "").toLowerCase() === email && email &&
+    (!fCreator || (r.creator_username || "(no creator)") === fCreator));
   const revenue = {
     total: pays.reduce((t, r) => t + r.price, 0),
     payments: pays.length,
@@ -718,7 +724,13 @@ app.get("/api/agent/:id", (req, res) => {
     const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
     if ((em && eEmails.has(em)) || (ph && ePhones.has(ph))) convByAgent[k].converted++;
   });
-  const myConv = convByAgent[id] || { counselled: 0, converted: 0 };
+  const myConv = { counselled: 0, converted: 0 };
+  mine.forEach(c => {
+    if (!COUNSEL.byId[c.id]) return;
+    myConv.counselled++;
+    const em2 = (c.email || "").toLowerCase(), ph2 = normPhone(c.phone);
+    if ((em2 && eEmails.has(em2)) || (ph2 && ePhones.has(ph2))) myConv.converted++;
+  });
   myConv.conv = myConv.counselled ? +(100 * myConv.converted / myConv.counselled).toFixed(1) : null;
   // ranks among agents with >=30 staged leads
   const revByEmail = {};
@@ -772,9 +784,33 @@ app.get("/api/agent/:id", (req, res) => {
     nofu: mine.filter(c => isWork(c) && !ts(c.follow_up_date_and_time)).map(lead).sort((a, b) => b.days - a.days).slice(0, 15),
     hot: mine.filter(c => ["payment_prospect", "pricing_pitched", "program_pitched"].indexOf(c.contact_engagement_stage) >= 0).map(lead).sort((a, b) => b.days - a.days).slice(0, 15)
   };
+  // activity: counsellings / new leads / payments over time windows
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const d0 = dayStart.getTime(), wk = now - 7 * 86400000, mo0 = Date.parse(month + "-01");
+  const todayStr = new Date().toISOString().slice(0, 10), wkStr = new Date(wk).toISOString().slice(0, 10);
+  const activity = { counsel: { today: 0, week: 0, month: 0, total: 0 }, newLeads: { today: 0, week: 0 },
+    payments: { today: 0, week: 0, todayRev: 0, weekRev: 0 } };
+  mine.forEach(c => {
+    const cts = COUNSEL.byId[c.id];
+    if (cts) {
+      activity.counsel.total++;
+      if (cts >= mo0) activity.counsel.month++;
+      if (cts >= wk) activity.counsel.week++;
+      if (cts >= d0) activity.counsel.today++;
+    }
+    const cr = ts(c.createdate);
+    if (cr >= d0) activity.newLeads.today++;
+    if (cr >= wk) activity.newLeads.week++;
+  });
+  pays.forEach(r => {
+    const d = (r.date || "").slice(0, 10);
+    if (d === todayStr) { activity.payments.today++; activity.payments.todayRev += r.price; }
+    if (d >= wkStr) { activity.payments.week++; activity.payments.weekRev += r.price; }
+  });
   res.json({
     loadedAt: CACHE.loadedAt, sheetLoadedAt: SHEET.loadedAt, counselLoadedAt: COUNSEL.loadedAt,
     agent: { id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false },
+    creatorOptions, filterCreator: fCreator, activity,
     metrics: me, revenue, conversion: myConv, ranks, stageAgg,
     creators: Object.values(creators).sort((a, b) => b.total - a.total),
     queues, month,
