@@ -295,12 +295,16 @@ document.addEventListener("change", async function(e){
   if (e.target.id==="enrM"){ ENR.m = e.target.value; showEnrolments(); }
   if (e.target.id==="enrC"){ ENR.c = e.target.value; showEnrolments(); }
   if (e.target.id==="enrA"){ ENR.a = e.target.value; showEnrolments(); }
+  if (e.target.id==="cvM"){ CVF.m = e.target.value; showEnrolments(); }
+  if (e.target.id==="cvC"){ CVF.c = e.target.value; showEnrolments(); }
+  if (e.target.id==="cvA"){ CVF.a = e.target.value; showEnrolments(); }
 });
 document.addEventListener("click", function(e){
   if (e.target.id==="tabDash") setView("dash");
   if (e.target.id==="tabSum") setView("sum");
   if (e.target.id==="tabEnr") setView("enr");
   if (e.target.id==="enrClear"){ ENR = { m:"", c:"", a:"" }; showEnrolments(); }
+  if (e.target.id==="cvClr"){ CVF = { m:"", c:"", a:"" }; showEnrolments(); }
   if (e.target.id==="refbtn"){ fetch("/api/refresh",{method:"POST"}); e.target.textContent="Sync started..."; setTimeout(function(){ location.reload(); }, 60000); }
 });
 
@@ -461,19 +465,18 @@ async function showSummary(){
 }
 function inr(n){ return "₹" + Math.round(n).toLocaleString("en-IN"); }
 let ENR = { m:"", c:null, a:"" };
+let CVF = { m:"", c:"", a:"" };
 function monthName(m){ if(!m) return ""; const d=new Date(m+"-15"); return isNaN(d)?m:d.toLocaleString("en-IN",{month:"long",year:"numeric"}); }
 async function showEnrolments(){
   const v = document.getElementById("viewEnr");
   v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Loading enrolments from the sheet...</div>';
   const creatorParam = ENR.c===null ? FC : ENR.c;
   const agentParam = ENR.a ? "" : (document.getElementById("fagent").value||"");
-  let convAgent = agentParam;
-  if (ENR.a){ const hit = AGENTS.filter(function(a){return (a.email||"").toLowerCase()===ENR.a.toLowerCase();})[0]; convAgent = hit ? hit.id : ""; }
   let j, cv = null;
   try {
     const both = await Promise.all([
       api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)),
-      api("/api/conversion?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(convAgent)).catch(function(){return null;})
+      api("/api/conversion?creator="+encodeURIComponent(CVF.c)+"&agent="+encodeURIComponent(CVF.a)+"&cmonth="+encodeURIComponent(CVF.m)).catch(function(){return null;})
     ]);
     j = both[0]; cv = both[1];
   }
@@ -545,8 +548,16 @@ async function showEnrolments(){
           return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+cls+'">'+b.conv+"%</td></tr>";
         }).join("")+"</table>";
     }
+    const co = cv.options||{months:[],agents:[],creators:[]};
     h += '<div class="dblock" style="flex-basis:100%;margin-top:14px"><h3>Counselling → enrolment conversion</h3>'+
-      '<div class="aggline"><b>'+cv.totals.counselled+"</b> leads ever counselled (stage history: Discovery / pitched / Counselled / Payment prospect / any Follow up, first event) · <b>"+cv.totals.converted+"</b> enrolled via payment tracker · overall <b>"+cv.totals.conv+"%</b>"+
+      '<div class="expl" style="margin-top:8px">Counselled month <select id="cvM"><option value="">All</option>'+
+        co.months.map(function(m){return '<option value="'+m+'"'+(CVF.m===m?" selected":"")+'>'+monthName(m)+"</option>";}).join("")+"</select>"+
+      ' Creator <select id="cvC"><option value="">All</option>'+
+        co.creators.map(function(c){return '<option value="'+esc(c)+'"'+(CVF.c===c?" selected":"")+'>'+esc(c)+"</option>";}).join("")+"</select>"+
+      ' Sales agent <select id="cvA"><option value="">All</option>'+
+        co.agents.map(function(a){return '<option value="'+a.id+'"'+(CVF.a===a.id?" selected":"")+'>'+esc(a.name)+"</option>";}).join("")+"</select>"+
+      ((CVF.m||CVF.c||CVF.a)?' <button class="mini" id="cvClr">Clear</button>':"")+"</div>"+
+      '<div class="aggline"><b>'+cv.totals.counselled+"</b> leads counselled"+(CVF.m?" in "+monthName(CVF.m):" ever")+" (stage history: Discovery / pitched / Counselled / Payment prospect / any Follow up, first event) · <b>"+cv.totals.converted+"</b> enrolled via payment tracker · overall <b>"+cv.totals.conv+"%</b>"+
       (cv.loadedAt?' · history synced '+new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing now":"")+"</div>"+
       (cv.loadedAt?'<div class="dgrid" style="margin-top:6px">'+
         '<div class="dblock"><h3>By agent (current owner)</h3>'+cvTbl(cv.byAgent,"Agent")+"</div>"+

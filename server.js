@@ -590,7 +590,28 @@ app.get("/api/payment-analysis", (req, res) => {
 });
 
 app.get("/api/conversion", (req, res) => {
-  const fCreator = req.query.creator || "", fAgent = req.query.agent || "";
+  const fCreator = req.query.creator || "", fAgent = req.query.agent || "", fMonth = req.query.cmonth || "";
+  const fSegment = req.query.segment || "", fCreate = req.query.createMonth || "", fPay = req.query.pmonth || "";
+  // unfiltered option lists for the UI
+  const optM = {}, optA = {}, optC = {}, optCr = {};
+  CACHE.contacts.forEach(c => {
+    const ts = COUNSEL.byId[c.id];
+    if (!ts) return;
+    const m = ymOf(ts); if (m) optM[m] = 1;
+    const crm = ymOf(c.createdate); if (crm) optCr[crm] = 1;
+    optA[c.hubspot_owner_id] = 1;
+    optC[c.topmate_username || "(no creator)"] = 1;
+  });
+  const optP = {};
+  SHEET.rows.forEach(r => { const m = (r.date || "").slice(0, 7); if (m) optP[m] = 1; });
+  const options = {
+    months: Object.keys(optM).sort().reverse(),
+    createMonths: Object.keys(optCr).sort().reverse(),
+    payMonths: Object.keys(optP).sort().reverse(),
+    segments: ["Student", "Professional", "Unknown"],
+    agents: Object.keys(optA).map(id => ({ id, name: (CACHE.owners[id] || {}).name || ("Owner " + id) })).sort((a, b) => a.name.localeCompare(b.name)),
+    creators: Object.keys(optC).sort()
+  };
   // enrolment identity sets from the payment tracker (first payment per consumer per creator)
   const seen = new Set(), eEmailDate = {}, ePhoneDate = {};
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
@@ -601,7 +622,7 @@ app.get("/api/conversion", (req, res) => {
     if (em && !eEmailDate[em]) eEmailDate[em] = r.date;
     if (ph && !ePhoneDate[ph]) ePhoneDate[ph] = r.date;
   });
-  const byAgent = {}, byCreator = {}, byMonth = {};
+  const byAgent = {}, byCreator = {}, byMonth = {}, bySegment = {}, byCreateMonth = {};
   const enrolMonthsSet = {};
   let tot = 0, conv = 0;
   CACHE.contacts.forEach(c => {
@@ -609,16 +630,24 @@ app.get("/api/conversion", (req, res) => {
     if (!ts) return;
     if (fCreator && (c.topmate_username || "") !== fCreator) return;
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    if (fMonth && ymOf(ts) !== fMonth) return;
+    const seg = segOf(c.tm_student_or_professional);
+    if (fSegment && seg !== fSegment) return;
+    const crm = ymOf(c.createdate) || "(unknown)";
+    if (fCreate && crm !== fCreate) return;
     const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
     const eDate = (em && eEmailDate[em]) || (ph && ePhoneDate[ph]) || "";
-    const converted = !!eDate;
-    const eMonth = eDate ? eDate.slice(0, 7) : "";
+    let eMonth = eDate ? eDate.slice(0, 7) : "";
+    let converted = !!eDate;
+    if (fPay && eMonth !== fPay) { converted = false; eMonth = ""; }
     if (eMonth) enrolMonthsSet[eMonth] = 1;
     tot++; if (converted) conv++;
     const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0, cols: {} }; m[k].counselled++; if (converted) { m[k].converted++; m[k].cols[eMonth] = (m[k].cols[eMonth] || 0) + 1; } };
     add(byAgent, c.hubspot_owner_id);
     add(byCreator, c.topmate_username || "(no creator)");
     add(byMonth, ymOf(ts) || "(unknown)");
+    add(bySegment, seg);
+    add(byCreateMonth, crm);
   });
   const enrolMonths = Object.keys(enrolMonthsSet).sort();
   const out = (m, keyName, labelFn) => Object.entries(m).map(([k, v]) => {
@@ -629,9 +658,11 @@ app.get("/api/conversion", (req, res) => {
   res.json({
     loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
     totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0 },
-    enrolMonths,
+    enrolMonths, options,
     byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id)),
     byCreator: out(byCreator, "creator"),
+    bySegment: out(bySegment, "segment"),
+    byCreateMonth: out(byCreateMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1)),
     byMonth: out(byMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1))
   });
 });

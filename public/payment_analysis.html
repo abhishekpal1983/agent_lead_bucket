@@ -41,6 +41,9 @@ tr.tot td{background:#F9FAFB;font-weight:700}
 .warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
 .cohwrap{max-height:420px;overflow:auto}
 .heat{font-weight:700}
+.ptabs{display:flex;gap:6px;margin-bottom:14px}
+.ptabs button{border:1px solid #E5E7EB;background:#fff;color:#6B7280;border-radius:9px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer}
+.ptabs button.on{background:#111827;border-color:#111827;color:#fff}
 </style>
 </head>
 <body>
@@ -54,6 +57,11 @@ tr.tot td{background:#F9FAFB;font-weight:700}
   <div id="load" class="load"><div class="spin"></div>Computing live payment analysis...</div>
   <div id="app" style="display:none">
     <div id="warns"></div>
+    <div class="ptabs">
+      <button id="ptPay" class="on">Payments</button>
+      <button id="ptConv">Conversion explorer</button>
+    </div>
+    <div id="viewPay">
     <div class="fbar">
       <label>Month <select id="fM"><option value="">All</option></select></label>
       <label>Creator <select id="fC"><option value="">All</option></select></label>
@@ -74,15 +82,12 @@ tr.tot td{background:#F9FAFB;font-weight:700}
     </div>
     <div class="sec"><h3>By sales agent</h3><div class="sub">sales_rep from the sheet<span id="mNote3"></span></div><div id="tAg"></div></div>
     <div class="sec">
-      <h3>Counselling → enrolment conversion</h3>
-      <div class="sub">Counselled = first entry into Discovery / Program pitched / Pricing pitched / Counselled / Payment prospect / any Follow up stage (from stage history, owned staged leads). Converted = matched enrolment in the payment tracker. Lifetime metric; only the creator filter applies.</div>
-      <div id="tConv" class="load" style="padding:14px">Loading conversion...</div>
-    </div>
-    <div class="sec">
       <h3>Lead cohort matrix</h3>
       <div class="sub">Rows: HubSpot leads by create month (denominator respects creator/source/segment filters). Columns: how many of those leads made their first payment in each month. Conv % = unique enrolments / leads created.</div>
       <div class="cohwrap" id="tCoh"></div>
     </div>
+    </div>
+    <div id="viewConv" style="display:none"><div class="load"><div class="spin"></div>Loading conversion explorer...</div></div>
   </div>
 </div>
 <script>
@@ -154,47 +159,93 @@ async function render(){
     (j.notMatched?'<div style="font-size:10.5px;color:#9CA3AF;margin-top:7px">Note: '+j.notMatched+" payments from consumers not found in HubSpot are excluded from this matrix; they appear in the summary tables as Not in HubSpot.</div>":"");
   document.getElementById("load").style.display="none";
   document.getElementById("app").style.display="block";
-  renderConv();
+  if(PVIEW==="conv")renderConv();
+}
+let PVIEW="pay";
+let PCV={c:"",a:"",g:"",cm:"",km:"",pm:""};
+function setPView(v){
+  PVIEW=v;
+  document.getElementById("ptPay").className=v==="pay"?"on":"";
+  document.getElementById("ptConv").className=v==="conv"?"on":"";
+  document.getElementById("viewPay").style.display=v==="pay"?"":"none";
+  document.getElementById("viewConv").style.display=v==="conv"?"":"none";
+  if(v==="conv")renderConv();
 }
 async function renderConv(){
-  const el=document.getElementById("tConv");
+  const el=document.getElementById("viewConv");
+  el.innerHTML='<div class="load"><div class="spin"></div>Computing conversion...</div>';
   try{
-    const r=await fetch("/api/conversion?creator="+encodeURIComponent(F.c));
+    const qs="?creator="+encodeURIComponent(PCV.c)+"&agent="+encodeURIComponent(PCV.a)+"&segment="+encodeURIComponent(PCV.g)+"&createMonth="+encodeURIComponent(PCV.cm)+"&cmonth="+encodeURIComponent(PCV.km)+"&pmonth="+encodeURIComponent(PCV.pm);
+    const r=await fetch("/api/conversion"+qs);
     const cv=await r.json();
-    if(!cv.loadedAt){el.innerHTML='<span class="mut">Stage history still syncing; numbers appear after the first pass completes.</span>';return;}
+    if(!cv.loadedAt){el.innerHTML='<div class="load">Stage history is still syncing; the explorer fills in once the first pass completes (a few minutes after deploy).</div>';return;}
+    const o=cv.options||{months:[],createMonths:[],payMonths:[],segments:[],agents:[],creators:[]};
+    function sel(id,label,opts,cur,labFn){
+      return '<label>'+label+' <select id="'+id+'"><option value="">All</option>'+opts.map(function(x){
+        const v=typeof x==="string"?x:x.id;const l=labFn?labFn(x):(typeof x==="string"?x:x.name);
+        return '<option value="'+v+'"'+(cur===v?" selected":"")+">"+l+"</option>";
+      }).join("")+"</select></label>";
+    }
+    const anyF=PCV.c||PCV.a||PCV.g||PCV.cm||PCV.km||PCV.pm;
+    const fbar='<div class="fbar">'+
+      sel("pcvKM","Counselled month",o.months,PCV.km,function(m){return mn(m);})+
+      sel("pcvCM","Lead create month",o.createMonths,PCV.cm,function(m){return mn(m);})+
+      sel("pcvPM","Payment month",o.payMonths,PCV.pm,function(m){return mn(m);})+
+      sel("pcvC","Creator",o.creators,PCV.c)+
+      sel("pcvA","Sales agent",o.agents,PCV.a)+
+      sel("pcvG","Segment",o.segments,PCV.g)+
+      (anyF?'<button id="pcvClr">Clear</button>':"")+
+      '<span class="mut" style="font-size:11px">history synced '+(cv.loadedAt?new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing":"")+"</span></div>";
     function tbl(arr,hdr){
-      return '<div style="min-width:280px"><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
-        arr.slice(0,12).map(function(b){
+      return '<div class="sec" style="margin-bottom:0"><h3>'+hdr+'</h3><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
+        arr.slice(0,15).map(function(b){
           const c=b.conv>=15?"cg":(b.conv<5&&b.counselled>=20?"cr":"");
           return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td></tr>";
         }).join("")+"</table></div>";
     }
-    const ems=cv.enrolMonths||[];
-    const matrix='<div style="overflow-x:auto;margin-top:14px"><table><tr><th>Counselled month</th><th>Counselled</th><th>Converted</th><th>Conv %</th>'+
-      ems.map(function(m){return "<th>Enr "+mn(m)+"</th>";}).join("")+"</tr>"+
-      cv.byMonth.map(function(r){
-        return "<tr><td>"+mn(r.month)+"</td><td>"+r.counselled+"</td><td>"+r.converted+'</td><td class="'+(r.conv>=15?"cg":(r.conv<5&&r.counselled>=20?"cr":""))+'" style="font-weight:700">'+r.conv+"%</td>"+
-          ems.map(function(m){
-            const n=(r.cols&&r.cols[m])||0;
-            const same=m===r.month;
-            return "<td"+(same&&n?' style="background:#EEF2FF;font-weight:700"':"")+">"+(n?n+' <span class="mut" style="font-size:9.5px">'+(100*n/r.counselled).toFixed(1)+"%</span>":'<span class="mut">—</span>')+"</td>";
-          }).join("")+"</tr>";
-      }).join("")+"</table></div>"+
-      '<div class="sub" style="margin-top:6px">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal = same-month conversion; recent cohorts are still maturing.</div>';
-    el.className="";
-    el.innerHTML='<div style="font-size:12.5px;margin-bottom:10px"><b>'+cv.totals.counselled+"</b> counselled · <b>"+cv.totals.converted+"</b> enrolled · overall <b class='cg'>"+cv.totals.conv+"%</b>"+(cv.syncing?' <span class="mut">(re-syncing)</span>':"")+"</div>"+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
-      tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+matrix;
-  }catch(e){el.innerHTML='<span class="mut">Conversion unavailable: '+esc(e.message||e)+"</span>";}
+    function matrix(rows,rowHdr){
+      const ems=cv.enrolMonths||[];
+      if(!rows.length)return '<div class="load">No counselled leads match these filters.</div>';
+      return '<div style="overflow-x:auto"><table><tr><th>'+rowHdr+'</th><th>Counselled</th><th>Converted</th><th>Conv %</th>'+
+        ems.map(function(m){return "<th>Enr "+mn(m)+"</th>";}).join("")+"</tr>"+
+        rows.map(function(rw){
+          return "<tr><td>"+mn(rw.month)+"</td><td>"+rw.counselled+"</td><td>"+rw.converted+'</td><td class="'+(rw.conv>=15?"cg":(rw.conv<5&&rw.counselled>=20?"cr":""))+'" style="font-weight:700">'+rw.conv+"%</td>"+
+            ems.map(function(m){
+              const n=(rw.cols&&rw.cols[m])||0;
+              const same=m===rw.month;
+              return "<td"+(same&&n?' style="background:#EEF2FF;font-weight:700"':"")+">"+(n?n+' <span class="mut" style="font-size:9.5px">'+(100*n/rw.counselled).toFixed(1)+"%</span>":'<span class="mut">—</span>')+"</td>";
+            }).join("")+"</tr>";
+        }).join("")+"</table></div>";
+    }
+    el.innerHTML=fbar+
+      '<div class="cards">'+
+      '<div class="card"><div class="l">Counselled leads</div><div class="v">'+cv.totals.counselled.toLocaleString("en-IN")+'</div><div class="s">first entry into a counselled stage</div></div>'+
+      '<div class="card"><div class="l">Converted</div><div class="v cg">'+cv.totals.converted.toLocaleString("en-IN")+'</div><div class="s">matched enrolment in payment tracker'+(PCV.pm?" in "+mn(PCV.pm):"")+'</div></div>'+
+      '<div class="card"><div class="l">Conversion</div><div class="v ci">'+cv.totals.conv+"%</div></div></div>"+
+      '<div class="sec"><h3>Counselling cohort: counselled month → enrolment month</h3><div class="sub">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal highlighted = same-month conversion; recent cohorts are still maturing.</div>'+matrix(cv.byMonth,"Counselled month")+"</div>"+
+      '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month")+"</div>"+
+      '<div class="grid2">'+tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+
+      '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySegment,"Segment")+
+      '<div class="sec" style="margin-bottom:0"><h3>Definitions</h3><div class="sub" style="margin-bottom:0">Counselled = first entry into Discovery, Program pitched, Pricing pitched, Counselled, Payment prospect, Follow up, FU-DNP or FU-RCB (from stage history of owned staged leads). Converted = lead email/phone matches an enrolment (first payment per consumer per creator) in the payment tracker. Agent = current owner. Segment from tm_student_or_professional. All six filters combine.</div></div></div>';
+  }catch(e){el.innerHTML='<div class="load">Conversion unavailable: '+esc(e.message||e)+"</div>";}
 }
 document.addEventListener("change",function(e){
   if(e.target.id==="fM"){F.m=e.target.value;render();}
   if(e.target.id==="fC"){F.c=e.target.value;render();}
   if(e.target.id==="fS"){F.s=e.target.value;render();}
   if(e.target.id==="fG"){F.g=e.target.value;render();}
+  if(e.target.id==="pcvKM"){PCV.km=e.target.value;renderConv();}
+  if(e.target.id==="pcvCM"){PCV.cm=e.target.value;renderConv();}
+  if(e.target.id==="pcvPM"){PCV.pm=e.target.value;renderConv();}
+  if(e.target.id==="pcvC"){PCV.c=e.target.value;renderConv();}
+  if(e.target.id==="pcvA"){PCV.a=e.target.value;renderConv();}
+  if(e.target.id==="pcvG"){PCV.g=e.target.value;renderConv();}
 });
 document.addEventListener("click",function(e){
   if(e.target.id==="fClr"){F.m="";F.c="";F.s="";F.g="";render();}
+  if(e.target.id==="ptPay")setPView("pay");
+  if(e.target.id==="ptConv")setPView("conv");
+  if(e.target.id==="pcvClr"){PCV={c:"",a:"",g:"",cm:"",km:"",pm:""};renderConv();}
 });
 render().catch(function(e){document.getElementById("load").textContent="Failed to load: "+(e.message||e);});
 </script>
