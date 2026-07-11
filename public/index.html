@@ -263,7 +263,7 @@ function drawBody(){
   const tb = document.getElementById("tbody"); tb.innerHTML="";
   arr.forEach(function(a){
     const tr = document.createElement("tr"); tr.className="agent";
-    tr.innerHTML = '<td><span class="aname">'+esc(a.name)+"</span>"+(a.active?"":' <span class="pill">deactivated</span>')+
+    tr.innerHTML = '<td><span class="aname">'+esc(a.name)+'</span> <a href="/agent.html?id='+a.id+'" target="_blank" rel="noopener" title="Open '+esc(a.name)+"'s snapshot page\" style=\"color:var(--blue);text-decoration:none;font-size:11px\" onclick=\"event.stopPropagation()\">↗</a>"+(a.active?"":' <span class="pill">deactivated</span>')+
       (a.email?'<div class="amail">'+esc(a.email)+"</div>":"")+"</td>"+
       "<td>"+a.total.toLocaleString()+"</td><td>"+a.workable+"</td><td>"+a.churned+"</td><td>"+a.ratio.toFixed(2)+"</td>"+
       "<td"+(a.age30<0.1*a.total&&a.total>100?' class="warn"':"")+">"+a.age30+"</td><td>"+a.old90+"</td>"+

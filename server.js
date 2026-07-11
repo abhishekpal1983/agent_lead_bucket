@@ -682,6 +682,106 @@ app.get("/api/leads-created", (req, res) => {
   res.json({ month, loadedAt: COHORT.loadedAt, syncing: COHORT.syncing, error: COHORT.error, creators: out });
 });
 
+app.get("/api/agent/:id", (req, res) => {
+  const id = req.params.id;
+  const o = CACHE.owners[id] || {};
+  const email = (o.email || "").toLowerCase();
+  const now = Date.now(), month = new Date().toISOString().slice(0, 7), w7 = now - 7 * 86400000, d30 = now - 30 * 86400000;
+  const mine = CACHE.contacts.filter(c => c.hubspot_owner_id === id);
+  const allAgents = agentMetrics(CACHE.contacts);
+  const me = allAgents.filter(a => a.id === id)[0] || { id, total: 0, workable: 0, churned: 0, overdue: 0, nofu: 0, stale: 0, churnEffort: 0, freshRcb: 0, age30: 0, age90: 0, old90: 0, ni: 0, niPost: 0, niPre: 0, ownCalls: 0, totCalls: 0, stu: 0, pro: 0 };
+  // revenue from payment tracker
+  const pays = SHEET.rows.filter(r => (r.owner_email || "").toLowerCase() === email && email);
+  const revenue = {
+    total: pays.reduce((t, r) => t + r.price, 0),
+    payments: pays.length,
+    month: pays.filter(r => (r.date || "").slice(0, 7) === month).reduce((t, r) => t + r.price, 0),
+    monthPayments: pays.filter(r => (r.date || "").slice(0, 7) === month).length,
+    recent: pays.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 6).map(r => ({ date: r.date, consumer: r.consumer_name, creator: r.creator_username, service: (r.service_title || "").slice(0, 50), price: r.price, status: r.status }))
+  };
+  // conversion (counselling -> enrolment) for this agent + all for rank
+  const seen = new Set(), eEmails = new Set(), ePhones = new Set();
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (em) eEmails.add(em);
+    if (ph) ePhones.add(ph);
+  });
+  const convByAgent = {};
+  CACHE.contacts.forEach(c => {
+    if (!COUNSEL.byId[c.id]) return;
+    const k = c.hubspot_owner_id;
+    if (!convByAgent[k]) convByAgent[k] = { counselled: 0, converted: 0 };
+    convByAgent[k].counselled++;
+    const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
+    if ((em && eEmails.has(em)) || (ph && ePhones.has(ph))) convByAgent[k].converted++;
+  });
+  const myConv = convByAgent[id] || { counselled: 0, converted: 0 };
+  myConv.conv = myConv.counselled ? +(100 * myConv.converted / myConv.counselled).toFixed(1) : null;
+  // ranks among agents with >=30 staged leads
+  const revByEmail = {};
+  SHEET.rows.forEach(r => {
+    const em = (r.owner_email || "").toLowerCase();
+    if (!em) return;
+    if ((r.date || "").slice(0, 7) === month) revByEmail[em] = (revByEmail[em] || 0) + r.price;
+  });
+  const eligible = allAgents.filter(a => a.total >= 30 && a.active !== false);
+  function rankOf(list, val){ return list.filter(x => x > val).length + 1; }
+  const ranks = {
+    peers: eligible.length,
+    revenue: rankOf(eligible.map(a => revByEmail[(a.email || "").toLowerCase()] || 0), revByEmail[email] || 0),
+    workable: rankOf(eligible.map(a => a.workable), me.workable),
+    conversion: myConv.conv === null ? null : rankOf(eligible.map(a => { const cx = convByAgent[a.id]; return cx && cx.counselled >= 10 ? 100 * cx.converted / cx.counselled : -1; }), myConv.conv)
+  };
+  // stage aggregates + creator cells
+  const stageAgg = {}, creators = {};
+  mine.forEach(c => {
+    const st = c.contact_engagement_stage;
+    if (!stageAgg[st]) stageAgg[st] = { n: 0, calls: 0, own: 0, tsSum: 0, tsN: 0 };
+    const sa = stageAgg[st];
+    sa.n++; sa.calls += num(c.callscurrent_stage); sa.own += num(c.call_in_current_stage_by_current_owner);
+    const ent = ts(c.engagement_stage_last_changed_at) || ts(c.createdate);
+    if (ent) { sa.tsSum += ent; sa.tsN++; }
+    const u = c.topmate_username || "(no creator)";
+    if (!creators[u]) creators[u] = { u, total: 0, work: 0, churn: 0, fresh: 0, overdue: 0, nofu: 0, rcbun: 0, own: 0, tot: 0 };
+    const k = creators[u], isW = WORKABLE.indexOf(st) >= 0;
+    k.total++; k.own += num(c.call_in_current_stage_by_current_owner); k.tot += num(c.callscurrent_stage);
+    if (isW) {
+      k.work++;
+      const fu = ts(c.follow_up_date_and_time);
+      if (!fu) k.nofu++; else if (fu < now) k.overdue++;
+    }
+    if (CHURN.indexOf(st) >= 0) k.churn++;
+    if (st === "rcb_requested_callback" && !ts(c.last_call_date_and_time)) k.rcbun++;
+    if (ts(c.createdate) > d30) k.fresh++;
+  });
+  Object.values(stageAgg).forEach(sa => {
+    sa.days = sa.tsN ? Math.max(1, (now - sa.tsSum / sa.tsN) / 86400000) : 0;
+    delete sa.tsSum; delete sa.tsN;
+  });
+  // action queues
+  const lead = c => ({ id: c.id, name: (((c.firstname || "") + " " + (c.lastname || "")).trim()) || "(no name)", creator: c.topmate_username || "",
+    stage: c.contact_engagement_stage, days: Math.max(1, Math.round((now - (ts(c.engagement_stage_last_changed_at) || ts(c.createdate))) / 86400000)),
+    fu: ts(c.follow_up_date_and_time) || 0, last: ts(c.last_call_date_and_time) || 0, calls: num(c.callscurrent_stage) });
+  const isWork = c => WORKABLE.indexOf(c.contact_engagement_stage) >= 0;
+  const queues = {
+    rcb: mine.filter(c => c.contact_engagement_stage === "rcb_requested_callback" && !ts(c.last_call_date_and_time)).map(lead).sort((a, b) => b.days - a.days).slice(0, 15),
+    overdue: mine.filter(c => isWork(c) && ts(c.follow_up_date_and_time) && ts(c.follow_up_date_and_time) < now).map(lead).sort((a, b) => a.fu - b.fu).slice(0, 15),
+    nofu: mine.filter(c => isWork(c) && !ts(c.follow_up_date_and_time)).map(lead).sort((a, b) => b.days - a.days).slice(0, 15),
+    hot: mine.filter(c => ["payment_prospect", "pricing_pitched", "program_pitched"].indexOf(c.contact_engagement_stage) >= 0).map(lead).sort((a, b) => b.days - a.days).slice(0, 15)
+  };
+  res.json({
+    loadedAt: CACHE.loadedAt, sheetLoadedAt: SHEET.loadedAt, counselLoadedAt: COUNSEL.loadedAt,
+    agent: { id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false },
+    metrics: me, revenue, conversion: myConv, ranks, stageAgg,
+    creators: Object.values(creators).sort((a, b) => b.total - a.total),
+    queues, month,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
 app.get("/api/summary", (req, res) => {
   const rows = filt(req.query.creator, req.query.agent);
   const now = Date.now(), d30 = now - 30 * 86400000;

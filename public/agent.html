@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>My Snapshot</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F5F7;color:#191C20;font-size:13.5px;line-height:1.5}
+.hero{background:linear-gradient(120deg,#1e3a8a,#4338CA 55%,#6D28D9);color:#fff;padding:26px 28px 22px}
+.hero .top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.hero h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.hero .em{opacity:.75;font-size:12.5px}
+.hero .asof{opacity:.6;font-size:11.5px;margin-left:auto}
+.ranks{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.rank{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:7px 14px;font-size:12.5px}
+.rank b{font-size:16px}
+.wrap{max-width:1240px;margin:0 auto;padding:18px 20px 40px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin:-30px 0 16px}
+.kpi{background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:12px 14px;box-shadow:0 2px 6px rgba(16,24,40,.07)}
+.kpi .v{font-size:20px;font-weight:800}
+.kpi .l{font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+.kpi.warn .v{color:#B91C1C}
+.kpi.good .v{color:#15803D}
+.sec{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;padding:15px 18px;overflow-x:auto}
+.sec h2{font-size:13.5px;font-weight:700;margin-bottom:3px}
+.sec .sub{font-size:11px;color:#9CA3AF;margin-bottom:10px}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.q{border:1px solid #E5E7EB;border-radius:10px;overflow:hidden}
+.q .qh{padding:8px 13px;font-size:11.5px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.q.red .qh{background:#FEF2F2;color:#991B1B}.q.amber .qh{background:#FFFBEB;color:#92400E}
+.q.blue .qh{background:#EFF6FF;color:#1E40AF}.q.green .qh{background:#ECFDF5;color:#065F46}
+.q ul{list-style:none;max-height:260px;overflow:auto}
+.q li{padding:6px 13px;border-top:1px solid #F3F4F6;font-size:12px;display:flex;justify-content:space-between;gap:8px}
+.q li a{color:#4338CA;text-decoration:none;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.q li .m{color:#6B7280;font-size:11px;white-space:nowrap}
+.q .none{padding:14px;color:#9CA3AF;font-size:12px;text-align:center}
+table{border-collapse:collapse;font-size:12px;width:100%}
+th{background:#F3F4F6;padding:5px 9px;text-align:right;font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:5.5px 9px;border-bottom:1px solid #F3F4F6;text-align:right;white-space:nowrap}
+td:first-child{text-align:left;font-weight:600}
+tr:last-child td{border-bottom:none}
+.cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.ci{color:#4338CA}.mut{color:#9CA3AF}
+.tag{display:inline-block;padding:1.5px 8px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;margin-left:5px}
+.t-red{background:#FEE2E2;color:#991B1B}.t-amber{background:#FEF3C7;color:#92400E}.t-green{background:#D1FAE5;color:#065F46}.t-blue{background:#DBEAFE;color:#1E40AF}
+.acts{margin:4px 0 10px 17px;font-size:12.3px}
+.acts li{margin-bottom:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px}
+#loading{padding:70px;text-align:center;color:#9CA3AF}
+.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.pick{max-width:560px;margin:60px auto;background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:24px}
+.pick h2{margin-bottom:12px}
+.pick a{display:block;padding:9px 13px;border-top:1px solid #F3F4F6;color:#1e3a8a;text-decoration:none;font-weight:600;font-size:13px}
+.pick a span{color:#9CA3AF;font-weight:400;font-size:11.5px}
+.pick a:hover{background:#F5F7FF}
+</style>
+</head>
+<body>
+<div id="loading"><div class="spin"></div>Loading your snapshot...</div>
+<div id="page" style="display:none"></div>
+<script>
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+function inr(n){return "₹"+Math.round(n||0).toLocaleString("en-IN");}
+function rupee(v){v=Math.round(v||0);return v>=1e7?"₹"+(v/1e7).toFixed(2)+"Cr":v>=1e5?"₹"+(v/1e5).toFixed(1)+"L":inr(v);}
+function fd(ms){if(!ms)return "";const d=new Date(ms);return isNaN(d)?"":d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});}
+const STAGE_LABEL={rcb_requested_callback:"RCB",discovery:"Discovery",program_pitched:"Program pitched",pricing_pitched:"Pricing pitched",
+counselled:"Counselled","Follow up":"Follow up",FU_DNP:"FU-DNP",FU_RCB:"FU-RCB",payment_prospect:"Payment prospect",IFC:"Interested future",
+deal_won:"Deal won",dnp_did_not_pick:"DNP",ghosted:"Ghosted",ni_not_interested:"NI",disqualified:"Disqualified"};
+const STAGE_ORDER=Object.keys(STAGE_LABEL);
+async function boot(){
+  const id=new URLSearchParams(location.search).get("id");
+  if(!id){return picker();}
+  const r=await fetch("/api/agent/"+encodeURIComponent(id));
+  if(!r.ok){document.getElementById("loading").textContent="Could not load agent "+id;return;}
+  const j=await r.json();
+  render(j);
+}
+async function picker(){
+  const r=await fetch("/api/agents?creator=");
+  const j=await r.json();
+  const list=(j.agents||[]).sort(function(a,b){return b.total-a.total;});
+  document.getElementById("loading").style.display="none";
+  const p=document.getElementById("page");
+  p.style.display="block";
+  p.innerHTML='<div class="pick"><h2>Who are you?</h2><div style="font-size:12px;color:#6B7280;margin-bottom:8px">Pick your name to open your snapshot. Bookmark the page it opens.</div>'+
+    list.map(function(a){return '<a href="/agent.html?id='+a.id+'">'+esc(a.name)+' <span>'+(a.email?esc(a.email)+" · ":"")+a.total+" leads</span></a>";}).join("")+"</div>";
+}
+function render(j){
+  const m=j.metrics, hs="https://"+j.portal.uiDomain+"/contacts/"+j.portal.portalId+"/record/0-1/";
+  const conv=j.conversion;
+  const now=Date.now();
+  function q(title,cls,items,line){
+    return '<div class="q '+cls+'"><div class="qh"><span>'+title+"</span><span>"+items.length+(items.length===15?"+":"")+"</span></div>"+
+      (items.length?"<ul>"+items.map(function(l){
+        return '<li><a href="'+hs+l.id+'" target="_blank" rel="noopener" title="'+esc(l.name)+'">'+esc(l.name)+'</a><span class="m">'+line(l)+"</span></li>";
+      }).join("")+"</ul>":'<div class="none">Nothing here. Clear ✓</div>')+"</div>";
+  }
+  const stRows=STAGE_ORDER.filter(function(s){return j.stageAgg[s]&&j.stageAgg[s].n>0;}).map(function(s){
+    const x=j.stageAgg[s], depth=x.n?x.calls/x.n:0, apd=x.days?depth/x.days:0;
+    return "<tr><td>"+STAGE_LABEL[s]+"</td><td>"+x.n+"</td><td>"+x.calls+"</td><td>"+x.own+"</td><td>"+depth.toFixed(1)+"</td><td>"+(x.days?x.days.toFixed(0):"–")+"</td><td>"+(apd?apd.toFixed(2):"–")+"</td></tr>";
+  }).join("");
+  function diagnose(c){
+    const tags=[],acts=[];
+    const cpw=c.work?c.own/c.work:0, ws=c.total?c.work/c.total:0, cs=c.total?c.churn/c.total:0;
+    function tag(l,cl){if(!tags.some(function(t){return t[0]===l;}))tags.push([l,cl]);}
+    if(c.rcbun>=5){tag("Callbacks waiting","t-red");acts.push("Call your "+c.rcbun+" never-called RCB leads first; they asked for it.");}
+    if(c.work>10&&c.overdue>0.4*c.work){tag("FU backlog","t-amber");acts.push("Clear "+c.overdue+" overdue follow ups before they ghost.");}
+    if(c.work>10&&c.nofu>0.4*c.work){tag("No next step","t-amber");acts.push("Book follow up dates on "+c.nofu+" leads with none set.");}
+    if(c.work>=15&&cpw<1){tag("Low attempts","t-amber");acts.push("Under 1 call per workable lead here; raise attempt rate.");}
+    if(c.work<10||ws<0.25){tag("Few leads left","t-blue");acts.push("Only "+c.work+" workable leads from this creator; flag for fresh allocation.");}
+    if(cs>0.6&&cpw>=1.5){tag("Tough leads","t-blue");acts.push("High churn despite effort; discuss lead quality with your lead.");}
+    if(!tags.length){tag("On track","t-green");acts.push("Keep the cadence going.");}
+    return {tags:tags,acts:acts.slice(0,3)};
+  }
+  const crBlocks=j.creators.filter(function(c){return c.total>=8;}).map(function(c){
+    const d=diagnose(c);
+    return '<tr><td>'+esc(c.u)+d.tags.map(function(t){return '<span class="tag '+t[1]+'">'+t[0]+"</span>";}).join("")+"</td>"+
+      "<td>"+c.total+"</td><td>"+c.work+"</td><td>"+c.churn+"</td><td>"+c.fresh+"</td><td>"+c.rcbun+"</td><td>"+c.overdue+"</td><td>"+c.nofu+"</td><td>"+(c.work?(c.own/c.work).toFixed(1):"0")+"</td></tr>"+
+      '<tr><td colspan="9" style="text-align:left;font-weight:400;background:#FAFAFB"><ul class="acts">'+d.acts.map(function(a){return "<li>"+esc(a)+"</li>";}).join("")+"</ul></td></tr>";
+  }).join("");
+  const recRows=j.revenue.recent.map(function(r){
+    return "<tr><td>"+esc(r.date)+"</td><td>"+esc(r.consumer||"")+"</td><td>"+esc(r.creator||"")+"</td><td>"+esc(r.service||"")+"</td><td>"+inr(r.price)+"</td><td>"+esc(r.status||"")+"</td></tr>";
+  }).join("");
+  const p=document.getElementById("page");
+  p.innerHTML=
+  '<div class="hero"><div class="top"><h1>'+esc(j.agent.name)+"</h1><span class=\"em\">"+esc(j.agent.email)+'</span><span class="asof">Live · HubSpot '+(j.loadedAt?new Date(j.loadedAt).toLocaleTimeString():"")+" · payments "+(j.sheetLoadedAt?new Date(j.sheetLoadedAt).toLocaleTimeString():"")+"</span></div>"+
+    '<div class="ranks">'+
+    '<div class="rank">Revenue this month <b>'+rupee(j.revenue.month)+"</b> · rank <b>#"+j.ranks.revenue+"</b> of "+j.ranks.peers+"</div>"+
+    '<div class="rank">Workable pipeline <b>'+m.workable+"</b> leads · rank <b>#"+j.ranks.workable+"</b></div>"+
+    '<div class="rank">Counselling→enrolment <b>'+(conv.conv===null?"–":conv.conv+"%")+"</b>"+(j.ranks.conversion?" · rank <b>#"+j.ranks.conversion+"</b>":"")+"</div>"+
+    "</div></div>"+
+  '<div class="wrap">'+
+    '<div class="kpis">'+
+    kpi(m.total,"Total leads")+kpi(m.workable,"Workable","good")+kpi(m.churned,"Churned")+
+    kpi(m.age30,"Fresh ≤30d",m.age30<0.1*m.total&&m.total>100?"warn":"good")+
+    kpi(m.freshRcb,"RCB never called",m.freshRcb>=10?"warn":"")+
+    kpi(m.overdue,"Overdue follow ups",m.overdue>0.4*m.workable&&m.workable>50?"warn":"")+
+    kpi(m.nofu,"No follow up set",m.nofu>0.4*m.workable&&m.workable>50?"warn":"")+
+    kpi(j.revenue.monthPayments,"Payments this month","good")+
+    kpi(rupee(j.revenue.total),"Revenue all time")+
+    "</div>"+
+    '<div class="sec"><h2>Do these first</h2><div class="sub">Your four queues, worst first. Click a name to open the lead in HubSpot.</div><div class="qgrid">'+
+      q("Requested callback, never called","red",j.queues.rcb,function(l){return esc(l.creator)+" · waiting "+l.days+"d";})+
+      q("Overdue follow ups","amber",j.queues.overdue,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · due "+fd(l.fu);})+
+      q("Hot but no next step booked","blue",j.queues.nofu,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · "+l.days+"d in stage";})+
+      q("Pitched / payment prospects","green",j.queues.hot,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · "+l.calls+" calls · "+l.days+"d";})+
+    "</div></div>"+
+    '<div class="grid2">'+
+    '<div class="sec"><h2>Your pipeline by stage</h2><div class="sub">Avg depth = calls per lead in current stage · Att/day = attempts per day in stage</div>'+
+      '<table><tr><th>Stage</th><th>Leads</th><th>Calls</th><th>Yours</th><th>Avg depth</th><th>Avg days</th><th>Att/day</th></tr>'+stRows+"</table></div>"+
+    '<div class="sec"><h2>Your recent payments</h2><div class="sub">From the payment tracker · this month '+inr(j.revenue.month)+" across "+j.revenue.monthPayments+" payments</div>"+
+      (recRows?'<table><tr><th>Date</th><th>Student</th><th>Creator</th><th>Service</th><th>Amount</th><th>Status</th></tr>'+recRows+"</table>":'<div class="mut" style="padding:20px;text-align:center">No payments recorded yet. Your first one is close.</div>')+
+      '<div style="margin-top:10px;font-size:12px;color:#6B7280">Counselled leads in your bucket: <b>'+conv.counselled+"</b> · converted to enrolment: <b>"+conv.converted+"</b> · conversion <b>"+(conv.conv===null?"–":conv.conv+"%")+"</b></div></div>"+
+    "</div>"+
+    '<div class="sec"><h2>Where you are stuck, creator by creator</h2><div class="sub">Only creators with 8+ of your leads. Tags show the gap; the line under each is what to do about it.</div>'+
+      '<table><tr><th>Creator</th><th>Leads</th><th>Workable</th><th>Churned</th><th>Fresh 30d</th><th>RCB uncalled</th><th>Overdue FU</th><th>No FU</th><th>Own calls/workable</th></tr>'+
+      (crBlocks||'<tr><td colspan="9" class="mut">No creator has 8+ leads yet.</td></tr>')+"</table></div>"+
+    '<div style="font-size:11px;color:#9CA3AF">Data refreshes automatically every 10 minutes (HubSpot and payment tracker) and hourly for counselling history. Bookmark this page.</div>'+
+  "</div>";
+  function kpi(v,l,cls){return '<div class="kpi '+(cls||"")+'"><div class="v">'+v+'</div><div class="l">'+l+"</div></div>";}
+  document.getElementById("loading").style.display="none";
+  p.style.display="block";
+  document.title=j.agent.name+" · Snapshot";
+}
+boot().catch(function(e){document.getElementById("loading").textContent="Failed: "+(e.message||e);});
+</script>
+</body>
+</html>
