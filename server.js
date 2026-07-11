@@ -592,16 +592,17 @@ app.get("/api/payment-analysis", (req, res) => {
 app.get("/api/conversion", (req, res) => {
   const fCreator = req.query.creator || "", fAgent = req.query.agent || "";
   // enrolment identity sets from the payment tracker (first payment per consumer per creator)
-  const seen = new Set(), eEmails = new Set(), ePhones = new Set();
+  const seen = new Set(), eEmailDate = {}, ePhoneDate = {};
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
     const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
     const key = (r.creator_username || "") + "|" + (em || ph || r.id);
     if (seen.has(key)) return;
     seen.add(key);
-    if (em) eEmails.add(em);
-    if (ph) ePhones.add(ph);
+    if (em && !eEmailDate[em]) eEmailDate[em] = r.date;
+    if (ph && !ePhoneDate[ph]) ePhoneDate[ph] = r.date;
   });
   const byAgent = {}, byCreator = {}, byMonth = {};
+  const enrolMonthsSet = {};
   let tot = 0, conv = 0;
   CACHE.contacts.forEach(c => {
     const ts = COUNSEL.byId[c.id];
@@ -609,21 +610,26 @@ app.get("/api/conversion", (req, res) => {
     if (fCreator && (c.topmate_username || "") !== fCreator) return;
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
     const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
-    const converted = (em && eEmails.has(em)) || (ph && ePhones.has(ph));
+    const eDate = (em && eEmailDate[em]) || (ph && ePhoneDate[ph]) || "";
+    const converted = !!eDate;
+    const eMonth = eDate ? eDate.slice(0, 7) : "";
+    if (eMonth) enrolMonthsSet[eMonth] = 1;
     tot++; if (converted) conv++;
-    const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0 }; m[k].counselled++; if (converted) m[k].converted++; };
+    const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0, cols: {} }; m[k].counselled++; if (converted) { m[k].converted++; m[k].cols[eMonth] = (m[k].cols[eMonth] || 0) + 1; } };
     add(byAgent, c.hubspot_owner_id);
     add(byCreator, c.topmate_username || "(no creator)");
     add(byMonth, ymOf(ts) || "(unknown)");
   });
+  const enrolMonths = Object.keys(enrolMonthsSet).sort();
   const out = (m, keyName, labelFn) => Object.entries(m).map(([k, v]) => {
-    const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0 };
+    const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0, cols: v.cols };
     o[keyName] = k; o.label = labelFn ? labelFn(k) : k;
     return o;
   }).sort((a, b) => b.counselled - a.counselled);
   res.json({
     loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
     totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0 },
+    enrolMonths,
     byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id)),
     byCreator: out(byCreator, "creator"),
     byMonth: out(byMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1))

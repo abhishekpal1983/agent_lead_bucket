@@ -522,6 +522,22 @@ async function showEnrolments(){
     }).join("")+"</table></div>"+
     '<div class="sumnote" style="margin-top:8px">Sheet last synced '+(j.loadedAt?new Date(j.loadedAt).toLocaleString():"never")+(j.error?" · last sync error: "+esc(j.error):"")+". Revenue = price_inr. Agent match uses owner_email; creator match uses creator_username (same as topmate_username).</div></div>";
   if (cv && cv.totals){
+    function mShort(m){ const d=new Date(m+"-15"); return isNaN(d)?m:d.toLocaleString("en-IN",{month:"short",year:"2-digit"}); }
+    function cvMatrix(c){
+      const ems = c.enrolMonths||[];
+      if (!c.byMonth.length) return '<div class="dload">No counselled leads yet.</div>';
+      return '<div style="overflow-x:auto"><table class="mini"><tr><th>Counselled month</th><th>Counselled</th><th>Converted</th><th>Conv %</th>'+
+        ems.map(function(m){return "<th>Enr "+mShort(m)+"</th>";}).join("")+"</tr>"+
+        c.byMonth.map(function(r){
+          return "<tr><td>"+mShort(r.month)+"</td><td>"+r.counselled+"</td><td>"+r.converted+'</td><td class="'+(r.conv>=15?"good":(r.conv<5&&r.counselled>=20?"warn":""))+'" style="font-weight:700">'+r.conv+"%</td>"+
+            ems.map(function(m){
+              const n = (r.cols&&r.cols[m])||0;
+              const same = m===r.month;
+              return "<td"+(same&&n?' style="background:var(--bluebg);font-weight:700"':"")+">"+(n?n+' <span class="spmini">'+(100*n/r.counselled).toFixed(1)+"%</span>":'<span class="spmini">–</span>')+"</td>";
+            }).join("")+"</tr>";
+        }).join("")+"</table></div>"+
+        '<div class="sumnote">Read a row as: leads first counselled in that month, and in which month they made their first payment. Diagonal (highlighted) = counselled and enrolled in the same month. Recent rows are still maturing.</div>';
+    }
     function cvTbl(arr,hdr){
       return '<table class="mini"><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
         arr.slice(0,15).map(function(b){
@@ -535,7 +551,7 @@ async function showEnrolments(){
       (cv.loadedAt?'<div class="dgrid" style="margin-top:6px">'+
         '<div class="dblock"><h3>By agent (current owner)</h3>'+cvTbl(cv.byAgent,"Agent")+"</div>"+
         '<div class="dblock"><h3>By creator</h3>'+cvTbl(cv.byCreator,"Creator")+"</div>"+
-        '<div class="dblock"><h3>By counselling month</h3>'+cvTbl(cv.byMonth.map(function(b){b.label=monthName(b.month)||b.month;return b;}),"First counselled in")+"</div>"+
+        '<div class="dblock" style="flex-basis:100%"><h3>Counselling cohort: counselled month → enrolment month</h3>'+cvMatrix(cv)+"</div>"+
       "</div>":'<div class="dload">Stage history is still syncing; conversion numbers appear once the first pass completes (a few minutes after deploy).</div>')+
       '<div class="sumnote" style="margin-top:6px">Lifetime metric: counselled pool from owned staged leads; conversion counts a counselled lead whose email/phone matches an enrolment (first payment) in the payment tracker. Month filter above does not apply here; the by-month table uses the counselling date itself.</div></div>';
   }

@@ -169,10 +169,22 @@ async function renderConv(){
           return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td></tr>";
         }).join("")+"</table></div>";
     }
+    const ems=cv.enrolMonths||[];
+    const matrix='<div style="overflow-x:auto;margin-top:14px"><table><tr><th>Counselled month</th><th>Counselled</th><th>Converted</th><th>Conv %</th>'+
+      ems.map(function(m){return "<th>Enr "+mn(m)+"</th>";}).join("")+"</tr>"+
+      cv.byMonth.map(function(r){
+        return "<tr><td>"+mn(r.month)+"</td><td>"+r.counselled+"</td><td>"+r.converted+'</td><td class="'+(r.conv>=15?"cg":(r.conv<5&&r.counselled>=20?"cr":""))+'" style="font-weight:700">'+r.conv+"%</td>"+
+          ems.map(function(m){
+            const n=(r.cols&&r.cols[m])||0;
+            const same=m===r.month;
+            return "<td"+(same&&n?' style="background:#EEF2FF;font-weight:700"':"")+">"+(n?n+' <span class="mut" style="font-size:9.5px">'+(100*n/r.counselled).toFixed(1)+"%</span>":'<span class="mut">—</span>')+"</td>";
+          }).join("")+"</tr>";
+      }).join("")+"</table></div>"+
+      '<div class="sub" style="margin-top:6px">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal = same-month conversion; recent cohorts are still maturing.</div>';
     el.className="";
     el.innerHTML='<div style="font-size:12.5px;margin-bottom:10px"><b>'+cv.totals.counselled+"</b> counselled · <b>"+cv.totals.converted+"</b> enrolled · overall <b class='cg'>"+cv.totals.conv+"%</b>"+(cv.syncing?' <span class="mut">(re-syncing)</span>':"")+"</div>"+
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
-      tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+tbl(cv.byMonth.map(function(b){b.label=mn(b.month);return b;}),"Counselled month")+"</div>";
+      tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+matrix;
   }catch(e){el.innerHTML='<span class="mut">Conversion unavailable: '+esc(e.message||e)+"</span>";}
 }
 document.addEventListener("change",function(e){
