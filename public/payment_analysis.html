@@ -129,11 +129,24 @@ async function render(){
   tbl("tAg",j.byAgent,"Sales agent");
   const pm=j.payMonths;
   let mx=1;j.cohort.forEach(function(r){pm.forEach(function(p){mx=Math.max(mx,r.cols[p]||0);});});
-  document.getElementById("tCoh").innerHTML="<table><tr><th>Lead create month</th><th>HS leads</th><th>Enrolled</th><th>Conv %</th>"+pm.map(function(p){return "<th>"+mn(p)+"</th>";}).join("")+"</tr>"+
+  function cohCell(r,p){
+    const n=r.cols[p]||0,b=r.balCols[p]||0;
+    if(!n&&!b)return '<td class="mut">—</td>';
+    const op=n?(0.10+0.55*n/mx):0;
+    const pct=(r.hs&&n)?'<div style="font-size:9.5px;color:#374151">'+(100*n/r.hs).toFixed(2)+"%</div>":"";
+    const bal=b?'<div style="font-size:9.5px;color:#D97706;font-weight:700">+'+b+"</div>":"";
+    return '<td style="background:rgba(5,150,105,'+op.toFixed(2)+')"><div class="heat">'+(n||"—")+"</div>"+pct+bal+"</td>";
+  }
+  const tot={hs:0,enrol:0,bal:0,cols:{},balCols:{}};
+  j.cohort.forEach(function(r){tot.hs+=r.hs;tot.enrol+=r.enrol;tot.bal+=r.bal;pm.forEach(function(p){tot.cols[p]=(tot.cols[p]||0)+(r.cols[p]||0);tot.balCols[p]=(tot.balCols[p]||0)+(r.balCols[p]||0);});});
+  document.getElementById("tCoh").innerHTML="<table><tr><th>Create month</th><th>HS leads</th><th class='cg'>Unique enr.</th><th>Conv %</th><th class='ca'>Balances</th>"+pm.map(function(p){return "<th>"+mn(p)+"</th>";}).join("")+"</tr>"+
     j.cohort.map(function(r){
-      return "<tr><td>"+mn(r.cym)+"</td><td>"+r.hs.toLocaleString("en-IN")+"</td><td>"+r.enrol+"</td><td>"+(r.conv===null?'<span class="mut">–</span>':(r.conv>=5?'<span class="cg">':r.conv>=1?'<span class="ca">':'<span class="cr">')+r.conv+"%</span>")+"</td>"+
-        pm.map(function(p){const n=r.cols[p]||0;const op=n?(0.15+0.85*n/mx):0;return '<td style="background:rgba(79,111,224,'+op.toFixed(2)+')" class="'+(n?"heat":"mut")+'">'+(n||"")+"</td>";}).join("")+"</tr>";
-    }).join("")+"</table>";
+      return "<tr><td>"+mn(r.cym)+"</td><td>"+(r.hs?r.hs.toLocaleString("en-IN"):'<span class="mut">—</span>')+'</td><td class="cg" style="font-weight:700">'+r.enrol+"</td><td>"+(r.conv===null?'<span class="mut">—</span>':(r.conv>=2?'<span class="cg">':r.conv>=0.5?'<span class="ca">':'<span class="cr">')+r.conv+"%</span>")+'</td><td class="ca" style="font-weight:600">'+r.bal+"</td>"+
+        pm.map(function(p){return cohCell(r,p);}).join("")+"</tr>";
+    }).join("")+
+    '<tr class="tot"><td>TOTAL</td><td>'+tot.hs.toLocaleString("en-IN")+'</td><td class="cg">'+tot.enrol+"</td><td>"+(tot.hs?(100*tot.enrol/tot.hs).toFixed(2)+"%":"—")+'</td><td class="ca">'+tot.bal+"</td>"+
+    pm.map(function(p){const n=tot.cols[p]||0,b=tot.balCols[p]||0;return "<td>"+(n||"—")+(b?' <span class="ca" style="font-size:9.5px">+'+b+"</span>":"")+"</td>";}).join("")+"</tr></table>"+
+    (j.notMatched?'<div style="font-size:10.5px;color:#9CA3AF;margin-top:7px">Note: '+j.notMatched+" payments from consumers not found in HubSpot are excluded from this matrix; they appear in the summary tables as Not in HubSpot.</div>":"");
   document.getElementById("load").style.display="none";
   document.getElementById("app").style.display="block";
 }

@@ -98,6 +98,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="aftr">
       <div class="addbar">
         <select id="addSel"></select>
+        <input type="text" id="addNew" placeholder="or type a new creator username" style="border:1px solid #D1D5DB;border-radius:6px;padding:4px 9px;font-size:12px;width:200px">
         <button id="addBtn">+ Add creator</button>
         <button id="resetBtn" class="reset">Reset plan</button>
       </div>
@@ -320,7 +321,9 @@ function delCr(c){
   renorm();persist();renderAll();
 }
 function addCr(){
-  const c=document.getElementById('addSel').value;
+  const typed=(document.getElementById('addNew').value||'').trim().toLowerCase().replace(/\s+/g,'_');
+  const c=typed||document.getElementById('addSel').value;
+  document.getElementById('addNew').value='';
   if(!c||PLAN.indexOf(c)>=0)return;
   PLAN.push(c);
   const share=(LIVE&&LIVE.total>0&&LIVE.byCreator[c])?Math.max(1,100*LIVE.byCreator[c].rev/LIVE.total):2;

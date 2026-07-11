@@ -155,7 +155,13 @@ async function sync(){
 const COHORT_MINUTES = parseInt(process.env.COHORT_MINUTES || "60", 10);
 let COHORT = { emails: new Map(), phones: new Map(), counts: {}, loadedAt: null, syncing: false, error: null };
 
-function ymOf(ms){ if (!ms) return ""; const d = new Date(ms); return isNaN(d) ? "" : d.toISOString().slice(0, 7); }
+function ymOf(v){
+  if (v === undefined || v === null || v === "") return "";
+  if (typeof v === "string" && /[^0-9.]/.test(v)) { const d = Date.parse(v); return isNaN(d) ? "" : new Date(d).toISOString().slice(0, 7); }
+  const n = parseFloat(v);
+  if (!isNaN(n) && n > 1e11) return new Date(n).toISOString().slice(0, 7);
+  return "";
+}
 function normPhone(v){ const d = String(v || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; }
 function normSrc(v){
   const s = String(v || "").trim().toLowerCase();
@@ -210,7 +216,7 @@ async function syncCohorts(){
     const now = Date.now();
     for (const cr of creators) {
       const sink = p => {
-        const ym = ymOf(parseInt(p.createdate) || Date.parse(p.createdate));
+        const ym = ymOf(p.createdate);
         if (!ym) return;
         const src = normSrc(p.actual_source), seg = segOf(p.tm_student_or_professional);
         if (!counts[cr]) counts[cr] = {};
@@ -492,14 +498,15 @@ app.get("/api/payment-analysis", (req, res) => {
     }
   });
 
-  // cohort matrix: rows = contact create month, cols = enrolment (first payment) month
+  // cohort matrix: rows = contact create month, cols = first-payment month (+ balance payments)
   const payMonths = Object.keys(byMonth).sort();
-  const cohortEnrol = {}; // cym -> pym -> n
+  const cohortEnrol = {}, cohortBal = {}; // cym -> pym -> n
   pays.forEach(p => {
-    if (!p.isEnrol || !p.cym) return;
-    if (!cohortEnrol[p.cym]) cohortEnrol[p.cym] = { _n: 0 };
-    cohortEnrol[p.cym][p.pym] = (cohortEnrol[p.cym][p.pym] || 0) + 1;
-    cohortEnrol[p.cym]._n++;
+    if (!p.cym) return;
+    const tgt = p.isEnrol ? cohortEnrol : cohortBal;
+    if (!tgt[p.cym]) tgt[p.cym] = { _n: 0 };
+    tgt[p.cym][p.pym] = (tgt[p.cym][p.pym] || 0) + 1;
+    tgt[p.cym]._n++;
   });
   const hsByYm = {};
   Object.keys(COHORT.counts).forEach(cr => {
@@ -514,13 +521,19 @@ app.get("/api/payment-analysis", (req, res) => {
       });
     });
   });
-  const cohortMonths = Array.from(new Set(Object.keys(hsByYm).concat(Object.keys(cohortEnrol)))).sort();
+  const cohortMonths = Array.from(new Set(Object.keys(hsByYm).concat(Object.keys(cohortEnrol)).concat(Object.keys(cohortBal)))).sort();
   const cohort = cohortMonths.map(cym => {
-    const row = { cym, hs: hsByYm[cym] || 0, enrol: (cohortEnrol[cym] && cohortEnrol[cym]._n) || 0, cols: {} };
-    payMonths.forEach(pm => { row.cols[pm] = (cohortEnrol[cym] && cohortEnrol[cym][pm]) || 0; });
+    const row = { cym, hs: hsByYm[cym] || 0,
+      enrol: (cohortEnrol[cym] && cohortEnrol[cym]._n) || 0,
+      bal: (cohortBal[cym] && cohortBal[cym]._n) || 0, cols: {}, balCols: {} };
+    payMonths.forEach(pm => {
+      row.cols[pm] = (cohortEnrol[cym] && cohortEnrol[cym][pm]) || 0;
+      row.balCols[pm] = (cohortBal[cym] && cohortBal[cym][pm]) || 0;
+    });
     row.conv = row.hs ? +(100 * row.enrol / row.hs).toFixed(2) : null;
     return row;
   });
+  const notMatched = pays.filter(p => !p.cym).length;
 
   const srcOptions = Array.from(new Set(pays.map(p => p.src))).sort();
   const crOptions = Array.from(new Set(SHEET.rows.map(r => r.creator_username).filter(Boolean))).sort();
@@ -532,7 +545,7 @@ app.get("/api/payment-analysis", (req, res) => {
     bySrc: Object.entries(bySrc).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
     byCreator: Object.entries(byCreator).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
     byAgent: Object.entries(byAgent).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
-    cohort, payMonths
+    cohort, payMonths, notMatched
   });
 });
 
