@@ -36,7 +36,7 @@ const POST_STAGES = ["discovery","program_pitched","pricing_pitched","counselled
 
 const SHEET_CSV_URL = process.env.SHEET_CSV_URL || "";
 
-let CACHE = { contacts: [], owners: {}, loadedAt: null, syncing: false, error: null };
+let CACHE = { contacts: [], owners: {}, fresh: {}, loadedAt: null, syncing: false, error: null };
 let SHEET = { rows: [], loadedAt: null, error: null };
 
 function parseCSV(text){
@@ -132,6 +132,30 @@ async function fetchContactsForOwner(ownerId){
   return out;
 }
 
+async function fetchFreshForOwner(ownerId, sinceMs){
+  // fresh leads: engagement stage NOT set, created this month
+  const out = [];
+  let after;
+  do {
+    const body = {
+      filterGroups: [{ filters: [
+        { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
+        { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId },
+        { propertyName: "createdate", operator: "GTE", value: String(sinceMs) }
+      ]}],
+      properties: ["firstname", "lastname", "topmate_username", "createdate"],
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: 100, after
+    };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(r => out.push(Object.assign({ id: r.id }, r.properties)));
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+    if (out.length >= 1000) break;
+  } while (after);
+  return out;
+}
+
 async function sync(){
   if (!TOKEN) { CACHE.error = "HUBSPOT_TOKEN (or HUBSPOT_ACCESS_TOKEN) env var is not set"; return; }
   if (CACHE.syncing) return;
@@ -140,12 +164,17 @@ async function sync(){
     const owners = await fetchOwners();
     const ids = Object.keys(owners);
     const contacts = [];
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const fresh = {};
+    let freshTotal = 0;
     for (const id of ids) {
       try { const rows = await fetchContactsForOwner(id); contacts.push(...rows); }
       catch (e) { console.error("owner " + id + " sync failed: " + e.message); }
+      try { const fr = await fetchFreshForOwner(id, monthStart.getTime()); if (fr.length) { fresh[id] = fr; freshTotal += fr.length; } }
+      catch (e) { console.error("owner " + id + " fresh sync failed: " + e.message); }
     }
-    CACHE = { contacts, owners, loadedAt: new Date().toISOString(), syncing: false, error: null };
-    console.log("Synced " + contacts.length + " staged contacts across " + ids.length + " owners");
+    CACHE = { contacts, owners, fresh, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Synced " + contacts.length + " staged contacts + " + freshTotal + " fresh (no stage, this month) across " + ids.length + " owners");
   } catch (e) {
     CACHE.syncing = false; CACHE.error = e.message;
     console.error("Sync failed: " + e.message);
@@ -416,11 +445,16 @@ app.post("/api/refresh", (req, res) => {
 });
 
 app.get("/api/agents", (req, res) => {
-  const rows = filt(req.query.creator, null);
+  const fc = req.query.creator || "";
+  const rows = filt(fc, null);
   const creators = {};
   CACHE.contacts.forEach(c => { const u = c.topmate_username; if (u) creators[u] = (creators[u] || 0) + 1; });
+  const agents = agentMetrics(rows).map(a => {
+    a.freshNoStage = ((CACHE.fresh || {})[a.id] || []).filter(f => !fc || (f.topmate_username || "") === fc).length;
+    return a;
+  });
   res.json({ loadedAt: CACHE.loadedAt, error: CACHE.error,
-    agents: agentMetrics(rows),
+    agents: agents,
     creators: Object.entries(creators).map(([u, n]) => ({ u, n })).sort((a, b) => b.n - a.n).slice(0, 300) });
 });
 
@@ -778,7 +812,11 @@ app.get("/api/agent/:id", (req, res) => {
     stage: c.contact_engagement_stage, days: Math.max(1, Math.round((now - (ts(c.engagement_stage_last_changed_at) || ts(c.createdate))) / 86400000)),
     fu: ts(c.follow_up_date_and_time) || 0, last: ts(c.last_call_date_and_time) || 0, calls: num(c.callscurrent_stage) });
   const isWork = c => WORKABLE.indexOf(c.contact_engagement_stage) >= 0;
+  const freshMine = ((CACHE.fresh || {})[id] || []).filter(f => !fCreator || ((f.topmate_username || "(no creator)") === fCreator));
+  me.freshNoStage = freshMine.length;
   const queues = {
+    fresh: freshMine.slice(0, 15).map(f => ({ id: f.id, name: (((f.firstname || "") + " " + (f.lastname || "")).trim()) || "(no name)",
+      creator: f.topmate_username || "", stage: "", days: Math.max(1, Math.round((now - ts(f.createdate)) / 86400000)), fu: 0, last: 0, calls: 0 })),
     rcb: mine.filter(c => c.contact_engagement_stage === "rcb_requested_callback" && !ts(c.last_call_date_and_time)).map(lead).sort((a, b) => b.days - a.days).slice(0, 15),
     overdue: mine.filter(c => isWork(c) && ts(c.follow_up_date_and_time) && ts(c.follow_up_date_and_time) < now).map(lead).sort((a, b) => a.fu - b.fu).slice(0, 15),
     nofu: mine.filter(c => isWork(c) && !ts(c.follow_up_date_and_time)).map(lead).sort((a, b) => b.days - a.days).slice(0, 15),

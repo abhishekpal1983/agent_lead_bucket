@@ -130,7 +130,7 @@
   <div id="viewSum" style="display:none"></div>
   <div id="viewEnr" style="display:none"></div>
   <div class="foot">
-    <b>Definitions.</b> Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
+    <b>Definitions.</b> Fresh (no stage) = leads created this calendar month whose Contact engagement stage is still empty, i.e. never worked; they sit outside all staged totals. Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
     NI post-counselling = previous stage was Discovery / pitched / Counselled / Payment prospect / IFC / any Follow up stage, or counselling recorded done. Student vs professional is classified from the free text field tm_student_or_professional.
     Data syncs from HubSpot on the server every 30 minutes; use Re-sync to force a refresh.
   </div>
@@ -212,7 +212,7 @@ function drawAll(){
 }
 const COLS = [
   ["name","Agent"],["total","Total"],["workable","Workable"],["churned","Churned"],["ratio","W:C"],
-  ["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
+  ["freshNoStage","Fresh (no stage)"],["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
   ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["convPct","Couns→Enr %"],["badge","Health"]
 ];
 let sortKey = "total", sortDir = -1;
@@ -227,6 +227,7 @@ function drawCards(){
   const known = s("stu")+s("pro");
   document.getElementById("cards").innerHTML =
     card(sel.length,"Agents","c-blue")+card(s("total").toLocaleString(),"Staged leads","c-blue")+
+    card(s("freshNoStage").toLocaleString(),"Fresh, no stage (this mo)","c-teal")+
     card(s("workable").toLocaleString(),"Workable","c-green")+card(s("churned").toLocaleString(),"Churned","c-red")+
     card(s("age30").toLocaleString(),"Fresh ≤30d","c-green")+card(s("overdue").toLocaleString(),"Overdue FU","c-amber")+
     card(s("niPost").toLocaleString(),"NI post-couns","c-red")+card(s("niPre").toLocaleString(),"NI pre-couns","c-amber")+
@@ -266,6 +267,7 @@ function drawBody(){
     tr.innerHTML = '<td><span class="aname">'+esc(a.name)+'</span> <a href="/agent.html?id='+a.id+'" target="_blank" rel="noopener" title="Open '+esc(a.name)+"'s snapshot page\" style=\"color:var(--blue);text-decoration:none;font-size:11px\" onclick=\"event.stopPropagation()\">↗</a>"+(a.active?"":' <span class="pill">deactivated</span>')+
       (a.email?'<div class="amail">'+esc(a.email)+"</div>":"")+"</td>"+
       "<td>"+a.total.toLocaleString()+"</td><td>"+a.workable+"</td><td>"+a.churned+"</td><td>"+a.ratio.toFixed(2)+"</td>"+
+      "<td"+(a.freshNoStage>0?' class="good"':"")+">"+(a.freshNoStage||0)+"</td>"+
       "<td"+(a.age30<0.1*a.total&&a.total>100?' class="warn"':"")+">"+a.age30+"</td><td>"+a.old90+"</td>"+
       "<td"+(a.overdue>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.overdue+"</td>"+
       "<td"+(a.nofu>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.nofu+"</td>"+

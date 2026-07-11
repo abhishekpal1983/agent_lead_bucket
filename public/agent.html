@@ -161,6 +161,7 @@ function render(j){
       kpi(j.activity.payments.week+(j.activity.payments.weekRev?" · "+rupee(j.activity.payments.weekRev):""),"Payments this week")+
       "</div></div>"+
     '<div class="kpis" style="margin-top:0">'+
+    kpi(m.freshNoStage||0,"Fresh, no stage yet",(m.freshNoStage||0)>0?"warn":"good")+
     kpi(m.total,"Total leads")+kpi(m.workable,"Workable","good")+kpi(m.churned,"Churned")+
     kpi(m.age30,"Fresh ≤30d",m.age30<0.1*m.total&&m.total>100?"warn":"good")+
     kpi(m.freshRcb,"RCB never called",m.freshRcb>=10?"warn":"")+
@@ -170,6 +171,7 @@ function render(j){
     kpi(rupee(j.revenue.total),"Revenue all time")+
     "</div>"+
     '<div class="sec"><h2>Do these first</h2><div class="sub">Your four queues, worst first. Click a name to open the lead in HubSpot.</div><div class="qgrid">'+
+      q("Fresh this month, no stage set","red",j.queues.fresh||[],function(l){return esc(l.creator)+" · arrived "+l.days+"d ago";})+
       q("Requested callback, never called","red",j.queues.rcb,function(l){return esc(l.creator)+" · waiting "+l.days+"d";})+
       q("Overdue follow ups","amber",j.queues.overdue,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · due "+fd(l.fu);})+
       q("Hot but no next step booked","blue",j.queues.nofu,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · "+l.days+"d in stage";})+
