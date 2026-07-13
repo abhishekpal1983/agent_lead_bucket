@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Monthly Execution Planner</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F6F8;color:#191C20;font-size:13px;line-height:1.5}
+.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.hdr h1{font-size:16px;font-weight:800}
+.hdr p{font-size:11px;color:#9CA3AF}
+.livebadge{background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
+.wrap{max-width:1560px;margin:0 auto;padding:16px 20px 40px}
+.bar{background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:13px 16px;margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;align-items:center}
+.bar label{font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
+.bar input{border:1.5px solid #D1D5DB;border-radius:7px;padding:6px 10px;font-size:14px;font-weight:700;width:150px;outline:none}
+.bar input:focus{border-color:#4338CA}
+.bar .as{font-size:11px;color:#9CA3AF;max-width:340px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:11px 14px;border-top:3px solid #E5E7EB}
+.card.b{border-top-color:#93B4F5}.card.g{border-top-color:#86D3A2}.card.r{border-top-color:#F1A8A8}.card.a{border-top-color:#F0D48A}
+.card .v{font-size:19px;font-weight:800}
+.card .l{font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
+.card .s{font-size:10px;color:#9CA3AF;margin-top:2px}
+.sec{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;padding:14px 17px;overflow-x:auto}
+.sec h2{font-size:13px;font-weight:800;margin-bottom:2px}
+.sec .sub{font-size:10.5px;color:#9CA3AF;margin-bottom:10px}
+table{border-collapse:collapse;font-size:11.6px;width:100%}
+th{background:#F3F4F6;padding:5px 8px;text-align:right;font-size:9.5px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap}
+th:first-child{text-align:left}
+th.grp{background:#E8EEFC;color:#3730A3}
+th.grp2{background:#ECFDF5;color:#065F46}
+td{padding:5px 8px;border-bottom:1px solid #F3F4F6;text-align:right;white-space:nowrap}
+td:first-child{text-align:left;font-weight:700}
+tr:last-child td{border-bottom:none}
+tr.tot td{background:#FFFBEB;font-weight:800}
+.cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.ci{color:#4338CA}.mut{color:#9CA3AF}
+td input.tgt{width:104px;border:1.5px solid #D1D5DB;border-radius:6px;padding:3px 7px;font-size:11.5px;text-align:right;font-weight:700;outline:none}
+td input.tgt:focus{border-color:#4338CA}
+.st{font-size:9px;font-weight:800;padding:1px 7px;border-radius:9px;white-space:nowrap;text-transform:uppercase}
+.st.ok{background:#D1FAE5;color:#065F46}.st.beh{background:#FEE2E2;color:#991B1B}.st.done{background:#DBEAFE;color:#1E40AF}
+#loading{padding:60px;text-align:center;color:#9CA3AF}
+.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Monthly Execution Planner</h1>
+  <span class="livebadge">LIVE</span>
+  <p id="sub">Funnel ratios from the baseline month · requirements recompute as you edit · tracking against pace</p>
+  <a href="/" style="font-size:11px;color:#4338CA;margin-left:auto">← dashboard</a>
+</div>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div>Computing baseline trends and current month actuals...</div>
+  <div id="app" style="display:none"></div>
+</div>
+<script>
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+function inr(n){return "₹"+Math.round(n||0).toLocaleString("en-IN");}
+function rupee(v){v=Math.round(v||0);return v>=1e7?"₹"+(v/1e7).toFixed(2)+"Cr":v>=1e5?"₹"+(v/1e5).toFixed(1)+"L":inr(v);}
+function fmt(n){return Math.round(n||0).toLocaleString("en-IN");}
+function mn(m){if(!m)return "";const d=new Date(m+"-15");return isNaN(d)?m:d.toLocaleString("en-IN",{month:"long",year:"numeric"});}
+let J=null;
+let S={goal:30000000,tgts:{},cpc:null,cpa:null};
+try{const s=JSON.parse(localStorage.getItem("planner_s"));if(s&&s.goal)S=s;}catch(e){}
+function persist(){localStorage.setItem("planner_s",JSON.stringify(S));}
+function setGoal(v){S.goal=Math.max(0,parseFloat(v)||0);persist();draw();}
+function setTgt(c,v){S.tgts[c]=Math.max(0,parseFloat(v)||0);persist();draw();}
+function setCpc(v){S.cpc=Math.max(0.1,parseFloat(v)||0);persist();draw();}
+function setCpa(v){S.cpa=Math.max(1,parseFloat(v)||0);persist();draw();}
+function resetPlan(){S={goal:S.goal,tgts:{},cpc:null,cpa:null};persist();draw();}
+async function boot(){
+  const r=await fetch("/api/planner");
+  J=await r.json();
+  document.getElementById("loading").style.display="none";
+  document.getElementById("app").style.display="block";
+  draw();
+}
+function draw(){
+  const b=J.baseline,c=J.current;
+  const bt=b.totals,ct=c.totals;
+  const frac=c.frac;
+  const cpc=S.cpc||(b.calls&&b.calls.callsPerCouns)||8;      // calls per counselling
+  const cpa=S.cpa||(b.agents.counsPerAgent)||40;             // counsellings per agent per month
+  const overallTicket=bt.ticket||45000, overallC2E=bt.c2e||10, overallL2C=bt.l2c||5;
+  // creators from baseline with revenue, sorted
+  const crs=Object.keys(b.perCreator).filter(function(k){return b.perCreator[k].rev>0;}).sort(function(x,y){return b.perCreator[y].rev-b.perCreator[x].rev;});
+  const baseRevTot=crs.reduce(function(t,k){return t+b.perCreator[k].rev;},0);
+  function tgtOf(cr){
+    if(S.tgts[cr]!==undefined)return S.tgts[cr];
+    return baseRevTot>0?Math.round(S.goal*b.perCreator[cr].rev/baseRevTot):0;
+  }
+  function reqOf(cr){
+    const p=b.perCreator[cr]||{};
+    const tgt=tgtOf(cr);
+    const ticket=p.ticket||overallTicket;
+    const c2e=(p.c2e&&p.couns>=5)?p.c2e:overallC2E;
+    const l2c=(p.l2c&&p.leads>=30)?p.l2c:overallL2C;
+    const enr=ticket?Math.ceil(tgt/ticket):0;
+    const couns=c2e?Math.ceil(enr/(c2e/100)):0;
+    const leads=l2c?Math.ceil(couns/(l2c/100)):0;
+    const calls=Math.ceil(couns*cpc);
+    return {tgt:tgt,enr:enr,couns:couns,leads:leads,calls:calls,ticket:ticket,c2e:c2e,l2c:l2c,approx:(p.c2e===null||p.couns<5||p.l2c===null||p.leads<30)};
+  }
+  function pace(req,act){
+    if(!req)return '<span class="mut">–</span>';
+    const need=req*frac;
+    if(act>=req)return '<span class="st done">Done</span>';
+    if(act>=need)return '<span class="st ok">On track</span>';
+    return '<span class="st beh">-'+fmt(need-act)+'</span>';
+  }
+  let reqTot={tgt:0,enr:0,couns:0,leads:0,calls:0};
+  const rows=crs.map(function(cr){
+    const p=b.perCreator[cr], q=c.perCreator[cr]||{leads:0,couns:0,enr:0,rev:0};
+    const r=reqOf(cr);
+    ["tgt","enr","couns","leads","calls"].forEach(function(k){reqTot[k]+=r[k];});
+    return "<tr><td>"+esc(cr)+(r.approx?' <span class="mut" title="thin baseline data; overall ratios used">~</span>':"")+"</td>"+
+      "<td>"+rupee(p.rev)+"</td><td>"+inr(r.ticket)+"</td><td>"+(p.l2c===null?"–":p.l2c+"%")+"</td><td>"+(p.c2e===null?"–":p.c2e+"%")+"</td>"+
+      '<td><input class="tgt" type="number" step="50000" min="0" value="'+r.tgt+'" onchange="setTgt(\''+cr+'\',this.value)"></td>'+
+      "<td>"+fmt(r.enr)+"</td><td>"+fmt(r.couns)+"</td><td>"+fmt(r.leads)+"</td><td>"+fmt(r.calls)+"</td>"+
+      '<td class="cg" style="font-weight:700">'+rupee(q.rev)+"</td><td>"+pace(r.tgt,q.rev)+"</td>"+
+      "<td>"+q.enr+"</td><td>"+pace(r.enr,q.enr)+"</td>"+
+      "<td>"+q.couns+"</td><td>"+pace(r.couns,q.couns)+"</td>"+
+      "<td>"+q.leads+"</td><td>"+pace(r.leads,q.leads)+"</td></tr>";
+  }).join("");
+  const agentsReq=Math.ceil(reqTot.couns/cpa);
+  const curConn=c.calls?c.calls.connectivity:null, baseConn=b.calls?b.calls.connectivity:null;
+  const html=
+  '<div class="bar">'+
+    '<div><label>Revenue goal for '+mn(c.ym)+' (₹)</label><input type="number" step="500000" value="'+S.goal+'" onchange="setGoal(this.value)"></div>'+
+    '<div><label>Calls per counselling</label><input type="number" step="0.5" value="'+cpc+'" onchange="setCpc(this.value)">'+(b.calls&&b.calls.callsPerCouns?'<div class="as">'+mn(b.ym)+" actual: "+b.calls.callsPerCouns+"</div>":'<div class="as">call data syncing; default used</div>')+"</div>"+
+    '<div><label>Counsellings per agent / month</label><input type="number" step="1" value="'+cpa+'" onchange="setCpa(this.value)">'+(b.agents.counsPerAgent?'<div class="as">'+mn(b.ym)+" actual: "+b.agents.counsPerAgent+" across "+b.agents.counsellors+" counsellors</div>":"")+"</div>"+
+    '<div style="margin-left:auto"><button onclick="resetPlan()" style="border:1px solid #E5E7EB;background:#F3F4F6;color:#6B7280;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer">Reset targets</button></div>'+
+  "</div>"+
+  (J.loadedAt.callsSyncing&&!b.calls?'<div class="warn">Call logs are still syncing; connectivity and calls-per-counselling will appear shortly.</div>':"")+
+  '<div class="cards">'+
+    kc(rupee(S.goal),"Revenue goal","b")+
+    kc(fmt(reqTot.enr),"Enrolments required","b")+
+    kc(fmt(reqTot.couns),"Counsellings required","b")+
+    kc(fmt(reqTot.leads),"Leads required","b")+
+    kc(fmt(reqTot.calls),"Call attempts required","b")+
+    kc(agentsReq,"Agents required","b")+
+    kc(rupee(ct.rev),"Revenue MTD ("+Math.round(frac*100)+"% of month)",ct.rev>=S.goal*frac?"g":"r")+
+    kc(ct.couns+" / "+fmt(reqTot.couns*frac|0),"Counsellings MTD vs pace",ct.couns>=reqTot.couns*frac?"g":"a")+
+    kc(ct.leads+" / "+fmt(reqTot.leads*frac|0),"Leads MTD vs pace",ct.leads>=reqTot.leads*frac?"g":"a")+
+    kc((curConn===null?"–":curConn+"%"),"Connectivity MTD"+(baseConn!==null?" (base "+baseConn+"%)":""),curConn!==null&&baseConn!==null&&curConn>=baseConn?"g":"a")+
+  "</div>"+
+  '<div class="sec"><h2>Creator execution plan · baseline '+mn(b.ym)+'</h2><div class="sub">Required = target ÷ '+mn(b.ym)+' ticket ÷ C2E ÷ L2C, calls = counsellings × calls-per-counselling. ~ = thin baseline, overall ratios substituted. Edit any ₹ target; MTD columns track '+mn(c.ym)+" with pace status (deficit shown when behind).</div>"+
+    '<table><tr><th></th><th colspan="4" class="grp">Baseline '+mn(b.ym)+'</th><th colspan="5" class="grp">Plan '+mn(c.ym)+'</th><th colspan="8" class="grp2">Tracking MTD</th></tr>'+
+    "<tr><th>Creator</th><th>Revenue</th><th>Ticket</th><th>L2C</th><th>C2E</th>"+
+    "<th>Target ₹</th><th>Enr</th><th>Couns</th><th>Leads</th><th>Calls</th>"+
+    "<th>Rev</th><th></th><th>Enr</th><th></th><th>Couns</th><th></th><th>Leads</th><th></th></tr>"+rows+
+    '<tr class="tot"><td>TOTAL</td><td>'+rupee(bt.rev)+"</td><td>"+inr(bt.ticket)+"</td><td>"+(bt.l2c||"–")+"%</td><td>"+(bt.c2e||"–")+"%</td>"+
+    "<td>"+rupee(reqTot.tgt)+"</td><td>"+fmt(reqTot.enr)+"</td><td>"+fmt(reqTot.couns)+"</td><td>"+fmt(reqTot.leads)+"</td><td>"+fmt(reqTot.calls)+"</td>"+
+    "<td>"+rupee(ct.rev)+"</td><td>"+pace(reqTot.tgt,ct.rev)+"</td><td>"+ct.enr+"</td><td>"+pace(reqTot.enr,ct.enr)+"</td><td>"+ct.couns+"</td><td>"+pace(reqTot.couns,ct.couns)+"</td><td>"+ct.leads+"</td><td>"+pace(reqTot.leads,ct.leads)+"</td></tr></table>"+
+    (reqTot.tgt!==S.goal?'<div class="sub" style="margin-top:7px">Creator targets sum to '+rupee(reqTot.tgt)+" vs goal "+rupee(S.goal)+"; adjust targets or goal to reconcile.</div>":"")+
+  "</div>"+
+  '<div class="grid2">'+
+  '<div class="sec"><h2>Connectivity by agent · '+mn(c.ym)+' MTD</h2><div class="sub">Connected ÷ attempts from HubSpot call logs. Call logs are per agent, not per creator'+(baseConn!==null?" · baseline overall "+baseConn+"%":"")+'.</div>'+
+    (c.calls?'<table><tr><th>Agent</th><th>Attempts</th><th>Connected</th><th>Connectivity</th></tr>'+
+      c.calls.byAgent.map(function(a){return "<tr><td>"+esc(a.name)+"</td><td>"+fmt(a.att)+"</td><td>"+fmt(a.conn)+'</td><td class="'+(a.connectivity>=(baseConn||35)?"cg":"cr")+'" style="font-weight:700">'+a.connectivity+"%</td></tr>";}).join("")+
+      '<tr class="tot"><td>OVERALL</td><td>'+fmt(c.calls.att)+"</td><td>"+fmt(c.calls.conn)+'</td><td>'+c.calls.connectivity+"%</td></tr></table>":'<div class="mut" style="padding:16px">Call data syncing...</div>')+"</div>"+
+  '<div class="sec"><h2>Baseline funnel · '+mn(b.ym)+'</h2><div class="sub">The trend numbers every requirement above is built from.</div>'+
+    '<table><tr><th>Metric</th><th>Value</th></tr>'+
+    "<tr><td>Leads created</td><td>"+fmt(bt.leads)+"</td></tr>"+
+    "<tr><td>Counsellings (first stage entry)</td><td>"+fmt(bt.couns)+"</td></tr>"+
+    "<tr><td>Enrolments (first payments)</td><td>"+fmt(bt.enr)+"</td></tr>"+
+    "<tr><td>Revenue</td><td>"+rupee(bt.rev)+"</td></tr>"+
+    "<tr><td>Lead → Counselling (L2C)</td><td>"+(bt.l2c||"–")+"%</td></tr>"+
+    "<tr><td>Counselling → Enrolment (C2E)</td><td>"+(bt.c2e||"–")+"%</td></tr>"+
+    "<tr><td>Avg ticket / enrolment</td><td>"+inr(bt.ticket)+"</td></tr>"+
+    (b.calls?"<tr><td>Call attempts</td><td>"+fmt(b.calls.att)+"</td></tr><tr><td>Connectivity</td><td>"+b.calls.connectivity+"%</td></tr><tr><td>Calls per counselling</td><td>"+b.calls.callsPerCouns+"</td></tr>":"")+
+    "<tr><td>Active counsellors (3+ counsellings)</td><td>"+b.agents.counsellors+"</td></tr>"+
+    (b.agents.counsPerAgent?"<tr><td>Counsellings per agent</td><td>"+b.agents.counsPerAgent+"</td></tr>":"")+
+    "</table></div>"+
+  "</div>"+
+  '<div style="font-size:11px;color:#9CA3AF">Synced: HubSpot '+t(J.loadedAt.hubspot)+" · payments "+t(J.loadedAt.sheet)+" · counselling history "+t(J.loadedAt.counsel)+" · calls "+t(J.loadedAt.calls)+". Baseline ratios are fixed to "+mn(b.ym)+"; counselling counts cover owned staged leads.</div>";
+  document.getElementById("app").innerHTML=html;
+  function t(x){return x?new Date(x).toLocaleTimeString():"pending";}
+  function kc(v,l,cls){return '<div class="card '+(cls||"")+'"><div class="v">'+v+'</div><div class="l">'+l+"</div></div>";}
+}
+boot().catch(function(e){document.getElementById("loading").textContent="Failed: "+(e.message||e);});
+</script>
+</body>
+</html>

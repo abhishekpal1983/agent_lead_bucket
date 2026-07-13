@@ -308,6 +308,74 @@ async function syncCohorts(){
   }
 }
 
+/* ---------- call logs for connectivity (baseline + current month) ---------- */
+const BASELINE_MONTH = process.env.BASELINE_MONTH || "2026-06";
+let CALLS = { byMonth: {}, dispositions: {}, loadedAt: null, syncing: false, error: null };
+
+async function fetchCallsRange(fromMs, toMs, sink, depth){
+  const filters = [
+    { propertyName: "hs_timestamp", operator: "GTE", value: String(fromMs) },
+    { propertyName: "hs_timestamp", operator: "LT", value: String(toMs) }
+  ];
+  const probe = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["hs_timestamp"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && (toMs - fromMs) > 3600000 && (depth || 0) < 12) {
+    const mid = Math.floor((fromMs + toMs) / 2);
+    await fetchCallsRange(fromMs, mid, sink, (depth || 0) + 1);
+    await fetchCallsRange(mid, toMs, sink, (depth || 0) + 1);
+    return;
+  }
+  let after, pages = 0;
+  do {
+    const body = { filterGroups: [{ filters }],
+      properties: ["hs_call_disposition", "hubspot_owner_id", "hs_timestamp"],
+      sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after };
+    const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(r => sink(r.properties));
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+    pages++;
+  } while (after && pages < 100);
+}
+
+async function syncCalls(){
+  if (!TOKEN || CALLS.syncing) return;
+  CALLS.syncing = true;
+  try {
+    if (!Object.keys(CALLS.dispositions).length) {
+      try {
+        const d = await hs("/calling/v1/dispositions");
+        (Array.isArray(d) ? d : (d.results || [])).forEach(x => { CALLS.dispositions[x.id] = x.label; });
+      } catch (e) { console.error("dispositions: " + e.message); }
+    }
+    const months = Array.from(new Set([BASELINE_MONTH, new Date().toISOString().slice(0, 7)]));
+    const byMonth = {};
+    for (const ym of months) {
+      // baseline month: don't refetch once loaded (it never changes)
+      if (ym === BASELINE_MONTH && CALLS.byMonth[ym] && !CALLS.byMonth[ym].partial) { byMonth[ym] = CALLS.byMonth[ym]; continue; }
+      const m0 = Date.parse(ym + "-01T00:00:00Z");
+      const m1 = new Date(m0); m1.setUTCMonth(m1.getUTCMonth() + 1);
+      const agg = { att: 0, conn: 0, byOwner: {} };
+      const sink = p => {
+        const oid = p.hubspot_owner_id || "";
+        if (!agg.byOwner[oid]) agg.byOwner[oid] = { att: 0, conn: 0 };
+        agg.att++; agg.byOwner[oid].att++;
+        const label = CALLS.dispositions[p.hs_call_disposition] || p.hs_call_disposition || "";
+        if (/connected/i.test(label)) { agg.conn++; agg.byOwner[oid].conn++; }
+      };
+      try { await fetchCallsRange(m0, m1.getTime(), sink); }
+      catch (e) { agg.partial = true; console.error("calls " + ym + ": " + e.message); }
+      byMonth[ym] = agg;
+    }
+    CALLS = { byMonth: Object.assign({}, CALLS.byMonth, byMonth), dispositions: CALLS.dispositions, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Calls synced: " + months.map(m => m + "=" + (CALLS.byMonth[m] ? CALLS.byMonth[m].att : 0)).join(", "));
+  } catch (e) {
+    CALLS.syncing = false; CALLS.error = e.message;
+    console.error("Calls sync failed: " + e.message);
+  }
+}
+
 /* ---------- aggregation helpers ---------- */
 function ts(v){ if (!v) return 0; const n = Date.parse(v); if (!isNaN(n)) return n; const f = parseFloat(v); return (!isNaN(f) && f > 1e11) ? f : 0; }
 function num(v){ const f = parseFloat(v); return isNaN(f) ? 0 : f; }
@@ -726,6 +794,90 @@ app.get("/api/conversion", (req, res) => {
   });
 });
 
+function plannerMonth(ym){
+  // funnel metrics per creator for one month: leads created, counsellings, enrolments, revenue
+  const per = {};
+  const row = cr => per[cr] || (per[cr] = { leads: 0, couns: 0, enr: 0, rev: 0 });
+  Object.keys(COHORT.counts).forEach(cr => {
+    const m = COHORT.counts[cr][ym];
+    if (!m) return;
+    let n = 0;
+    Object.keys(m).forEach(src => Object.keys(m[src]).forEach(seg => { n += m[src][seg]; }));
+    row(cr).leads = n;
+  });
+  CACHE.contacts.forEach(c => {
+    const ts0 = COUNSEL.byId[c.id];
+    if (ts0 && ymOf(ts0) === ym) row(c.topmate_username || "(no creator)").couns++;
+  });
+  const seen = new Set();
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    if ((r.date || "").slice(0, 7) !== ym) { // still need seen keys from earlier months for first-payment logic
+      if ((r.date || "").slice(0, 7) < ym) {
+        const em0 = (r.consumer_email || "").toLowerCase(), ph0 = normPhone(r.consumer_phone);
+        seen.add((r.creator_username || "") + "|" + (em0 || ph0 || r.id));
+      }
+      return;
+    }
+    const cr = r.creator_username || "(no creator)";
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const key = cr + "|" + (em || ph || r.id);
+    row(cr).rev += r.price;
+    if (!seen.has(key)) { seen.add(key); row(cr).enr++; }
+  });
+  Object.keys(per).forEach(cr => {
+    const p = per[cr];
+    p.ticket = p.enr ? Math.round(p.rev / p.enr) : 0;
+    p.l2c = p.leads ? +(100 * p.couns / p.leads).toFixed(2) : null;
+    p.c2e = p.couns ? +(100 * p.enr / p.couns).toFixed(2) : null;
+  });
+  return per;
+}
+
+app.get("/api/planner", (req, res) => {
+  const baseYm = req.query.baseline || BASELINE_MONTH;
+  const curYm = new Date().toISOString().slice(0, 7);
+  const base = plannerMonth(baseYm);
+  const cur = plannerMonth(curYm);
+  function totals(per){
+    const t = { leads: 0, couns: 0, enr: 0, rev: 0 };
+    Object.values(per).forEach(p => { t.leads += p.leads; t.couns += p.couns; t.enr += p.enr; t.rev += p.rev; });
+    t.ticket = t.enr ? Math.round(t.rev / t.enr) : 0;
+    t.l2c = t.leads ? +(100 * t.couns / t.leads).toFixed(2) : null;
+    t.c2e = t.couns ? +(100 * t.enr / t.couns).toFixed(2) : null;
+    return t;
+  }
+  function callsFor(ym, counsTotal){
+    const c = CALLS.byMonth[ym];
+    if (!c || !c.att) return null;
+    const agents = {};
+    Object.keys(c.byOwner).forEach(oid => {
+      const o = CACHE.owners[oid];
+      agents[oid] = { name: o ? o.name : (oid || "(unassigned)"), att: c.byOwner[oid].att, conn: c.byOwner[oid].conn,
+        connectivity: c.byOwner[oid].att ? +(100 * c.byOwner[oid].conn / c.byOwner[oid].att).toFixed(1) : 0 };
+    });
+    return { att: c.att, conn: c.conn, connectivity: +(100 * c.conn / c.att).toFixed(1),
+      callsPerCouns: counsTotal ? +(c.att / counsTotal).toFixed(1) : null,
+      byAgent: Object.values(agents).sort((a, b) => b.att - a.att).slice(0, 40), partial: !!c.partial };
+  }
+  // agent capacity from baseline counsellings
+  const counsByAgentBase = {};
+  CACHE.contacts.forEach(c => {
+    const ts0 = COUNSEL.byId[c.id];
+    if (ts0 && ymOf(ts0) === baseYm) counsByAgentBase[c.hubspot_owner_id] = (counsByAgentBase[c.hubspot_owner_id] || 0) + 1;
+  });
+  const activeCounsellors = Object.values(counsByAgentBase).filter(n => n >= 3).length;
+  const baseTot = totals(base);
+  const now = new Date();
+  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  res.json({
+    baseline: { ym: baseYm, perCreator: base, totals: baseTot, calls: callsFor(baseYm, baseTot.couns),
+      agents: { counsellors: activeCounsellors, counsPerAgent: activeCounsellors ? +(baseTot.couns / activeCounsellors).toFixed(1) : null } },
+    current: { ym: curYm, perCreator: cur, totals: totals(cur), calls: callsFor(curYm, totals(cur).couns),
+      day: now.getDate(), dim, frac: +(now.getDate() / dim).toFixed(3) },
+    loadedAt: { hubspot: CACHE.loadedAt, sheet: SHEET.loadedAt, counsel: COUNSEL.loadedAt, calls: CALLS.loadedAt, callsSyncing: CALLS.syncing }
+  });
+});
+
 app.get("/api/leads-created", (req, res) => {
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const out = {};
@@ -913,4 +1065,6 @@ app.listen(PORT, () => {
   setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
   setInterval(syncCohorts, COHORT_MINUTES * 60 * 1000);
   setInterval(syncCounsel, COHORT_MINUTES * 60 * 1000);
+  setTimeout(syncCalls, 90 * 1000);
+  setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
 });
