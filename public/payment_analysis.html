@@ -197,19 +197,24 @@ async function renderConv(){
       (anyF?'<button id="pcvClr">Clear</button>':"")+
       '<span class="mut" style="font-size:11px">history synced '+(cv.loadedAt?new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing":"")+"</span></div>";
     function tbl(arr,hdr){
-      return '<div class="sec" style="margin-bottom:0"><h3>'+hdr+'</h3><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>Conv %</th></tr>"+
+      const hasL2E=arr.length&&arr[0].leads!==undefined;
+      return '<div class="sec" style="margin-bottom:0"><h3>'+hdr+'</h3><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>C2E %</th>"+(hasL2E?"<th>Leads</th><th>L2E %</th>":"")+"</tr>"+
         arr.slice(0,15).map(function(b){
           const c=b.conv>=15?"cg":(b.conv<5&&b.counselled>=20?"cr":"");
-          return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td></tr>";
+          const l=b.l2e>=2?"cg":(b.l2e<0.5&&b.leads>=100?"cr":"");
+          return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td>"+
+            (hasL2E?"<td>"+(b.leads||0).toLocaleString("en-IN")+'</td><td class="'+l+'" style="font-weight:700">'+b.l2e+"%</td>":"")+"</tr>";
         }).join("")+"</table></div>";
     }
     function matrix(rows,rowHdr){
       const ems=cv.enrolMonths||[];
       if(!rows.length)return '<div class="load">No counselled leads match these filters.</div>';
-      return '<div style="overflow-x:auto"><table><tr><th>'+rowHdr+'</th><th>Counselled</th><th>Converted</th><th>Conv %</th>'+
+      const hasL2E=rows.length&&rows[0].leads!==undefined;
+      return '<div style="overflow-x:auto"><table><tr><th>'+rowHdr+'</th><th>Counselled</th><th>Converted</th><th>C2E %</th>'+(hasL2E?"<th>Leads</th><th>L2E %</th>":"")+
         ems.map(function(m){return "<th>Enr "+mn(m)+"</th>";}).join("")+"</tr>"+
         rows.map(function(rw){
-          return "<tr><td>"+mn(rw.month)+"</td><td>"+rw.counselled+"</td><td>"+rw.converted+'</td><td class="'+(rw.conv>=15?"cg":(rw.conv<5&&rw.counselled>=20?"cr":""))+'" style="font-weight:700">'+rw.conv+"%</td>"+
+          const l2eCell=rw.leads!==undefined?"<td>"+(rw.leads||0).toLocaleString("en-IN")+'</td><td style="font-weight:700" class="'+(rw.l2e>=2?"cg":"")+'">'+rw.l2e+"%</td>":"";
+          return "<tr><td>"+mn(rw.month)+"</td><td>"+rw.counselled+"</td><td>"+rw.converted+'</td><td class="'+(rw.conv>=15?"cg":(rw.conv<5&&rw.counselled>=20?"cr":""))+'" style="font-weight:700">'+rw.conv+"%</td>"+l2eCell+
             ems.map(function(m){
               const n=(rw.cols&&rw.cols[m])||0;
               const same=m===rw.month;
@@ -221,7 +226,9 @@ async function renderConv(){
       '<div class="cards">'+
       '<div class="card"><div class="l">Counselled leads</div><div class="v">'+cv.totals.counselled.toLocaleString("en-IN")+'</div><div class="s">first entry into a counselled stage</div></div>'+
       '<div class="card"><div class="l">Converted</div><div class="v cg">'+cv.totals.converted.toLocaleString("en-IN")+'</div><div class="s">matched enrolment in payment tracker'+(PCV.pm?" in "+mn(PCV.pm):"")+'</div></div>'+
-      '<div class="card"><div class="l">Conversion</div><div class="v ci">'+cv.totals.conv+"%</div></div></div>"+
+      '<div class="card"><div class="l">C2E: Counselling → Enrolment</div><div class="v ci">'+cv.totals.conv+"%</div></div>"+
+      '<div class="card"><div class="l">Leads in scope</div><div class="v">'+cv.totals.leads.toLocaleString("en-IN")+'</div><div class="s">all owned staged leads (counselled-month filter n/a)</div></div>'+
+      '<div class="card"><div class="l">L2E: Lead → Enrolment</div><div class="v cg">'+cv.totals.l2e+"%</div><div class=\"s\">"+cv.totals.l2eConv+" enrolled of all leads</div></div></div>"+
       '<div class="sec"><h3>Counselling cohort: counselled month → enrolment month</h3><div class="sub">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal highlighted = same-month conversion; recent cohorts are still maturing.</div>'+matrix(cv.byMonth,"Counselled month")+"</div>"+
       '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month")+"</div>"+
       '<div class="grid2">'+tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+

@@ -684,19 +684,44 @@ app.get("/api/conversion", (req, res) => {
     add(byCreateMonth, crm);
   });
   const enrolMonths = Object.keys(enrolMonthsSet).sort();
-  const out = (m, keyName, labelFn) => Object.entries(m).map(([k, v]) => {
+  // L2E: lead -> enrolment over ALL owned staged leads in scope (counselled-month filter does not apply)
+  const l2e = { byAgent: {}, byCreator: {}, bySegment: {}, byCreateMonth: {}, tot: 0, conv: 0 };
+  CACHE.contacts.forEach(c => {
+    if (fCreator && (c.topmate_username || "") !== fCreator) return;
+    if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    const seg = segOf(c.tm_student_or_professional);
+    if (fSegment && seg !== fSegment) return;
+    const crm = ymOf(c.createdate) || "(unknown)";
+    if (fCreate && crm !== fCreate) return;
+    const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
+    const eDate = (em && eEmailDate[em]) || (ph && ePhoneDate[ph]) || "";
+    let converted = !!eDate;
+    if (fPay && (eDate ? eDate.slice(0, 7) : "") !== fPay) converted = false;
+    l2e.tot++; if (converted) l2e.conv++;
+    const bump = (m, k) => { if (!m[k]) m[k] = { n: 0, c: 0 }; m[k].n++; if (converted) m[k].c++; };
+    bump(l2e.byAgent, c.hubspot_owner_id);
+    bump(l2e.byCreator, c.topmate_username || "(no creator)");
+    bump(l2e.bySegment, seg);
+    bump(l2e.byCreateMonth, crm);
+  });
+  const out = (m, keyName, labelFn, l2eMap) => Object.entries(m).map(([k, v]) => {
     const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0, cols: v.cols };
     o[keyName] = k; o.label = labelFn ? labelFn(k) : k;
+    if (l2eMap) {
+      const x = l2eMap[k] || { n: 0, c: 0 };
+      o.leads = x.n; o.l2eConv = x.c; o.l2e = x.n ? +(100 * x.c / x.n).toFixed(2) : 0;
+    }
     return o;
   }).sort((a, b) => b.counselled - a.counselled);
   res.json({
     loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
-    totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0 },
+    totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0,
+      leads: l2e.tot, l2eConv: l2e.conv, l2e: l2e.tot ? +(100 * l2e.conv / l2e.tot).toFixed(2) : 0 },
     enrolMonths, options,
-    byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id)),
-    byCreator: out(byCreator, "creator"),
-    bySegment: out(bySegment, "segment"),
-    byCreateMonth: out(byCreateMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1)),
+    byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id), l2e.byAgent),
+    byCreator: out(byCreator, "creator", null, l2e.byCreator),
+    bySegment: out(bySegment, "segment", null, l2e.bySegment),
+    byCreateMonth: out(byCreateMonth, "month", null, l2e.byCreateMonth).sort((a, b) => (a.month < b.month ? -1 : 1)),
     byMonth: out(byMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1))
   });
 });
