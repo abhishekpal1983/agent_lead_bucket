@@ -171,7 +171,7 @@ function render(j){
     kpi(rupee(j.revenue.total),"Revenue all time")+
     "</div>"+
     '<div class="sec"><h2>Do these first</h2><div class="sub">Your four queues, worst first. Click a name to open the lead in HubSpot.</div><div class="qgrid">'+
-      q("Fresh this month, no stage set","red",j.queues.fresh||[],function(l){return esc(l.creator)+" · arrived "+l.days+"d ago";})+
+      q("Fresh, no stage set","red",j.queues.fresh||[],function(l){return esc(l.creator)+" · arrived "+l.days+"d ago";})+
       q("Requested callback, never called","red",j.queues.rcb,function(l){return esc(l.creator)+" · waiting "+l.days+"d";})+
       q("Overdue follow ups","amber",j.queues.overdue,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · due "+fd(l.fu);})+
       q("Hot but no next step booked","blue",j.queues.nofu,function(l){return (STAGE_LABEL[l.stage]||l.stage)+" · "+l.days+"d in stage";})+

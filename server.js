@@ -132,16 +132,15 @@ async function fetchContactsForOwner(ownerId){
   return out;
 }
 
-async function fetchFreshForOwner(ownerId, sinceMs){
-  // fresh leads: engagement stage NOT set, created this month
+async function fetchFreshForOwner(ownerId){
+  // fresh leads: engagement stage NOT set, any create month
   const out = [];
   let after;
   do {
     const body = {
       filterGroups: [{ filters: [
         { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
-        { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId },
-        { propertyName: "createdate", operator: "GTE", value: String(sinceMs) }
+        { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
       ]}],
       properties: ["firstname", "lastname", "topmate_username", "createdate"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
@@ -151,7 +150,7 @@ async function fetchFreshForOwner(ownerId, sinceMs){
     (j.results || []).forEach(r => out.push(Object.assign({ id: r.id }, r.properties)));
     after = j.paging && j.paging.next && j.paging.next.after;
     await sleep(120);
-    if (out.length >= 1000) break;
+    if (out.length >= 9500) break;
   } while (after);
   return out;
 }
@@ -164,17 +163,16 @@ async function sync(){
     const owners = await fetchOwners();
     const ids = Object.keys(owners);
     const contacts = [];
-    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const fresh = {};
     let freshTotal = 0;
     for (const id of ids) {
       try { const rows = await fetchContactsForOwner(id); contacts.push(...rows); }
       catch (e) { console.error("owner " + id + " sync failed: " + e.message); }
-      try { const fr = await fetchFreshForOwner(id, monthStart.getTime()); if (fr.length) { fresh[id] = fr; freshTotal += fr.length; } }
+      try { const fr = await fetchFreshForOwner(id); if (fr.length) { fresh[id] = fr; freshTotal += fr.length; } }
       catch (e) { console.error("owner " + id + " fresh sync failed: " + e.message); }
     }
     CACHE = { contacts, owners, fresh, loadedAt: new Date().toISOString(), syncing: false, error: null };
-    console.log("Synced " + contacts.length + " staged contacts + " + freshTotal + " fresh (no stage, this month) across " + ids.length + " owners");
+    console.log("Synced " + contacts.length + " staged contacts + " + freshTotal + " fresh (no stage) across " + ids.length + " owners");
   } catch (e) {
     CACHE.syncing = false; CACHE.error = e.message;
     console.error("Sync failed: " + e.message);

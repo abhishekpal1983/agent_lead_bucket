@@ -131,7 +131,7 @@
   <div id="viewSum" style="display:none"></div>
   <div id="viewEnr" style="display:none"></div>
   <div class="foot">
-    <b>Definitions.</b> Fresh (no stage) = leads created this calendar month whose Contact engagement stage is still empty, i.e. never worked; they sit outside all staged totals. Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
+    <b>Definitions.</b> Fresh (no stage) = leads whose Contact engagement stage is still empty, i.e. never worked, regardless of create month; they sit outside all staged totals. Serviceable = Workable + Fresh. Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
     NI post-counselling = previous stage was Discovery / pitched / Counselled / Payment prospect / IFC / any Follow up stage, or counselling recorded done. Student vs professional is classified from the free text field tm_student_or_professional.
     Data syncs from HubSpot on the server every 30 minutes; use Re-sync to force a refresh.
   </div>
@@ -229,7 +229,7 @@ function drawCards(){
   const known = s("stu")+s("pro");
   document.getElementById("cards").innerHTML =
     card(sel.length,"Agents","c-blue")+card(s("total").toLocaleString(),"Staged leads","c-blue")+
-    card(s("freshNoStage").toLocaleString(),"Fresh, no stage (this mo)","c-teal")+
+    card(s("freshNoStage").toLocaleString(),"Fresh (no stage)","c-teal")+
     card(s("workable").toLocaleString(),"Workable","c-green")+
     card(s("serviceable").toLocaleString(),"Serviceable (workable + fresh)","c-green")+
     card(s("churned").toLocaleString(),"Churned","c-red")+
