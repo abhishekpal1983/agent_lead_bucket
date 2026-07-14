@@ -574,6 +574,13 @@ app.get("/api/drill/:id", (req, res) => {
     if (rest > 0) pre.push({ l: k, n: rest });
   });
   post.sort((a, b) => b.n - a.n); pre.sort((a, b) => b.n - a.n);
+  // fresh (no stage, this month) per creator for this agent
+  ((CACHE.fresh || {})[req.params.id] || []).forEach(f => {
+    const u = f.topmate_username || "(no creator)";
+    if (req.query.creator && u !== req.query.creator) return;
+    if (!creators[u]) creators[u] = { u, t: 0, w: 0, c: 0, rcb: 0, dnp: 0, ni: 0, dq: 0, couns: 0, ifc: 0, won: 0 };
+    creators[u].fresh = (creators[u].fresh || 0) + 1;
+  });
   res.json({
     creators: Object.values(creators).sort((a, b) => b.t - a.t),
     stageAgg, post, pre,
@@ -1052,6 +1059,17 @@ app.get("/api/summary", (req, res) => {
     if (CHURN.indexOf(st) >= 0) x.churn++;
     if (st === "rcb_requested_callback" && !ts(c.last_call_date_and_time)) x.rcbun++;
     if (ts(c.createdate) > d30) x.fresh++;
+  });
+  // fresh no-stage leads per owner x creator
+  Object.keys(CACHE.fresh || {}).forEach(oid => {
+    if (req.query.agent && oid !== req.query.agent) return;
+    (CACHE.fresh[oid] || []).forEach(f => {
+      const cr = f.topmate_username || "(no creator)";
+      if (req.query.creator && cr !== req.query.creator) return;
+      const key = oid + "|" + cr;
+      if (!cells[key]) cells[key] = { owner: oid, cred: cr, total: 0, work: 0, churn: 0, fresh: 0, overdue: 0, nofu: 0, rcbun: 0, own: 0, tot: 0 };
+      cells[key].freshNS = (cells[key].freshNS || 0) + 1;
+    });
   });
   res.json({ cells: Object.values(cells) });
 });

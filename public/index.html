@@ -166,6 +166,7 @@ async function loadMetrics(){
     a.counselled = c ? c.counselled : 0;
     a.converted = c ? c.converted : 0;
     a.convPct = c && c.counselled ? c.conv : -1;
+    a.serviceable = (a.workable||0) + (a.freshNoStage||0);
     a.ratio = a.churned ? a.workable/a.churned : (a.workable?9.99:0);
     a.spKnown = a.stu + a.pro;
     a.stuShare = a.spKnown ? a.stu/a.spKnown : -1;
@@ -212,8 +213,8 @@ function drawAll(){
   document.getElementById("asof").textContent = "Data synced from HubSpot "+(META.loadedAt?new Date(META.loadedAt).toLocaleString():"")+" · "+META.contacts+" staged leads · "+AGENTS.length+" agents. Click a row for full drill down.";
 }
 const COLS = [
-  ["name","Agent"],["total","Total"],["workable","Workable"],["churned","Churned"],["ratio","W:C"],
-  ["freshNoStage","Fresh (no stage)"],["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
+  ["name","Agent"],["total","Total"],["workable","Workable"],["freshNoStage","Fresh (no stage)"],["serviceable","Serviceable"],["churned","Churned"],["ratio","W:C"],
+  ["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
   ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["convPct","Couns→Enr %"],["badge","Health"]
 ];
 let sortKey = "total", sortDir = -1;
@@ -229,7 +230,9 @@ function drawCards(){
   document.getElementById("cards").innerHTML =
     card(sel.length,"Agents","c-blue")+card(s("total").toLocaleString(),"Staged leads","c-blue")+
     card(s("freshNoStage").toLocaleString(),"Fresh, no stage (this mo)","c-teal")+
-    card(s("workable").toLocaleString(),"Workable","c-green")+card(s("churned").toLocaleString(),"Churned","c-red")+
+    card(s("workable").toLocaleString(),"Workable","c-green")+
+    card(s("serviceable").toLocaleString(),"Serviceable (workable + fresh)","c-green")+
+    card(s("churned").toLocaleString(),"Churned","c-red")+
     card(s("age30").toLocaleString(),"Fresh ≤30d","c-green")+card(s("overdue").toLocaleString(),"Overdue FU","c-amber")+
     card(s("niPost").toLocaleString(),"NI post-couns","c-red")+card(s("niPre").toLocaleString(),"NI pre-couns","c-amber")+
     card(known?Math.round(100*s("stu")/known)+"% stu":"n/a","Student share (known)","c-teal");
@@ -267,8 +270,10 @@ function drawBody(){
     const tr = document.createElement("tr"); tr.className="agent";
     tr.innerHTML = '<td><span class="aname">'+esc(a.name)+'</span> <a href="/agent.html?id='+a.id+'" target="_blank" rel="noopener" title="Open '+esc(a.name)+"'s snapshot page\" style=\"color:var(--blue);text-decoration:none;font-size:11px\" onclick=\"event.stopPropagation()\">↗</a>"+(a.active?"":' <span class="pill">deactivated</span>')+
       (a.email?'<div class="amail">'+esc(a.email)+"</div>":"")+"</td>"+
-      "<td>"+a.total.toLocaleString()+"</td><td>"+a.workable+"</td><td>"+a.churned+"</td><td>"+a.ratio.toFixed(2)+"</td>"+
+      "<td>"+a.total.toLocaleString()+"</td><td>"+a.workable+"</td>"+
       "<td"+(a.freshNoStage>0?' class="good"':"")+">"+(a.freshNoStage||0)+"</td>"+
+      '<td style="font-weight:700">'+a.serviceable+"</td>"+
+      "<td>"+a.churned+"</td><td>"+a.ratio.toFixed(2)+"</td>"+
       "<td"+(a.age30<0.1*a.total&&a.total>100?' class="warn"':"")+">"+a.age30+"</td><td>"+a.old90+"</td>"+
       "<td"+(a.overdue>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.overdue+"</td>"+
       "<td"+(a.nofu>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.nofu+"</td>"+
@@ -344,10 +349,10 @@ async function toggleDetail(tr, a){
   let dr;
   try { dr = await drill(a); } catch(e){ d.firstChild.innerHTML = '<div class="dload">Drill down failed: '+esc(e.message||e)+"</div>"; return; }
   const crRows = dr.creators.slice(0,12).map(function(k){
-    return "<tr><td>"+esc(k.u)+"</td><td>"+k.t+"</td><td>"+k.w+"</td><td>"+k.c+"</td><td>"+k.rcb+"</td><td>"+k.dnp+"</td><td>"+k.ni+"</td><td>"+k.dq+"</td><td>"+k.couns+"</td><td>"+k.ifc+"</td><td>"+k.won+"</td></tr>";
+    return "<tr><td>"+esc(k.u)+"</td><td>"+k.t+"</td><td>"+k.w+'</td><td class="good">'+(k.fresh||0)+"</td><td>"+(k.w+(k.fresh||0))+"</td><td>"+k.c+"</td><td>"+k.rcb+"</td><td>"+k.dnp+"</td><td>"+k.ni+"</td><td>"+k.dq+"</td><td>"+k.couns+"</td><td>"+k.ifc+"</td><td>"+k.won+"</td></tr>";
   }).join("");
   const rest = dr.creators.slice(12);
-  const restRow = rest.length ? "<tr><td>+"+rest.length+" more</td><td>"+rest.reduce(function(t,k){return t+k.t;},0)+"</td><td colspan='9'></td></tr>" : "";
+  const restRow = rest.length ? "<tr><td>+"+rest.length+" more</td><td>"+rest.reduce(function(t,k){return t+k.t;},0)+"</td><td colspan='11'></td></tr>" : "";
   const stRows = STAGE_ORDER.filter(function(st){ const x=dr.stageAgg[st]; return x && x.n>0; }).map(function(st){
     const x = dr.stageAgg[st];
     const depth = x.n ? x.calls/x.n : 0;
@@ -365,7 +370,7 @@ async function toggleDetail(tr, a){
     (FC ? "" : dr.creators.slice(0,50).map(function(k){ return '<option value="'+esc(k.u)+'">'+esc(k.u)+" ("+k.t+")</option>"; }).join(""));
   d.firstChild.innerHTML =
     '<div class="dgrid">'+
-    '<div class="dblock"><h3>Stage mix by creator</h3><table class="mini"><tr><th>Creator</th><th>Total</th><th>Work</th><th>Churn</th><th>RCB</th><th>DNP</th><th>NI</th><th>DQ</th><th>Couns</th><th>IFC</th><th>Won</th></tr>'+crRows+restRow+"</table>"+
+    '<div class="dblock"><h3>Stage mix by creator</h3><table class="mini"><tr><th>Creator</th><th>Total</th><th>Work</th><th>Fresh</th><th>Svc</th><th>Churn</th><th>RCB</th><th>DNP</th><th>NI</th><th>DQ</th><th>Couns</th><th>IFC</th><th>Won</th></tr>'+crRows+restRow+"</table>"+
       '<h3 class="mt">Calls by stage</h3><table class="mini"><tr><th>Stage</th><th>Leads</th><th>Calls all</th><th>Calls own</th><th>Avg depth</th><th>Avg days</th><th>Att/day</th></tr>'+stRows+"</table></div>"+
     '<div class="dblock"><h3>Student vs professional</h3>'+spHtml+
       '<h3 class="mt">NI reasons, post counselling ('+a.niPost+')</h3>'+spLine(dr.niPostSP)+bars(dr.post)+
@@ -423,7 +428,9 @@ function diagnose(c, act){
   function tag(l,cl){ if(!tags.some(function(t){return t[0]===l;})) tags.push([l,cl]); }
   if (!act){ tag("Reassign","b-purple"); acts.push("Owner is deactivated; reassign these "+c.total+" leads to an active agent."); challenge = "Gap: ownership. Leads are parked with a deactivated agent."; }
   if (c.tot>30 && c.own < 0.05*c.tot){ tag("Inherited","b-blue"); acts.push("Almost all "+c.tot+" logged calls are from previous owners; start working this bucket or hand it back."); if(!challenge) challenge = "Gap: effort. Inherited bucket, current agent has barely touched these leads."; }
-  if (c.work < 15 || workShare < 0.25){ tag("Leads gap","b-red"); acts.push("Only "+c.work+" workable leads left ("+Math.round(workShare*100)+"% of this bucket). Request fresh allocation from this creator or shift focus."); if(!challenge) challenge = "Gap: leads. Not enough workable pipeline from this creator to generate counsellings."; }
+  const svc = c.work + (c.freshNS||0);
+  if (c.freshNS >= 10){ tag("Fresh unworked","b-blue"); acts.push("Stage the "+c.freshNS+" fresh leads (no engagement stage yet) before anything else; they are this month's allocation."); if(!challenge) challenge = "Gap: effort. Fresh allocation is sitting unstaged."; }
+  if (svc < 15 || (c.total ? svc/(c.total+(c.freshNS||0)) : 0) < 0.25){ tag("Leads gap","b-red"); acts.push("Only "+svc+" serviceable leads left ("+c.work+" workable + "+(c.freshNS||0)+" fresh). Request fresh allocation from this creator or shift focus."); if(!challenge) challenge = "Gap: leads. Not enough serviceable pipeline from this creator to generate counsellings."; }
   if (c.work>=15 && cpw < 1){ tag("Effort gap","b-amber"); acts.push("Only "+cpw.toFixed(1)+" own calls per workable lead; raise the attempt rate before asking for more leads."); if(!challenge) challenge = "Gap: effort. Enough workable leads, too few call attempts on them."; }
   if (c.rcbun >= 10){ tag("Effort gap","b-amber"); acts.push("Call the "+c.rcbun+" RCB leads that have never been called; they asked for a callback."); if(!challenge) challenge = "Gap: effort. Requested callbacks are sitting uncalled."; }
   if (c.work>15 && c.overdue > 0.4*c.work){ tag("FU backlog","b-amber"); acts.push("Clear "+c.overdue+" overdue follow ups before they ghost."); if(!challenge) challenge = "Gap: process. Pipeline exists but follow ups are slipping past their dates."; }
@@ -457,7 +464,7 @@ async function showSummary(){
     byOwner[oid].sort(function(x,y){return y.total-x.total;}).forEach(function(c){
       const d = diagnose(c, a.active!==false);
       h += '<div class="sumcred"><div class="crow"><span class="cn">'+esc(c.cred)+'</span>'+
-        '<span class="cs">'+c.total+" leads · "+c.work+" workable · "+c.churn+" churned · "+c.fresh+" fresh ≤30d · "+(c.work?(c.own/c.work).toFixed(1):"0")+" own calls/workable · "+c.rcbun+" RCB uncalled · "+c.overdue+" overdue FU</span>"+
+        '<span class="cs">'+c.total+" staged · "+c.work+" workable + "+(c.freshNS||0)+" fresh = "+(c.work+(c.freshNS||0))+" serviceable · "+c.churn+" churned · "+c.fresh+" fresh ≤30d · "+(c.work?(c.own/c.work).toFixed(1):"0")+" own calls/workable · "+c.rcbun+" RCB uncalled · "+c.overdue+" overdue FU</span>"+
         d.tags.map(function(t){ return '<span class="tag '+t[1]+'">'+t[0]+"</span>"; }).join(" ")+"</div>"+
         '<div class="challenge">'+d.challenge+"</div>"+
         '<ul class="acts">'+d.acts.map(function(x){ return "<li>"+esc(x)+"</li>"; }).join("")+"</ul></div>";
