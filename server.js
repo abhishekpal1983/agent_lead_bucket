@@ -22,7 +22,7 @@ const UI_DOMAIN = process.env.HS_UI_DOMAIN || "app-na2.hubspot.com";
 const HS = "https://api.hubapi.com";
 
 const PROPS = [
-  "email","phone",
+  "email","phone","international_number",
   "hubspot_owner_id","contact_engagement_stage","topmate_username",
   "callscurrent_stage","call_in_current_stage_by_current_owner",
   "createdate","follow_up_date_and_time","last_call_date_and_time",
@@ -142,7 +142,7 @@ async function fetchFreshForOwner(ownerId){
         { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
         { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
       ]}],
-      properties: ["firstname", "lastname", "topmate_username", "createdate"],
+      properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
     };
@@ -387,10 +387,24 @@ function classifySP(v){
 function isPostCouns(c){
   return POST_STAGES.indexOf(c.previous_engagement_stage) >= 0 || String(c.counselling_done) === "true";
 }
-function filt(creator, agent){
+function intlOf(c){ const v = String(c.international_number || "").toLowerCase(); return v === "true" || v === "yes"; }
+function intlMatch(c, intl){ return !intl || (intl === "yes" ? intlOf(c) : !intlOf(c)); }
+function sheetIntl(r){
+  let p = String(r.consumer_phone || "").trim().replace(/[\s\-()]/g, "");
+  if (!p) return false;
+  if (p.startsWith("+")) return !p.startsWith("+91");
+  const d = p.replace(/\D/g, "");
+  if (d.length === 10) return false;
+  if (d.length === 11 && d[0] === "0") return false;
+  if (d.length === 12 && d.startsWith("91")) return false;
+  return d.length > 10;
+}
+function sheetIntlMatch(r, intl){ return !intl || (intl === "yes" ? sheetIntl(r) : !sheetIntl(r)); }
+function filt(creator, agent, intl){
   return CACHE.contacts.filter(c =>
     (!creator || c.topmate_username === creator) &&
-    (!agent || c.hubspot_owner_id === agent)
+    (!agent || c.hubspot_owner_id === agent) &&
+    intlMatch(c, intl)
   );
 }
 function agentMetrics(rows){
@@ -399,7 +413,7 @@ function agentMetrics(rows){
   rows.forEach(c => {
     const id = c.hubspot_owner_id;
     if (!per[id]) per[id] = { id, total:0, workable:0, churned:0, overdue:0, nofu:0, stale:0, churnEffort:0, freshRcb:0,
-      ownCalls:0, totCalls:0, age30:0, age90:0, ni:0, niPost:0, dq:0, stu:0, pro:0 };
+      ownCalls:0, totCalls:0, age30:0, age90:0, ni:0, niPost:0, dq:0, stu:0, pro:0, intl:0 };
     const a = per[id], st = c.contact_engagement_stage;
     const own = num(c.call_in_current_stage_by_current_owner), all = num(c.callscurrent_stage);
     const isW = WORKABLE.indexOf(st) >= 0, isC = CHURN.indexOf(st) >= 0;
@@ -419,6 +433,7 @@ function agentMetrics(rows){
     if (st === "disqualified") a.dq++;
     const sp = classifySP(c.tm_student_or_professional);
     if (sp === "S") a.stu++; else if (sp === "P") a.pro++;
+    if (intlOf(c)) a.intl++;
   });
   return Object.values(per).map(a => {
     const o = CACHE.owners[a.id] || {};
@@ -442,10 +457,12 @@ app.get("/api/enrolments", (req, res) => {
   const agentId = req.query.agent || "";
   let agentEmail = (req.query.agentEmail || "").toLowerCase();
   if (!agentEmail && agentId && CACHE.owners[agentId]) agentEmail = (CACHE.owners[agentId].email || "").toLowerCase();
+  const fIntlE = req.query.intl || "";
   const rows = SHEET.rows.filter(r =>
     (!creator || (r.creator_username || "") === creator) &&
     (!agentEmail || (r.owner_email || "").toLowerCase() === agentEmail) &&
-    (!month || (r.date || "").slice(0, 7) === month)
+    (!month || (r.date || "").slice(0, 7) === month) &&
+    sheetIntlMatch(r, fIntlE)
   );
   const optMonths = {}, optAgents = {}, optCreators = {};
   SHEET.rows.forEach(r => {
@@ -512,11 +529,12 @@ app.post("/api/refresh", (req, res) => {
 
 app.get("/api/agents", (req, res) => {
   const fc = req.query.creator || "";
-  const rows = filt(fc, null);
+  const fIntl = req.query.intl || "";
+  const rows = filt(fc, null, fIntl);
   const creators = {};
   CACHE.contacts.forEach(c => { const u = c.topmate_username; if (u) creators[u] = (creators[u] || 0) + 1; });
   const agents = agentMetrics(rows).map(a => {
-    a.freshNoStage = ((CACHE.fresh || {})[a.id] || []).filter(f => !fc || (f.topmate_username || "") === fc).length;
+    a.freshNoStage = ((CACHE.fresh || {})[a.id] || []).filter(f => (!fc || (f.topmate_username || "") === fc) && intlMatch(f, fIntl)).length;
     return a;
   });
   res.json({ loadedAt: CACHE.loadedAt, error: CACHE.error,
@@ -525,7 +543,7 @@ app.get("/api/agents", (req, res) => {
 });
 
 app.get("/api/drill/:id", (req, res) => {
-  const rows = filt(req.query.creator, req.params.id);
+  const rows = filt(req.query.creator, req.params.id, req.query.intl);
   const now = Date.now();
   const creators = {}, stageAgg = {}, months = {}, allR = {}, postR = {}, spTopMap = {};
   let spS = 0, spP = 0, spU = 0;
@@ -576,6 +594,7 @@ app.get("/api/drill/:id", (req, res) => {
   ((CACHE.fresh || {})[req.params.id] || []).forEach(f => {
     const u = f.topmate_username || "(no creator)";
     if (req.query.creator && u !== req.query.creator) return;
+    if (!intlMatch(f, req.query.intl)) return;
     if (!creators[u]) creators[u] = { u, t: 0, w: 0, c: 0, rcb: 0, dnp: 0, ni: 0, dq: 0, couns: 0, ifc: 0, won: 0 };
     creators[u].fresh = (creators[u].fresh || 0) + 1;
   });
@@ -590,7 +609,7 @@ app.get("/api/drill/:id", (req, res) => {
 });
 
 app.get("/api/leads", (req, res) => {
-  const rows = filt(req.query.creator, req.query.owner)
+  const rows = filt(req.query.creator, req.query.owner, req.query.intl)
     .filter(c => c.contact_engagement_stage === req.query.stage)
     .slice(0, 200)
     .map(c => ({
@@ -603,7 +622,8 @@ app.get("/api/leads", (req, res) => {
       own: num(c.call_in_current_stage_by_current_owner),
       entered: ts(c.engagement_stage_last_changed_at) || ts(c.createdate),
       last: ts(c.last_call_date_and_time),
-      fu: ts(c.follow_up_date_and_time)
+      fu: ts(c.follow_up_date_and_time),
+      intl: intlOf(c)
     }));
   res.json({ rows });
 });
@@ -699,6 +719,7 @@ app.get("/api/payment-analysis", (req, res) => {
 app.get("/api/conversion", (req, res) => {
   const fCreator = req.query.creator || "", fAgent = req.query.agent || "", fMonth = req.query.cmonth || "";
   const fSegment = req.query.segment || "", fCreate = req.query.createMonth || "", fPay = req.query.pmonth || "";
+  const fIntl = req.query.intl || "";
   // unfiltered option lists for the UI
   const optM = {}, optA = {}, optC = {}, optCr = {};
   CACHE.contacts.forEach(c => {
@@ -738,6 +759,7 @@ app.get("/api/conversion", (req, res) => {
     if (fCreator && (c.topmate_username || "") !== fCreator) return;
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
     if (fMonth && ymOf(ts) !== fMonth) return;
+    if (!intlMatch(c, fIntl)) return;
     const seg = segOf(c.tm_student_or_professional);
     if (fSegment && seg !== fSegment) return;
     const crm = ymOf(c.createdate) || "(unknown)";
@@ -762,6 +784,7 @@ app.get("/api/conversion", (req, res) => {
   CACHE.contacts.forEach(c => {
     if (fCreator && (c.topmate_username || "") !== fCreator) return;
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    if (!intlMatch(c, fIntl)) return;
     const seg = segOf(c.tm_student_or_professional);
     if (fSegment && seg !== fSegment) return;
     const crm = ymOf(c.createdate) || "(unknown)";
@@ -901,6 +924,7 @@ app.get("/api/leads-created", (req, res) => {
 app.get("/api/agent/:id", (req, res) => {
   const id = req.params.id;
   const fCreator = req.query.creator || "";
+  const fIntl = req.query.intl || "";
   const o = CACHE.owners[id] || {};
   const email = (o.email || "").toLowerCase();
   const now = Date.now(), month = new Date().toISOString().slice(0, 7), w7 = now - 7 * 86400000, d30 = now - 30 * 86400000;
@@ -908,12 +932,12 @@ app.get("/api/agent/:id", (req, res) => {
   const crCounts = {};
   mineAll.forEach(c => { const u = c.topmate_username || "(no creator)"; crCounts[u] = (crCounts[u] || 0) + 1; });
   const creatorOptions = Object.entries(crCounts).map(([u, n]) => ({ u, n })).sort((a, b) => b.n - a.n);
-  const mine = fCreator ? mineAll.filter(c => (c.topmate_username || "(no creator)") === fCreator) : mineAll;
+  const mine = mineAll.filter(c => (!fCreator || (c.topmate_username || "(no creator)") === fCreator) && intlMatch(c, fIntl));
   const allAgents = agentMetrics(CACHE.contacts);
   const me = agentMetrics(mine).filter(a => a.id === id)[0] || { id, total: 0, workable: 0, churned: 0, overdue: 0, nofu: 0, stale: 0, churnEffort: 0, freshRcb: 0, age30: 0, age90: 0, old90: 0, ni: 0, niPost: 0, niPre: 0, ownCalls: 0, totCalls: 0, stu: 0, pro: 0 };
   // revenue from payment tracker
   const pays = SHEET.rows.filter(r => (r.owner_email || "").toLowerCase() === email && email &&
-    (!fCreator || (r.creator_username || "(no creator)") === fCreator));
+    (!fCreator || (r.creator_username || "(no creator)") === fCreator) && sheetIntlMatch(r, fIntl));
   const revenue = {
     total: pays.reduce((t, r) => t + r.price, 0),
     payments: pays.length,
@@ -994,7 +1018,7 @@ app.get("/api/agent/:id", (req, res) => {
     stage: c.contact_engagement_stage, days: Math.max(1, Math.round((now - (ts(c.engagement_stage_last_changed_at) || ts(c.createdate))) / 86400000)),
     fu: ts(c.follow_up_date_and_time) || 0, last: ts(c.last_call_date_and_time) || 0, calls: num(c.callscurrent_stage) });
   const isWork = c => WORKABLE.indexOf(c.contact_engagement_stage) >= 0;
-  const freshMine = ((CACHE.fresh || {})[id] || []).filter(f => !fCreator || ((f.topmate_username || "(no creator)") === fCreator));
+  const freshMine = ((CACHE.fresh || {})[id] || []).filter(f => (!fCreator || ((f.topmate_username || "(no creator)") === fCreator)) && intlMatch(f, fIntl));
   me.freshNoStage = freshMine.length;
   const queues = {
     fresh: freshMine.slice(0, 15).map(f => ({ id: f.id, name: (((f.firstname || "") + " " + (f.lastname || "")).trim()) || "(no name)",
@@ -1039,7 +1063,7 @@ app.get("/api/agent/:id", (req, res) => {
 });
 
 app.get("/api/summary", (req, res) => {
-  const rows = filt(req.query.creator, req.query.agent);
+  const rows = filt(req.query.creator, req.query.agent, req.query.intl);
   const now = Date.now(), d30 = now - 30 * 86400000;
   const cells = {};
   rows.forEach(c => {
@@ -1064,6 +1088,7 @@ app.get("/api/summary", (req, res) => {
     (CACHE.fresh[oid] || []).forEach(f => {
       const cr = f.topmate_username || "(no creator)";
       if (req.query.creator && cr !== req.query.creator) return;
+      if (!intlMatch(f, req.query.intl)) return;
       const key = oid + "|" + cr;
       if (!cells[key]) cells[key] = { owner: oid, cred: cr, total: 0, work: 0, churn: 0, fresh: 0, overdue: 0, nofu: 0, rcbun: 0, own: 0, tot: 0 };
       cells[key].freshNS = (cells[key].freshNS || 0) + 1;

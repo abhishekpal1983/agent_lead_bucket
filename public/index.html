@@ -111,6 +111,7 @@
   <div class="controls">
     <label>Creator <select id="fcreator"><option value="">All creators</option></select></label>
     <label>Agent <select id="fagent"><option value="">All agents</option></select></label>
+    <label>Number <select id="fintl"><option value="">All numbers</option><option value="no">National</option><option value="yes">International</option></select></label>
     <label>Min leads <input type="number" id="minleads" min="0" step="10" value="50"></label>
     <span id="shown"></span>
     <span class="chip" id="fchip" style="display:none"></span>
@@ -131,7 +132,7 @@
   <div id="viewSum" style="display:none"></div>
   <div id="viewEnr" style="display:none"></div>
   <div class="foot">
-    <b>Definitions.</b> Fresh (no stage) = leads whose Contact engagement stage is still empty, i.e. never worked, regardless of create month; they sit outside all staged totals. Serviceable = Workable + Fresh. Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
+    <b>Definitions.</b> Fresh (no stage) = leads whose Contact engagement stage is still empty, i.e. never worked, regardless of create month; they sit outside all staged totals. Serviceable = Workable + Fresh. National vs International uses the HubSpot international_number field (true = international); the Number filter applies to every table, drill down, and tab (payments use a +91/10-digit phone heuristic). Workable = RCB, Discovery, Program pitched, Pricing pitched, Counselled, Follow up, FU-DNP, FU-RCB, Payment prospect. Churned = DNP, Ghosted, NI, Disqualified. IFC and Deal won sit outside both.
     NI post-counselling = previous stage was Discovery / pitched / Counselled / Payment prospect / IFC / any Follow up stage, or counselling recorded done. Student vs professional is classified from the free text field tm_student_or_professional.
     Data syncs from HubSpot on the server every 30 minutes; use Re-sync to force a refresh.
   </div>
@@ -146,14 +147,14 @@ const STAGE_ORDER = Object.keys(STAGE_LABEL);
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/'/g,"&#39;").replace(/"/g,"&quot;"); }
 function fdate(ms){ if(!ms) return ""; const d=new Date(ms); return isNaN(d)?"":d.toLocaleDateString()+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
 
-let AGENTS = [], CREATORS = [], FC = "", META = {}, VIEW = "dash";
+let AGENTS = [], CREATORS = [], FC = "", FI = "", META = {}, VIEW = "dash";
 let HS_URL = "#";
 async function api(path){ const r = await fetch(path); if(!r.ok) throw new Error("API "+r.status); return r.json(); }
 
 async function loadMetrics(){
   const both = await Promise.all([
-    api("/api/agents?creator="+encodeURIComponent(FC)),
-    api("/api/conversion?creator="+encodeURIComponent(FC)).catch(function(){return null;})
+    api("/api/agents?creator="+encodeURIComponent(FC)+"&intl="+FI),
+    api("/api/conversion?creator="+encodeURIComponent(FC)+"&intl="+FI).catch(function(){return null;})
   ]);
   const j = both[0], cv = both[1];
   const CONV = {};
@@ -215,7 +216,7 @@ function drawAll(){
 const COLS = [
   ["name","Agent"],["total","Total"],["workable","Workable"],["freshNoStage","Fresh (no stage)"],["serviceable","Serviceable"],["churned","Churned"],["ratio","W:C"],
   ["age30","Fresh ≤30d"],["old90","Old >90d"],["overdue","Overdue FU"],["nofu","No FU"],
-  ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["stuShare","Stu / Pro"],["convPct","Couns→Enr %"],["badge","Health"]
+  ["churnEffort","3+ own calls churned"],["niPost","NI post-couns"],["niPre","NI pre-couns"],["intl","Intl #"],["stuShare","Stu / Pro"],["convPct","Couns→Enr %"],["badge","Health"]
 ];
 let sortKey = "total", sortDir = -1;
 function card(v,l,c){ return '<div class="card '+(c||"")+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
@@ -232,6 +233,7 @@ function drawCards(){
     card(s("freshNoStage").toLocaleString(),"Fresh (no stage)","c-teal")+
     card(s("workable").toLocaleString(),"Workable","c-green")+
     card(s("serviceable").toLocaleString(),"Serviceable (workable + fresh)","c-green")+
+    card(s("intl").toLocaleString(),"International #","c-amber")+
     card(s("churned").toLocaleString(),"Churned","c-red")+
     card(s("age30").toLocaleString(),"Fresh ≤30d","c-green")+card(s("overdue").toLocaleString(),"Overdue FU","c-amber")+
     card(s("niPost").toLocaleString(),"NI post-couns","c-red")+card(s("niPre").toLocaleString(),"NI pre-couns","c-amber")+
@@ -279,6 +281,7 @@ function drawBody(){
       "<td"+(a.nofu>0.4*a.workable&&a.workable>50?' class="warn"':"")+">"+a.nofu+"</td>"+
       "<td"+(a.churnEffort>=25?' class="warn"':"")+">"+a.churnEffort+"</td>"+
       "<td"+(a.niPost>=20?' class="warn"':"")+">"+a.niPost+"</td><td>"+a.niPre+"</td>"+
+      "<td>"+(a.intl||0)+(a.total?' <span class="spmini">('+Math.round(100*(a.intl||0)/a.total)+"%)</span>":"")+"</td>"+
       "<td>"+spCell(a)+"</td>"+
       "<td>"+(a.convPct>=0 ? a.convPct+'% <span class="spmini">('+a.converted+"/"+a.counselled+")</span>" : '<span class="spmini">–</span>')+"</td>"+
       '<td><span class="badge '+a.badge[1]+'">'+a.badge[0]+"</span></td>";
@@ -300,6 +303,15 @@ document.addEventListener("change", async function(e){
     if (VIEW==="enr") showEnrolments();
   }
   if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); if (VIEW==="enr") showEnrolments(); }
+  if (e.target.id==="fintl"){
+    FI = e.target.value;
+    document.getElementById("app").style.opacity=".45";
+    try { await loadMetrics(); } catch(err){}
+    fillAgentSelect(); drawAll();
+    document.getElementById("app").style.opacity="1";
+    if (VIEW==="sum") showSummary();
+    if (VIEW==="enr") showEnrolments();
+  }
   if (e.target.id==="enrM"){ ENR.m = e.target.value; showEnrolments(); }
   if (e.target.id==="enrC"){ ENR.c = e.target.value; showEnrolments(); }
   if (e.target.id==="enrA"){ ENR.a = e.target.value; showEnrolments(); }
@@ -317,9 +329,9 @@ document.addEventListener("click", function(e){
 });
 
 async function drill(a){
-  const key = FC||"";
+  const key = (FC||"")+"|"+FI;
   if (a.drill && a.drill.key===key) return a.drill;
-  const j = await api("/api/drill/"+a.id+"?creator="+encodeURIComponent(FC));
+  const j = await api("/api/drill/"+a.id+"?creator="+encodeURIComponent(FC)+"&intl="+FI);
   j.key = key;
   a.drill = j;
   return j;
@@ -395,7 +407,7 @@ function classifySPc(v){
 async function explore(a, stage, cred, out, btn){
   btn.disabled = true; out.className="dload"; out.textContent = "Loading leads...";
   try {
-    const j = await api("/api/leads?owner="+a.id+"&stage="+encodeURIComponent(stage)+"&creator="+encodeURIComponent(FC||cred||""));
+    const j = await api("/api/leads?owner="+a.id+"&stage="+encodeURIComponent(stage)+"&creator="+encodeURIComponent(FC||cred||"")+"&intl="+FI);
     if (!j.rows.length){ out.textContent = "No leads in "+STAGE_LABEL[stage]+"."; btn.disabled=false; return; }
     const nowMs = Date.now();
     const L = j.rows.map(function(p){
@@ -410,10 +422,10 @@ async function explore(a, stage, cred, out, btn){
     const noFu = L.filter(function(l){return !l.fu;}).length, over = L.filter(function(l){return l.fuOver;}).length;
     const stuN = L.filter(function(l){return l.sp==="Student";}).length, proN = L.filter(function(l){return l.sp==="Prof";}).length;
     let h = '<div class="aggline"><b>'+n+" leads</b> · avg <b>"+avg(function(l){return l.calls;}).toFixed(1)+"</b> calls in stage ("+avg(function(l){return l.own;}).toFixed(1)+" by this owner) · avg <b>"+avg(function(l){return l.days;}).toFixed(0)+"</b> days in stage · avg <b>"+avg(function(l){return l.apd;}).toFixed(2)+"</b> attempts/day · "+stuN+" students / "+proN+" professionals · "+over+" overdue FU · "+noFu+" no FU set</div>";
-    h += '<div style="max-height:340px;overflow:auto"><table class="mini"><tr><th>Lead</th><th>Creator</th><th>Stu/Pro</th><th>Created</th><th>Days in stage</th><th>Calls</th><th>Own</th><th>Att/day</th><th>Last call</th><th>Next FU</th></tr>'+
+    h += '<div style="max-height:340px;overflow:auto"><table class="mini"><tr><th>Lead</th><th>Creator</th><th>Stu/Pro</th><th>Number</th><th>Created</th><th>Days in stage</th><th>Calls</th><th>Own</th><th>Att/day</th><th>Last call</th><th>Next FU</th></tr>'+
       L.map(function(l){
         const nm = l.id ? '<a href="'+HS_URL+l.id+'" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none">'+esc(l.name)+' <span style="font-size:10px">↗</span></a>' : esc(l.name);
-        return "<tr><td>"+nm+"</td><td>"+esc(l.cred)+"</td><td title=\""+esc(l.spRaw)+"\">"+l.sp+"</td><td>"+l.created+"</td><td>"+l.days+"</td><td>"+l.calls+"</td><td>"+l.own+"</td><td>"+l.apd.toFixed(2)+"</td><td>"+esc(l.last||"never")+"</td><td"+(l.fuOver?' class="warn"':"")+">"+esc(l.fu||"none")+"</td></tr>";
+        return "<tr><td>"+nm+"</td><td>"+esc(l.cred)+"</td><td title=\""+esc(l.spRaw)+"\">"+l.sp+"</td><td>"+(l.intl?'<span class="badge b-purple">Intl</span>':'<span class="spmini">Nat</span>')+"</td><td>"+l.created+"</td><td>"+l.days+"</td><td>"+l.calls+"</td><td>"+l.own+"</td><td>"+l.apd.toFixed(2)+"</td><td>"+esc(l.last||"never")+"</td><td"+(l.fuOver?' class="warn"':"")+">"+esc(l.fu||"none")+"</td></tr>";
       }).join("")+"</table></div>";
     out.className=""; out.innerHTML = h;
   } catch(e){ out.textContent = "Failed: "+(e.message||e); }
@@ -444,7 +456,7 @@ async function showSummary(){
   const v = document.getElementById("viewSum");
   v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Building agent × creator challenge summary...</div>';
   let j;
-  try { j = await api("/api/summary?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")); }
+  try { j = await api("/api/summary?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")+"&intl="+FI); }
   catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
   const MINCELL = 15;
   const byOwner = {};
@@ -485,8 +497,8 @@ async function showEnrolments(){
   let j, cv = null;
   try {
     const both = await Promise.all([
-      api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)),
-      api("/api/conversion?creator="+encodeURIComponent(CVF.c)+"&agent="+encodeURIComponent(CVF.a)+"&cmonth="+encodeURIComponent(CVF.m)).catch(function(){return null;})
+      api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)+"&intl="+FI),
+      api("/api/conversion?creator="+encodeURIComponent(CVF.c)+"&agent="+encodeURIComponent(CVF.a)+"&cmonth="+encodeURIComponent(CVF.m)+"&intl="+FI).catch(function(){return null;})
     ]);
     j = both[0]; cv = both[1];
   }
