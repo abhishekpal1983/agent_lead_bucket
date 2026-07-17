@@ -800,6 +800,54 @@ app.get("/api/conversion", (req, res) => {
     bump(l2e.bySegment, seg);
     bump(l2e.byCreateMonth, crm);
   });
+  // day-by-day conversion view: enrolments per payment day with lead create + counselling lags
+  const contactBy = new Map();
+  CACHE.contacts.forEach(c => {
+    if (fCreator && (c.topmate_username || "") !== fCreator) return;
+    if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    if (!intlMatch(c, fIntl)) return;
+    if (fSegment && segOf(c.tm_student_or_professional) !== fSegment) return;
+    const crm = ymOf(c.createdate) || "(unknown)";
+    if (fCreate && crm !== fCreate) return;
+    const kts = COUNSEL.byId[c.id] || 0;
+    if (fMonth && ymOf(kts) !== fMonth) return;
+    const rec = { created: ts(c.createdate), couns: kts };
+    const em2 = (c.email || "").toLowerCase(); if (em2 && !contactBy.has(em2)) contactBy.set(em2, rec);
+    const ph2 = normPhone(c.phone); if (ph2 && !contactBy.has(ph2)) contactBy.set(ph2, rec);
+  });
+  const anyContactFilter = !!(fCreator || fAgent || fSegment || fCreate || fMonth || fIntl);
+  const dayMap = {}, seenD = new Set();
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    const em2 = (r.consumer_email || "").toLowerCase(), ph2 = normPhone(r.consumer_phone);
+    const key = (r.creator_username || "") + "|" + (em2 || ph2 || r.id);
+    if (seenD.has(key)) return;
+    seenD.add(key);
+    const d = (r.date || "").slice(0, 10);
+    if (!d) return;
+    if (fPay && d.slice(0, 7) !== fPay) return;
+    const m = (em2 && contactBy.get(em2)) || (ph2 && contactBy.get(ph2)) || null;
+    if (anyContactFilter && !m) return;
+    if (!dayMap[d]) dayMap[d] = { d, n: 0, rev: 0, matched: 0, lagCSum: 0, lagCN: 0, lagKSum: 0, lagKN: 0, items: [] };
+    const dm = dayMap[d];
+    dm.n++; dm.rev += r.price;
+    const payTs = Date.parse(d);
+    let lagC = null, lagK = null;
+    if (m) {
+      dm.matched++;
+      if (m.created) { lagC = Math.max(0, Math.round((payTs - m.created) / 86400000)); dm.lagCSum += lagC; dm.lagCN++; }
+      if (m.couns) { lagK = Math.max(0, Math.round((payTs - m.couns) / 86400000)); dm.lagKSum += lagK; dm.lagKN++; }
+    }
+    if (dm.items.length < 25) dm.items.push({ name: r.consumer_name || "", creator: r.creator_username || "", agent: r.sales_rep || "", price: r.price,
+      created: m && m.created ? new Date(m.created).toISOString().slice(0, 10) : "", couns: m && m.couns ? new Date(m.couns).toISOString().slice(0, 10) : "",
+      lagC, lagK });
+  });
+  const days = Object.values(dayMap).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, 62).map(x => ({
+    d: x.d, n: x.n, rev: x.rev, matched: x.matched,
+    avgLagC: x.lagCN ? Math.round(x.lagCSum / x.lagCN) : null,
+    avgLagK: x.lagKN ? Math.round(x.lagKSum / x.lagKN) : null,
+    items: x.items
+  }));
+
   const out = (m, keyName, labelFn, l2eMap) => Object.entries(m).map(([k, v]) => {
     const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0, cols: v.cols };
     o[keyName] = k; o.label = labelFn ? labelFn(k) : k;
@@ -813,7 +861,7 @@ app.get("/api/conversion", (req, res) => {
     loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
     totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0,
       leads: l2e.tot, l2eConv: l2e.conv, l2e: l2e.tot ? +(100 * l2e.conv / l2e.tot).toFixed(2) : 0 },
-    enrolMonths, options,
+    enrolMonths, options, days,
     byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id), l2e.byAgent),
     byCreator: out(byCreator, "creator", null, l2e.byCreator),
     bySegment: out(bySegment, "segment", null, l2e.bySegment),

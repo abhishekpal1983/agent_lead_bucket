@@ -171,6 +171,31 @@ function setPView(v){
   document.getElementById("viewConv").style.display=v==="conv"?"":"none";
   if(v==="conv")renderConv();
 }
+function dayView(cv){
+  const days=cv.days||[];
+  if(!days.length)return "";
+  function dd(x){if(!x)return '<span class="mut">not matched</span>';return x;}
+  const rows=days.map(function(x,i){
+    const detail=x.items.map(function(it){
+      return "<tr><td>"+esc(it.name)+"</td><td>"+esc(it.creator)+"</td><td>"+esc(it.agent)+"</td><td>"+inr(it.price)+"</td>"+
+        "<td>"+(it.created?it.created+' <span class="mut">('+it.lagC+"d before)</span>":'<span class="mut">not matched</span>')+"</td>"+
+        "<td>"+(it.couns?it.couns+' <span class="mut">('+it.lagK+"d before)</span>":'<span class="mut">—</span>')+"</td></tr>";
+    }).join("");
+    return '<tr style="cursor:pointer" onclick="toggleDay('+i+')"><td>▸ '+x.d+"</td><td>"+x.n+"</td><td style=\"font-weight:700\">"+inr(x.rev)+"</td>"+
+      "<td>"+(x.avgLagC===null?'<span class="mut">—</span>':x.avgLagC+"d")+"</td>"+
+      "<td>"+(x.avgLagK===null?'<span class="mut">—</span>':x.avgLagK+"d")+"</td>"+
+      "<td>"+x.matched+"/"+x.n+"</td></tr>"+
+      '<tr id="dd'+i+'" style="display:none"><td colspan="6" style="text-align:left;background:#F9FAFB;padding:10px 14px">'+
+      '<table><tr><th>Student</th><th>Creator</th><th>Agent</th><th>Amount</th><th>Lead created</th><th>First counselled</th></tr>'+detail+"</table>"+
+      (x.n>x.items.length?'<div class="mut" style="font-size:10.5px;margin-top:5px">Showing first '+x.items.length+" of "+x.n+"</div>":"")+"</td></tr>";
+  }).join("");
+  return '<div class="sec"><h3>Day by day conversions</h3><div class="sub">Enrolments (first payments) per day and where those leads came from: how many days before the payment the lead was created and first counselled. Click a day to see each conversion. Respects all filters above; matching covers owned staged leads.</div>'+
+    '<div style="max-height:460px;overflow:auto"><table><tr><th>Payment day</th><th>Enrolments</th><th>Revenue</th><th>Avg lead age</th><th>Avg counsel→pay</th><th>Matched</th></tr>'+rows+"</table></div></div>";
+}
+function toggleDay(i){
+  const el=document.getElementById("dd"+i);
+  if(el)el.style.display=el.style.display==="none"?"":"none";
+}
 async function renderConv(){
   const el=document.getElementById("viewConv");
   el.innerHTML='<div class="load"><div class="spin"></div>Computing conversion...</div>';
@@ -232,6 +257,7 @@ async function renderConv(){
       '<div class="card"><div class="l">L2E: Lead → Enrolment</div><div class="v cg">'+cv.totals.l2e+"%</div><div class=\"s\">"+cv.totals.l2eConv+" enrolled of all leads</div></div></div>"+
       '<div class="sec"><h3>Counselling cohort: counselled month → enrolment month</h3><div class="sub">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal highlighted = same-month conversion; recent cohorts are still maturing.</div>'+matrix(cv.byMonth,"Counselled month")+"</div>"+
       '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month")+"</div>"+
+      dayView(cv)+
       '<div class="grid2">'+tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+
       '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySegment,"Segment")+
       '<div class="sec" style="margin-bottom:0"><h3>Definitions</h3><div class="sub" style="margin-bottom:0">Counselled = first entry into Discovery, Program pitched, Pricing pitched, Counselled, Payment prospect, Follow up, FU-DNP or FU-RCB (from stage history of owned staged leads). Converted = lead email/phone matches an enrolment (first payment per consumer per creator) in the payment tracker. Agent = current owner. Segment from tm_student_or_professional. All six filters combine.</div></div></div>';
