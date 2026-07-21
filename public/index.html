@@ -112,6 +112,7 @@
     <label>Creator <select id="fcreator"><option value="">All creators</option></select></label>
     <label>Agent <select id="fagent"><option value="">All agents</option></select></label>
     <label>Number <select id="fintl"><option value="">All numbers</option><option value="no">National</option><option value="yes">International</option></select></label>
+    <label>Source <select id="fsrc"><option value="">All sources</option></select></label>
     <label>Min leads <input type="number" id="minleads" min="0" step="10" value="50"></label>
     <span id="shown"></span>
     <span class="chip" id="fchip" style="display:none"></span>
@@ -147,14 +148,14 @@ const STAGE_ORDER = Object.keys(STAGE_LABEL);
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/'/g,"&#39;").replace(/"/g,"&quot;"); }
 function fdate(ms){ if(!ms) return ""; const d=new Date(ms); return isNaN(d)?"":d.toLocaleDateString()+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
 
-let AGENTS = [], CREATORS = [], FC = "", FI = "", META = {}, VIEW = "dash";
+let AGENTS = [], CREATORS = [], SOURCES = [], FC = "", FI = "", FS = "", META = {}, VIEW = "dash";
 let HS_URL = "#";
 async function api(path){ const r = await fetch(path); if(!r.ok) throw new Error("API "+r.status); return r.json(); }
 
 async function loadMetrics(){
   const both = await Promise.all([
-    api("/api/agents?creator="+encodeURIComponent(FC)+"&intl="+FI),
-    api("/api/conversion?creator="+encodeURIComponent(FC)+"&intl="+FI).catch(function(){return null;})
+    api("/api/agents?creator="+encodeURIComponent(FC)+"&intl="+FI+"&src="+encodeURIComponent(FS)),
+    api("/api/conversion?creator="+encodeURIComponent(FC)+"&intl="+FI+"&src="+encodeURIComponent(FS)).catch(function(){return null;})
   ]);
   const j = both[0], cv = both[1];
   const CONV = {};
@@ -162,6 +163,7 @@ async function loadMetrics(){
   const e = document.getElementById("err");
   if (j.error){ e.style.display="block"; e.textContent = "Server sync issue: "+j.error; } else e.style.display="none";
   CREATORS = j.creators || [];
+  SOURCES = j.sources || SOURCES;
   AGENTS = (j.agents||[]).map(function(a){
     const c = CONV[a.id];
     a.counselled = c ? c.counselled : 0;
@@ -195,6 +197,9 @@ async function boot(){
   const cs = document.getElementById("fcreator");
   cs.innerHTML = '<option value="">All creators</option>';
   CREATORS.forEach(function(c){ const o=document.createElement("option"); o.value=c.u; o.textContent=c.u+" ("+c.n+")"; cs.appendChild(o); });
+  const ss = document.getElementById("fsrc");
+  ss.innerHTML = '<option value="">All sources</option>';
+  SOURCES.forEach(function(s){ const o=document.createElement("option"); o.value=s; o.textContent=s; ss.appendChild(o); });
   fillAgentSelect(); drawAll();
   document.getElementById("loading").style.display="none";
   document.getElementById("app").style.display="block";
@@ -303,8 +308,8 @@ document.addEventListener("change", async function(e){
     if (VIEW==="enr") showEnrolments();
   }
   if (e.target.id==="fagent"){ drawBody(); drawCards(); if (VIEW==="sum") showSummary(); if (VIEW==="enr") showEnrolments(); }
-  if (e.target.id==="fintl"){
-    FI = e.target.value;
+  if (e.target.id==="fintl" || e.target.id==="fsrc"){
+    if (e.target.id==="fintl") FI = e.target.value; else FS = e.target.value;
     document.getElementById("app").style.opacity=".45";
     try { await loadMetrics(); } catch(err){}
     fillAgentSelect(); drawAll();
@@ -329,9 +334,9 @@ document.addEventListener("click", function(e){
 });
 
 async function drill(a){
-  const key = (FC||"")+"|"+FI;
+  const key = (FC||"")+"|"+FI+"|"+FS;
   if (a.drill && a.drill.key===key) return a.drill;
-  const j = await api("/api/drill/"+a.id+"?creator="+encodeURIComponent(FC)+"&intl="+FI);
+  const j = await api("/api/drill/"+a.id+"?creator="+encodeURIComponent(FC)+"&intl="+FI+"&src="+encodeURIComponent(FS));
   j.key = key;
   a.drill = j;
   return j;
@@ -407,7 +412,7 @@ function classifySPc(v){
 async function explore(a, stage, cred, out, btn){
   btn.disabled = true; out.className="dload"; out.textContent = "Loading leads...";
   try {
-    const j = await api("/api/leads?owner="+a.id+"&stage="+encodeURIComponent(stage)+"&creator="+encodeURIComponent(FC||cred||"")+"&intl="+FI);
+    const j = await api("/api/leads?owner="+a.id+"&stage="+encodeURIComponent(stage)+"&creator="+encodeURIComponent(FC||cred||"")+"&intl="+FI+"&src="+encodeURIComponent(FS));
     if (!j.rows.length){ out.textContent = "No leads in "+STAGE_LABEL[stage]+"."; btn.disabled=false; return; }
     const nowMs = Date.now();
     const L = j.rows.map(function(p){
@@ -456,7 +461,7 @@ async function showSummary(){
   const v = document.getElementById("viewSum");
   v.innerHTML = '<div class="dload"><div class="spin" style="margin:10px auto"></div>Building agent × creator challenge summary...</div>';
   let j;
-  try { j = await api("/api/summary?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")+"&intl="+FI); }
+  try { j = await api("/api/summary?creator="+encodeURIComponent(FC)+"&agent="+encodeURIComponent(document.getElementById("fagent").value||"")+"&intl="+FI+"&src="+encodeURIComponent(FS)); }
   catch(e){ v.innerHTML = '<div class="dload">Failed: '+esc(e.message||e)+"</div>"; return; }
   const MINCELL = 15;
   const byOwner = {};
@@ -497,8 +502,8 @@ async function showEnrolments(){
   let j, cv = null;
   try {
     const both = await Promise.all([
-      api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)+"&intl="+FI),
-      api("/api/conversion?creator="+encodeURIComponent(CVF.c)+"&agent="+encodeURIComponent(CVF.a)+"&cmonth="+encodeURIComponent(CVF.m)+"&intl="+FI).catch(function(){return null;})
+      api("/api/enrolments?creator="+encodeURIComponent(creatorParam)+"&agent="+encodeURIComponent(agentParam)+"&agentEmail="+encodeURIComponent(ENR.a)+"&month="+encodeURIComponent(ENR.m)+"&intl="+FI+"&src="+encodeURIComponent(FS)),
+      api("/api/conversion?creator="+encodeURIComponent(CVF.c)+"&agent="+encodeURIComponent(CVF.a)+"&cmonth="+encodeURIComponent(CVF.m)+"&intl="+FI+"&src="+encodeURIComponent(FS)).catch(function(){return null;})
     ]);
     j = both[0]; cv = both[1];
   }

@@ -75,7 +75,8 @@ async function boot(){
   if(!id){return picker();}
   const creator=p.get("creator")||"";
   const intl=p.get("intl")||"";
-  const r=await fetch("/api/agent/"+encodeURIComponent(id)+"?creator="+encodeURIComponent(creator)+"&intl="+intl);
+  const src=p.get("src")||"";
+  const r=await fetch("/api/agent/"+encodeURIComponent(id)+"?creator="+encodeURIComponent(creator)+"&intl="+intl+"&src="+encodeURIComponent(src));
   if(!r.ok){document.getElementById("loading").textContent="Could not load agent "+id;return;}
   const j=await r.json();
   render(j);
@@ -83,6 +84,14 @@ async function boot(){
 function setIntl(v){
   const p=new URLSearchParams(location.search);
   if(v)p.set("intl",v);else p.delete("intl");
+  history.replaceState(null,"",location.pathname+"?"+p.toString());
+  document.getElementById("loading").style.display="block";
+  document.getElementById("page").style.display="none";
+  boot();
+}
+function setSrc(v){
+  const p=new URLSearchParams(location.search);
+  if(v)p.set("src",v);else p.delete("src");
   history.replaceState(null,"",location.pathname+"?"+p.toString());
   document.getElementById("loading").style.display="block";
   document.getElementById("page").style.display="none";
@@ -162,6 +171,11 @@ function render(j){
         '<select onchange="setIntl(this.value)" style="border:1px solid #D1D5DB;border-radius:7px;padding:5px 9px;font-size:12.5px;background:#fbfcfd">'+
         '<option value="">All</option><option value="no"'+(iv==="no"?" selected":"")+'>National</option><option value="yes"'+(iv==="yes"?" selected":"")+'>International</option></select>'+
         (iv?'<span style="color:#6B7280">'+(iv==="yes"?"International":"National")+" numbers only</span>":"");})()+
+      (function(){var sv=j.filterSrc||"";
+        return '<b style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7280;margin-left:8px">Source</b>'+
+        '<select onchange="setSrc(this.value)" style="border:1px solid #D1D5DB;border-radius:7px;padding:5px 9px;font-size:12.5px;background:#fbfcfd;max-width:200px">'+
+        '<option value="">All sources</option>'+
+        (j.sourceOptions||[]).map(function(s){return '<option value="'+esc(s)+'"'+(sv===s?" selected":"")+'>'+esc(s)+"</option>";}).join("")+"</select>";})()+
       (j.filterCreator?'<span style="color:#6B7280">Showing only '+esc(j.filterCreator)+" · ranks in the header stay team-wide across all creators</span>":"")+
     "</div>"+
     '<div class="sec"><h2>Counselling activity</h2><div class="sub">A counselling = the first time one of your leads entered Discovery / pitched / Counselled / Payment prospect / Follow up. Payment figures from the tracker.</div>'+

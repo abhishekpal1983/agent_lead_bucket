@@ -162,7 +162,7 @@ async function render(){
   if(PVIEW==="conv")renderConv();
 }
 let PVIEW="pay";
-let PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:""};
+let PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:"",s:""};
 function setPView(v){
   PVIEW=v;
   document.getElementById("ptPay").className=v==="pay"?"on":"";
@@ -201,7 +201,7 @@ async function renderConv(){
   const el=document.getElementById("viewConv");
   el.innerHTML='<div class="load"><div class="spin"></div>Computing conversion...</div>';
   try{
-    const qs="?creator="+encodeURIComponent(PCV.c)+"&agent="+encodeURIComponent(PCV.a)+"&segment="+encodeURIComponent(PCV.g)+"&createMonth="+encodeURIComponent(PCV.cm)+"&cmonth="+encodeURIComponent(PCV.km)+"&pmonth="+encodeURIComponent(PCV.pm)+"&intl="+PCV.i;
+    const qs="?creator="+encodeURIComponent(PCV.c)+"&agent="+encodeURIComponent(PCV.a)+"&segment="+encodeURIComponent(PCV.g)+"&createMonth="+encodeURIComponent(PCV.cm)+"&cmonth="+encodeURIComponent(PCV.km)+"&pmonth="+encodeURIComponent(PCV.pm)+"&intl="+PCV.i+"&src="+encodeURIComponent(PCV.s);
     const r=await fetch("/api/conversion"+qs);
     const cv=await r.json();
     if(!cv.loadedAt){el.innerHTML='<div class="load">Stage history is still syncing; the explorer fills in once the first pass completes (a few minutes after deploy).</div>';return;}
@@ -212,7 +212,7 @@ async function renderConv(){
         return '<option value="'+v+'"'+(cur===v?" selected":"")+">"+l+"</option>";
       }).join("")+"</select></label>";
     }
-    const anyF=PCV.c||PCV.a||PCV.g||PCV.cm||PCV.km||PCV.pm||PCV.i;
+    const anyF=PCV.c||PCV.a||PCV.g||PCV.cm||PCV.km||PCV.pm||PCV.i||PCV.s;
     const fbar='<div class="fbar">'+
       sel("pcvKM","Counselled month",o.months,PCV.km,function(m){return mn(m);})+
       sel("pcvCM","Lead create month",o.createMonths,PCV.cm,function(m){return mn(m);})+
@@ -221,6 +221,7 @@ async function renderConv(){
       sel("pcvA","Sales agent",o.agents,PCV.a)+
       sel("pcvG","Segment",o.segments,PCV.g)+
       sel("pcvI","Number",[{id:"no",name:"National"},{id:"yes",name:"International"}],PCV.i,function(x){return x.name;})+
+      sel("pcvS","Source",o.sources||[],PCV.s)+
       (anyF?'<button id="pcvClr">Clear</button>':"")+
       '<span class="mut" style="font-size:11px">history synced '+(cv.loadedAt?new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing":"")+"</span></div>";
     function tbl(arr,hdr){
@@ -263,7 +264,8 @@ async function renderConv(){
       '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month")+"</div>"+
       dayView(cv)+
       '<div class="grid2">'+tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+
-      '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySegment,"Segment")+
+      '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySource||[],"Lead source (actual_source)")+tbl(cv.bySegment,"Segment")+"</div>"+
+      '<div class="grid2" style="margin-top:14px">'+
       '<div class="sec" style="margin-bottom:0"><h3>Definitions</h3><div class="sub" style="margin-bottom:0">Counselled = first entry into Discovery, Program pitched, Pricing pitched, Counselled, Payment prospect, Follow up, FU-DNP or FU-RCB (from stage history of owned staged leads). Converted = lead email/phone matches an enrolment (first payment per consumer per creator) in the payment tracker. Agent = current owner. Segment from tm_student_or_professional. All six filters combine.</div></div></div>';
   }catch(e){el.innerHTML='<div class="load">Conversion unavailable: '+esc(e.message||e)+"</div>";}
 }
@@ -279,12 +281,13 @@ document.addEventListener("change",function(e){
   if(e.target.id==="pcvA"){PCV.a=e.target.value;renderConv();}
   if(e.target.id==="pcvG"){PCV.g=e.target.value;renderConv();}
   if(e.target.id==="pcvI"){PCV.i=e.target.value;renderConv();}
+  if(e.target.id==="pcvS"){PCV.s=e.target.value;renderConv();}
 });
 document.addEventListener("click",function(e){
   if(e.target.id==="fClr"){F.m="";F.c="";F.s="";F.g="";render();}
   if(e.target.id==="ptPay")setPView("pay");
   if(e.target.id==="ptConv")setPView("conv");
-  if(e.target.id==="pcvClr"){PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:""};renderConv();}
+  if(e.target.id==="pcvClr"){PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:"",s:""};renderConv();}
 });
 render().catch(function(e){document.getElementById("load").textContent="Failed to load: "+(e.message||e);});
 </script>

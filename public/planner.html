@@ -73,12 +73,19 @@ function setTgt(c,v){S.tgts[c]=Math.max(0,parseFloat(v)||0);persist();draw();}
 function setCpc(v){S.cpc=Math.max(0.1,parseFloat(v)||0);persist();draw();}
 function setCpa(v){S.cpa=Math.max(1,parseFloat(v)||0);persist();draw();}
 function resetPlan(){S={goal:S.goal,tgts:{},cpc:null,cpa:null};persist();draw();}
+let SRC="";
 async function boot(){
-  const r=await fetch("/api/planner");
+  const r=await fetch("/api/planner?src="+encodeURIComponent(SRC));
   J=await r.json();
   document.getElementById("loading").style.display="none";
   document.getElementById("app").style.display="block";
   draw();
+}
+function setSrc(v){
+  SRC=v;
+  document.getElementById("loading").style.display="block";
+  document.getElementById("app").style.display="none";
+  boot();
 }
 function draw(){
   const b=J.baseline,c=J.current;
@@ -131,6 +138,9 @@ function draw(){
   const curConn=c.calls?c.calls.connectivity:null, baseConn=b.calls?b.calls.connectivity:null;
   const html=
   '<div class="bar">'+
+    '<div><label>Lead source</label><select onchange="setSrc(this.value)" style="border:1px solid #D1D5DB;border-radius:7px;padding:6px 9px;font-size:12.5px;background:#fbfcfd"><option value="">All sources</option>'+
+      (J.sources||[]).map(function(s){return '<option value="'+esc(s)+'"'+(SRC===s?" selected":"")+'>'+esc(s)+"</option>";}).join("")+'</select>'+
+      (SRC?'<div class="as">baseline & actuals filtered to '+esc(SRC)+"</div>":"")+"</div>"+
     '<div><label>Revenue goal for '+mn(c.ym)+' (₹)</label><input type="number" step="500000" value="'+S.goal+'" onchange="setGoal(this.value)"></div>'+
     '<div><label>Calls per counselling</label><input type="number" step="0.5" value="'+cpc+'" onchange="setCpc(this.value)">'+(b.calls&&b.calls.callsPerCouns?'<div class="as">'+mn(b.ym)+" actual: "+b.calls.callsPerCouns+"</div>":'<div class="as">call data syncing; default used</div>')+"</div>"+
     '<div><label>Counsellings per agent / month</label><input type="number" step="1" value="'+cpa+'" onchange="setCpa(this.value)">'+(b.agents.counsPerAgent?'<div class="as">'+mn(b.ym)+" actual: "+b.agents.counsPerAgent+" across "+b.agents.counsellors+" counsellors</div>":"")+"</div>"+
