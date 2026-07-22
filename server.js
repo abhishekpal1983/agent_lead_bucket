@@ -34,6 +34,18 @@ const WORKABLE = ["rcb_requested_callback","discovery","program_pitched","pricin
 const CHURN = ["dnp_did_not_pick","ghosted","ni_not_interested","disqualified"];
 const POST_STAGES = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","IFC","FU_DNP","FU_RCB","Follow up"];
 
+/* ---------- Leads-Today checkpoint tracker ---------- */
+const LEADS_TODAY_LIST_ID = process.env.LEADS_TODAY_LIST_ID || "1623"; // ILS segment id for "Leads-Today"
+const CLOSED_STAGES = ["ni_not_interested", "disqualified", "IFC"];
+const CHECKPOINT_TIMES = ["10:00", "15:30", "17:30", "19:30", "21:30"]; // IST, HH:MM 24h
+const LT_PROPS = [
+  "contact_engagement_stage", "follow_up_date_and_time", "last_call_date_and_time",
+  "engagement_stage_last_changed_at", "hubspot_owner_id", "topmate_username",
+  "llm_personalised_email_clicked", "personalised_email_link_clicked_date",
+  "firstname", "lastname"
+];
+let LEADS_TODAY = { date: null, byId: {}, ranToday: {}, loadedAt: null, syncing: false, error: null };
+
 const SHEET_CSV_URL = process.env.SHEET_CSV_URL || "";
 
 let CACHE = { contacts: [], owners: {}, fresh: {}, loadedAt: null, syncing: false, error: null };
@@ -374,6 +386,104 @@ async function syncCalls(){
   }
 }
 
+/* ---------- Leads-Today: IST time + list membership + checkpoint job ---------- */
+function istParts(d){
+  d = d || new Date();
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = {};
+  fmt.formatToParts(d).forEach(function(p){ parts[p.type] = p.value; });
+  return { date: parts.year + "-" + parts.month + "-" + parts.day, hm: parts.hour + ":" + parts.minute };
+}
+
+async function fetchListMemberIds(listId){
+  const ids = [];
+  let after;
+  do {
+    const j = await hs("/crm/v3/lists/" + listId + "/memberships?limit=100" + (after ? "&after=" + after : ""));
+    (j.results || []).forEach(function(r){ ids.push(String(r.recordId || r.id)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+  return ids;
+}
+
+async function batchReadLeadsToday(ids){
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const inputs = ids.slice(i, i + 50).map(function(id){ return { id: id }; });
+    try {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST", body: JSON.stringify({ properties: LT_PROPS, inputs: inputs }) });
+      (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    } catch (e) { console.error("leads-today batch read @" + i + ": " + e.message); }
+    await sleep(130);
+  }
+  return out;
+}
+
+async function runLeadsTodayCheckpoint(label){
+  if (!TOKEN) { LEADS_TODAY.error = "HUBSPOT_TOKEN not set"; return; }
+  if (LEADS_TODAY.syncing) return;
+  LEADS_TODAY.syncing = true;
+  try {
+    const today = istParts().date;
+    if (LEADS_TODAY.date !== today) {
+      LEADS_TODAY = { date: today, byId: {}, ranToday: {}, loadedAt: null, syncing: true, error: null };
+    }
+    const listIds = await fetchListMemberIds(LEADS_TODAY_LIST_ID);
+    const trackedIds = Object.keys(LEADS_TODAY.byId);
+    const idSet = Array.from(new Set(listIds.concat(trackedIds)));
+    const rows = await batchReadLeadsToday(idSet);
+    const now = Date.now();
+    rows.forEach(function(c){
+      const stage = c.contact_engagement_stage || "";
+      const fu = ts(c.follow_up_date_and_time);
+      const lastCall = ts(c.last_call_date_and_time);
+      const stageEnteredAt = ts(c.engagement_stage_last_changed_at);
+      const clicked = String(c.llm_personalised_email_clicked).toLowerCase() === "true";
+      const clickedAt = ts(c.personalised_email_link_clicked_date);
+      let rec = LEADS_TODAY.byId[c.id];
+      if (!rec) {
+        rec = LEADS_TODAY.byId[c.id] = {
+          id: c.id,
+          name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || ("Contact " + c.id),
+          owner: c.hubspot_owner_id || "",
+          creator: c.topmate_username || "",
+          firstSeenAt: now,
+          firstSeenLabel: label,
+          baselineStage: stage,
+          baselineFollowUp: fu
+        };
+      }
+      rec.currentStage = stage;
+      rec.lastCallAt = lastCall;
+      rec.stageEnteredAt = stageEnteredAt;
+      rec.emailClicked = rec.emailClicked || clicked;
+      if (clickedAt && (!rec.emailClickedAt || clickedAt > rec.emailClickedAt)) rec.emailClickedAt = clickedAt;
+      rec.lastCheckedAt = now;
+      rec.lastCheckedLabel = label;
+      if (rec.baselineFollowUp && rec.baselineFollowUp > now) rec.status = "excluded_future_followup";
+      else if (rec.lastCallAt && rec.lastCallAt > rec.firstSeenAt) rec.status = "worked";
+      else rec.status = "flagged";
+    });
+    LEADS_TODAY.ranToday[label] = now;
+    LEADS_TODAY.loadedAt = new Date().toISOString();
+    LEADS_TODAY.syncing = false;
+    LEADS_TODAY.error = null;
+    console.log("Leads-Today checkpoint [" + label + "]: " + listIds.length + " live list members, " + Object.keys(LEADS_TODAY.byId).length + " tracked today");
+  } catch (e) {
+    LEADS_TODAY.syncing = false;
+    LEADS_TODAY.error = e.message;
+    console.error("Leads-Today checkpoint failed: " + e.message);
+  }
+}
+
+function maybeRunLeadsTodayCheckpoint(){
+  const p = istParts();
+  if (CHECKPOINT_TIMES.indexOf(p.hm) < 0) return;
+  if (LEADS_TODAY.date === p.date && LEADS_TODAY.ranToday[p.hm]) return;
+  runLeadsTodayCheckpoint(p.hm);
+}
+
 /* ---------- aggregation helpers ---------- */
 function ts(v){ if (!v) return 0; const n = Date.parse(v); if (!isNaN(n)) return n; const f = parseFloat(v); return (!isNaN(f) && f > 1e11) ? f : 0; }
 function num(v){ const f = parseFloat(v); return isNaN(f) ? 0 : f; }
@@ -463,7 +573,8 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
   sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
   cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error,
-  counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error }));
+  counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
+  leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -1180,6 +1291,55 @@ app.get("/api/summary", (req, res) => {
   res.json({ cells: Object.values(cells) });
 });
 
+app.get("/api/leads-today", (req, res) => {
+  const rows = Object.values(LEADS_TODAY.byId);
+  const leads = rows.map(function(r){
+    return {
+      id: r.id, name: r.name, creator: r.creator,
+      owner: r.owner, ownerName: (CACHE.owners[r.owner] && CACHE.owners[r.owner].name) || r.owner || "(unassigned)",
+      firstSeenAt: r.firstSeenAt, firstSeenLabel: r.firstSeenLabel,
+      baselineStage: r.baselineStage, currentStage: r.currentStage,
+      baselineFollowUp: r.baselineFollowUp, lastCallAt: r.lastCallAt,
+      status: r.status, emailClicked: r.emailClicked, emailClickedAt: r.emailClickedAt,
+      emailOk: r.emailClicked ? (CLOSED_STAGES.indexOf(r.currentStage) >= 0 && r.stageEnteredAt > r.emailClickedAt) : null
+    };
+  });
+  const summary = {
+    total: leads.length,
+    worked: leads.filter(function(l){ return l.status === "worked"; }).length,
+    flagged: leads.filter(function(l){ return l.status === "flagged"; }).length,
+    excluded: leads.filter(function(l){ return l.status === "excluded_future_followup"; }).length
+  };
+  const moves = {};
+  leads.forEach(function(l){
+    const key = (l.baselineStage || "(fresh/blank)") + "|" + (l.currentStage || "(fresh/blank)");
+    moves[key] = (moves[key] || 0) + 1;
+  });
+  const movement = Object.entries(moves).map(function(e){
+    const k = e[0], n = e[1], parts = k.split("|");
+    return { from: parts[0], to: parts[1], count: n, changed: parts[0] !== parts[1] };
+  }).sort(function(a, b){ return b.count - a.count; });
+  const clicked = leads.filter(function(l){ return l.emailClicked; });
+  const emailClicks = {
+    total: clicked.length,
+    flagged: clicked.filter(function(l){ return !l.emailOk; }).length,
+    rows: clicked.map(function(l){ return { id: l.id, name: l.name, creator: l.creator, ownerName: l.ownerName, currentStage: l.currentStage, emailClickedAt: l.emailClickedAt, ok: l.emailOk }; })
+  };
+  res.json({
+    date: LEADS_TODAY.date, loadedAt: LEADS_TODAY.loadedAt, syncing: LEADS_TODAY.syncing, error: LEADS_TODAY.error,
+    checkpoints: CHECKPOINT_TIMES, ranToday: LEADS_TODAY.ranToday,
+    summary: summary, movement: movement, leads: leads, emailClicks: emailClicks,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.post("/api/leads-today/checkpoint", (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const label = req.query.label || istParts().hm;
+  runLeadsTodayCheckpoint(label);
+  res.json({ ok: true, label: label });
+});
+
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
@@ -1191,4 +1351,5 @@ app.listen(PORT, () => {
   setInterval(syncCounsel, COHORT_MINUTES * 60 * 1000);
   setTimeout(syncCalls, 90 * 1000);
   setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
+  setInterval(maybeRunLeadsTodayCheckpoint, 60 * 1000);
 });

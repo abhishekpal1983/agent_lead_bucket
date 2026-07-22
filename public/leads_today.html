@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Leads-Today Work Tracker</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F6F8;color:#191C20;font-size:13px;line-height:1.5}
+.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.hdr h1{font-size:16px;font-weight:800}
+.hdr p{font-size:11px;color:#9CA3AF}
+.livebadge{background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
+.wrap{max-width:1560px;margin:0 auto;padding:16px 20px 40px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:11px 14px;border-top:3px solid #E5E7EB}
+.card.b{border-top-color:#93B4F5}.card.g{border-top-color:#86D3A2}.card.r{border-top-color:#F1A8A8}.card.a{border-top-color:#F0D48A}
+.card .v{font-size:19px;font-weight:800}
+.card .l{font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
+.sec{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;padding:14px 17px;overflow-x:auto}
+.sec h2{font-size:13px;font-weight:800;margin-bottom:2px}
+.sec .sub{font-size:10.5px;color:#9CA3AF;margin-bottom:10px}
+table{border-collapse:collapse;font-size:11.6px;width:100%}
+th{background:#F3F4F6;padding:5px 8px;text-align:left;font-size:9.5px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid #F3F4F6;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.tot td{background:#FFFBEB;font-weight:800}
+.cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.mut{color:#9CA3AF}
+.st{font-size:9px;font-weight:800;padding:1px 7px;border-radius:9px;white-space:nowrap;text-transform:uppercase}
+.st.ok{background:#D1FAE5;color:#065F46}.st.beh{background:#FEE2E2;color:#991B1B}.st.wait{background:#E5E7EB;color:#374151}
+.chip{font-size:9px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;margin-left:4px}
+.chip.on{background:#D1FAE5;color:#065F46}.chip.off{background:#F3F4F6;color:#9CA3AF}
+#loading{padding:60px;text-align:center;color:#9CA3AF}
+.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
+.tabs2{display:flex;gap:8px;margin-bottom:12px}
+.tabs2 button{border:1px solid #E5E7EB;background:#fff;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;color:#6B7280}
+.tabs2 button.on{background:#4338CA;color:#fff;border-color:#4338CA}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Leads-Today Work Tracker</h1>
+  <span class="livebadge">LIVE</span>
+  <p id="sub">Checkpoints at 10:00, 15:30, 17:30, 19:30, 21:30 IST · tracks the Leads-Today segment through the day</p>
+  <a href="/" style="font-size:11px;color:#4338CA;margin-left:auto">← dashboard</a>
+</div>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div>Loading today's checkpoint data...</div>
+  <div id="app" style="display:none"></div>
+</div>
+<script>
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+function fmt(n){return Math.round(n||0).toLocaleString("en-IN");}
+function t(x){return x?new Date(x).toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"short"}):"–";}
+function tt(x){return x?new Date(x).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}):"–";}
+let J=null, TAB="flagged";
+async function boot(){
+  const r=await fetch("/api/leads-today");
+  J=await r.json();
+  document.getElementById("loading").style.display="none";
+  document.getElementById("app").style.display="block";
+  draw();
+}
+function setTab(v){TAB=v;draw();}
+function statusBadge(s){
+  if(s==="worked")return '<span class="st ok">Worked</span>';
+  if(s==="excluded_future_followup")return '<span class="st wait">FU in future</span>';
+  return '<span class="st beh">Not worked</span>';
+}
+function hsLink(id,name){
+  if(!J.portal||!id)return esc(name);
+  return '<a href="https://'+J.portal.uiDomain+'/contacts/'+J.portal.portalId+'/record/0-1/'+id+'" target="_blank" rel="noopener" style="color:#4338CA;text-decoration:none">'+esc(name)+' <span style="font-size:10px">↗</span></a>';
+}
+function kc(v,l,cls){return '<div class="card '+(cls||"")+'"><div class="v">'+v+'</div><div class="l">'+l+"</div></div>";}
+function draw(){
+  const s=J.summary||{total:0,worked:0,flagged:0,excluded:0};
+  const checkpointChips=(J.checkpoints||[]).map(function(c){
+    const ran=J.ranToday&&J.ranToday[c];
+    return '<span class="chip '+(ran?"on":"off")+'">'+c+(ran?" ✓ "+tt(ran):" pending")+"</span>";
+  }).join(" ");
+  const leads=(J.leads||[]).slice().sort(function(a,b){
+    const rank=function(x){return x.status==="flagged"?0:x.status==="worked"?1:2;};
+    return rank(a)-rank(b);
+  });
+  const shown = TAB==="all" ? leads : leads.filter(function(l){return l.status===TAB;});
+  const leadRows=shown.map(function(l){
+    return "<tr><td>"+hsLink(l.id,l.name)+"</td><td>"+esc(l.creator||"–")+"</td><td>"+esc(l.ownerName||"–")+"</td>"+
+      "<td>"+esc(l.baselineStage||"(fresh)")+"</td><td>"+esc(l.currentStage||"(fresh)")+"</td>"+
+      "<td>"+statusBadge(l.status)+"</td><td>"+esc(l.firstSeenLabel||"–")+"</td><td>"+t(l.lastCallAt)+"</td></tr>";
+  }).join("");
+  const movement=(J.movement||[]).map(function(m){
+    return "<tr"+(m.changed?"":' style="opacity:.55"')+"><td>"+esc(m.from)+"</td><td>"+esc(m.to)+"</td><td>"+fmt(m.count)+"</td></tr>";
+  }).join("");
+  const clicks=J.emailClicks||{total:0,flagged:0,rows:[]};
+  const clickRows=clicks.rows.map(function(r){
+    return "<tr><td>"+hsLink(r.id,r.name)+"</td><td>"+esc(r.creator||"–")+"</td><td>"+esc(r.ownerName||"–")+"</td>"+
+      "<td>"+esc(r.currentStage||"(open)")+"</td><td>"+t(r.emailClickedAt)+"</td>"+
+      "<td>"+(r.ok?'<span class="st ok">OK</span>':'<span class="st beh">Flag</span>')+"</td></tr>";
+  }).join("");
+  const html=
+  (J.error?'<div class="warn">Sync error: '+esc(J.error)+"</div>":"")+
+  '<div class="cards">'+
+    kc(fmt(s.total),"Tracked today","b")+
+    kc(fmt(s.worked),"Worked","g")+
+    kc(fmt(s.flagged),"Flagged (not worked)",s.flagged>0?"r":"g")+
+    kc(fmt(s.excluded),"Excluded · FU in future","a")+
+  "</div>"+
+  '<div class="sec"><h2>Checkpoints today ('+esc(J.date||"–")+")</h2><div class=\"sub\">Each checkpoint re-baselines any lead newly in the segment and re-checks whether previously-seen leads have been called since they first appeared today.</div>"+checkpointChips+"</div>"+
+  '<div class="sec"><h2>Leads</h2><div class="sub">A lead is "Worked" once a call lands after it first entered today\'s list; "FU in future" leads are excluded from the flag by design.</div>'+
+  '<div class="tabs2">'+
+    '<button class="'+(TAB==="flagged"?"on":"")+'" onclick="setTab(\'flagged\')">Flagged ('+s.flagged+')</button>'+
+    '<button class="'+(TAB==="worked"?"on":"")+'" onclick="setTab(\'worked\')">Worked ('+s.worked+')</button>'+
+    '<button class="'+(TAB==="excluded_future_followup"?"on":"")+'" onclick="setTab(\'excluded_future_followup\')">Excluded ('+s.excluded+')</button>'+
+    '<button class="'+(TAB==="all"?"on":"")+'" onclick="setTab(\'all\')">All ('+s.total+')</button>'+
+  "</div>"+
+  '<table><tr><th>Lead</th><th>Creator</th><th>Owner</th><th>Baseline stage</th><th>Current stage</th><th>Status</th><th>First seen</th><th>Last call</th></tr>'+
+  (leadRows||'<tr><td class="mut" colspan="8">No leads in this view</td></tr>')+"</table></div>"+
+  '<div class="sec"><h2>Stage movement today</h2><div class="sub">Baseline stage (at first sighting today) vs current stage, across all tracked leads. Faded rows = no change.</div>'+
+  '<table><tr><th>From</th><th>To</th><th>Count</th></tr>'+(movement||'<tr><td class="mut" colspan="3">No data yet</td></tr>')+"</table></div>"+
+  '<div class="sec"><h2>Personalised email click QA</h2><div class="sub">Leads that clicked the LLM-personalised campaign email: OK if marked NI / Disqualified / IFC after the click; flagged otherwise ('+clicks.flagged+' of '+clicks.total+' flagged).</div>'+
+  '<table><tr><th>Lead</th><th>Creator</th><th>Owner</th><th>Current stage</th><th>Clicked</th><th></th></tr>'+
+  (clickRows||'<tr><td class="mut" colspan="6">No email-click leads tracked today</td></tr>')+"</table></div>"+
+  '<div style="font-size:11px;color:#9CA3AF">Last checkpoint: '+t(J.loadedAt)+(J.syncing?" · syncing…":"")+"</div>";
+  document.getElementById("app").innerHTML=html;
+}
+boot().catch(function(e){document.getElementById("loading").textContent="Failed: "+(e.message||e);});
+setInterval(function(){boot().catch(function(){});}, 5*60*1000);
+</script>
+</body>
+</html>
