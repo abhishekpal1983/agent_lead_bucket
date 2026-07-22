@@ -12,6 +12,7 @@
  */
 const express = require("express");
 const app = express();
+app.use(express.json());
 
 const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,15 @@ const LT_PROPS = [
   "firstname", "lastname"
 ];
 let LEADS_TODAY = { date: null, byId: {}, ranToday: {}, loadedAt: null, syncing: false, error: null };
+
+/* ---------- Agent bucket refill: leads parked with Abhishek Pal, tagged to a backup owner ---------- */
+const ABHISHEK_OWNER_ID = process.env.ABHISHEK_OWNER_ID || "165087274";
+const BACKUP_PROPS = [
+  "contact_engagement_stage", "backup_owner", "topmate_username", "createdate",
+  "follow_up_date_and_time", "firstname", "lastname", "international_number", "actual_source"
+];
+let BACKUP = { rows: [], loadedAt: null, syncing: false, error: null };
+let ASSIGN_LOG = [];
 
 const SHEET_CSV_URL = process.env.SHEET_CSV_URL || "";
 
@@ -484,6 +494,47 @@ function maybeRunLeadsTodayCheckpoint(){
   runLeadsTodayCheckpoint(p.hm);
 }
 
+/* ---------- bucket refill: fetch + assign ---------- */
+async function fetchBackupRange(from, to, sink){
+  const filters = [
+    { propertyName: "hubspot_owner_id", operator: "EQ", value: ABHISHEK_OWNER_ID },
+    { propertyName: "backup_owner", operator: "HAS_PROPERTY" }
+  ];
+  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
+  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters: filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && from && to && (to - from) > 86400000) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchBackupRange(from, mid, sink);
+    await fetchBackupRange(mid, to, sink);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters: filters }], properties: BACKUP_PROPS, sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+}
+
+async function syncBackupPool(){
+  if (!TOKEN || BACKUP.syncing) return;
+  BACKUP.syncing = true;
+  try {
+    const rows = [];
+    await fetchBackupRange(Date.parse("2024-01-01"), Date.now() + 86400000, function(r){ rows.push(r); });
+    BACKUP = { rows: rows, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Backup pool synced: " + rows.length + " contacts parked with Abhishek Pal, tagged to a backup owner");
+  } catch (e) {
+    BACKUP.syncing = false; BACKUP.error = e.message;
+    console.error("Backup pool sync failed: " + e.message);
+  }
+}
+
 /* ---------- aggregation helpers ---------- */
 function ts(v){ if (!v) return 0; const n = Date.parse(v); if (!isNaN(n)) return n; const f = parseFloat(v); return (!isNaN(f) && f > 1e11) ? f : 0; }
 function num(v){ const f = parseFloat(v); return isNaN(f) ? 0 : f; }
@@ -574,7 +625,8 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
   cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error,
   counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
-  leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error }));
+  leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
+  backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -1340,6 +1392,87 @@ app.post("/api/leads-today/checkpoint", (req, res) => {
   res.json({ ok: true, label: label });
 });
 
+app.get("/api/bucket-refill", (req, res) => {
+  const poolByAgent = {};
+  BACKUP.rows.forEach(function(r){
+    const agent = r.backup_owner || "";
+    if (!agent) return;
+    if (!poolByAgent[agent]) poolByAgent[agent] = { total: 0, byStage: {} };
+    const p = poolByAgent[agent];
+    p.total++;
+    const st = r.contact_engagement_stage || "(fresh/no stage)";
+    p.byStage[st] = (p.byStage[st] || 0) + 1;
+  });
+  const workableByAgent = {};
+  CACHE.contacts.forEach(function(c){
+    if (WORKABLE.indexOf(c.contact_engagement_stage) >= 0) workableByAgent[c.hubspot_owner_id] = (workableByAgent[c.hubspot_owner_id] || 0) + 1;
+  });
+  const freshByAgent = {};
+  Object.keys(CACHE.fresh || {}).forEach(function(oid){ freshByAgent[oid] = (CACHE.fresh[oid] || []).length; });
+  const agents = Object.keys(CACHE.owners).filter(function(id){ return id !== ABHISHEK_OWNER_ID; }).map(function(id){
+    const o = CACHE.owners[id];
+    const workable = workableByAgent[id] || 0;
+    const fresh = freshByAgent[id] || 0;
+    const pool = poolByAgent[id] || { total: 0, byStage: {} };
+    return {
+      id: id, name: o.name, active: o.active,
+      workable: workable, serviceable: workable + fresh,
+      target: 100, needsRefill: workable < 30,
+      pool: pool
+    };
+  }).sort(function(a, b){
+    if (a.needsRefill !== b.needsRefill) return a.needsRefill ? -1 : 1;
+    return b.pool.total - a.pool.total;
+  });
+  res.json({
+    loadedAt: BACKUP.loadedAt, syncing: BACKUP.syncing, error: BACKUP.error,
+    abhishekOwnerId: ABHISHEK_OWNER_ID, totalPool: BACKUP.rows.length,
+    agents: agents,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.get("/api/bucket-refill/leads", (req, res) => {
+  const agent = req.query.agent || "";
+  const rows = BACKUP.rows.filter(function(r){ return r.backup_owner === agent; }).map(function(r){
+    return {
+      id: r.id, name: ((r.firstname || "") + " " + (r.lastname || "")).trim() || ("Contact " + r.id),
+      creator: r.topmate_username || "", stage: r.contact_engagement_stage || "(fresh/no stage)",
+      createdate: r.createdate, followUp: r.follow_up_date_and_time,
+      workable: WORKABLE.indexOf(r.contact_engagement_stage) >= 0
+    };
+  });
+  res.json({ agent: agent, leads: rows });
+});
+
+app.post("/api/bucket-refill/assign", async (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const agentId = String((req.body && req.body.agentOwnerId) || "");
+  const leadIds = Array.isArray(req.body && req.body.leadIds) ? req.body.leadIds.map(String) : [];
+  if (!agentId || !leadIds.length) return res.status(400).json({ ok: false, error: "agentOwnerId and leadIds required" });
+  const p = istParts();
+  const tempTagMs = Date.UTC(parseInt(p.date.slice(0, 4), 10), parseInt(p.date.slice(5, 7), 10) - 1, parseInt(p.date.slice(8, 10), 10));
+  try {
+    for (let i = 0; i < leadIds.length; i += 100) {
+      const inputs = leadIds.slice(i, i + 100).map(function(id){
+        return { id: id, properties: { hubspot_owner_id: agentId, temp_tag: String(tempTagMs) } };
+      });
+      await hs("/crm/v3/objects/contacts/batch/update", { method: "POST", body: JSON.stringify({ inputs: inputs }) });
+      await sleep(150);
+    }
+    const assignedAt = new Date().toISOString();
+    const agentName = (CACHE.owners[agentId] && CACHE.owners[agentId].name) || agentId;
+    ASSIGN_LOG.unshift({ agentId: agentId, agentName: agentName, count: leadIds.length, leadIds: leadIds, assignedAt: assignedAt, tempTagDate: p.date });
+    ASSIGN_LOG = ASSIGN_LOG.slice(0, 200);
+    BACKUP.rows = BACKUP.rows.filter(function(r){ return leadIds.indexOf(r.id) < 0; });
+    res.json({ ok: true, assigned: leadIds.length, agentId: agentId, tempTagDate: p.date });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get("/api/bucket-refill/log", (req, res) => res.json({ log: ASSIGN_LOG }));
+
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
@@ -1352,4 +1485,6 @@ app.listen(PORT, () => {
   setTimeout(syncCalls, 90 * 1000);
   setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
   setInterval(maybeRunLeadsTodayCheckpoint, 60 * 1000);
+  syncBackupPool();
+  setInterval(syncBackupPool, SYNC_MINUTES * 60 * 1000);
 });

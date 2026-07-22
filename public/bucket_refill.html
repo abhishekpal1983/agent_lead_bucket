@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Agent Bucket Refill</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F6F8;color:#191C20;font-size:13px;line-height:1.5}
+.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.hdr h1{font-size:16px;font-weight:800}
+.hdr p{font-size:11px;color:#9CA3AF}
+.livebadge{background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
+.wrap{max-width:1560px;margin:0 auto;padding:16px 20px 40px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:11px 14px;border-top:3px solid #E5E7EB}
+.card.b{border-top-color:#93B4F5}.card.g{border-top-color:#86D3A2}.card.r{border-top-color:#F1A8A8}.card.a{border-top-color:#F0D48A}
+.card .v{font-size:19px;font-weight:800}
+.card .l{font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
+.sec{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;padding:14px 17px;overflow-x:auto}
+.sec h2{font-size:13px;font-weight:800;margin-bottom:2px}
+.sec .sub{font-size:10.5px;color:#9CA3AF;margin-bottom:10px}
+table{border-collapse:collapse;font-size:11.6px;width:100%}
+th{background:#F3F4F6;padding:5px 8px;text-align:left;font-size:9.5px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid #F3F4F6;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.sel td{background:#EEF2FF}
+.cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.mut{color:#9CA3AF}
+.st{font-size:9px;font-weight:800;padding:1px 7px;border-radius:9px;white-space:nowrap;text-transform:uppercase}
+.st.ok{background:#D1FAE5;color:#065F46}.st.beh{background:#FEE2E2;color:#991B1B}
+.btn{border:1px solid #E5E7EB;background:#F3F4F6;color:#374151;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer}
+.btn.primary{background:#4338CA;color:#fff;border-color:#4338CA}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+#loading{padding:60px;text-align:center;color:#9CA3AF}
+.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
+.okmsg{background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Agent Bucket Refill</h1>
+  <span class="livebadge">LIVE</span>
+  <p id="sub">100 workable target per agent · refill from leads parked with Abhishek Pal tagged as backup owner</p>
+  <a href="/" style="font-size:11px;color:#4338CA;margin-left:auto">← dashboard</a>
+</div>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div>Loading agent status and backup pool...</div>
+  <div id="app" style="display:none"></div>
+</div>
+<script>
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+function fmt(n){return Math.round(n||0).toLocaleString("en-IN");}
+function t(x){return x?new Date(x).toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"short"}):"–";}
+function d(x){return x?new Date(x).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"–";}
+let J=null, LOG=[], SEL_AGENT="", DRILL=[], SEL_IDS={}, MSG="";
+async function boot(){
+  const r=await fetch("/api/bucket-refill");
+  J=await r.json();
+  const lr=await fetch("/api/bucket-refill/log");
+  LOG=(await lr.json()).log||[];
+  document.getElementById("loading").style.display="none";
+  document.getElementById("app").style.display="block";
+  draw();
+}
+function stageSummary(pool){
+  const entries=Object.entries(pool.byStage||{}).sort(function(a,b){return b[1]-a[1];});
+  return entries.slice(0,3).map(function(e){return esc(e[0])+": "+e[1];}).join(", ")+(entries.length>3?" …":"");
+}
+async function selectAgent(id){
+  SEL_AGENT=id; SEL_IDS={}; MSG="";
+  DRILL=null; draw();
+  const r=await fetch("/api/bucket-refill/leads?agent="+encodeURIComponent(id));
+  DRILL=(await r.json()).leads||[];
+  draw();
+}
+function toggleLead(id){
+  if(SEL_IDS[id])delete SEL_IDS[id];else SEL_IDS[id]=1;
+  draw();
+}
+function selectAllWorkable(){
+  (DRILL||[]).forEach(function(l){if(l.workable)SEL_IDS[l.id]=1;});
+  draw();
+}
+function selectAll(){
+  (DRILL||[]).forEach(function(l){SEL_IDS[l.id]=1;});
+  draw();
+}
+function clearSelection(){SEL_IDS={};draw();}
+async function assignSelected(){
+  const ids=Object.keys(SEL_IDS);
+  if(!ids.length||!SEL_AGENT)return;
+  const btn=document.getElementById("assignBtn");
+  if(btn){btn.disabled=true;btn.textContent="Assigning...";}
+  try{
+    const r=await fetch("/api/bucket-refill/assign",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agentOwnerId:SEL_AGENT,leadIds:ids})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"assign failed");
+    MSG="Assigned "+j.assigned+" lead(s) to "+esc((J.agents.find(function(a){return a.id===SEL_AGENT;})||{}).name||SEL_AGENT)+" · temp_tag set to "+j.tempTagDate;
+    await boot();
+    await selectAgent(SEL_AGENT);
+  }catch(e){
+    MSG="Failed: "+(e.message||e);
+    draw();
+  }
+}
+function kc(v,l,cls){return '<div class="card '+(cls||"")+'"><div class="v">'+v+'</div><div class="l">'+l+"</div></div>";}
+function draw(){
+  const agents=J.agents||[];
+  const needing=agents.filter(function(a){return a.needsRefill;});
+  const rows=agents.map(function(a){
+    const cls=SEL_AGENT===a.id?' style="background:#EEF2FF"':"";
+    return "<tr"+cls+"><td>"+esc(a.name)+(a.active?"":' <span class="mut">(deactivated)</span>')+"</td>"+
+      "<td>"+fmt(a.workable)+" / 100</td><td>"+fmt(a.serviceable)+"</td>"+
+      "<td>"+(a.needsRefill?'<span class="st beh">Needs refill</span>':'<span class="st ok">Healthy</span>')+"</td>"+
+      "<td>"+fmt(a.pool.total)+"</td><td class=\"mut\">"+stageSummary(a.pool)+"</td>"+
+      '<td><button class="btn" onclick="selectAgent(\''+a.id+'\')">View &amp; assign</button></td></tr>';
+  }).join("");
+  const drillSec = !SEL_AGENT ? "" :
+    '<div class="sec"><h2>Backup pool · '+esc((agents.find(function(a){return a.id===SEL_AGENT;})||{}).name||SEL_AGENT)+'</h2>'+
+    '<div class="sub">Leads currently owned by Abhishek Pal with this agent recorded as backup owner. Tick leads and assign; temp_tag is set to today\'s date on assignment.</div>'+
+    (DRILL===null?'<div class="mut" style="padding:16px">Loading...</div>':
+    ('<div class="bar">'+
+      '<button class="btn" onclick="selectAllWorkable()">Select all workable</button>'+
+      '<button class="btn" onclick="selectAll()">Select all ('+DRILL.length+')</button>'+
+      '<button class="btn" onclick="clearSelection()">Clear</button>'+
+      '<span class="mut">'+Object.keys(SEL_IDS).length+' selected</span>'+
+      '<button id="assignBtn" class="btn primary" style="margin-left:auto" '+(Object.keys(SEL_IDS).length?"":"disabled")+' onclick="assignSelected()">Assign '+Object.keys(SEL_IDS).length+' lead(s) to agent</button>'+
+    "</div>"+
+    '<table><tr><th></th><th>Lead</th><th>Creator</th><th>Stage</th><th>Created</th><th>Follow up</th></tr>'+
+    (DRILL.map(function(l){
+      const checked=SEL_IDS[l.id]?" checked":"";
+      const link=J.portal?'<a href="https://'+J.portal.uiDomain+'/contacts/'+J.portal.portalId+'/record/0-1/'+l.id+'" target="_blank" rel="noopener" style="color:#4338CA;text-decoration:none">'+esc(l.name)+' <span style="font-size:10px">↗</span></a>':esc(l.name);
+      return "<tr><td><input type=\"checkbox\""+checked+" onchange=\"toggleLead('"+l.id+"')\"></td><td>"+link+"</td><td>"+esc(l.creator||"–")+"</td>"+
+        "<td>"+esc(l.stage)+(l.workable?' <span class="mut">(workable)</span>':"")+"</td><td>"+d(l.createdate)+"</td><td>"+t(l.followUp)+"</td></tr>";
+    }).join("")||'<tr><td class="mut" colspan="6">No leads parked for this agent</td></tr>')+"</table>"))
+    +"</div>";
+  const logSec = '<div class="sec"><h2>Recent assignments</h2><div class="sub">This session\'s manual refills (HubSpot itself is the durable record via updated owner + temp_tag).</div>'+
+    '<table><tr><th>When</th><th>Agent</th><th>Count</th><th>temp_tag date</th></tr>'+
+    (LOG.map(function(x){return "<tr><td>"+t(x.assignedAt)+"</td><td>"+esc(x.agentName)+"</td><td>"+fmt(x.count)+"</td><td>"+esc(x.tempTagDate)+"</td></tr>";}).join("")||'<tr><td class="mut" colspan="4">No assignments yet this session</td></tr>')+
+    "</table></div>";
+  const html=
+  (J.error?'<div class="warn">Sync error: '+esc(J.error)+"</div>":"")+
+  (MSG?'<div class="'+(MSG.indexOf("Failed")===0?"warn":"okmsg")+'">'+esc(MSG)+"</div>":"")+
+  '<div class="cards">'+
+    kc(fmt(needing.length),"Agents needing refill",needing.length?"r":"g")+
+    kc(fmt(J.totalPool||0),"Total leads parked w/ backup tag","b")+
+    kc(fmt(agents.length),"Active agents tracked","b")+
+  "</div>"+
+  '<div class="sec"><h2>Agent status</h2><div class="sub">Workable target is 100; flagged "Needs refill" once workable drops below 30. Backup pool = leads owned by Abhishek Pal tagged with this agent as backup owner.</div>'+
+  '<table><tr><th>Agent</th><th>Workable</th><th>Serviceable</th><th>Status</th><th>Backup pool</th><th>By stage (top 3)</th><th></th></tr>'+rows+"</table></div>"+
+  drillSec+logSec+
+  '<div style="font-size:11px;color:#9CA3AF">Backup pool synced: '+t(J.loadedAt)+(J.syncing?" · syncing…":"")+"</div>";
+  document.getElementById("app").innerHTML=html;
+}
+boot().catch(function(e){document.getElementById("loading").textContent="Failed: "+(e.message||e);});
+</script>
+</body>
+</html>
