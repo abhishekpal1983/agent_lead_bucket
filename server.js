@@ -1392,6 +1392,13 @@ app.post("/api/leads-today/checkpoint", (req, res) => {
   res.json({ ok: true, label: label });
 });
 
+app.get("/api/leads-today/checkpoint", (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const label = req.query.label || istParts().hm;
+  runLeadsTodayCheckpoint(label);
+  res.json({ ok: true, label: label, note: "manual test run; visit /leads_today.html shortly after to see results" });
+});
+
 app.get("/api/bucket-refill", (req, res) => {
   const poolByAgent = {};
   BACKUP.rows.forEach(function(r){
