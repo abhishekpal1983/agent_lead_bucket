@@ -1486,5 +1486,5 @@ app.listen(PORT, () => {
   setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
   setInterval(maybeRunLeadsTodayCheckpoint, 60 * 1000);
   syncBackupPool();
-  setInterval(syncBackupPool, SYNC_MINUTES * 60 * 1000);
+  setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
 });
