@@ -37,6 +37,9 @@ tr.tot td{background:#FFFBEB;font-weight:800}
 .tabs2{display:flex;gap:8px;margin-bottom:12px}
 .tabs2 button{border:1px solid #E5E7EB;background:#fff;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;color:#6B7280}
 .tabs2 button.on{background:#4338CA;color:#fff;border-color:#4338CA}
+.viewtabs{display:flex;gap:8px;margin-bottom:14px}
+.viewtabs button{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:800;cursor:pointer;color:#374151}
+.viewtabs button.on{background:#191C20;color:#fff;border-color:#191C20}
 </style>
 </head>
 <body>
@@ -55,7 +58,27 @@ function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
 function fmt(n){return Math.round(n||0).toLocaleString("en-IN");}
 function t(x){return x?new Date(x).toLocaleString("en-IN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"short"}):"–";}
 function tt(x){return x?new Date(x).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}):"–";}
-let J=null, TAB="flagged";
+let J=null, TAB="flagged", VIEW="overview";
+function setView(v){VIEW=v;draw();}
+function agentSummary(){
+  const byAgent={};
+  (J.leads||[]).forEach(function(l){
+    const key=l.owner||"(unassigned)";
+    if(!byAgent[key])byAgent[key]={owner:key,ownerName:l.ownerName||"(unassigned)",total:0,due:0,worked:0,excluded:0,stages:{}};
+    const a=byAgent[key];
+    a.total++;
+    if(l.status==="flagged")a.due++;
+    else if(l.status==="worked")a.worked++;
+    else if(l.status==="excluded_future_followup")a.excluded++;
+    const st=l.currentStage||"(fresh/no stage)";
+    a.stages[st]=(a.stages[st]||0)+1;
+  });
+  return Object.values(byAgent).sort(function(x,y){return y.due-x.due||y.total-x.total;});
+}
+function stageList(stages){
+  return Object.entries(stages).sort(function(a,b){return b[1]-a[1];})
+    .map(function(e){return esc(e[0])+": "+e[1];}).join(", ");
+}
 async function boot(){
   const r=await fetch("/api/leads-today");
   J=await r.json();
@@ -99,14 +122,14 @@ function draw(){
       "<td>"+esc(r.currentStage||"(open)")+"</td><td>"+t(r.emailClickedAt)+"</td>"+
       "<td>"+(r.ok?'<span class="st ok">OK</span>':'<span class="st beh">Flag</span>')+"</td></tr>";
   }).join("");
-  const html=
-  (J.error?'<div class="warn">Sync error: '+esc(J.error)+"</div>":"")+
-  '<div class="cards">'+
-    kc(fmt(s.total),"Tracked today","b")+
-    kc(fmt(s.worked),"Worked","g")+
-    kc(fmt(s.flagged),"Flagged (not worked)",s.flagged>0?"r":"g")+
-    kc(fmt(s.excluded),"Excluded · FU in future","a")+
-  "</div>"+
+  const agents=agentSummary();
+  const agentRows=agents.map(function(a){
+    return "<tr><td>"+esc(a.ownerName)+"</td><td>"+fmt(a.total)+"</td>"+
+      '<td'+(a.due>0?' class="cr" style="font-weight:800"':"")+'>'+fmt(a.due)+"</td>"+
+      "<td>"+fmt(a.worked)+"</td><td>"+fmt(a.excluded)+"</td>"+
+      '<td class="mut">'+stageList(a.stages)+"</td></tr>";
+  }).join("");
+  const overviewHtml=
   '<div class="sec"><h2>Checkpoints today ('+esc(J.date||"–")+")</h2><div class=\"sub\">Each checkpoint re-baselines any lead newly in the segment and re-checks whether previously-seen leads have been called since they first appeared today.</div>"+checkpointChips+"</div>"+
   '<div class="sec"><h2>Leads</h2><div class="sub">A lead is "Worked" once a call lands after it first entered today\'s list; "FU in future" leads are excluded from the flag by design.</div>'+
   '<div class="tabs2">'+
@@ -121,7 +144,24 @@ function draw(){
   '<table><tr><th>From</th><th>To</th><th>Count</th></tr>'+(movement||'<tr><td class="mut" colspan="3">No data yet</td></tr>')+"</table></div>"+
   '<div class="sec"><h2>Personalised email click QA</h2><div class="sub">Leads that clicked the LLM-personalised campaign email: OK if marked NI / Disqualified / IFC after the click; flagged otherwise ('+clicks.flagged+' of '+clicks.total+' flagged).</div>'+
   '<table><tr><th>Lead</th><th>Creator</th><th>Owner</th><th>Current stage</th><th>Clicked</th><th></th></tr>'+
-  (clickRows||'<tr><td class="mut" colspan="6">No email-click leads tracked today</td></tr>')+"</table></div>"+
+  (clickRows||'<tr><td class="mut" colspan="6">No email-click leads tracked today</td></tr>')+"</table></div>";
+  const agentHtml=
+  '<div class="sec"><h2>Agent summary · Leads-Today segment</h2><div class="sub">Per agent: total leads currently tracked in today\'s segment, how many are due for calling today (not yet worked, follow-up not in the future), and the current contact-engagement-stage breakdown.</div>'+
+  '<table><tr><th>Agent</th><th>Total in segment</th><th>Due today</th><th>Worked</th><th>Excluded (FU future)</th><th>By current stage</th></tr>'+
+  (agentRows||'<tr><td class="mut" colspan="6">No leads tracked today yet</td></tr>')+"</table></div>";
+  const html=
+  (J.error?'<div class="warn">Sync error: '+esc(J.error)+"</div>":"")+
+  '<div class="cards">'+
+    kc(fmt(s.total),"Tracked today","b")+
+    kc(fmt(s.worked),"Worked","g")+
+    kc(fmt(s.flagged),"Flagged (not worked)",s.flagged>0?"r":"g")+
+    kc(fmt(s.excluded),"Excluded · FU in future","a")+
+  "</div>"+
+  '<div class="viewtabs">'+
+    '<button class="'+(VIEW==="overview"?"on":"")+'" onclick="setView(\'overview\')">Overview</button>'+
+    '<button class="'+(VIEW==="agents"?"on":"")+'" onclick="setView(\'agents\')">Agent summary</button>'+
+  "</div>"+
+  (VIEW==="agents"?agentHtml:overviewHtml)+
   '<div style="font-size:11px;color:#9CA3AF">Last checkpoint: '+t(J.loadedAt)+(J.syncing?" · syncing…":"")+"</div>";
   document.getElementById("app").innerHTML=html;
 }
