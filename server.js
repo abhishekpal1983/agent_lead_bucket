@@ -494,6 +494,22 @@ function maybeRunLeadsTodayCheckpoint(){
   runLeadsTodayCheckpoint(p.hm);
 }
 
+function mostRecentPassedCheckpoint(hm){
+  // greatest CHECKPOINT_TIMES entry <= hm (both "HH:MM" strings, safe to compare lexically)
+  let best = null;
+  CHECKPOINT_TIMES.forEach(function(c){ if (c <= hm) best = c; });
+  return best;
+}
+
+function bootstrapLeadsTodayOnBoot(){
+  // Railway restarts (redeploys, crashes) wipe the in-memory tracker. Rather than
+  // leaving today blank until the next scheduled checkpoint, immediately catch up
+  // on whichever checkpoint should have already run today.
+  const p = istParts();
+  const cp = mostRecentPassedCheckpoint(p.hm);
+  if (cp) runLeadsTodayCheckpoint(cp);
+}
+
 /* ---------- bucket refill: fetch + assign ---------- */
 async function fetchBackupRange(from, to, sink){
   const filters = [
@@ -1492,6 +1508,7 @@ app.listen(PORT, () => {
   setTimeout(syncCalls, 90 * 1000);
   setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
   setInterval(maybeRunLeadsTodayCheckpoint, 60 * 1000);
+  bootstrapLeadsTodayOnBoot();
   syncBackupPool();
   setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
 });
