@@ -64,7 +64,7 @@ function agentSummary(){
   const byAgent={};
   (J.leads||[]).forEach(function(l){
     const key=l.owner||"(unassigned)";
-    if(!byAgent[key])byAgent[key]={owner:key,ownerName:l.ownerName||"(unassigned)",total:0,due:0,worked:0,excluded:0,stages:{}};
+    if(!byAgent[key])byAgent[key]={owner:key,ownerName:l.ownerName||"(unassigned)",ownerEmail:l.ownerEmail||"",total:0,due:0,worked:0,excluded:0,stages:{}};
     const a=byAgent[key];
     a.total++;
     if(l.status==="flagged")a.due++;
@@ -124,7 +124,8 @@ function draw(){
   }).join("");
   const agents=agentSummary();
   const agentRows=agents.map(function(a){
-    return "<tr><td>"+esc(a.ownerName)+"</td><td>"+fmt(a.total)+"</td>"+
+    const agentLabel=a.ownerEmail?esc(a.ownerName)+' <span class="mut">('+esc(a.ownerEmail)+')</span>':esc(a.ownerName);
+    return "<tr><td>"+agentLabel+"</td><td>"+fmt(a.total)+"</td>"+
       '<td'+(a.due>0?' class="cr" style="font-weight:800"':"")+'>'+fmt(a.due)+"</td>"+
       "<td>"+fmt(a.worked)+"</td><td>"+fmt(a.excluded)+"</td>"+
       '<td class="mut">'+stageList(a.stages)+"</td></tr>";

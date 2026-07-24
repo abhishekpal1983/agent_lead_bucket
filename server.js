@@ -183,6 +183,7 @@ async function sync(){
   CACHE.syncing = true;
   try {
     const owners = await fetchOwners();
+    CACHE.owners = owners; // make owner names available immediately, before the (slower) per-owner contact fetch below finishes
     const ids = Object.keys(owners);
     const contacts = [];
     const fresh = {};
@@ -1365,6 +1366,7 @@ app.get("/api/leads-today", (req, res) => {
     return {
       id: r.id, name: r.name, creator: r.creator,
       owner: r.owner, ownerName: (CACHE.owners[r.owner] && CACHE.owners[r.owner].name) || r.owner || "(unassigned)",
+      ownerEmail: (CACHE.owners[r.owner] && CACHE.owners[r.owner].email) || "",
       firstSeenAt: r.firstSeenAt, firstSeenLabel: r.firstSeenLabel,
       baselineStage: r.baselineStage, currentStage: r.currentStage,
       baselineFollowUp: r.baselineFollowUp, lastCallAt: r.lastCallAt,
