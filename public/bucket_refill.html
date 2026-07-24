@@ -72,9 +72,22 @@ function stageSummary(pool){
 async function selectAgent(id){
   SEL_AGENT=id; SEL_IDS={}; MSG="";
   DRILL=null; draw();
-  const r=await fetch("/api/bucket-refill/leads?agent="+encodeURIComponent(id));
-  DRILL=(await r.json()).leads||[];
+  scrollToDrill();
+  try{
+    const r=await fetch("/api/bucket-refill/leads?agent="+encodeURIComponent(id));
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    DRILL=(await r.json()).leads||[];
+  }catch(e){
+    DRILL=[]; MSG="Failed to load leads for this agent: "+(e.message||e);
+  }
   draw();
+  scrollToDrill();
+}
+function scrollToDrill(){
+  setTimeout(function(){
+    const el=document.getElementById("drillSec");
+    if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+  },30);
 }
 function toggleLead(id){
   if(SEL_IDS[id])delete SEL_IDS[id];else SEL_IDS[id]=1;
@@ -119,7 +132,7 @@ function draw(){
       '<td><button class="btn" onclick="selectAgent(\''+a.id+'\')">View &amp; assign</button></td></tr>';
   }).join("");
   const drillSec = !SEL_AGENT ? "" :
-    '<div class="sec"><h2>Backup pool · '+esc((agents.find(function(a){return a.id===SEL_AGENT;})||{}).name||SEL_AGENT)+'</h2>'+
+    '<div class="sec" id="drillSec"><h2>Backup pool · '+esc((agents.find(function(a){return a.id===SEL_AGENT;})||{}).name||SEL_AGENT)+'</h2>'+
     '<div class="sub">Leads currently owned by Abhishek Pal with this agent recorded as backup owner. Tick leads and assign; temp_tag is set to today\'s date on assignment.</div>'+
     (DRILL===null?'<div class="mut" style="padding:16px">Loading...</div>':
     ('<div class="bar">'+
