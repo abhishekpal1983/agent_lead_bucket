@@ -41,7 +41,7 @@ td.cell.sel{background:#4338CA;color:#fff;font-weight:800}
 td.z{color:#D1D5DB}
 .cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.mut{color:#9CA3AF}
 .tag{font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:9px;white-space:nowrap;margin-right:3px;display:inline-block}
-.tag.f{background:#EDE9FE;color:#5B21B6}.tag.s{background:#D1FAE5;color:#065F46}.tag.i{background:#DBEAFE;color:#1E40AF}
+.tag.f{background:#EDE9FE;color:#5B21B6}.tag.s{background:#D1FAE5;color:#065F46}.tag.i{background:#DBEAFE;color:#1E40AF}.tag.o{background:#FEE2E2;color:#991B1B}
 .a2{color:#4338CA;text-decoration:none;font-weight:700}
 .a2:hover{text-decoration:underline}
 #loading{padding:60px;text-align:center;color:#9CA3AF}
@@ -71,6 +71,7 @@ var S = {
   agent: ME || (localStorage.getItem("cn_agent") || ""),
   creator: QS.get("creator") || localStorage.getItem("cn_creator") || "",
   intl: localStorage.getItem("cn_intl") || "",
+  ostate: "",
   stages: null,
   fu: "",
   cellStage: "", cellSeg: "",
@@ -87,6 +88,7 @@ function qsStr(extra){
   if (S.agent) p.set("agent", S.agent);
   if (S.creator) p.set("creator", S.creator);
   if (S.intl) p.set("intl", S.intl);
+  if (S.ostate) p.set("ostate", S.ostate);
   if (S.stages && S.stages.length) p.set("stages", S.stages.join(","));
   if (extra) Object.keys(extra).forEach(function(k){ if (extra[k]) p.set(k, extra[k]); });
   return p.toString();
@@ -112,7 +114,9 @@ function load(){
   });
 }
 function loadLeads(){
-  var u = "/api/callnow/leads?" + qsStr({ stage: S.cellStage, seg: S.cellSeg || "any", fu: S.fu, limit: "1500" });
+  var seg = S.cellSeg || "any", extra = { stage: S.cellStage, fu: S.fu, limit: "1500" };
+  if (seg === "needs") { extra.seg = "any"; extra.ostate = "needs"; } else { extra.seg = seg; }
+  var u = "/api/callnow/leads?" + qsStr(extra);
   L = { loading: true };
   draw();
   fetch(u).then(function(r){ return r.json(); }).then(function(j){ L = j; draw(); });
@@ -134,6 +138,7 @@ function presetStages(which){
   S.cellStage = ""; S.cellSeg = ""; L = null; load();
 }
 function setFu(v){ S.fu = (S.fu === v ? "" : v); if (S.cellSeg) loadLeads(); else draw(); }
+function setOstate(v){ S.ostate = (S.ostate === v ? "" : v); S.cellStage = ""; S.cellSeg = ""; L = null; load(); }
 
 function hsUrl(id){
   var p = (J && J.portal) || { uiDomain: "app-na2.hubspot.com", portalId: "244132076" };
@@ -173,6 +178,12 @@ function drawFilters(){
     h += "<button class='chipb" + (S.stages.indexOf(s) >= 0 ? " on" : "") + "' onclick=\"toggleStage('" + s.replace(/'/g, "\\'") + "')\">" + esc(J.stageGroups.labels[s] || s) + "</button>";
   });
   h += "</div></div>";
+  h += "<div style='flex:1;min-width:230px'><label>Owner state</label><div class='chips'>";
+  h += "<button class='chipb" + (S.ostate === "" ? " on" : "") + "' onclick=\"setOstate('')\">All</button>";
+  h += "<button class='chipb" + (S.ostate === "needs" ? " on" : "") + "' onclick=\"setOstate('needs')\">Needs owner</button>";
+  h += "<button class='chipb" + (S.ostate === "unassigned" ? " on" : "") + "' onclick=\"setOstate('unassigned')\">Unassigned</button>";
+  h += "<button class='chipb" + (S.ostate === "inactive" ? " on" : "") + "' onclick=\"setOstate('inactive')\">Deactivated owner</button>";
+  h += "</div></div>";
   h += "</div>";
   return h;
 }
@@ -184,6 +195,7 @@ function drawCards(){
     "<div class='card v'><div class='v'>" + fmt(t.form) + "</div><div class='l'>Waitlist form leads</div></div>" +
     "<div class='card g'><div class='v'>" + fmt(t.score) + "</div><div class='l'>Conv score &ge; " + J.scoreMin + "</div></div>" +
     "<div class='card b'><div class='v'>" + fmt(t.intl) + "</div><div class='l'>International</div></div>" +
+    "<div class='card r'><div class='v'>" + fmt(t.needs) + "</div><div class='l'>Needs owner</div></div>" +
     "<div class='card a'><div class='v'>" + fmt(t.overdue) + "</div><div class='l'>Follow-up overdue</div></div>" +
     "<div class='card a'><div class='v'>" + fmt(t.nofu) + "</div><div class='l'>No follow-up set</div></div>" +
     "<div class='card r'><div class='v'>" + fmt(t.uncalled) + "</div><div class='l'>Never called</div></div>" +
@@ -192,14 +204,15 @@ function drawCards(){
 }
 
 function drawMatrix(){
-  var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
-  h += "<table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent, so they can be reassigned before they are missed. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
+  h += "<table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
   J.matrix.forEach(function(r){
     h += "<tr><td><b>" + esc(r.label) + "</b></td>";
     h += cell(r.form, r.stage, "form");
     h += cell(r.score, r.stage, "score");
     h += cell(r.intl, r.stage, "intl");
     h += cell(r.any, r.stage, "any");
+    h += cell(r.needs, r.stage, "needs");
     h += cell(r.total, r.stage, "all");
     h += "<td class='n " + (r.overdue ? "cr" : "mut") + "'>" + fmt(r.overdue) + "</td>";
     h += "<td class='n " + (r.nofu ? "ca" : "mut") + "'>" + fmt(r.nofu) + "</td>";
@@ -207,7 +220,7 @@ function drawMatrix(){
   });
   var t = J.totals;
   h += "<tr class='tot'><td>TOTAL</td>";
-  h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.total, "", "all");
+  h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.needs, "", "needs") + cell(t.total, "", "all");
   h += "<td class='n'>" + fmt(t.overdue) + "</td><td class='n'>" + fmt(t.nofu) + "</td><td class='n'>" + fmt(t.uncalled) + "</td></tr>";
   h += "</tbody></table></div>";
   return h;
@@ -239,7 +252,7 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", all: "All leads" }[S.cellSeg] || "Leads";
+  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", all: "All leads" }[S.cellSeg] || "Leads";
   var stName = S.cellStage ? (J.stageGroups.labels[S.cellStage] || S.cellStage) : "All stages in view";
   var rows = L.rows;
   if (S.q) {
@@ -262,7 +275,7 @@ function drawLeads(){
       "<td><a class='a2' href='" + hsUrl(r.id) + "' target='_blank'>" + esc(r.name) + "</a></td>" +
       "<td>" + esc(J.stageGroups.labels[r.stage] || r.stage) + "</td>" +
       "<td>" + why(r) + "</td>" +
-      "<td>" + esc(r.ownerName) + "</td>" +
+      "<td>" + (r.unassigned ? "<span class='tag o'>UNASSIGNED</span>" : (esc(r.ownerName) + (r.inactive ? " <span class='tag o'>INACTIVE</span>" : ""))) + "</td>" +
       "<td>" + esc(r.creator || "–") + "</td>" +
       "<td class='" + (r.last ? "" : "cr") + "'>" + (r.last ? dt(r.last) : "never called") + "</td>" +
       "<td class='" + (od ? "cr" : (r.fu ? "" : "ca")) + "'>" + (r.fu ? dt(r.fu) + (od ? " (overdue)" : "") : "not set") + "</td>" +
@@ -276,11 +289,11 @@ function drawLeads(){
 
 function exportCsv(){
   if (!L || !L.rows) return;
-  var head = ["Name","Stage","Forms","Conversion score","International","Agent","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
+  var head = ["Name","Stage","Forms","Conversion score","International","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
   var lines = [head.join(",")];
   L.rows.forEach(function(r){
     var v = [r.name, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.score || "", r.intl ? "Yes" : "No",
-      r.ownerName, r.creator, r.last ? new Date(r.last).toISOString() : "", r.fu ? new Date(r.fu).toISOString() : "",
+      r.ownerName, (r.unassigned ? "Unassigned" : (r.inactive ? "Deactivated owner" : "Active")), r.creator, r.last ? new Date(r.last).toISOString() : "", r.fu ? new Date(r.fu).toISOString() : "",
       r.calls, r.own, r.entered ? days(r.entered) : "", hsUrl(r.id)];
     lines.push(v.map(function(x){ return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(","));
   });

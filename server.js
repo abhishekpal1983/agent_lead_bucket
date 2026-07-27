@@ -647,7 +647,8 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
   leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
   backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error,
-  formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error }));
+  formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error,
+  unownedLoadedAt: UNOWNED.loadedAt, unownedCount: UNOWNED.rows.length, unownedSyncing: UNOWNED.syncing, unownedError: UNOWNED.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -1569,6 +1570,68 @@ function formsOf(c){
   return Object.keys(out);
 }
 
+/* Leads that no active agent is working: unassigned, or held by a deactivated owner.
+   Unassigned leads are NOT in CACHE (that sync is partitioned per owner), so pull the
+   priority ones separately: conversion score >= threshold, plus any waitlist form
+   submitter we could not match to a pooled contact. Both sets are bounded (~200 + ~60). */
+let UNOWNED = { rows: [], loadedAt: null, syncing: false, error: null };
+
+async function fetchUnownedScored(){
+  const out = [];
+  let after;
+  do {
+    const body = {
+      filterGroups: [{ filters: [
+        { propertyName: "hubspot_owner_id", operator: "NOT_HAS_PROPERTY" },
+        { propertyName: "conversion_probability_score", operator: "GTE", value: String(CONV_SCORE_MIN) }
+      ]}],
+      properties: PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+      limit: 100, after: after
+    };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(140);
+    if (out.length >= 9500) break;
+  } while (after);
+  return out;
+}
+
+async function fetchContactsByEmails(emails){
+  const out = [];
+  for (let i = 0; i < emails.length; i += 50) {
+    const batch = emails.slice(i, i + 50);
+    try {
+      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: [{ propertyName: "email", operator: "IN", values: batch }] }],
+        properties: PROPS, limit: 100
+      })});
+      (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    } catch (e) { console.error("form email lookup failed: " + e.message); }
+    await sleep(140);
+  }
+  return out;
+}
+
+async function syncUnowned(){
+  if (!TOKEN || UNOWNED.syncing) return;
+  UNOWNED.syncing = true;
+  try {
+    const rows = [];
+    const seen = {};
+    const push = function(r){ if (!seen[r.id]) { seen[r.id] = 1; rows.push(r); } };
+    (await fetchUnownedScored()).forEach(push);
+    const emails = Array.from(FORMS.byEmail.keys());
+    if (emails.length) (await fetchContactsByEmails(emails)).forEach(push);
+    UNOWNED = { rows: rows, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Unowned/priority pool synced: " + rows.length + " contacts");
+  } catch (e) {
+    UNOWNED.syncing = false; UNOWNED.error = e.message;
+    console.error("Unowned sync failed: " + e.message);
+  }
+}
+
 const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","__fresh"];
 const CN_OTHER_STAGES = ["IFC","ghosted","ni_not_interested","disqualified","deal_won"];
 // Rescue stages: churned stages that still belong in the must-call set, but ONLY for leads that
@@ -1585,26 +1648,37 @@ const CN_STAGE_LABELS = {
 
 let CN_POOL = { at: null, rows: [] };
 function callnowPool(){
-  if (CN_POOL.at === CACHE.loadedAt && CN_POOL.rows.length) return CN_POOL.rows;
+  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt);
+  if (CN_POOL.at === key && CN_POOL.rows.length) return CN_POOL.rows;
   const rows = CACHE.contacts.slice();
+  const seen = {};
+  rows.forEach(function(c){ seen[c.id] = 1; });
   Object.keys(CACHE.fresh || {}).forEach(function(oid){
     (CACHE.fresh[oid] || []).forEach(function(f){
+      seen[f.id] = 1;
       rows.push(Object.assign({}, f, { hubspot_owner_id: oid, contact_engagement_stage: "" }));
     });
   });
-  CN_POOL = { at: CACHE.loadedAt, rows: rows };
+  (UNOWNED.rows || []).forEach(function(c){ if (!seen[c.id]) { seen[c.id] = 1; rows.push(c); } });
+  CN_POOL = { at: key, rows: rows };
   return rows;
 }
 
 function cnStage(c){ return c.contact_engagement_stage || "__fresh"; }
 function cnRow(c){
-  const o = CACHE.owners[c.hubspot_owner_id] || {};
+  const oid = String(c.hubspot_owner_id || "");
+  const o = CACHE.owners[oid] || {};
+  const unassigned = !oid;
+  const inactive = !unassigned && o.active === false;
   return {
     id: c.id,
+    unassigned: unassigned,
+    inactive: inactive,
+    needsOwner: unassigned || inactive,
     name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || "(no name)",
     stage: cnStage(c),
     owner: String(c.hubspot_owner_id || ""),
-    ownerName: o.name || (c.hubspot_owner_id ? "Owner " + c.hubspot_owner_id : "(unassigned)"),
+    ownerName: o.name || (oid ? "Owner " + oid : "(unassigned)"),
     creator: c.topmate_username || "",
     last: ts(c.last_call_date_and_time),
     fu: ts(c.follow_up_date_and_time),
@@ -1636,13 +1710,18 @@ function cnFilter(q){
   const creator = q.creator || "", agent = q.agent || q.owner || "", intl = q.intl || "";
   const stages = String(q.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
   const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
+  const ostate = q.ostate || "";
   return callnowPool().filter(function(c){
     if (creator && (c.topmate_username || "") !== creator) return false;
-    if (agent && String(c.hubspot_owner_id || "") !== agent) return false;
+    if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
     if (!intlMatch(c, intl)) return false;
     return stageSet.indexOf(cnStage(c)) >= 0;
   }).map(cnRow).filter(function(r){
-    return CN_RESCUE_STAGES.indexOf(r.stage) < 0 || cnRescued(r);
+    if (CN_RESCUE_STAGES.indexOf(r.stage) >= 0 && !cnRescued(r)) return false;
+    if (ostate === "needs" && !r.needsOwner) return false;
+    if (ostate === "unassigned" && !r.unassigned) return false;
+    if (ostate === "inactive" && !r.inactive) return false;
+    return true;
   });
 }
 
@@ -1650,7 +1729,7 @@ app.get("/api/callnow", (req, res) => {
   const rows = cnFilter(req.query);
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
-  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, overdue: 0, nofu: 0, uncalled: 0 }; };
+  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0 }; };
   const byStage = {}, tot = blank();
   const byAgent = {}, byCreator = {};
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
@@ -1665,6 +1744,7 @@ app.get("/api/callnow", (req, res) => {
       if (s.intl) x.intl++;
       if (any) {
         x.any++;
+        if (r.needsOwner) x.needs++;
         if (r.fu && r.fu < now) x.overdue++;
         if (!r.fu) x.nofu++;
         if (!r.last) x.uncalled++;
@@ -1681,20 +1761,24 @@ app.get("/api/callnow", (req, res) => {
     return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
   });
   const allCreators = {}, allAgents = {};
+  let unassignedPool = 0;
   callnowPool().forEach(function(c){
     const u = c.topmate_username; if (u) allCreators[u] = (allCreators[u] || 0) + 1;
-    const oid = String(c.hubspot_owner_id || ""); if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1;
+    const oid = String(c.hubspot_owner_id || "");
+    if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1; else unassignedPool++;
   });
   res.json({
     loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
     formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
+    formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
     scoreMin: CONV_SCORE_MIN,
     matrix: matrix, totals: tot,
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
     agentOptions: Object.keys(allAgents).map(function(id){
       const o = CACHE.owners[id] || {};
       return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false, n: allAgents[id] };
-    }).sort(function(a, b){ return b.n - a.n; }),
+    }).sort(function(a, b){ return b.n - a.n; })
+      .concat(unassignedPool ? [{ id: "none", name: "(unassigned)", email: "", active: false, n: unassignedPool }] : []),
     creatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
       .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
     creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
@@ -1748,6 +1832,6 @@ app.listen(PORT, () => {
   bootstrapLeadsTodayOnBoot();
   syncBackupPool();
   setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
-  setTimeout(syncForms, 150 * 1000);
-  setInterval(syncForms, COHORT_MINUTES * 60 * 1000);
+  setTimeout(function(){ syncForms().then(syncUnowned); }, 150 * 1000);
+  setInterval(function(){ syncForms().then(syncUnowned); }, COHORT_MINUTES * 60 * 1000);
 });
