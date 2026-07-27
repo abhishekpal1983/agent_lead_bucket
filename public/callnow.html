@@ -113,9 +113,18 @@ function load(){
     document.getElementById("loading").innerHTML = "<div class='warn'>Could not load: " + esc(e.message) + "</div>";
   });
 }
+var KIND = {
+  needs:      { seg: "any", ostate: "needs" },
+  fu_overdue: { seg: "any", fu: "overdue" },
+  fu_none:    { seg: "any", fu: "none" },
+  uncalled:   { seg: "any", uncalled: "1" }
+};
 function loadLeads(){
-  var seg = S.cellSeg || "any", extra = { stage: S.cellStage, fu: S.fu, limit: "1500" };
-  if (seg === "needs") { extra.seg = "any"; extra.ostate = "needs"; } else { extra.seg = seg; }
+  var kind = S.cellSeg || "any";
+  var base = KIND[kind] || { seg: kind };
+  var extra = { stage: S.cellStage, limit: "1500" };
+  Object.keys(base).forEach(function(k){ extra[k] = base[k]; });
+  if (S.fu) extra.fu = S.fu;
   var u = "/api/callnow/leads?" + qsStr(extra);
   L = { loading: true };
   draw();
@@ -145,10 +154,10 @@ function hsUrl(id){
   return "https://" + p.uiDomain + "/contacts/" + p.portalId + "/record/0-1/" + id;
 }
 
-function cell(v, stage, seg){
+function cell(v, stage, seg, cls){
   var sel = (S.cellStage === stage && S.cellSeg === seg) ? " sel" : "";
   var z = v ? "" : " z";
-  return "<td class='cell" + sel + z + "' onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
+  return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "' onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
 }
 
 function drawFilters(){
@@ -214,14 +223,14 @@ function drawMatrix(){
     h += cell(r.any, r.stage, "any");
     h += cell(r.needs, r.stage, "needs");
     h += cell(r.total, r.stage, "all");
-    h += "<td class='n " + (r.overdue ? "cr" : "mut") + "'>" + fmt(r.overdue) + "</td>";
-    h += "<td class='n " + (r.nofu ? "ca" : "mut") + "'>" + fmt(r.nofu) + "</td>";
-    h += "<td class='n " + (r.uncalled ? "cr" : "mut") + "'>" + fmt(r.uncalled) + "</td></tr>";
+    h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "");
+    h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "");
+    h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "") + "</tr>";
   });
   var t = J.totals;
   h += "<tr class='tot'><td>TOTAL</td>";
   h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.needs, "", "needs") + cell(t.total, "", "all");
-  h += "<td class='n'>" + fmt(t.overdue) + "</td><td class='n'>" + fmt(t.nofu) + "</td><td class='n'>" + fmt(t.uncalled) + "</td></tr>";
+  h += cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
   h += "</tbody></table></div>";
   return h;
 }
@@ -252,7 +261,7 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", all: "All leads" }[S.cellSeg] || "Leads";
+  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";
   var stName = S.cellStage ? (J.stageGroups.labels[S.cellStage] || S.cellStage) : "All stages in view";
   var rows = L.rows;
   if (S.q) {

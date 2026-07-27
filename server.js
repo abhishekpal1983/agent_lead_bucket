@@ -1800,6 +1800,7 @@ app.get("/api/callnow/leads", (req, res) => {
     if (seg === "all") return true;
     return s.form || s.score || s.intl;
   });
+  if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
   const fu = String(req.query.fu || "");
   if (fu) {
     const now = Date.now(), sod = new Date(); sod.setHours(0, 0, 0, 0);
