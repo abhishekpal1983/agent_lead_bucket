@@ -192,7 +192,7 @@ function drawCards(){
 }
 
 function drawMatrix(){
-  var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue.</div>";
+  var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
   h += "<table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
   J.matrix.forEach(function(r){
     h += "<tr><td><b>" + esc(r.label) + "</b></td>";

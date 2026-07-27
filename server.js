@@ -1569,13 +1569,17 @@ function formsOf(c){
   return Object.keys(out);
 }
 
-const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","__fresh"];
-const CN_OTHER_STAGES = ["IFC","dnp_did_not_pick","ghosted","ni_not_interested","disqualified","deal_won"];
+const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","__fresh"];
+const CN_OTHER_STAGES = ["IFC","ghosted","ni_not_interested","disqualified","deal_won"];
+// Rescue stages: churned stages that still belong in the must-call set, but ONLY for leads that
+// qualify on form submission or conversion score. International alone does not rescue a lead here.
+const CN_RESCUE_STAGES = ["dnp_did_not_pick"];
+function cnRescued(r){ return r.forms.length > 0 || r.score >= CONV_SCORE_MIN; }
 const CN_STAGE_LABELS = {
   counselled: "Counselled", program_pitched: "Program pitched", discovery: "Discovery",
   pricing_pitched: "Pricing pitched", "Follow up": "Follow up", payment_prospect: "Payment prospect",
   FU_DNP: "FU - DNP", FU_RCB: "FU - RCB", rcb_requested_callback: "RCB - Requested callback",
-  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP - Did not pick",
+  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP (form or score only)",
   ghosted: "Ghosted", ni_not_interested: "NI - Not interested", disqualified: "Disqualified", deal_won: "Deal won"
 };
 
@@ -1637,7 +1641,9 @@ function cnFilter(q){
     if (agent && String(c.hubspot_owner_id || "") !== agent) return false;
     if (!intlMatch(c, intl)) return false;
     return stageSet.indexOf(cnStage(c)) >= 0;
-  }).map(cnRow);
+  }).map(cnRow).filter(function(r){
+    return CN_RESCUE_STAGES.indexOf(r.stage) < 0 || cnRescued(r);
+  });
 }
 
 app.get("/api/callnow", (req, res) => {
