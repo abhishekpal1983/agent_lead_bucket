@@ -10,7 +10,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
 .hdr h1{font-size:16px;font-weight:800}
 .hdr p{font-size:11px;color:#9CA3AF}
-.livebadge{background:#DC2626;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
+.livebadge{background:#B03A00;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px;letter-spacing:.05em}
 .mebadge{background:#4338CA;color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:4px}
 .wrap{max-width:1660px;margin:0 auto;padding:16px 20px 40px}
 .bar{background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
@@ -23,25 +23,30 @@ select,input[type=search]{border:1px solid #E5E7EB;border-radius:7px;padding:5px
 .btn.p{background:#4338CA;color:#fff;border-color:#4338CA}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .card{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:11px 14px;border-top:3px solid #E5E7EB}
-.card.r{border-top-color:#F1A8A8}.card.b{border-top-color:#93B4F5}.card.g{border-top-color:#86D3A2}.card.a{border-top-color:#F0D48A}.card.v{border-top-color:#C4B5FD}
+.card.r{border-top-color:#E8A87C}.card.b{border-top-color:#93B4F5}.card.g{border-top-color:#8FC3E0}.card.a{border-top-color:#F0C97A}.card.v{border-top-color:#C4B5FD}
 .card .v{font-size:20px;font-weight:800}
 .card .l{font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
 .sec{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;padding:14px 17px;overflow-x:auto}
 .sec h2{font-size:13px;font-weight:800;margin-bottom:2px}
 .sec .sub{font-size:10.5px;color:#9CA3AF;margin-bottom:10px}
-table{border-collapse:collapse;font-size:11.6px;width:100%}
-th{background:#F3F4F6;padding:5px 8px;text-align:left;font-size:9.5px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap}
-td{padding:5px 8px;border-bottom:1px solid #F3F4F6;white-space:nowrap}
+.tw{max-height:74vh;overflow:auto;border:1px solid #EEF0F3;border-radius:8px}
+table{border-collapse:separate;border-spacing:0;font-size:13px;width:100%}
+th{background:#F3F4F6;padding:9px 11px;text-align:left;font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;white-space:nowrap;position:sticky;top:0;z-index:3;border-bottom:1px solid #E5E7EB}
+th:first-child{left:0;z-index:4}
+td{padding:8px 11px;border-bottom:1px solid #F3F4F6;white-space:nowrap}
+td:first-child{position:sticky;left:0;background:#fff;z-index:2}
+tr.tot td:first-child{background:#FFFBEB}
 tr:last-child td{border-bottom:none}
 tr.tot td{background:#FFFBEB;font-weight:800}
 td.n{text-align:right;font-variant-numeric:tabular-nums}
 td.cell{text-align:right;cursor:pointer;font-variant-numeric:tabular-nums}
 td.cell:hover{background:#EEF2FF}
 td.cell.sel{background:#4338CA;color:#fff;font-weight:800}
+td.cell.sel *{color:#fff}
 td.z{color:#D1D5DB}
-.cg{color:#059669}.cr{color:#DC2626}.ca{color:#D97706}.mut{color:#9CA3AF}
+.cg{color:#005A8C}.cr{color:#B03A00}.ca{color:#8A5A00}.mut{color:#9CA3AF}
 .tag{font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:9px;white-space:nowrap;margin-right:3px;display:inline-block}
-.tag.f{background:#EDE9FE;color:#5B21B6}.tag.s{background:#D1FAE5;color:#065F46}.tag.i{background:#DBEAFE;color:#1E40AF}.tag.o{background:#FEE2E2;color:#991B1B}
+.tag.f{background:#EDE9FE;color:#5B21B6}.tag.s{background:#DDEBF6;color:#00415F}.tag.i{background:#DBEAFE;color:#1E40AF}.tag.o{background:#FBE3D3;color:#7A2800}
 .a2{color:#4338CA;text-decoration:none;font-weight:700}
 .a2:hover{text-decoration:underline}
 #loading{padding:60px;text-align:center;color:#9CA3AF}
@@ -154,10 +159,16 @@ function hsUrl(id){
   return "https://" + p.uiDomain + "/contacts/" + p.portalId + "/record/0-1/" + id;
 }
 
-function cell(v, stage, seg, cls){
+function cell(v, stage, seg, cls, heat){
   var sel = (S.cellStage === stage && S.cellSeg === seg) ? " sel" : "";
   var z = v ? "" : " z";
-  return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "' onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
+  var bg = (!sel && heat > 0) ? " style='background:rgba(0,114,178," + (0.05 + 0.25 * heat).toFixed(3) + ")'" : "";
+  return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "'" + bg + " onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
+}
+function heats(rows, keys){
+  var mx = {};
+  keys.forEach(function(k){ mx[k] = 0; rows.forEach(function(r){ if (r[k] > mx[k]) mx[k] = r[k]; }); });
+  return function(r, k){ return mx[k] ? Math.sqrt(r[k] / mx[k]) : 0; };
 }
 
 function drawFilters(){
@@ -214,31 +225,32 @@ function drawCards(){
 
 function drawMatrix(){
   var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent, so they can be reassigned before they are missed. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
-  h += "<table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
     h += "<tr><td><b>" + esc(r.label) + "</b></td>";
-    h += cell(r.form, r.stage, "form");
-    h += cell(r.score, r.stage, "score");
-    h += cell(r.intl, r.stage, "intl");
-    h += cell(r.any, r.stage, "any");
-    h += cell(r.needs, r.stage, "needs");
-    h += cell(r.total, r.stage, "all");
-    h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "");
-    h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "");
-    h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "") + "</tr>";
+    h += cell(r.form, r.stage, "form", "", hv(r, "form"));
+    h += cell(r.score, r.stage, "score", "", hv(r, "score"));
+    h += cell(r.intl, r.stage, "intl", "", hv(r, "intl"));
+    h += cell(r.any, r.stage, "any", "", hv(r, "any"));
+    h += cell(r.needs, r.stage, "needs", "", hv(r, "needs"));
+    h += cell(r.total, r.stage, "all", "", hv(r, "total"));
+    h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "", hv(r, "overdue"));
+    h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "", hv(r, "nofu"));
+    h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "", hv(r, "uncalled")) + "</tr>";
   });
   var t = J.totals;
   h += "<tr class='tot'><td>TOTAL</td>";
   h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.needs, "", "needs") + cell(t.total, "", "all");
   h += cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
-  h += "</tbody></table></div>";
+  h += "</tbody></table></div></div>";
   return h;
 }
 
 function drawAgents(){
   if (ME || S.agent) return "";
   var h = "<div class='sec'><h2>Must-call load by agent</h2><div class='sub'>Click a row to filter the whole page to that agent.</div>";
-  h += "<table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Agent link</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Agent link</th></tr></thead><tbody>";
   J.agents.forEach(function(a){
     if (!a.id) return;
     h += "<tr class='rowlink' onclick=\"setF('agent','" + esc(a.id) + "')\"><td><b>" + esc(a.name) + "</b></td>" +
@@ -246,7 +258,7 @@ function drawAgents(){
       "<td class='n mut'>" + fmt(a.total) + "</td><td class='n'>" + (a.total ? (100 * a.any / a.total).toFixed(1) : "0") + "%</td>" +
       "<td><a class='a2' href='/callnow.html?id=" + esc(a.id) + "' onclick='event.stopPropagation()'>open</a></td></tr>";
   });
-  h += "</tbody></table></div>";
+  h += "</tbody></table></div></div>";
   return h;
 }
 
@@ -277,7 +289,7 @@ function drawLeads(){
   h += "<input type='search' placeholder='search name / creator / agent' value='" + esc(S.q) + "' oninput=\"S.q=this.value;draw()\" style='min-width:210px'>";
   h += "<button class='btn p' onclick='exportCsv()'>Export CSV</button>";
   h += "</div>";
-  h += "<table><thead><tr><th>#</th><th>Lead</th><th>Stage</th><th>Why call</th><th>Agent</th><th>Creator</th><th>Last call</th><th>Follow-up</th><th style='text-align:right'>Calls in stage</th><th style='text-align:right'>By owner</th><th style='text-align:right'>Days in stage</th><th>HubSpot</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>#</th><th>Lead</th><th>Stage</th><th>Why call</th><th>Agent</th><th>Creator</th><th>Last call</th><th>Follow-up</th><th style='text-align:right'>Calls in stage</th><th style='text-align:right'>By owner</th><th style='text-align:right'>Days in stage</th><th>HubSpot</th></tr></thead><tbody>";
   rows.forEach(function(r, i){
     var od = r.fu && r.fu < Date.now();
     h += "<tr><td class='mut'>" + (i + 1) + "</td>" +
@@ -292,7 +304,7 @@ function drawLeads(){
       "<td class='n mut'>" + (r.entered ? fmt(days(r.entered)) : "–") + "</td>" +
       "<td><a class='a2' href='" + hsUrl(r.id) + "' target='_blank'>open ↗</a></td></tr>";
   });
-  h += "</tbody></table></div>";
+  h += "</tbody></table></div></div>";
   return h;
 }
 
