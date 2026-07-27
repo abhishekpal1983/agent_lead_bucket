@@ -29,6 +29,7 @@ const PROPS = [
   "createdate","follow_up_date_and_time","last_call_date_and_time",
   "engagement_stage_last_changed_at","tm_student_or_professional",
   "not_interested_reason","counselling_done","previous_engagement_stage",
+  "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
   "firstname","lastname"
 ];
 const WORKABLE = ["rcb_requested_callback","discovery","program_pitched","pricing_pitched","counselled","Follow up","FU_DNP","FU_RCB","payment_prospect"];
@@ -164,7 +165,9 @@ async function fetchFreshForOwner(ownerId){
         { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
         { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
       ]}],
-      properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source"],
+      properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source",
+        "email", "phone", "conversion_probability_score", "recent_conversion_event_name", "first_conversion_event_name",
+        "follow_up_date_and_time", "last_call_date_and_time"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
     };
@@ -643,7 +646,8 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error,
   counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
   leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
-  backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error }));
+  backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error,
+  formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -1498,6 +1502,231 @@ app.post("/api/bucket-refill/assign", async (req, res) => {
 
 app.get("/api/bucket-refill/log", (req, res) => res.json({ log: ASSIGN_LOG }));
 
+/* ---------- Call-now: waitlist form leads, conversion score, international ---------- */
+const WAITLIST_FORMS = [
+  { guid: "09fd2bc5-c716-4e70-ae2c-18aaec35eb4a", label: "Payal Waitlist", match: "payal waitlist" },
+  { guid: "5bed7f99-9a35-4355-8695-23df4bab2618", label: "Ayush Waitlist", match: "ayush waitlist" },
+  { guid: "f56bd773-4d5b-43bb-b4c4-6bfe657bcd10", label: "Priyanka Waitlist", match: "priyanka waitlist" }
+];
+// HubSpot list 1611 ("Conversion score > 6") == conversion_probability_score >= 6 (verified: both 1,722 contacts)
+const CONV_SCORE_MIN = parseInt(process.env.CONV_SCORE_MIN || "6", 10);
+let FORMS = { byEmail: new Map(), source: "", counts: {}, loadedAt: null, syncing: false, error: null };
+
+async function fetchFormSubmissions(guid){
+  const out = [];
+  let after, pages = 0;
+  do {
+    const j = await hs("/form-integrations/v1/submissions/forms/" + guid + "?limit=50" + (after ? "&after=" + encodeURIComponent(after) : ""));
+    (j.results || []).forEach(function(r){
+      let em = "";
+      (r.values || []).forEach(function(v){ if (String(v.name || "").toLowerCase() === "email") em = String(v.value || "").trim().toLowerCase(); });
+      if (em) out.push({ email: em, at: r.submittedAt || 0 });
+    });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    pages++;
+    await sleep(150);
+  } while (after && pages < 200);
+  return out;
+}
+
+async function syncForms(){
+  if (!TOKEN || FORMS.syncing) return;
+  FORMS.syncing = true;
+  const map = new Map();
+  const counts = {};
+  let ok = 0, err = "";
+  for (const f of WAITLIST_FORMS) {
+    try {
+      const subs = await fetchFormSubmissions(f.guid);
+      subs.forEach(function(s){
+        const k = String(s.email || "").toLowerCase();
+        if (!k) return;
+        if (!map.has(k)) map.set(k, {});
+        const e = map.get(k), at = ts(s.at);
+        if (!e[f.label] || at > e[f.label]) e[f.label] = at;
+      });
+      counts[f.label] = subs.length;
+      ok++;
+    } catch (e) { counts[f.label] = null; err = e.message; }
+  }
+  FORMS = {
+    byEmail: map, counts: counts,
+    source: ok === WAITLIST_FORMS.length ? "forms-api" : (ok > 0 ? "forms-api (partial) + conversion-event fallback" : "conversion-event fallback only"),
+    loadedAt: new Date().toISOString(), syncing: false,
+    error: ok === WAITLIST_FORMS.length ? null : ("Forms submissions API unavailable (needs the 'forms' scope on the private app); falling back to first/recent conversion event names. " + err).slice(0, 300)
+  };
+  console.log("Forms synced: " + map.size + " emails across " + ok + "/" + WAITLIST_FORMS.length + " waitlist forms (" + FORMS.source + ")");
+}
+
+// A lead counts as a form lead if the Forms API saw a submission on its email, OR its first/recent
+// conversion event names it. The union keeps the view working even without the forms scope.
+function formsOf(c){
+  const out = {};
+  const em = String(c.email || "").trim().toLowerCase();
+  if (em && FORMS.byEmail.has(em)) Object.keys(FORMS.byEmail.get(em)).forEach(function(k){ out[k] = 1; });
+  const names = (String(c.recent_conversion_event_name || "") + " ~ " + String(c.first_conversion_event_name || "")).toLowerCase();
+  WAITLIST_FORMS.forEach(function(f){ if (names.indexOf(f.match) >= 0) out[f.label] = 1; });
+  return Object.keys(out);
+}
+
+const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","__fresh"];
+const CN_OTHER_STAGES = ["IFC","dnp_did_not_pick","ghosted","ni_not_interested","disqualified","deal_won"];
+const CN_STAGE_LABELS = {
+  counselled: "Counselled", program_pitched: "Program pitched", discovery: "Discovery",
+  pricing_pitched: "Pricing pitched", "Follow up": "Follow up", payment_prospect: "Payment prospect",
+  FU_DNP: "FU - DNP", FU_RCB: "FU - RCB", rcb_requested_callback: "RCB - Requested callback",
+  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP - Did not pick",
+  ghosted: "Ghosted", ni_not_interested: "NI - Not interested", disqualified: "Disqualified", deal_won: "Deal won"
+};
+
+let CN_POOL = { at: null, rows: [] };
+function callnowPool(){
+  if (CN_POOL.at === CACHE.loadedAt && CN_POOL.rows.length) return CN_POOL.rows;
+  const rows = CACHE.contacts.slice();
+  Object.keys(CACHE.fresh || {}).forEach(function(oid){
+    (CACHE.fresh[oid] || []).forEach(function(f){
+      rows.push(Object.assign({}, f, { hubspot_owner_id: oid, contact_engagement_stage: "" }));
+    });
+  });
+  CN_POOL = { at: CACHE.loadedAt, rows: rows };
+  return rows;
+}
+
+function cnStage(c){ return c.contact_engagement_stage || "__fresh"; }
+function cnRow(c){
+  const o = CACHE.owners[c.hubspot_owner_id] || {};
+  return {
+    id: c.id,
+    name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || "(no name)",
+    stage: cnStage(c),
+    owner: String(c.hubspot_owner_id || ""),
+    ownerName: o.name || (c.hubspot_owner_id ? "Owner " + c.hubspot_owner_id : "(unassigned)"),
+    creator: c.topmate_username || "",
+    last: ts(c.last_call_date_and_time),
+    fu: ts(c.follow_up_date_and_time),
+    calls: num(c.callscurrent_stage),
+    own: num(c.call_in_current_stage_by_current_owner),
+    entered: ts(c.engagement_stage_last_changed_at) || ts(c.createdate),
+    created: ts(c.createdate),
+    score: num(c.conversion_probability_score),
+    forms: formsOf(c),
+    intl: intlOf(c),
+    src: srcOf(c)
+  };
+}
+function cnSegs(r){
+  return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl };
+}
+function cnSort(a, b){
+  const now = Date.now();
+  const af = a.forms.length ? 1 : 0, bf = b.forms.length ? 1 : 0;
+  if (af !== bf) return bf - af;
+  if (a.score !== b.score) return b.score - a.score;
+  const ao = (a.fu && a.fu < now) ? 1 : 0, bo = (b.fu && b.fu < now) ? 1 : 0;
+  if (ao !== bo) return bo - ao;
+  const ai = a.intl ? 1 : 0, bi = b.intl ? 1 : 0;
+  if (ai !== bi) return bi - ai;
+  return (a.last || 0) - (b.last || 0);
+}
+function cnFilter(q){
+  const creator = q.creator || "", agent = q.agent || q.owner || "", intl = q.intl || "";
+  const stages = String(q.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+  const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
+  return callnowPool().filter(function(c){
+    if (creator && (c.topmate_username || "") !== creator) return false;
+    if (agent && String(c.hubspot_owner_id || "") !== agent) return false;
+    if (!intlMatch(c, intl)) return false;
+    return stageSet.indexOf(cnStage(c)) >= 0;
+  }).map(cnRow);
+}
+
+app.get("/api/callnow", (req, res) => {
+  const rows = cnFilter(req.query);
+  const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
+  const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
+  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, overdue: 0, nofu: 0, uncalled: 0 }; };
+  const byStage = {}, tot = blank();
+  const byAgent = {}, byCreator = {};
+  stageOrder.forEach(function(s){ byStage[s] = blank(); });
+  rows.forEach(function(r){
+    const s = cnSegs(r), any = s.form || s.score || s.intl;
+    const b = byStage[r.stage] || (byStage[r.stage] = blank());
+    const now = Date.now();
+    [b, tot].forEach(function(x){
+      x.total++;
+      if (s.form) x.form++;
+      if (s.score) x.score++;
+      if (s.intl) x.intl++;
+      if (any) {
+        x.any++;
+        if (r.fu && r.fu < now) x.overdue++;
+        if (!r.fu) x.nofu++;
+        if (!r.last) x.uncalled++;
+      }
+    });
+    if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, total: 0, any: 0, form: 0, score: 0, intl: 0 };
+    const a = byAgent[r.owner];
+    a.total++; if (any) a.any++; if (s.form) a.form++; if (s.score) a.score++; if (s.intl) a.intl++;
+    const ck = r.creator || "(none)";
+    if (!byCreator[ck]) byCreator[ck] = { u: ck, total: 0, any: 0 };
+    byCreator[ck].total++; if (any) byCreator[ck].any++;
+  });
+  const matrix = stageOrder.map(function(s){
+    return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
+  });
+  const allCreators = {}, allAgents = {};
+  callnowPool().forEach(function(c){
+    const u = c.topmate_username; if (u) allCreators[u] = (allCreators[u] || 0) + 1;
+    const oid = String(c.hubspot_owner_id || ""); if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1;
+  });
+  res.json({
+    loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
+    formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
+    scoreMin: CONV_SCORE_MIN,
+    matrix: matrix, totals: tot,
+    agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
+    agentOptions: Object.keys(allAgents).map(function(id){
+      const o = CACHE.owners[id] || {};
+      return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false, n: allAgents[id] };
+    }).sort(function(a, b){ return b.n - a.n; }),
+    creatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
+      .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
+    creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
+    stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS },
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.get("/api/callnow/leads", (req, res) => {
+  const seg = String(req.query.seg || "any");
+  const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
+  let rows = cnFilter(req.query);
+  if (req.query.stage) rows = rows.filter(function(r){ return r.stage === req.query.stage; });
+  rows = rows.filter(function(r){
+    const s = cnSegs(r);
+    if (seg === "form") return s.form;
+    if (seg === "score") return s.score;
+    if (seg === "intl") return s.intl;
+    if (seg === "all") return true;
+    return s.form || s.score || s.intl;
+  });
+  const fu = String(req.query.fu || "");
+  if (fu) {
+    const now = Date.now(), sod = new Date(); sod.setHours(0, 0, 0, 0);
+    const eod = sod.getTime() + 86400000;
+    rows = rows.filter(function(r){
+      if (fu === "overdue") return r.fu && r.fu < now;
+      if (fu === "today") return r.fu && r.fu >= sod.getTime() && r.fu < eod;
+      if (fu === "none") return !r.fu;
+      return true;
+    });
+  }
+  const total = rows.length;
+  rows.sort(cnSort);
+  res.json({ total: total, shown: Math.min(total, limit), rows: rows.slice(0, limit),
+    scoreMin: CONV_SCORE_MIN, portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID } });
+});
+
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
@@ -1513,4 +1742,6 @@ app.listen(PORT, () => {
   bootstrapLeadsTodayOnBoot();
   syncBackupPool();
   setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
+  setTimeout(syncForms, 150 * 1000);
+  setInterval(syncForms, COHORT_MINUTES * 60 * 1000);
 });
