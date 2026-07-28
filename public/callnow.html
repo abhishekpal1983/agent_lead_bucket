@@ -275,7 +275,7 @@ function drawCards(){
 }
 
 function drawMatrix(){
-  var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent, so they can be reassigned before they are missed. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
+  var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
   h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
   var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
