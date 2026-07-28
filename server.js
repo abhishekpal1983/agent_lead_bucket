@@ -1776,8 +1776,12 @@ function cnRow(c){
     src: srcOf(c)
   };
 }
+// A never-worked lead is itself a call reason: nobody has spoken to it yet.
+// Set FRESH_IS_PRIORITY=0 in Railway to revert to signal-only priority.
+const FRESH_IS_PRIORITY = String(process.env.FRESH_IS_PRIORITY || "1") !== "0";
 function cnSegs(r){
-  return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl };
+  return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl,
+    fresh: FRESH_IS_PRIORITY && r.stage === "__fresh" };
 }
 function cnSort(a, b){
   const now = Date.now();
@@ -1818,7 +1822,7 @@ app.get("/api/callnow", (req, res) => {
   const byAgent = {}, byCreator = {};
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
   rows.forEach(function(r){
-    const s = cnSegs(r), any = s.form || s.score || s.intl;
+    const s = cnSegs(r), any = s.form || s.score || s.intl || s.fresh;
     const b = byStage[r.stage] || (byStage[r.stage] = blank());
     const now = Date.now();
     [b, tot].forEach(function(x){
@@ -1867,7 +1871,7 @@ app.get("/api/callnow", (req, res) => {
     formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
     formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
     pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PRIORITY_FRESH_CREATORS,
-    scoreMin: CONV_SCORE_MIN,
+    scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY,
     matrix: matrix, totals: tot,
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
     agentOptions: Object.keys(allAgents).map(function(id){
@@ -1907,8 +1911,9 @@ app.get("/api/callnow/leads", (req, res) => {
     if (seg === "form") return s.form;
     if (seg === "score") return s.score;
     if (seg === "intl") return s.intl;
+    if (seg === "fresh") return s.fresh;
     if (seg === "all") return true;
-    return s.form || s.score || s.intl;
+    return s.form || s.score || s.intl || s.fresh;
   });
   if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
   const fu = String(req.query.fu || "");
