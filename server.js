@@ -1531,8 +1531,13 @@ async function fetchFormSubmissions(guid){
   return out;
 }
 
-async function syncForms(){
+const FORMS_HOURS = parseFloat(process.env.FORMS_HOURS || "6");
+async function syncForms(force){
   if (!TOKEN || FORMS.syncing) return;
+  const ageH = FORMS.loadedAt ? (Date.now() - Date.parse(FORMS.loadedAt)) / 3600000 : 1e9;
+  // Waitlist submissions barely change and the endpoint is quota-expensive: refresh at most
+  // every FORMS_HOURS, and never discard a good snapshot because a later pull failed.
+  if (!force && FORMS.byEmail.size > 0 && ageH < FORMS_HOURS && !FORMS.error) return;
   FORMS.syncing = true;
   const map = new Map();
   const counts = {};
@@ -1551,11 +1556,25 @@ async function syncForms(){
       ok++;
     } catch (e) { counts[f.label] = null; err = e.message; }
   }
+  const quota = /429|daily limit|rate limit/i.test(err);
+  const denied = /\b40[13]\b|scope/i.test(err);
+  let note = null;
+  if (ok < WAITLIST_FORMS.length) {
+    note = quota
+      ? "HubSpot daily API limit reached, so waitlist form data was not refreshed this cycle. Showing the last good snapshot; it retries automatically."
+      : denied
+        ? "Forms submissions API denied: the private app is missing the 'forms' scope. Falling back to first and recent conversion event names."
+        : ("Waitlist form refresh failed: " + err);
+    note = note.slice(0, 300);
+  }
+  // A failed pull must never wipe a good snapshot.
+  const keepOld = ok === 0 && FORMS.byEmail.size > 0;
   FORMS = {
-    byEmail: map, counts: counts,
-    source: ok === WAITLIST_FORMS.length ? "forms-api" : (ok > 0 ? "forms-api (partial) + conversion-event fallback" : "conversion-event fallback only"),
-    loadedAt: new Date().toISOString(), syncing: false,
-    error: ok === WAITLIST_FORMS.length ? null : ("Forms submissions API unavailable (needs the 'forms' scope on the private app); falling back to first/recent conversion event names. " + err).slice(0, 300)
+    byEmail: keepOld ? FORMS.byEmail : map,
+    counts: keepOld ? FORMS.counts : counts,
+    source: ok === WAITLIST_FORMS.length ? "forms-api" : (keepOld ? "forms-api (cached)" : (ok > 0 ? "forms-api (partial)" : "conversion-event fallback only")),
+    loadedAt: keepOld ? FORMS.loadedAt : new Date().toISOString(),
+    syncing: false, error: note
   };
   console.log("Forms synced: " + map.size + " emails across " + ok + "/" + WAITLIST_FORMS.length + " waitlist forms (" + FORMS.source + ")");
 }
@@ -1670,12 +1689,13 @@ async function refreshOwner(ownerId){
    the only way these become visible. ~20k rows total, recursive date-window split for the
    creators that exceed the 10k search cap. */
 const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
-  "ayush_singh13,payalineurope,wanderess_priyanka,technomanagers,saurav_chaudhary_1,saurav_chaudhary,kartikkapoorconsultation,ankita_gulati,vijaychandola")
+  "ayush_singh13,payalineurope,wanderess_priyanka,saurav_chaudhary_1,ankita_gulati,vijaychandola,technomanagers,kartikkapoorconsultation")
   .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
 const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
   "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
   "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id"];
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
+let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
 
 async function fetchFreshForCreator(creator, from, to, sink){
   const filters = [
@@ -1710,7 +1730,7 @@ async function syncPriorityFresh(){
   const from = Date.parse("2020-01-01T00:00:00Z"), to = Date.now() + 86400000;
   const rows = [], seen = {}, byCreator = {};
   let err = "";
-  for (const c of PRIORITY_FRESH_CREATORS) {
+  for (const c of PFRESH_LIST) {
     try {
       await fetchFreshForCreator(c, from, to, function(r){
         if (seen[r.id]) return;
@@ -1722,7 +1742,7 @@ async function syncPriorityFresh(){
   }
   PFRESH = { rows: rows, byCreator: byCreator, loadedAt: new Date().toISOString(), syncing: false, error: err || null };
   POOL_REV++;
-  console.log("Priority fresh synced: " + rows.length + " across " + PRIORITY_FRESH_CREATORS.length + " creators");
+  console.log("Priority fresh synced: " + rows.length + " across " + PFRESH_LIST.length + " creators");
 }
 
 let CN_POOL = { at: null, rows: [] };
@@ -1779,6 +1799,11 @@ function cnRow(c){
 // A never-worked lead is itself a call reason: nobody has spoken to it yet.
 // Set FRESH_IS_PRIORITY=0 in Railway to revert to signal-only priority.
 const FRESH_IS_PRIORITY = String(process.env.FRESH_IS_PRIORITY || "1") !== "0";
+function istDayBounds(){
+  const off = 5.5 * 3600000;
+  const start = Math.floor((Date.now() + off) / 86400000) * 86400000 - off;
+  return { start: start, end: start + 86400000 };
+}
 function cnSegs(r){
   return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl,
     fresh: FRESH_IS_PRIORITY && r.stage === "__fresh" };
@@ -1817,7 +1842,9 @@ app.get("/api/callnow", (req, res) => {
   const rows = cnFilter(req.query);
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
-  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0 }; };
+  const day = istDayBounds();
+  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
+    due: 0, done: 0, missed: 0, touched: 0 }; };
   const byStage = {}, tot = blank();
   const byAgent = {}, byCreator = {};
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
@@ -1836,10 +1863,18 @@ app.get("/api/callnow", (req, res) => {
         if (r.fu && r.fu < now) x.overdue++;
         if (!r.fu) x.nofu++;
         if (!r.last) x.uncalled++;
+        const calledToday = r.last >= day.start && r.last < day.end;
+        const dueToday = r.fu >= day.start && r.fu < day.end;
+        if (calledToday) x.touched++;
+        if (dueToday) {
+          x.due++;
+          if (calledToday) x.done++; else x.missed++;
+        }
       }
     });
     if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
-      total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0 };
+      total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
+      due: 0, done: 0, missed: 0, touched: 0 };
     const a = byAgent[r.owner];
     a.total++;
     if (any) {
@@ -1848,9 +1883,13 @@ app.get("/api/callnow", (req, res) => {
       if (s.score) a.score++;
       if (s.intl) a.intl++;
       if (r.needsOwner) a.needs++;
-      if (r.fu && r.fu < Date.now()) a.overdue++;
+      if (r.fu && r.fu < now) a.overdue++;
       if (!r.fu) a.nofu++;
       if (!r.last) a.uncalled++;
+      const ct = r.last >= day.start && r.last < day.end;
+      const dt = r.fu >= day.start && r.fu < day.end;
+      if (ct) a.touched++;
+      if (dt) { a.due++; if (ct) a.done++; else a.missed++; }
     }
     const ck = r.creator || "(none)";
     if (!byCreator[ck]) byCreator[ck] = { u: ck, total: 0, any: 0 };
@@ -1870,7 +1909,8 @@ app.get("/api/callnow", (req, res) => {
     loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
     formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
     formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
-    pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PRIORITY_FRESH_CREATORS,
+    pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PFRESH_LIST,
+    pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing,
     scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY,
     matrix: matrix, totals: tot,
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
@@ -1901,6 +1941,39 @@ app.post("/api/callnow/refresh-owner/:id", async (req, res) => {
   }
 });
 
+app.post("/api/callnow/sync-creator", async (req, res) => {
+  const creator = String(req.query.creator || "").trim();
+  if (!creator) return res.status(400).json({ error: "creator required" });
+  if (PFRESH.syncing) return res.status(409).json({ error: "a creator sync is already running" });
+  PFRESH.syncing = true;
+  try {
+    const from = Date.parse("2020-01-01T00:00:00Z"), to = Date.now() + 86400000;
+    const seen = {};
+    PFRESH.rows.forEach(function(r){ seen[r.id] = 1; });
+    const added = [];
+    await fetchFreshForCreator(creator, from, to, function(r){ if (!seen[r.id]) { seen[r.id] = 1; added.push(r); } });
+    PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; }).concat(added);
+    PFRESH.byCreator[creator] = added.length;
+    PFRESH.loadedAt = new Date().toISOString();
+    if (PFRESH_LIST.indexOf(creator) < 0) PFRESH_LIST.push(creator);
+    POOL_REV++;
+    PFRESH.syncing = false;
+    res.json({ ok: true, creator: creator, added: added.length, total: PFRESH.rows.length, creators: PFRESH_LIST });
+  } catch (e) {
+    PFRESH.syncing = false;
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/callnow/drop-creator", (req, res) => {
+  const creator = String(req.query.creator || "").trim();
+  PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; });
+  delete PFRESH.byCreator[creator];
+  PFRESH_LIST = PFRESH_LIST.filter(function(c){ return c !== creator; });
+  POOL_REV++;
+  res.json({ ok: true, creators: PFRESH_LIST, total: PFRESH.rows.length });
+});
+
 app.get("/api/callnow/leads", (req, res) => {
   const seg = String(req.query.seg || "any");
   const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
@@ -1916,6 +1989,18 @@ app.get("/api/callnow/leads", (req, res) => {
     return s.form || s.score || s.intl || s.fresh;
   });
   if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
+  const today = String(req.query.today || "");
+  if (today) {
+    const d = istDayBounds();
+    rows = rows.filter(function(r){
+      const ct = r.last >= d.start && r.last < d.end, dt = r.fu >= d.start && r.fu < d.end;
+      if (today === "due") return dt;
+      if (today === "done") return dt && ct;
+      if (today === "missed") return dt && !ct;
+      if (today === "touched") return ct;
+      return true;
+    });
+  }
   const fu = String(req.query.fu || "");
   if (fu) {
     const now = Date.now(), sod = new Date(); sod.setHours(0, 0, 0, 0);

@@ -156,6 +156,9 @@ function load(){
 }
 var KIND = {
   needs:      { seg: "any", ostate: "needs" },
+  due:        { seg: "any", today: "due" },
+  done:       { seg: "any", today: "done" },
+  missed:     { seg: "any", today: "missed" },
   fu_overdue: { seg: "any", fu: "overdue" },
   fu_none:    { seg: "any", fu: "none" },
   uncalled:   { seg: "any", uncalled: "1" }
@@ -188,6 +191,30 @@ function presetStages(which){
   S.cellStage = ""; S.cellSeg = ""; L = null; load();
 }
 function setFu(v){ S.fu = (S.fu === v ? "" : v); if (S.cellSeg) loadLeads(); else draw(); }
+function syncCreator(){
+  var el = document.getElementById("csel");
+  var c = el ? el.value : "";
+  if (!c || SYNCING_OWNER) return;
+  SYNCING_OWNER = true; OWNER_MSG = "Pulling fresh leads for " + c + " from HubSpot...";
+  draw();
+  fetch("/api/callnow/sync-creator?creator=" + encodeURIComponent(c), { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      SYNCING_OWNER = false;
+      OWNER_MSG = j.error ? ("Creator sync failed: " + j.error) : (c + " synced: " + j.added + " fresh leads, " + j.creators.length + " creators tracked");
+      load();
+    })
+    .catch(function(e){ SYNCING_OWNER = false; OWNER_MSG = "Creator sync failed: " + e.message; draw(); });
+}
+function dropCreator(c){
+  if (SYNCING_OWNER) return;
+  SYNCING_OWNER = true; OWNER_MSG = "Removing " + c + "...";
+  draw();
+  fetch("/api/callnow/drop-creator?creator=" + encodeURIComponent(c), { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(){ SYNCING_OWNER = false; OWNER_MSG = c + " removed from creator fresh sync"; load(); })
+    .catch(function(e){ SYNCING_OWNER = false; OWNER_MSG = e.message; draw(); });
+}
 function setOstate(v){ S.ostate = (S.ostate === v ? "" : v); S.cellStage = ""; S.cellSeg = ""; L = null; load(); }
 
 var STAGE_CHIP = {
@@ -248,6 +275,19 @@ function drawFilters(){
   h += "<button class='chipb" + (S.ostate === "unassigned" ? " on" : "") + "' onclick=\"setOstate('unassigned')\">Unassigned</button>";
   h += "<button class='chipb" + (S.ostate === "inactive" ? " on" : "") + "' onclick=\"setOstate('inactive')\">Deactivated</button>";
   h += "</div>";
+  h += "<div class='bar2'>";
+  h += "<span style='font-size:10.5px;color:#737373;font-weight:500'>Creator fresh sync</span>";
+  (J.pfreshCreators || []).forEach(function(c){
+    h += "<button class='chipb on' title='Click to stop tracking' onclick=\"dropCreator('" + esc(c) + "')\">" + esc(c) + " ×</button>";
+  });
+  h += "<select id='csel' style='min-width:180px'><option value=''>Add a creator...</option>";
+  (J.creatorOptions || []).forEach(function(c){
+    if ((J.pfreshCreators || []).indexOf(c.u) >= 0) return;
+    h += "<option value='" + esc(c.u) + "'>" + esc(c.u) + " · " + fmt(c.n) + "</option>";
+  });
+  h += "</select>";
+  h += "<button class='btn p' " + (SYNCING_OWNER ? "disabled" : "") + " onclick='syncCreator()'>" + (SYNCING_OWNER ? "Syncing..." : "Sync now") + "</button>";
+  h += "</div>";
   if (S.stagesOpen) {
     h += "<div class='bar2'>";
     J.stageGroups.priority.concat(J.stageGroups.other).forEach(function(s){
@@ -267,6 +307,10 @@ function drawCards(){
     "<div class='card g'><div class='v'>" + fmt(t.score) + "</div><div class='l'>Conv score &ge; " + J.scoreMin + "</div></div>" +
     "<div class='card b'><div class='v'>" + fmt(t.intl) + "</div><div class='l'>International</div></div>" +
     "<div class='card r'><div class='v'>" + fmt(t.needs) + "</div><div class='l'>Needs owner</div></div>" +
+    "<div class='card'><div class='v'>" + fmt(t.due) + "</div><div class='l'>Due today</div></div>" +
+    "<div class='card g'><div class='v'>" + fmt(t.done) + "</div><div class='l'>Called of those due</div></div>" +
+    "<div class='card r'><div class='v'>" + fmt(t.missed) + "</div><div class='l'>Missed today</div></div>" +
+    "<div class='card'><div class='v'>" + fmt(t.touched) + "</div><div class='l'>Any lead called today</div></div>" +
     "<div class='card a'><div class='v'>" + fmt(t.overdue) + "</div><div class='l'>Follow-up overdue</div></div>" +
     "<div class='card a'><div class='v'>" + fmt(t.nofu) + "</div><div class='l'>No follow-up set</div></div>" +
     "<div class='card r'><div class='v'>" + fmt(t.uncalled) + "</div><div class='l'>Never called</div></div>" +
@@ -276,8 +320,8 @@ function drawCards(){
 
 function drawMatrix(){
   var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
-  var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
+  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>Due today</th><th style='text-align:right'>Called</th><th style='text-align:right'>Missed</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  var hv = heats(J.matrix, ["form","score","intl","any","needs","total","due","done","missed","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
     h += "<tr><td>" + chip(r.stage, r.label) + "</td>";
     h += cell(r.form, r.stage, "form", "", hv(r, "form"));
@@ -286,6 +330,9 @@ function drawMatrix(){
     h += cell(r.any, r.stage, "any", "", hv(r, "any"));
     h += cell(r.needs, r.stage, "needs", "", hv(r, "needs"));
     h += cell(r.total, r.stage, "all", "", hv(r, "total"));
+    h += cell(r.due, r.stage, "due", "", hv(r, "due"));
+    h += cell(r.done, r.stage, "done", r.done ? "cg" : "", hv(r, "done"));
+    h += cell(r.missed, r.stage, "missed", r.missed ? "cr" : "", hv(r, "missed"));
     h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "", hv(r, "overdue"));
     h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "", hv(r, "nofu"));
     h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "", hv(r, "uncalled")) + "</tr>";
@@ -293,7 +340,7 @@ function drawMatrix(){
   var t = J.totals;
   h += "<tr class='tot'><td>TOTAL</td>";
   h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.needs, "", "needs") + cell(t.total, "", "all");
-  h += cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
+  h += cell(t.due, "", "due") + cell(t.done, "", "done") + cell(t.missed, "", "missed") + cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
   h += "</tbody></table></div></div>";
   return h;
 }
@@ -303,7 +350,7 @@ function drawAgents(){
   var rows = J.agents.filter(function(a){ return a.any > 0 || a.id === ""; });
   var mx = rows.reduce(function(m, a){ return a.any > m ? a.any : m; }, 0);
   var h = "<div class='sec hero'><h2>Must-call load by agent</h2><div class='sub'>Every priority lead, split by who owns it. Click a row to filter the page to that agent, or open their own view.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Link</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>Due today</th><th style='text-align:right'>Called</th><th style='text-align:right'>Missed</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Link</th></tr></thead><tbody>";
   rows.forEach(function(a){
     var w = mx ? Math.max(2, Math.round(58 * a.any / mx)) : 2;
     var nm = a.id ? esc(a.name) : "<span class='tag o'>UNASSIGNED</span>";
@@ -311,6 +358,9 @@ function drawAgents(){
     h += "<tr class='rowlink' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td>" + nm + "</td>" +
       "<td class='n'><span class='mbar' style='width:" + w + "px'></span><b>" + fmt(a.any) + "</b></td>" +
       "<td class='n'>" + fmt(a.form) + "</td><td class='n'>" + fmt(a.score) + "</td><td class='n'>" + fmt(a.intl) + "</td>" +
+      "<td class='n'>" + fmt(a.due) + "</td>" +
+      "<td class='n " + (a.done ? "cg" : "mut") + "'>" + fmt(a.done) + "</td>" +
+      "<td class='n'>" + (a.missed ? "<span class='pill'>" + fmt(a.missed) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n'>" + (a.needs ? "<span class='pill'>" + fmt(a.needs) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n'>" + (a.overdue ? "<span class='pill'>" + fmt(a.overdue) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n'>" + (a.nofu ? "<span class='pill w'>" + fmt(a.nofu) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
@@ -333,7 +383,7 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";
+  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", due: "Due for a call today", done: "Due today and called", missed: "Due today and missed", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";
   var stName = S.cellStage ? (J.stageGroups.labels[S.cellStage] || S.cellStage) : "All stages in view";
   var rows = L.rows;
   if (S.q) {
