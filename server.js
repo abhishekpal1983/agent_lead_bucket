@@ -12,6 +12,7 @@
  */
 const express = require("express");
 const app = express();
+app.use(function(req, res, next){ return authGate(req, res, next); });
 app.use(express.json());
 
 const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
@@ -2053,6 +2054,155 @@ app.get("/api/callnow/leads", (req, res) => {
   res.json({ total: total, shown: Math.min(total, limit), rows: rows.slice(0, limit),
     scoreMin: CONV_SCORE_MIN, portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID } });
 });
+
+/* ---------- Google sign-in, restricted to one workspace domain ----------
+   Authorization-code flow, no OAuth library. The id_token arrives over TLS
+   direct from Google's token endpoint, so decoding it without re-verifying the
+   signature is the documented-safe path for this flow. Sessions are a signed
+   cookie (HMAC), so nothing needs a database.
+   Auth stays OFF until GOOGLE_CLIENT_ID is set, so the app keeps working
+   before the env vars land. */
+const crypto = require("crypto");
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || "topmate.io").toLowerCase();
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+const MANAGER_EMAILS = (process.env.MANAGER_EMAILS || "abhishek.pal@topmate.io")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+const AUTH_ON = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+const SESSION_HOURS = parseInt(process.env.SESSION_HOURS || "12", 10);
+
+function b64u(buf){ return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function unb64u(str){ return Buffer.from(String(str).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); }
+function sign(payload){
+  const body = b64u(JSON.stringify(payload));
+  const mac = b64u(crypto.createHmac("sha256", SESSION_SECRET).update(body).digest());
+  return body + "." + mac;
+}
+function verify(token){
+  if (!token || token.indexOf(".") < 0) return null;
+  const parts = token.split(".");
+  const expect = b64u(crypto.createHmac("sha256", SESSION_SECRET).update(parts[0]).digest());
+  const a = Buffer.from(parts[1] || ""), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const p = JSON.parse(unb64u(parts[0]));
+    if (!p.exp || p.exp < Date.now()) return null;
+    return p;
+  } catch (e) { return null; }
+}
+function readCookie(req, name){
+  const raw = req.headers.cookie || "";
+  const hit = raw.split(";").map(function(x){ return x.trim(); })
+    .filter(function(x){ return x.indexOf(name + "=") === 0; })[0];
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : "";
+}
+function baseUrl(req){
+  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
+  return proto + "://" + req.headers.host;
+}
+function ownerIdForEmail(email){
+  const e = String(email || "").toLowerCase();
+  const ids = Object.keys(CACHE.owners || {});
+  for (const id of ids) {
+    if (String((CACHE.owners[id] || {}).email || "").toLowerCase() === e) return id;
+  }
+  return "";
+}
+function sessionOf(req){
+  if (!AUTH_ON) return { email: "", name: "Open access", role: "manager", ownerId: "" };
+  const p = verify(readCookie(req, "cn_session"));
+  if (!p) return null;
+  const role = MANAGER_EMAILS.indexOf(String(p.email).toLowerCase()) >= 0 ? "manager" : "agent";
+  return { email: p.email, name: p.name || p.email, role: role, ownerId: role === "agent" ? ownerIdForEmail(p.email) : "" };
+}
+
+app.get("/auth/login", function(req, res){
+  if (!AUTH_ON) return res.redirect("/");
+  const state = sign({ n: crypto.randomBytes(8).toString("hex"), exp: Date.now() + 10 * 60 * 1000 });
+  const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  u.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  u.searchParams.set("redirect_uri", baseUrl(req) + "/auth/callback");
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", "openid email profile");
+  u.searchParams.set("hd", ALLOWED_DOMAIN);
+  u.searchParams.set("prompt", "select_account");
+  u.searchParams.set("state", state);
+  res.redirect(u.toString());
+});
+
+app.get("/auth/callback", async function(req, res){
+  if (!AUTH_ON) return res.redirect("/");
+  if (!verify(String(req.query.state || ""))) return res.status(400).send("Sign-in expired. <a href='/auth/login'>Try again</a>");
+  try {
+    const body = new URLSearchParams({
+      code: String(req.query.code || ""),
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: baseUrl(req) + "/auth/callback",
+      grant_type: "authorization_code"
+    });
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString()
+    });
+    const j = await r.json();
+    if (!j.id_token) return res.status(401).send("Sign-in failed. <a href='/auth/login'>Try again</a>");
+    const claims = JSON.parse(unb64u(j.id_token.split(".")[1]));
+    const email = String(claims.email || "").toLowerCase();
+    const domainOk = String(claims.hd || "").toLowerCase() === ALLOWED_DOMAIN || email.endsWith("@" + ALLOWED_DOMAIN);
+    if (!claims.email_verified || !domainOk) {
+      return res.status(403).send("<p style='font:14px -apple-system;padding:40px'>Only @" + ALLOWED_DOMAIN +
+        " accounts can open this dashboard. You signed in as " + email + ". <a href='/auth/login'>Use a different account</a></p>");
+    }
+    const token = sign({ email: email, name: claims.name || email, exp: Date.now() + SESSION_HOURS * 3600000 });
+    res.setHeader("Set-Cookie", "cn_session=" + encodeURIComponent(token) +
+      "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + (SESSION_HOURS * 3600));
+    res.redirect("/callnow.html");
+  } catch (e) {
+    res.status(500).send("Sign-in error: " + e.message);
+  }
+});
+
+app.get("/auth/logout", function(req, res){
+  res.setHeader("Set-Cookie", "cn_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
+  res.redirect("/login.html");
+});
+
+app.get("/api/me", function(req, res){
+  const s = sessionOf(req);
+  if (!s) return res.status(401).json({ error: "not signed in" });
+  res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON, domain: ALLOWED_DOMAIN });
+});
+
+// Gate every page and API call. Agents are forced onto their own owner id, so a
+// hand-edited ?agent= in the URL cannot widen their view. Registered at the very
+// top of the stack (see app.use(authGate) above) so it runs before any route.
+function authGate(req, res, next){
+  if (!AUTH_ON) return next();
+  const p = req.path;
+  if (p.indexOf("/auth/") === 0 || p === "/login.html" || p === "/favicon.ico") return next();
+  const s = sessionOf(req);
+  if (!s) {
+    if (p === "/api/me") return res.json({ authOn: true, email: "", role: "", domain: ALLOWED_DOMAIN });
+    if (p.indexOf("/api/") === 0) return res.status(401).json({ error: "not signed in" });
+    return res.redirect("/login.html");
+  }
+  req.session = s;
+  if (s.role === "agent") {
+    if (!s.ownerId && p.indexOf("/api/") === 0) {
+      return res.status(403).json({ error: "no HubSpot lead owner matches " + s.email });
+    }
+    if (p.indexOf("/api/") === 0) {
+      req.query.agent = s.ownerId;
+      req.query.owner = s.ownerId;
+    }
+    // agents only get the call list and their own snapshot
+    const allowed = ["/callnow.html", "/agent.html", "/login.html", "/"];
+    if (p.indexOf("/api/") !== 0 && allowed.indexOf(p) < 0 && p.endsWith(".html")) return res.redirect("/callnow.html");
+    if (p === "/") return res.redirect("/callnow.html");
+  }
+  next();
+}
 
 app.use(express.static("public"));
 app.listen(PORT, () => {

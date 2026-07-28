@@ -122,6 +122,7 @@ td.z{color:#C1C9D2}
 <script>
 var QS = new URLSearchParams(location.search);
 var ME = QS.get("id") || "";
+var WHO = null;
 var S = {
   agent: ME || (localStorage.getItem("cn_agent") || ""),
   creator: QS.get("creator") || localStorage.getItem("cn_creator") || "",
@@ -547,14 +548,23 @@ function draw(){
   h += "<div class='mut' style='font-size:10.5px;margin-top:6px'>" + meta + "</div>";
   document.getElementById("app").innerHTML = h;
   var badge = "";
+  if (WHO && WHO.authOn && WHO.email) {
+    badge = "<span class='mebadge'>" + esc(WHO.name || WHO.email) + "</span>" +
+      "<a href='/auth/logout' style='font-size:11px;color:#697386;text-decoration:none;margin-left:2px'>Sign out</a>";
+  }
   if (ME) {
     var me = (J.agentOptions || []).filter(function(a){ return a.id === ME; })[0];
-    badge = "<span class='mebadge'>" + esc(me ? me.name : "Owner " + ME) + "</span>";
+    if (!badge) badge = "<span class='mebadge'>" + esc(me ? me.name : "Owner " + ME) + "</span>";
     document.getElementById("sub").textContent = "Your priority call list - waitlist form leads, conversion score, international";
   }
   document.getElementById("whobadge").innerHTML = badge;
 }
-if (ME) refreshOwner(ME, load); else load();
+function boot(){ if (ME) refreshOwner(ME, load); else load(); }
+fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
+  WHO = j;
+  if (j && j.role === "agent" && j.ownerId) ME = j.ownerId;
+  boot();
+}).catch(function(){ boot(); });
 setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 15 * 60 * 1000);
 </script>
 </body>

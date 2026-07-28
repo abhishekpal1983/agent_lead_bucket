@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sign in · Call Now</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F6F9FC;color:#0A2540;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.box{background:#fff;border:1px solid #E3E8EE;border-radius:10px;padding:32px 34px;max-width:400px;width:100%;text-align:center}
+h1{font-size:19px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+p{font-size:13px;color:#697386;line-height:1.6;margin-bottom:22px}
+a.g{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;background:#0A2540;color:#fff;text-decoration:none;font-size:13.5px;font-weight:600;padding:11px 16px;border-radius:6px}
+a.g:hover{background:#123152}
+.note{font-size:11.5px;color:#8B99A8;margin-top:18px;line-height:1.6}
+.err{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 12px;font-size:12.5px;margin-bottom:18px;text-align:left}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Call Now</h1>
+  <p>Sign in with your work Google account to see your call list.</p>
+  <div id="err"></div>
+  <a class="g" href="/auth/login">Sign in with Google</a>
+  <div class="note" id="note">Only <b id="dom">topmate.io</b> accounts are allowed. Agents see their own leads only.</div>
+</div>
+<script>
+fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
+  if (j && j.domain) document.getElementById("dom").textContent = j.domain;
+  if (j && j.email) location.href = "/callnow.html";
+}).catch(function(){});
+if (location.search.indexOf("denied") >= 0) {
+  document.getElementById("err").className = "err";
+  document.getElementById("err").textContent = "That account is not a HubSpot lead owner, so there is no call list to show. Ask your manager to check the owner email in HubSpot.";
+}
+</script>
+</body>
+</html>
