@@ -38,6 +38,14 @@ select:focus,input[type=search]:focus{outline:none;border-color:#0091AE;box-shad
 .mgroup{background:#fff;border:1px solid #E3E8EE;border-radius:8px;padding:9px 13px 10px}
 .mgroup.alert{border-color:#F8C6B4}
 .mgroup h4{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#8B99A8;font-weight:600;margin-bottom:7px}
+.prog{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+.prog .big{font-size:19px;font-weight:600;color:#0A2540;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.prog .of{font-size:12px;color:#697386}
+.prog .pc{margin-left:auto;font-size:12px;font-weight:600;color:#005B6E;font-variant-numeric:tabular-nums}
+.track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin-bottom:8px;display:flex}
+.track i{display:block;height:6px}
+.track i.done{background:#0091AE}
+.track i.miss{background:#FF7A59}
 .mrow{display:flex;gap:16px;flex-wrap:wrap}
 .mitem{cursor:pointer;min-width:52px}
 .mitem:hover .v{text-decoration:underline}
@@ -184,6 +192,7 @@ var KIND = {
   needs:      { seg: "any", ostate: "needs" },
   due:        { seg: "any", today: "due" },
   touched:    { seg: "any", today: "touched" },
+  bwork:      { seg: "any", today: "bwork" },
   done:       { seg: "any", today: "done" },
   missed:     { seg: "any", today: "missed" },
   fu_overdue: { seg: "any", fu: "overdue" },
@@ -377,9 +386,19 @@ function drawCards(){
   h += "<div class='mgroup'><h4>Why they qualify</h4><div class='mrow'>" +
        mi(t.form, "Form", "form") + mi(t.score, "Score &ge;" + J.scoreMin, "score") +
        mi(t.intl, "Intl", "intl") + "</div></div>";
-  h += "<div class='mgroup" + (t.missed ? " alert" : "") + "'><h4>Today" + (t.due ? " · " + pct + "% done" : "") + "</h4><div class='mrow'>" +
-       mi(t.due, "Due", "due") + mi(t.done, "Called", "done", "c") +
-       mi(t.missed, "Missed", "missed", "r") + mi(t.touched, "Calls made", "touched") + "</div></div>";
+  var bwork = Math.max(0, (t.touched || 0) - (t.done || 0));
+  var dw = t.due ? Math.round(100 * t.done / t.due) : 0;
+  var mw = t.due ? 100 - dw : 0;
+  h += "<div class='mgroup" + (t.missed ? " alert" : "") + "'><h4>Today</h4>";
+  h += "<div class='prog'><span class='big'>" + fmt(t.done) + "</span>" +
+       "<span class='of'>of " + fmt(t.due) + " due called</span>" +
+       "<span class='pc'>" + pct + "%</span></div>";
+  h += "<div class='track'>" + (t.due
+        ? "<i class='done' style='width:" + dw + "%'></i><i class='miss' style='width:" + mw + "%'></i>"
+        : "") + "</div>";
+  h += "<div class='mrow'>" +
+       mi(t.missed, "Missed", "missed", "r") + mi(bwork, "Backlog worked", "bwork", "c") +
+       mi(t.touched, "Calls made", "touched") + "</div></div>";
   h += "<div class='mgroup'><h4>Backlog</h4><div class='mrow'>" +
        mi(t.needs, "Needs owner", "needs", "r") + mi(t.overdue, "FU overdue", "fu_overdue", "a") +
        mi(t.nofu, "No FU", "fu_none", "a") + mi(t.uncalled, "Never called", "uncalled", "r") + "</div></div>";
