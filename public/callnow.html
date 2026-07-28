@@ -196,7 +196,7 @@ function loadLeads(){
   if (!base) {
     if (kind.indexOf("|") > 0) {
       var pp = kind.split("|");
-      base = pp[1] === "over" ? { seg: pp[0], fu: "overdue" } : { seg: pp[0], today: pp[1] };
+      base = pp[1] === "back" ? { seg: pp[0], backlog: "1" } : { seg: pp[0], today: pp[1] };
     } else { base = { seg: kind }; }
   }
   var extra = { stage: S.cellStage, limit: "1500" };
@@ -270,13 +270,13 @@ function cell(v, stage, seg, cls, heat){
   return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "'" + bg + " onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
 }
 function totCell(v, seg, t){
-  t = t || { due: 0, over: 0, done: 0, missed: 0 };
+  t = t || { due: 0, back: 0, done: 0, missed: 0 };
   var b = function(cls, val, lbl, kind, tip){
     return "<b class='" + cls + "' title='" + tip + "' onclick=\"event.stopPropagation();pick('','" + seg + "|" + kind + "')\">" + fmt(val) + "</b> " + lbl;
   };
   var sub = "<div class='sub3'>" +
     b("d", t.due, "due", "due", "Follow-up falls today") + " · " +
-    b("m", t.over, "overdue", "over", "Follow-up already past due, today and earlier backlog") +
+    b("m", t.back, "backlog", "back", "No follow-up set, or follow-up already past, or never called. Deduped.") +
     "</div><div class='sub3'>" +
     b("c", t.done, "called", "done", "Due today and called today") + " · " +
     b("m", t.missed, "missed", "missed", "Due today and not called yet") +
@@ -451,7 +451,7 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var TODAY_LBL = { due: "due today", over: "overdue, including backlog", done: "due today and called", missed: "due today and missed" };
+  var TODAY_LBL = { due: "due today", back: "backlog: no follow-up, overdue, or never called", done: "due today and called", missed: "due today and missed" };
   if (S.cellSeg.indexOf("|") > 0) {
     var pr = S.cellSeg.split("|");
     var base = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Needs owner", all: "All leads" }[pr[0]] || pr[0];

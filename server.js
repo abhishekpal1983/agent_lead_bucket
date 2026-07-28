@@ -1846,7 +1846,7 @@ app.get("/api/callnow", (req, res) => {
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
   const day = istDayBounds();
-  const blankT = function(){ return { due: 0, over: 0, done: 0, missed: 0 }; };
+  const blankT = function(){ return { due: 0, back: 0, done: 0, missed: 0 }; };
   const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
     due: 0, done: 0, missed: 0, touched: 0,
     t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT() } }; };
@@ -1860,9 +1860,12 @@ app.get("/api/callnow", (req, res) => {
     const calledToday = r.last >= day.start && r.last < day.end;
     const dueToday = r.fu >= day.start && r.fu < day.end;
     [b, tot].forEach(function(x){
+      // Backlog: no next step scheduled, or the next step is already past, or never called.
+      // Deduped union, so a lead that is all three still counts once.
+      const inBacklog = !r.fu || r.fu < now || !r.last;
       const bump = function(k){
         const o = x.t[k];
-        if (r.fu && r.fu < now) o.over++;
+        if (inBacklog) o.back++;
         if (!dueToday) return;
         o.due++;
         if (calledToday) o.done++; else o.missed++;
@@ -2013,6 +2016,10 @@ app.get("/api/callnow/leads", (req, res) => {
     return s.form || s.score || s.intl || s.fresh;
   });
   if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
+  if (String(req.query.backlog || "") === "1") {
+    const bn = Date.now();
+    rows = rows.filter(function(r){ return !r.fu || r.fu < bn || !r.last; });
+  }
   const today = String(req.query.today || "");
   if (today) {
     const d = istDayBounds();
