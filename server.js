@@ -1846,7 +1846,7 @@ app.get("/api/callnow", (req, res) => {
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
   const day = istDayBounds();
-  const blankT = function(){ return { due: 0, back: 0, done: 0, missed: 0 }; };
+  const blankT = function(){ return { due: 0, back: 0, done: 0, missed: 0, bwork: 0 }; };
   const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
     due: 0, done: 0, missed: 0, touched: 0,
     t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT() } }; };
@@ -1866,6 +1866,9 @@ app.get("/api/callnow", (req, res) => {
       const bump = function(k){
         const o = x.t[k];
         if (inBacklog) o.back++;
+        // A call made today on a lead that was NOT scheduled for today: backlog being worked.
+        // Disjoint from done, so done + bwork equals every call made today.
+        if (calledToday && !dueToday) o.bwork++;
         if (!dueToday) return;
         o.due++;
         if (calledToday) o.done++; else o.missed++;
@@ -1892,7 +1895,7 @@ app.get("/api/callnow", (req, res) => {
     });
     if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
       total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
-      due: 0, done: 0, missed: 0, touched: 0 };
+      due: 0, done: 0, missed: 0, touched: 0, bwork: 0 };
     const a = byAgent[r.owner];
     a.total++;
     if (any) {
@@ -1907,6 +1910,7 @@ app.get("/api/callnow", (req, res) => {
       const ct = r.last >= day.start && r.last < day.end;
       const dt = r.fu >= day.start && r.fu < day.end;
       if (ct) a.touched++;
+      if (ct && !dt) a.bwork++;
       if (dt) { a.due++; if (ct) a.done++; else a.missed++; }
     }
     const ck = r.creator || "(none)";
@@ -2029,6 +2033,7 @@ app.get("/api/callnow/leads", (req, res) => {
       if (today === "done") return dt && ct;
       if (today === "missed") return dt && !ct;
       if (today === "touched") return ct;
+      if (today === "bwork") return ct && !dt;
       return true;
     });
   }
