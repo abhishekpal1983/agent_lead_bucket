@@ -6,75 +6,79 @@
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FAFAFA;color:#171717;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
-.hdr{background:#fff;border-bottom:1px solid #E5E5E5;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.hdr h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
-.hdr p{font-size:12px;color:#737373}
-.livebadge{background:#D94A00;color:#fff;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
-.mebadge{background:#E3EEFB;color:#00447A;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F6F9FC;color:#0A2540;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.hdr{background:#fff;border-bottom:1px solid #E3E8EE;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hdr h1{font-size:15px;font-weight:600;letter-spacing:-.01em;color:#0A2540}
+.hdr p{font-size:12px;color:#697386}
+.livebadge{background:#FF7A59;color:#fff;font-size:11px;font-weight:600;padding:2px 9px;border-radius:4px}
+.mebadge{background:#E4F4F8;color:#005B6E;font-size:11px;font-weight:600;padding:2px 9px;border-radius:4px}
 .wrap{max-width:1680px;margin:0 auto;padding:16px 22px 44px}
-.bar{background:#fff;border:1px solid #E5E5E5;border-radius:10px;padding:9px 13px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.bar label{font-size:10.5px;color:#737373;font-weight:500;display:block;margin-bottom:3px}
-select{padding:5px 9px;font-size:12.5px;min-width:132px}
+.bar{background:#fff;border:1px solid #E3E8EE;border-radius:8px;padding:9px 13px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.bar label{font-size:10.5px;color:#697386;font-weight:600;letter-spacing:.03em;text-transform:uppercase;display:block;margin-bottom:3px}
+select,input[type=search]{border:1px solid #E3E8EE;border-radius:6px;padding:5px 9px;font-size:12.5px;background:#fff;font-family:inherit;min-width:132px;color:#0A2540}
+select:hover,input[type=search]:hover{border-color:#C9D2DD}
+select:focus,input[type=search]:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #E4F4F8}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chipb{border:1px solid #E3E8EE;background:#fff;border-radius:16px;padding:4px 11px;font-size:11.5px;font-weight:500;cursor:pointer;color:#425B76}
+.chipb:hover{background:#F7FAFC;border-color:#C9D2DD}
+.chipb.on{background:#0A2540;color:#fff;border-color:#0A2540}
+.btn{border:1px solid #E3E8EE;background:#fff;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#425B76}
+.btn:hover{background:#F7FAFC}
+.btn.p{background:#FF7A59;color:#fff;border-color:#FF7A59}
+.btn.p:hover{background:#EE6A49}
+.cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:12px;background:#fff;border:1px solid #E3E8EE;border-radius:8px;overflow:hidden}
+.card{padding:9px 16px;border-right:1px solid #F0F3F7;flex:1 1 auto;min-width:104px}
+.card:last-child{border-right:none}
+.card .v{font-size:17px;font-weight:600;letter-spacing:-.01em;color:#0A2540;line-height:1.25;font-variant-numeric:tabular-nums}
+.card .l{font-size:11px;color:#697386}
+.card.r .v{color:#C5401A}.card.g .v{color:#005B6E}.card.b .v{color:#0A2540}.card.a .v{color:#8A5A00}.card.v .v{color:#0A2540}
+.sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;padding:14px 16px}
+.sec h2{font-size:14px;font-weight:600;margin-bottom:2px;letter-spacing:-.01em;color:#0A2540}
+.sec .sub{font-size:12px;color:#697386;margin-bottom:11px;line-height:1.55}
 .sec.hero{padding:15px 17px}
 .sec.mini{padding:11px 14px}
 .sec.mini .sub{font-size:11.5px;margin-bottom:8px}
 .sec.mini table{font-size:12px}
-.sec.mini td{padding:5px 10px}
-.sec.mini th{padding:6px 10px;font-size:10.5px}
+.sec.mini td{padding:6px 10px}
+.sec.mini th{padding:7px 10px}
 .sec.mini .tw{max-height:none}
-.bar2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;border-top:1px solid #F0F0F0;padding-top:8px;margin-top:2px}
-.hero table{font-size:13.5px}
-.hero td{padding:10px 12px}
-.hero .tw{max-height:none}
-.mbar{display:inline-block;height:5px;border-radius:3px;background:#0057B8;vertical-align:middle;margin-right:7px;min-width:2px}
-select,input[type=search]{border:1px solid #E0E0E0;border-radius:7px;padding:6px 10px;font-size:13px;background:#fff;font-family:inherit;min-width:158px;color:#171717}
-select:hover,input[type=search]:hover{border-color:#C4C4C4}
-select:focus,input[type=search]:focus{outline:none;border-color:#0057B8;box-shadow:0 0 0 3px #E3EEFB}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
-.chipb{border:1px solid #E5E5E5;background:#fff;border-radius:20px;padding:4px 11px;font-size:12px;font-weight:500;cursor:pointer;color:#525252;transition:background .1s}
-.chipb:hover{background:#F5F5F5}
-.chipb.on{background:#171717;color:#fff;border-color:#171717}
-.btn{border:1px solid #E5E5E5;background:#fff;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;color:#404040}
-.btn.p{background:#0057B8;color:#fff;border-color:#0057B8}
-.cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:12px;background:#fff;border:1px solid #E5E5E5;border-radius:10px;padding:2px 0}
-.card{padding:7px 16px;border-right:1px solid #F0F0F0;flex:1 1 auto;min-width:104px}
-.card:last-child{border-right:none}
-.card .v{font-size:16px;font-weight:600;letter-spacing:-.02em;color:#171717;line-height:1.25}
-.card .l{font-size:11px;color:#737373}
-.card.r .l,.card.r .v{color:#7A2800}.card.g .v{color:#00415F}.card.b .v{color:#00447A}.card.a .v{color:#8A5A00}.card.v .v{color:#5B21B6}
-.sec{background:#fff;border:1px solid #E5E5E5;border-radius:10px;margin-bottom:14px;padding:14px 16px}
-.sec h2{font-size:13.5px;font-weight:600;margin-bottom:2px;letter-spacing:-.01em}
-.sec .sub{font-size:12px;color:#737373;margin-bottom:11px;line-height:1.55}
-.tw{max-height:74vh;overflow:auto;border:1px solid #F0F0F0;border-radius:8px}
-table{border-collapse:separate;border-spacing:0;font-size:13px;width:100%}
-th{background:#FAFAFA;padding:9px 12px;text-align:left;font-size:11px;font-weight:500;color:#737373;white-space:nowrap;position:sticky;top:0;z-index:3;border-bottom:1px solid #E8E8E8}
+.bar2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;border-top:1px solid #F0F3F7;padding-top:8px;margin-top:2px}
+.tw{max-height:76vh;overflow:auto;border:1px solid #E3E8EE;border-radius:8px}
+table{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%}
+th{background:#F7FAFC;padding:9px 12px;text-align:left;font-size:10.5px;font-weight:600;color:#697386;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;position:sticky;top:0;z-index:3;border-bottom:1px solid #E3E8EE}
 th:first-child{left:0;z-index:4}
-td{padding:8px 12px;border-bottom:1px solid #F2F2F2;white-space:nowrap;color:#171717}
-td:first-child{position:sticky;left:0;background:#fff;z-index:2}
+td{padding:9px 12px;border-bottom:1px solid #F0F3F7;white-space:nowrap;color:#0A2540}
+td:first-child{position:sticky;left:0;background:#fff;z-index:2;border-left:3px solid transparent}
 tr:last-child td{border-bottom:none}
-tr.tot td{background:#FAFAFA;font-weight:600}
-tr.tot td:first-child{background:#FAFAFA}
+tr.tot td{background:#F7FAFC;font-weight:600;border-top:2px solid #E3E8EE}
+tr.tot td:first-child{background:#F7FAFC}
+tr.alert td:first-child{border-left-color:#FF7A59}
 td.n{text-align:right;font-variant-numeric:tabular-nums}
 td.cell{text-align:right;cursor:pointer;font-variant-numeric:tabular-nums}
-td.cell:hover{box-shadow:inset 0 0 0 1px #0057B8}
-td.cell.sel{background:#0057B8;color:#fff;font-weight:600}
-td.cell.sel *{color:#fff}
-td.z{color:#D4D4D4}
-.cg{color:#00447A}.cr{color:#B03A00}.ca{color:#8A5A00}.mut{color:#A3A3A3}
-.pill{background:#D94A00;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:6px;display:inline-block;font-variant-numeric:tabular-nums}
-.pill.w{background:#8A5A00}
-.st{font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:6px;white-space:nowrap;display:inline-block}
-.tag{font-size:11px;font-weight:500;padding:1px 7px;border-radius:6px;white-space:nowrap;margin-right:4px;display:inline-block}
-.tag.f{background:#F1ECFD;color:#5B21B6}.tag.s{background:#DDEBF6;color:#00415F}.tag.i{background:#E3EEFB;color:#00447A}.tag.o{background:#FBE3D3;color:#7A2800}
-.a2{color:#00447A;text-decoration:none;font-weight:500}
+td.cell:hover{box-shadow:inset 0 0 0 1px #0091AE}
+td.cell.sel{background:#0A2540;color:#fff;font-weight:600}
+td.cell.sel *{color:#fff !important}
+td.z{color:#C1C9D2}
+.cg{color:#005B6E}.cr{color:#C5401A}.ca{color:#8A5A00}.mut{color:#C1C9D2}
+.sub3{font-size:10.5px;font-weight:400;color:#697386;margin-top:2px;letter-spacing:.01em}
+.sub3 b{font-weight:600;cursor:pointer}
+.sub3 b:hover{text-decoration:underline}
+.sub3 .d{color:#425B76}.sub3 .c{color:#005B6E}.sub3 .m{color:#C5401A}
+.st{font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap;display:inline-block}
+.tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;white-space:nowrap;margin-right:4px;display:inline-block}
+.tag.f{background:#EDE9FE;color:#4B2E9E}.tag.s{background:#E4F4F8;color:#005B6E}.tag.i{background:#E6EEF7;color:#1C4B7E}.tag.o{background:#FDEDE8;color:#8C2D12}
+.pill{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block;font-variant-numeric:tabular-nums}
+.pill.w{background:#B8791A}
+.a2{color:#0091AE;text-decoration:none;font-weight:600}
 .a2:hover{text-decoration:underline}
-#loading{padding:60px;text-align:center;color:#737373}
-.spin{width:26px;height:26px;border:2.5px solid #E8E8E8;border-top-color:#0057B8;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+#loading{padding:60px;text-align:center;color:#697386}
+.spin{width:26px;height:26px;border:2.5px solid #E3E8EE;border-top-color:#FF7A59;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-.warn{background:#FDF6EC;color:#8A5A00;border:1px solid #F5E4C8;border-radius:8px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
+.warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
 .rowlink{cursor:pointer}
-.rowlink:hover td{background:#FAFAFA}
+.rowlink:hover td{background:#F7FAFC}
+.rowlink:hover td:first-child{background:#F7FAFC}
+.mbar{display:inline-block;height:5px;border-radius:3px;background:#0091AE;vertical-align:middle;margin-right:7px;min-width:2px}
 </style>
 </head>
 <body>
@@ -165,7 +169,7 @@ var KIND = {
 };
 function loadLeads(){
   var kind = S.cellSeg || "any";
-  var base = KIND[kind] || { seg: kind };
+  var base = KIND[kind] || (kind.indexOf("|") > 0 ? { seg: kind.split("|")[0], today: kind.split("|")[1] } : { seg: kind });
   var extra = { stage: S.cellStage, limit: "1500" };
   Object.keys(base).forEach(function(k){ extra[k] = base[k]; });
   if (S.fu) extra.fu = S.fu;
@@ -235,6 +239,15 @@ function cell(v, stage, seg, cls, heat){
   var z = v ? "" : " z";
   var bg = (!sel && heat > 0) ? " style='background:rgba(0,87,184," + (0.05 + 0.25 * heat).toFixed(3) + ")'" : "";
   return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "'" + bg + " onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
+}
+function totCell(v, seg, t){
+  t = t || { due: 0, done: 0, missed: 0 };
+  var sub = "<div class='sub3'>" +
+    "<b class='d' title='Due for a call today' onclick=\"event.stopPropagation();pick('','" + seg + "|due')\">" + fmt(t.due) + "</b> due · " +
+    "<b class='c' title='Due today and called' onclick=\"event.stopPropagation();pick('','" + seg + "|done')\">" + fmt(t.done) + "</b> called · " +
+    "<b class='m' title='Due today and not called' onclick=\"event.stopPropagation();pick('','" + seg + "|missed')\">" + fmt(t.missed) + "</b> missed</div>";
+  var sel = (S.cellStage === "" && S.cellSeg === seg) ? " sel" : "";
+  return "<td class='cell" + sel + "' onclick=\"pick('','" + seg + "')\">" + fmt(v) + sub + "</td>";
 }
 function heats(rows, keys){
   var mx = {};
@@ -320,8 +333,8 @@ function drawCards(){
 
 function drawMatrix(){
   var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>Due today</th><th style='text-align:right'>Called</th><th style='text-align:right'>Missed</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
-  var hv = heats(J.matrix, ["form","score","intl","any","needs","total","due","done","missed","overdue","nofu","uncalled"]);
+  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
     h += "<tr><td>" + chip(r.stage, r.label) + "</td>";
     h += cell(r.form, r.stage, "form", "", hv(r, "form"));
@@ -330,17 +343,15 @@ function drawMatrix(){
     h += cell(r.any, r.stage, "any", "", hv(r, "any"));
     h += cell(r.needs, r.stage, "needs", "", hv(r, "needs"));
     h += cell(r.total, r.stage, "all", "", hv(r, "total"));
-    h += cell(r.due, r.stage, "due", "", hv(r, "due"));
-    h += cell(r.done, r.stage, "done", r.done ? "cg" : "", hv(r, "done"));
-    h += cell(r.missed, r.stage, "missed", r.missed ? "cr" : "", hv(r, "missed"));
     h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "", hv(r, "overdue"));
     h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "", hv(r, "nofu"));
     h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "", hv(r, "uncalled")) + "</tr>";
   });
-  var t = J.totals;
+  var t = J.totals, tt = t.t || {};
   h += "<tr class='tot'><td>TOTAL</td>";
-  h += cell(t.form, "", "form") + cell(t.score, "", "score") + cell(t.intl, "", "intl") + cell(t.any, "", "any") + cell(t.needs, "", "needs") + cell(t.total, "", "all");
-  h += cell(t.due, "", "due") + cell(t.done, "", "done") + cell(t.missed, "", "missed") + cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
+  h += totCell(t.form, "form", tt.form) + totCell(t.score, "score", tt.score) + totCell(t.intl, "intl", tt.intl) +
+       totCell(t.any, "any", tt.any) + totCell(t.needs, "needs", tt.needs) + totCell(t.total, "all", tt.all);
+  h += cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
   h += "</tbody></table></div></div>";
   return h;
 }
@@ -355,7 +366,7 @@ function drawAgents(){
     var w = mx ? Math.max(2, Math.round(58 * a.any / mx)) : 2;
     var nm = a.id ? esc(a.name) : "<span class='tag o'>UNASSIGNED</span>";
     if (a.id && a.active === false) nm += " <span class='tag o'>INACTIVE</span>";
-    h += "<tr class='rowlink' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td>" + nm + "</td>" +
+    h += "<tr class='rowlink" + (a.missed ? " alert" : "") + "' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td>" + nm + "</td>" +
       "<td class='n'><span class='mbar' style='width:" + w + "px'></span><b>" + fmt(a.any) + "</b></td>" +
       "<td class='n'>" + fmt(a.form) + "</td><td class='n'>" + fmt(a.score) + "</td><td class='n'>" + fmt(a.intl) + "</td>" +
       "<td class='n'>" + fmt(a.due) + "</td>" +
@@ -383,7 +394,16 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", due: "Due for a call today", done: "Due today and called", missed: "Due today and missed", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";
+  var TODAY_LBL = { due: "due today", done: "due today and called", missed: "due today and missed" };
+  if (S.cellSeg.indexOf("|") > 0) {
+    var pr = S.cellSeg.split("|");
+    var base = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Needs owner", all: "All leads" }[pr[0]] || pr[0];
+    return drawLeadsInner(base + " · " + TODAY_LBL[pr[1]]);
+  }
+  var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";
+  return drawLeadsInner(segName);
+}
+function drawLeadsInner(segName){
   var stName = S.cellStage ? (J.stageGroups.labels[S.cellStage] || S.cellStage) : "All stages in view";
   var rows = L.rows;
   if (S.q) {

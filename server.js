@@ -1843,8 +1843,10 @@ app.get("/api/callnow", (req, res) => {
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
   const day = istDayBounds();
+  const blankT = function(){ return { due: 0, done: 0, missed: 0 }; };
   const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
-    due: 0, done: 0, missed: 0, touched: 0 }; };
+    due: 0, done: 0, missed: 0, touched: 0,
+    t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT() } }; };
   const byStage = {}, tot = blank();
   const byAgent = {}, byCreator = {};
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
@@ -1852,8 +1854,17 @@ app.get("/api/callnow", (req, res) => {
     const s = cnSegs(r), any = s.form || s.score || s.intl || s.fresh;
     const b = byStage[r.stage] || (byStage[r.stage] = blank());
     const now = Date.now();
+    const calledToday = r.last >= day.start && r.last < day.end;
+    const dueToday = r.fu >= day.start && r.fu < day.end;
     [b, tot].forEach(function(x){
+      const bump = function(k){
+        if (!dueToday) return;
+        const o = x.t[k];
+        o.due++;
+        if (calledToday) o.done++; else o.missed++;
+      };
       x.total++;
+      bump("all");
       if (s.form) x.form++;
       if (s.score) x.score++;
       if (s.intl) x.intl++;
@@ -1863,13 +1874,13 @@ app.get("/api/callnow", (req, res) => {
         if (r.fu && r.fu < now) x.overdue++;
         if (!r.fu) x.nofu++;
         if (!r.last) x.uncalled++;
-        const calledToday = r.last >= day.start && r.last < day.end;
-        const dueToday = r.fu >= day.start && r.fu < day.end;
         if (calledToday) x.touched++;
-        if (dueToday) {
-          x.due++;
-          if (calledToday) x.done++; else x.missed++;
-        }
+        if (dueToday) { x.due++; if (calledToday) x.done++; else x.missed++; }
+        if (s.form) bump("form");
+        if (s.score) bump("score");
+        if (s.intl) bump("intl");
+        if (r.needsOwner) bump("needs");
+        bump("any");
       }
     });
     if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
