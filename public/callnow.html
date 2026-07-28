@@ -14,7 +14,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .mebadge{background:#E4F4F8;color:#005B6E;font-size:11px;font-weight:600;padding:2px 9px;border-radius:4px}
 .wrap{max-width:1680px;margin:0 auto;padding:16px 22px 44px}
 .bar{background:#fff;border:1px solid #E3E8EE;border-radius:8px;padding:9px 13px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.bar label{font-size:10.5px;color:#697386;font-weight:600;letter-spacing:.03em;text-transform:uppercase;display:block;margin-bottom:3px}
+.bar label{font-size:10.5px;color:#8B99A8;font-weight:500;display:block;margin-bottom:3px}
 select,input[type=search]{border:1px solid #E3E8EE;border-radius:6px;padding:5px 9px;font-size:12.5px;background:#fff;font-family:inherit;min-width:132px;color:#0A2540}
 select:hover,input[type=search]:hover{border-color:#C9D2DD}
 select:focus,input[type=search]:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #E4F4F8}
@@ -26,12 +26,29 @@ select:focus,input[type=search]:focus{outline:none;border-color:#0091AE;box-shad
 .btn:hover{background:#F7FAFC}
 .btn.p{background:#FF7A59;color:#fff;border-color:#FF7A59}
 .btn.p:hover{background:#EE6A49}
-.cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:12px;background:#fff;border:1px solid #E3E8EE;border-radius:8px;overflow:hidden}
-.card{padding:9px 16px;border-right:1px solid #F0F3F7;flex:1 1 auto;min-width:104px}
-.card:last-child{border-right:none}
-.card .v{font-size:17px;font-weight:600;letter-spacing:-.01em;color:#0A2540;line-height:1.25;font-variant-numeric:tabular-nums}
-.card .l{font-size:11px;color:#697386}
-.card.r .v{color:#C5401A}.card.g .v{color:#005B6E}.card.b .v{color:#0A2540}.card.a .v{color:#8A5A00}.card.v .v{color:#0A2540}
+.mstrip{display:grid;grid-template-columns:186px minmax(0,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:940px){.mstrip{grid-template-columns:1fr}}
+.mhero{background:#0A2540;border-radius:8px;padding:12px 16px;color:#fff;cursor:pointer;display:flex;flex-direction:column;justify-content:center}
+.mhero:hover{background:#123152}
+.mhero .v{font-size:30px;font-weight:600;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.mhero .l{font-size:11px;color:#8FA6BF;margin-top:2px}
+.mhero .s{font-size:11px;color:#C7D6E4;margin-top:7px;border-top:1px solid #1E3D5F;padding-top:6px}
+.mgroups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:860px){.mgroups{grid-template-columns:1fr}}
+.mgroup{background:#fff;border:1px solid #E3E8EE;border-radius:8px;padding:9px 13px 10px}
+.mgroup.alert{border-color:#F8C6B4}
+.mgroup h4{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#8B99A8;font-weight:600;margin-bottom:7px}
+.mrow{display:flex;gap:16px;flex-wrap:wrap}
+.mitem{cursor:pointer;min-width:52px}
+.mitem:hover .v{text-decoration:underline}
+.mitem .v{font-size:17px;font-weight:600;letter-spacing:-.01em;color:#0A2540;line-height:1.15;font-variant-numeric:tabular-nums}
+.mitem .l{font-size:10.5px;color:#697386;margin-top:1px}
+.mitem.z .v{color:#C1C9D2}
+.mitem.r .v{color:#C5401A}.mitem.c .v{color:#005B6E}.mitem.a .v{color:#B8791A}
+.csync{background:#fff;border:1px solid #E3E8EE;border-radius:8px;padding:8px 13px;margin-bottom:12px;font-size:12px;color:#425B76}
+.csync summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.csync summary::-webkit-details-marker{display:none}
+.csync .cbody{margin-top:9px;padding-top:9px;border-top:1px solid #F0F3F7;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;padding:14px 16px}
 .sec h2{font-size:14px;font-weight:600;margin-bottom:2px;letter-spacing:-.01em;color:#0A2540}
 .sec .sub{font-size:12px;color:#697386;margin-bottom:11px;line-height:1.55}
@@ -102,6 +119,7 @@ var S = {
   intl: localStorage.getItem("cn_intl") || "",
   ostate: "",
   stagesOpen: false,
+  csyncOpen: false,
   stages: null,
   fu: "",
   cellStage: "", cellSeg: "",
@@ -161,6 +179,7 @@ function load(){
 var KIND = {
   needs:      { seg: "any", ostate: "needs" },
   due:        { seg: "any", today: "due" },
+  touched:    { seg: "any", today: "touched" },
   done:       { seg: "any", today: "done" },
   missed:     { seg: "any", today: "missed" },
   fu_overdue: { seg: "any", fu: "overdue" },
@@ -288,19 +307,6 @@ function drawFilters(){
   h += "<button class='chipb" + (S.ostate === "unassigned" ? " on" : "") + "' onclick=\"setOstate('unassigned')\">Unassigned</button>";
   h += "<button class='chipb" + (S.ostate === "inactive" ? " on" : "") + "' onclick=\"setOstate('inactive')\">Deactivated</button>";
   h += "</div>";
-  h += "<div class='bar2'>";
-  h += "<span style='font-size:10.5px;color:#737373;font-weight:500'>Creator fresh sync</span>";
-  (J.pfreshCreators || []).forEach(function(c){
-    h += "<button class='chipb on' title='Click to stop tracking' onclick=\"dropCreator('" + esc(c) + "')\">" + esc(c) + " ×</button>";
-  });
-  h += "<select id='csel' style='min-width:180px'><option value=''>Add a creator...</option>";
-  (J.creatorOptions || []).forEach(function(c){
-    if ((J.pfreshCreators || []).indexOf(c.u) >= 0) return;
-    h += "<option value='" + esc(c.u) + "'>" + esc(c.u) + " · " + fmt(c.n) + "</option>";
-  });
-  h += "</select>";
-  h += "<button class='btn p' " + (SYNCING_OWNER ? "disabled" : "") + " onclick='syncCreator()'>" + (SYNCING_OWNER ? "Syncing..." : "Sync now") + "</button>";
-  h += "</div>";
   if (S.stagesOpen) {
     h += "<div class='bar2'>";
     J.stageGroups.priority.concat(J.stageGroups.other).forEach(function(s){
@@ -312,23 +318,50 @@ function drawFilters(){
   return h;
 }
 
+function mi(v, label, kind, cls){
+  return "<div class='mitem " + (v ? (cls || "") : "z") + "' onclick=\"pick('','" + kind + "')\">" +
+    "<div class='v'>" + fmt(v) + "</div><div class='l'>" + label + "</div></div>";
+}
+function drawCsync(){
+  var list = J.pfreshCreators || [];
+  var h = "<details class='csync'" + (S.csyncOpen ? " open" : "") + " ontoggle='S.csyncOpen=this.open'>";
+  h += "<summary><span style='font-weight:600;color:#0A2540'>Creator fresh sync</span>" +
+       "<span style='color:#697386'>" + list.length + " creators · " + fmt(J.pfreshCount || 0) + " fresh leads</span>" +
+       "<span style='margin-left:auto;color:#0091AE;font-weight:600'>Manage</span></summary>";
+  h += "<div class='cbody'>";
+  list.forEach(function(c){
+    h += "<button class='chipb on' title='Stop tracking this creator' onclick=\"dropCreator('" + esc(c) + "')\">" + esc(c) + " ×</button>";
+  });
+  h += "<select id='csel' style='min-width:186px'><option value=''>Add a creator...</option>";
+  (J.creatorOptions || []).forEach(function(c){
+    if (list.indexOf(c.u) >= 0) return;
+    h += "<option value='" + esc(c.u) + "'>" + esc(c.u) + " · " + fmt(c.n) + "</option>";
+  });
+  h += "</select>";
+  h += "<button class='btn p' " + (SYNCING_OWNER ? "disabled" : "") + " onclick='syncCreator()'>" + (SYNCING_OWNER ? "Syncing..." : "Sync now") + "</button>";
+  h += "<span style='font-size:11px;color:#8B99A8'>Additions last until the next deploy. Add to PRIORITY_FRESH_CREATORS in Railway to keep them.</span>";
+  h += "</div></details>";
+  return h;
+}
 function drawCards(){
   var t = J.totals;
-  return "<div class='cards'>" +
-    "<div class='card r'><div class='v'>" + fmt(t.any) + "</div><div class='l'>Must call (any priority)</div></div>" +
-    "<div class='card v'><div class='v'>" + fmt(t.form) + "</div><div class='l'>Waitlist form leads</div></div>" +
-    "<div class='card g'><div class='v'>" + fmt(t.score) + "</div><div class='l'>Conv score &ge; " + J.scoreMin + "</div></div>" +
-    "<div class='card b'><div class='v'>" + fmt(t.intl) + "</div><div class='l'>International</div></div>" +
-    "<div class='card r'><div class='v'>" + fmt(t.needs) + "</div><div class='l'>Needs owner</div></div>" +
-    "<div class='card'><div class='v'>" + fmt(t.due) + "</div><div class='l'>Due today</div></div>" +
-    "<div class='card g'><div class='v'>" + fmt(t.done) + "</div><div class='l'>Called of those due</div></div>" +
-    "<div class='card r'><div class='v'>" + fmt(t.missed) + "</div><div class='l'>Missed today</div></div>" +
-    "<div class='card'><div class='v'>" + fmt(t.touched) + "</div><div class='l'>Any lead called today</div></div>" +
-    "<div class='card a'><div class='v'>" + fmt(t.overdue) + "</div><div class='l'>Follow-up overdue</div></div>" +
-    "<div class='card a'><div class='v'>" + fmt(t.nofu) + "</div><div class='l'>No follow-up set</div></div>" +
-    "<div class='card r'><div class='v'>" + fmt(t.uncalled) + "</div><div class='l'>Never called</div></div>" +
-    "<div class='card'><div class='v'>" + fmt(t.total) + "</div><div class='l'>All leads in view</div></div>" +
-    "</div>";
+  var pct = t.due ? Math.round(100 * t.done / t.due) : 0;
+  var h = "<div class='mstrip'>";
+  h += "<div class='mhero' onclick=\"pick('','any')\"><div class='v'>" + fmt(t.any) + "</div>" +
+       "<div class='l'>Must call</div>" +
+       "<div class='s'>" + fmt(t.total) + " leads in view</div></div>";
+  h += "<div class='mgroups'>";
+  h += "<div class='mgroup'><h4>Why they qualify</h4><div class='mrow'>" +
+       mi(t.form, "Form", "form") + mi(t.score, "Score &ge;" + J.scoreMin, "score") +
+       mi(t.intl, "Intl", "intl") + "</div></div>";
+  h += "<div class='mgroup" + (t.missed ? " alert" : "") + "'><h4>Today" + (t.due ? " · " + pct + "% done" : "") + "</h4><div class='mrow'>" +
+       mi(t.due, "Due", "due") + mi(t.done, "Called", "done", "c") +
+       mi(t.missed, "Missed", "missed", "r") + mi(t.touched, "Calls made", "touched") + "</div></div>";
+  h += "<div class='mgroup'><h4>Backlog</h4><div class='mrow'>" +
+       mi(t.needs, "Needs owner", "needs", "r") + mi(t.overdue, "FU overdue", "fu_overdue", "a") +
+       mi(t.nofu, "No FU", "fu_none", "a") + mi(t.uncalled, "Never called", "uncalled", "r") + "</div></div>";
+  h += "</div></div>";
+  return h;
 }
 
 function drawMatrix(){
@@ -461,7 +494,7 @@ function draw(){
   if (J.syncing) h += "<div class='warn'>Lead sync running - numbers may be partial.</div>";
   if (SYNCING_OWNER) h += "<div class='warn'>" + esc(OWNER_MSG) + "</div>";
   else if (OWNER_MSG) h += "<div class='warn' style='background:#F1F7FF;border-color:#CFE2F7;color:#00447A'>" + esc(OWNER_MSG) + "</div>";
-  h += drawFilters() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
+  h += drawFilters() + drawCsync() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
   var meta = "Leads synced " + (J.loadedAt ? new Date(J.loadedAt).toLocaleString("en-IN") : "-") +
     " · forms " + (J.formsLoadedAt ? new Date(J.formsLoadedAt).toLocaleString("en-IN") + " (" + esc(J.formsSource) + ")" : "pending") +
     " · creator fresh " + (J.pfreshLoadedAt ? fmt(J.pfreshCount) + " leads across " + (J.pfreshCreators || []).length + " creators" : "pending");
