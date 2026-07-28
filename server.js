@@ -16,7 +16,7 @@ app.use(express.json());
 
 const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
 const PORT = process.env.PORT || 3000;
-const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "10", 10);
+const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "30", 10);
 const REFRESH_KEY = process.env.REFRESH_KEY || "";
 const PORTAL_ID = process.env.HS_PORTAL_ID || "244132076";
 const UI_DOMAIN = process.env.HS_UI_DOMAIN || "app-na2.hubspot.com";

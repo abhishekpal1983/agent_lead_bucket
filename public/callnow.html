@@ -456,7 +456,7 @@ function draw(){
   document.getElementById("whobadge").innerHTML = badge;
 }
 if (ME) refreshOwner(ME, load); else load();
-setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 10 * 60 * 1000);
+setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 15 * 60 * 1000);
 </script>
 </body>
 </html>
