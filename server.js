@@ -1750,9 +1750,20 @@ app.get("/api/callnow", (req, res) => {
         if (!r.last) x.uncalled++;
       }
     });
-    if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, total: 0, any: 0, form: 0, score: 0, intl: 0 };
+    if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
+      total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0 };
     const a = byAgent[r.owner];
-    a.total++; if (any) a.any++; if (s.form) a.form++; if (s.score) a.score++; if (s.intl) a.intl++;
+    a.total++;
+    if (any) {
+      a.any++;
+      if (s.form) a.form++;
+      if (s.score) a.score++;
+      if (s.intl) a.intl++;
+      if (r.needsOwner) a.needs++;
+      if (r.fu && r.fu < Date.now()) a.overdue++;
+      if (!r.fu) a.nofu++;
+      if (!r.last) a.uncalled++;
+    }
     const ck = r.creator || "(none)";
     if (!byCreator[ck]) byCreator[ck] = { u: ck, total: 0, any: 0 };
     byCreator[ck].total++; if (any) byCreator[ck].any++;

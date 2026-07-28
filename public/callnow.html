@@ -13,8 +13,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .livebadge{background:#FBE3D3;color:#7A2800;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
 .mebadge{background:#EEF1FE;color:#2740B8;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
 .wrap{max-width:1680px;margin:0 auto;padding:16px 22px 44px}
-.bar{background:#fff;border:1px solid #E9E9EC;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
-.bar label{font-size:11px;color:#8A8A94;font-weight:500;display:block;margin-bottom:5px}
+.bar{background:#fff;border:1px solid #E9E9EC;border-radius:10px;padding:9px 13px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.bar label{font-size:10.5px;color:#8A8A94;font-weight:500;display:block;margin-bottom:3px}
+select{padding:5px 9px;font-size:12.5px;min-width:132px}
+.sec.hero{padding:15px 17px}
+.sec.mini{padding:11px 14px}
+.sec.mini .sub{font-size:11.5px;margin-bottom:8px}
+.sec.mini table{font-size:12px}
+.sec.mini td{padding:5px 10px}
+.sec.mini th{padding:6px 10px;font-size:10.5px}
+.sec.mini .tw{max-height:none}
+.bar2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;border-top:1px solid #F0F0F2;padding-top:8px;margin-top:2px}
+.hero table{font-size:13.5px}
+.hero td{padding:10px 12px}
+.hero .tw{max-height:none}
+.mbar{display:inline-block;height:5px;border-radius:3px;background:#3B5BFD;vertical-align:middle;margin-right:7px;min-width:2px}
 select,input[type=search]{border:1px solid #E3E3E7;border-radius:7px;padding:6px 10px;font-size:13px;background:#fff;font-family:inherit;min-width:158px;color:#1A1A1E}
 select:hover,input[type=search]:hover{border-color:#CFCFD6}
 select:focus,input[type=search]:focus{outline:none;border-color:#3B5BFD;box-shadow:0 0 0 3px #EEF1FE}
@@ -24,10 +37,11 @@ select:focus,input[type=search]:focus{outline:none;border-color:#3B5BFD;box-shad
 .chipb.on{background:#1A1A1E;color:#fff;border-color:#1A1A1E}
 .btn{border:1px solid #E9E9EC;background:#fff;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;color:#3F3F46}
 .btn.p{background:#3B5BFD;color:#fff;border-color:#3B5BFD}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:14px}
-.card{background:#fff;border:1px solid #E9E9EC;border-radius:10px;padding:12px 14px}
-.card .v{font-size:21px;font-weight:600;letter-spacing:-.02em;color:#1A1A1E}
-.card .l{font-size:11.5px;color:#8A8A94;margin-top:1px}
+.cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:12px;background:#fff;border:1px solid #E9E9EC;border-radius:10px;padding:2px 0}
+.card{padding:7px 16px;border-right:1px solid #F0F0F2;flex:1 1 auto;min-width:104px}
+.card:last-child{border-right:none}
+.card .v{font-size:16px;font-weight:600;letter-spacing:-.02em;color:#1A1A1E;line-height:1.25}
+.card .l{font-size:11px;color:#8A8A94}
 .card.r .l,.card.r .v{color:#7A2800}.card.g .v{color:#00415F}.card.b .v{color:#2740B8}.card.a .v{color:#8A5A00}.card.v .v{color:#5B21B6}
 .sec{background:#fff;border:1px solid #E9E9EC;border-radius:10px;margin-bottom:14px;padding:14px 16px}
 .sec h2{font-size:13.5px;font-weight:600;margin-bottom:2px;letter-spacing:-.01em}
@@ -81,6 +95,7 @@ var S = {
   creator: QS.get("creator") || localStorage.getItem("cn_creator") || "",
   intl: localStorage.getItem("cn_intl") || "",
   ostate: "",
+  stagesOpen: false,
   stages: null,
   fu: "",
   cellStage: "", cellSeg: "",
@@ -205,21 +220,27 @@ function drawFilters(){
     "<option value=''" + (S.intl === "" ? " selected" : "") + ">All</option>" +
     "<option value='no'" + (S.intl === "no" ? " selected" : "") + ">National</option>" +
     "<option value='yes'" + (S.intl === "yes" ? " selected" : "") + ">International</option></select></div>";
-  h += "<div style='flex:1;min-width:280px'><label>Stages in view</label><div class='chips'>";
+  var nAll = J.stageGroups.priority.length + J.stageGroups.other.length;
+  h += "<div class='bar2'>";
+  h += "<span style='font-size:10.5px;color:#8A8A94;font-weight:500'>Stages</span>";
   h += "<button class='chipb" + (S.stages.length === J.stageGroups.priority.length ? " on" : "") + "' onclick=\"presetStages('p')\">Priority set</button>";
-  h += "<button class='chipb' onclick=\"presetStages('a')\">All stages</button>";
+  h += "<button class='chipb" + (S.stages.length === nAll ? " on" : "") + "' onclick=\"presetStages('a')\">All stages</button>";
   h += "<button class='chipb' onclick=\"presetStages('o')\">Churned only</button>";
-  h += "</div><div class='chips' style='margin-top:5px'>";
-  J.stageGroups.priority.concat(J.stageGroups.other).forEach(function(s){
-    h += "<button class='chipb" + (S.stages.indexOf(s) >= 0 ? " on" : "") + "' onclick=\"toggleStage('" + s.replace(/'/g, "\\'") + "')\">" + esc(J.stageGroups.labels[s] || s) + "</button>";
-  });
-  h += "</div></div>";
-  h += "<div style='flex:1;min-width:230px'><label>Owner state</label><div class='chips'>";
+  h += "<button class='chipb' onclick=\"S.stagesOpen=!S.stagesOpen;draw()\">" + (S.stagesOpen ? "Hide" : "Pick") + " (" + S.stages.length + "/" + nAll + ")</button>";
+  h += "<span style='width:1px;height:18px;background:#E9E9EC;margin:0 3px'></span>";
+  h += "<span style='font-size:10.5px;color:#8A8A94;font-weight:500'>Owner</span>";
   h += "<button class='chipb" + (S.ostate === "" ? " on" : "") + "' onclick=\"setOstate('')\">All</button>";
   h += "<button class='chipb" + (S.ostate === "needs" ? " on" : "") + "' onclick=\"setOstate('needs')\">Needs owner</button>";
   h += "<button class='chipb" + (S.ostate === "unassigned" ? " on" : "") + "' onclick=\"setOstate('unassigned')\">Unassigned</button>";
-  h += "<button class='chipb" + (S.ostate === "inactive" ? " on" : "") + "' onclick=\"setOstate('inactive')\">Deactivated owner</button>";
-  h += "</div></div>";
+  h += "<button class='chipb" + (S.ostate === "inactive" ? " on" : "") + "' onclick=\"setOstate('inactive')\">Deactivated</button>";
+  h += "</div>";
+  if (S.stagesOpen) {
+    h += "<div class='bar2'>";
+    J.stageGroups.priority.concat(J.stageGroups.other).forEach(function(s){
+      h += "<button class='chipb" + (S.stages.indexOf(s) >= 0 ? " on" : "") + "' onclick=\"toggleStage('" + s.replace(/'/g, "\\'") + "')\">" + esc(J.stageGroups.labels[s] || s) + "</button>";
+    });
+    h += "</div>";
+  }
   h += "</div>";
   return h;
 }
@@ -240,7 +261,7 @@ function drawCards(){
 }
 
 function drawMatrix(){
-  var h = "<div class='sec'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent, so they can be reassigned before they are missed. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
+  var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent, so they can be reassigned before they are missed. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
   h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
   var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
@@ -265,14 +286,23 @@ function drawMatrix(){
 
 function drawAgents(){
   if (ME || S.agent) return "";
-  var h = "<div class='sec'><h2>Must-call load by agent</h2><div class='sub'>Click a row to filter the whole page to that agent.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Agent link</th></tr></thead><tbody>";
-  J.agents.forEach(function(a){
-    if (!a.id) return;
-    h += "<tr class='rowlink' onclick=\"setF('agent','" + esc(a.id) + "')\"><td><b>" + esc(a.name) + "</b></td>" +
-      "<td class='n'><b>" + fmt(a.any) + "</b></td><td class='n'>" + fmt(a.form) + "</td><td class='n'>" + fmt(a.score) + "</td><td class='n'>" + fmt(a.intl) + "</td>" +
+  var rows = J.agents.filter(function(a){ return a.any > 0 || a.id === ""; });
+  var mx = rows.reduce(function(m, a){ return a.any > m ? a.any : m; }, 0);
+  var h = "<div class='sec hero'><h2>Must-call load by agent</h2><div class='sub'>Every priority lead, split by who owns it. Click a row to filter the page to that agent, or open their own view.</div>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Link</th></tr></thead><tbody>";
+  rows.forEach(function(a){
+    var w = mx ? Math.max(2, Math.round(58 * a.any / mx)) : 2;
+    var nm = a.id ? esc(a.name) : "<span class='tag o'>UNASSIGNED</span>";
+    if (a.id && a.active === false) nm += " <span class='tag o'>INACTIVE</span>";
+    h += "<tr class='rowlink' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td>" + nm + "</td>" +
+      "<td class='n'><span class='mbar' style='width:" + w + "px'></span><b>" + fmt(a.any) + "</b></td>" +
+      "<td class='n'>" + fmt(a.form) + "</td><td class='n'>" + fmt(a.score) + "</td><td class='n'>" + fmt(a.intl) + "</td>" +
+      "<td class='n " + (a.needs ? "cr" : "mut") + "'>" + fmt(a.needs) + "</td>" +
+      "<td class='n " + (a.overdue ? "cr" : "mut") + "'>" + fmt(a.overdue) + "</td>" +
+      "<td class='n " + (a.nofu ? "ca" : "mut") + "'>" + fmt(a.nofu) + "</td>" +
+      "<td class='n " + (a.uncalled ? "cr" : "mut") + "'>" + fmt(a.uncalled) + "</td>" +
       "<td class='n mut'>" + fmt(a.total) + "</td><td class='n'>" + (a.total ? (100 * a.any / a.total).toFixed(1) : "0") + "%</td>" +
-      "<td><a class='a2' href='/callnow.html?id=" + esc(a.id) + "' onclick='event.stopPropagation()'>open</a></td></tr>";
+      "<td>" + (a.id ? "<a class='a2' href='/callnow.html?id=" + esc(a.id) + "' onclick='event.stopPropagation()'>open</a>" : "<span class='mut'>–</span>") + "</td></tr>";
   });
   h += "</tbody></table></div></div>";
   return h;
@@ -345,7 +375,7 @@ function draw(){
   if (J.error) h += "<div class='warn'>Lead sync error: " + esc(J.error) + "</div>";
   if (J.formsError) h += "<div class='warn'>" + esc(J.formsError) + "</div>";
   if (J.syncing) h += "<div class='warn'>Lead sync running - numbers may be partial.</div>";
-  h += drawFilters() + drawCards() + drawMatrix() + drawLeads() + drawAgents();
+  h += drawFilters() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
   var meta = "Leads synced " + (J.loadedAt ? new Date(J.loadedAt).toLocaleString("en-IN") : "-") +
     " · forms " + (J.formsLoadedAt ? new Date(J.formsLoadedAt).toLocaleString("en-IN") + " (" + esc(J.formsSource) + ")" : "pending");
   h += "<div class='mut' style='font-size:10.5px;margin-top:6px'>" + meta + "</div>";
