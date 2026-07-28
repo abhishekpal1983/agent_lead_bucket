@@ -103,7 +103,7 @@ var S = {
   cellStage: "", cellSeg: "",
   q: ""
 };
-var J = null, L = null, LOADING = false;
+var J = null, L = null, LOADING = false, SYNCING_OWNER = false, OWNER_MSG = "";
 
 function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function fmt(n){ return Math.round(n || 0).toLocaleString("en-IN"); }
@@ -123,6 +123,21 @@ function save(){
   if (!ME) localStorage.setItem("cn_agent", S.agent);
   localStorage.setItem("cn_creator", S.creator);
   localStorage.setItem("cn_intl", S.intl);
+}
+
+function refreshOwner(id, then){
+  if (!id || SYNCING_OWNER) { if (then) then(); return; }
+  SYNCING_OWNER = true; OWNER_MSG = "Pulling the latest leads for this agent from HubSpot...";
+  if (J) draw();
+  fetch("/api/callnow/refresh-owner/" + encodeURIComponent(id), { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      SYNCING_OWNER = false;
+      OWNER_MSG = j && j.error ? ("Could not refresh this agent: " + j.error)
+        : (j && j.skipped ? "" : "Bucket refreshed just now" + (j && j.staged !== undefined ? " · " + j.staged + " staged, " + j.fresh + " fresh" : ""));
+      if (then) then(); else load();
+    })
+    .catch(function(e){ SYNCING_OWNER = false; OWNER_MSG = "Could not refresh: " + e.message; if (then) then(); else load(); });
 }
 
 function load(){
@@ -214,6 +229,7 @@ function drawFilters(){
     h += "<option value='" + esc(c.u) + "'" + (S.creator === c.u ? " selected" : "") + ">" + esc(c.u) + " · " + fmt(c.n) + "</option>";
   });
   h += "</select></div>";
+  h += "<div><label>&nbsp;</label><button class='btn' " + (SYNCING_OWNER ? "disabled" : "") + " onclick=\"refreshOwner('" + esc(ME || S.agent) + "')\" " + ((ME || S.agent) ? "" : "style='display:none'") + ">" + (SYNCING_OWNER ? "Refreshing..." : "Refresh from HubSpot") + "</button></div>";
   h += "<div><label>Number</label><select onchange=\"setF('intl',this.value)\">" +
     "<option value=''" + (S.intl === "" ? " selected" : "") + ">All</option>" +
     "<option value='no'" + (S.intl === "no" ? " selected" : "") + ">National</option>" +
@@ -373,6 +389,8 @@ function draw(){
   if (J.error) h += "<div class='warn'>Lead sync error: " + esc(J.error) + "</div>";
   if (J.formsError) h += "<div class='warn'>" + esc(J.formsError) + "</div>";
   if (J.syncing) h += "<div class='warn'>Lead sync running - numbers may be partial.</div>";
+  if (SYNCING_OWNER) h += "<div class='warn'>" + esc(OWNER_MSG) + "</div>";
+  else if (OWNER_MSG) h += "<div class='warn' style='background:#F1F7FF;border-color:#CFE2F7;color:#00447A'>" + esc(OWNER_MSG) + "</div>";
   h += drawFilters() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
   var meta = "Leads synced " + (J.loadedAt ? new Date(J.loadedAt).toLocaleString("en-IN") : "-") +
     " · forms " + (J.formsLoadedAt ? new Date(J.formsLoadedAt).toLocaleString("en-IN") + " (" + esc(J.formsSource) + ")" : "pending");
@@ -386,8 +404,8 @@ function draw(){
   }
   document.getElementById("whobadge").innerHTML = badge;
 }
-load();
-setInterval(function(){ if (!LOADING) load(); }, 10 * 60 * 1000);
+if (ME) refreshOwner(ME, load); else load();
+setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 10 * 60 * 1000);
 </script>
 </body>
 </html>

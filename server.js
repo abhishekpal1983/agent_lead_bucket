@@ -1646,9 +1646,27 @@ const CN_STAGE_LABELS = {
   ghosted: "Ghosted", ni_not_interested: "NI - Not interested", disqualified: "Disqualified", deal_won: "Deal won"
 };
 
+/* On-demand single-owner refresh: a bulk reassignment in HubSpot otherwise takes a full
+   10-minute sync pass to show up. Re-pulling one owner is 1-2 API pages, so an agent can
+   see their current bucket in seconds. */
+let OWNER_REFRESH = {};
+let POOL_REV = 0;
+async function refreshOwner(ownerId){
+  const rows = await fetchContactsForOwner(ownerId);
+  let fr = [];
+  try { fr = await fetchFreshForOwner(ownerId); } catch (e) { console.error("fresh refresh failed: " + e.message); }
+  CACHE.contacts = CACHE.contacts.filter(function(c){ return String(c.hubspot_owner_id || "") !== String(ownerId); }).concat(rows);
+  const nf = Object.assign({}, CACHE.fresh || {});
+  if (fr.length) nf[ownerId] = fr; else delete nf[ownerId];
+  CACHE.fresh = nf;
+  POOL_REV++;
+  OWNER_REFRESH[ownerId] = new Date().toISOString();
+  return { staged: rows.length, fresh: fr.length };
+}
+
 let CN_POOL = { at: null, rows: [] };
 function callnowPool(){
-  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt);
+  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt) + "|" + POOL_REV;
   if (CN_POOL.at === key && CN_POOL.rows.length) return CN_POOL.rows;
   const rows = CACHE.contacts.slice();
   const seen = {};
@@ -1794,8 +1812,22 @@ app.get("/api/callnow", (req, res) => {
       .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
     creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
     stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS },
+    ownerRefreshedAt: req.query.agent ? (OWNER_REFRESH[req.query.agent] || null) : null,
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
+});
+
+app.post("/api/callnow/refresh-owner/:id", async (req, res) => {
+  const id = String(req.params.id || "");
+  if (!id || !CACHE.owners[id]) return res.status(400).json({ error: "unknown owner id" });
+  const last = OWNER_REFRESH[id] ? Date.parse(OWNER_REFRESH[id]) : 0;
+  if (Date.now() - last < 20000) return res.json({ ok: true, skipped: "cooldown", at: OWNER_REFRESH[id] });
+  try {
+    const r = await refreshOwner(id);
+    res.json(Object.assign({ ok: true, at: OWNER_REFRESH[id] }, r));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/api/callnow/leads", (req, res) => {
