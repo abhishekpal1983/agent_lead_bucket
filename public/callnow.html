@@ -77,7 +77,8 @@ td.cell.sel{background:#0A2540;color:#fff;font-weight:600}
 td.cell.sel *{color:#fff !important}
 td.z{color:#C1C9D2}
 .cg{color:#005B6E}.cr{color:#C5401A}.ca{color:#8A5A00}.mut{color:#C1C9D2}
-.sub3{font-size:10.5px;font-weight:400;color:#697386;margin-top:2px;letter-spacing:.01em}
+.sub3{font-size:10.5px;font-weight:400;color:#697386;margin-top:2px;letter-spacing:.01em;white-space:nowrap}
+.sub3+.sub3{margin-top:1px}
 .sub3 b{font-weight:600;cursor:pointer}
 .sub3 b:hover{text-decoration:underline}
 .sub3 .d{color:#425B76}.sub3 .c{color:#005B6E}.sub3 .m{color:#C5401A}
@@ -191,7 +192,13 @@ var KIND = {
 };
 function loadLeads(){
   var kind = S.cellSeg || "any";
-  var base = KIND[kind] || (kind.indexOf("|") > 0 ? { seg: kind.split("|")[0], today: kind.split("|")[1] } : { seg: kind });
+  var base = KIND[kind];
+  if (!base) {
+    if (kind.indexOf("|") > 0) {
+      var pp = kind.split("|");
+      base = pp[1] === "over" ? { seg: pp[0], fu: "overdue" } : { seg: pp[0], today: pp[1] };
+    } else { base = { seg: kind }; }
+  }
   var extra = { stage: S.cellStage, limit: "1500" };
   Object.keys(base).forEach(function(k){ extra[k] = base[k]; });
   if (S.fu) extra.fu = S.fu;
@@ -263,11 +270,17 @@ function cell(v, stage, seg, cls, heat){
   return "<td class='cell" + sel + z + (cls && !sel ? " " + cls : "") + "'" + bg + " onclick=\"pick('" + stage.replace(/'/g, "\\'") + "','" + seg + "')\">" + fmt(v) + "</td>";
 }
 function totCell(v, seg, t){
-  t = t || { due: 0, done: 0, missed: 0 };
+  t = t || { due: 0, over: 0, done: 0, missed: 0 };
+  var b = function(cls, val, lbl, kind, tip){
+    return "<b class='" + cls + "' title='" + tip + "' onclick=\"event.stopPropagation();pick('','" + seg + "|" + kind + "')\">" + fmt(val) + "</b> " + lbl;
+  };
   var sub = "<div class='sub3'>" +
-    "<b class='d' title='Due for a call today' onclick=\"event.stopPropagation();pick('','" + seg + "|due')\">" + fmt(t.due) + "</b> due · " +
-    "<b class='c' title='Due today and called' onclick=\"event.stopPropagation();pick('','" + seg + "|done')\">" + fmt(t.done) + "</b> called · " +
-    "<b class='m' title='Due today and not called' onclick=\"event.stopPropagation();pick('','" + seg + "|missed')\">" + fmt(t.missed) + "</b> missed</div>";
+    b("d", t.due, "due", "due", "Follow-up falls today") + " · " +
+    b("m", t.over, "overdue", "over", "Follow-up already past due, today and earlier backlog") +
+    "</div><div class='sub3'>" +
+    b("c", t.done, "called", "done", "Due today and called today") + " · " +
+    b("m", t.missed, "missed", "missed", "Due today and not called yet") +
+    "</div>";
   var sel = (S.cellStage === "" && S.cellSeg === seg) ? " sel" : "";
   return "<td class='cell" + sel + "' onclick=\"pick('','" + seg + "')\">" + fmt(v) + sub + "</td>";
 }
@@ -438,7 +451,7 @@ function why(r){
 function drawLeads(){
   if (!L) return "";
   if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
-  var TODAY_LBL = { due: "due today", done: "due today and called", missed: "due today and missed" };
+  var TODAY_LBL = { due: "due today", over: "overdue, including backlog", done: "due today and called", missed: "due today and missed" };
   if (S.cellSeg.indexOf("|") > 0) {
     var pr = S.cellSeg.split("|");
     var base = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Needs owner", all: "All leads" }[pr[0]] || pr[0];
