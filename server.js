@@ -648,7 +648,8 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
   backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error,
   formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error,
-  unownedLoadedAt: UNOWNED.loadedAt, unownedCount: UNOWNED.rows.length, unownedSyncing: UNOWNED.syncing, unownedError: UNOWNED.error }));
+  unownedLoadedAt: UNOWNED.loadedAt, unownedCount: UNOWNED.rows.length, unownedSyncing: UNOWNED.syncing, unownedError: UNOWNED.error,
+  pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing, pfreshError: PFRESH.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -1664,9 +1665,69 @@ async function refreshOwner(ownerId){
   return { staged: rows.length, fresh: fr.length };
 }
 
+/* Fresh leads for the creators the floor actually works. The per-owner fresh pull caps at
+   9,500, and one parking-bucket owner holds >500k fresh leads, so creator-scoped fresh is
+   the only way these become visible. ~20k rows total, recursive date-window split for the
+   creators that exceed the 10k search cap. */
+const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
+  "ayush_singh13,payalineurope,wanderess_priyanka,technomanagers,saurav_chaudhary_1,saurav_chaudhary,kartikkapoorconsultation,ankita_gulati,vijaychandola")
+  .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
+  "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
+  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id"];
+let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
+
+async function fetchFreshForCreator(creator, from, to, sink){
+  const filters = [
+    { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
+    { propertyName: "topmate_username", operator: "EQ", value: creator }
+  ];
+  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
+  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && from && to && (to - from) > 86400000) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchFreshForCreator(creator, from, mid, sink);
+    await fetchFreshForCreator(creator, mid, to, sink);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters }], properties: PFRESH_PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(130);
+  } while (after);
+}
+
+async function syncPriorityFresh(){
+  if (!TOKEN || PFRESH.syncing) return;
+  PFRESH.syncing = true;
+  const from = Date.parse("2020-01-01T00:00:00Z"), to = Date.now() + 86400000;
+  const rows = [], seen = {}, byCreator = {};
+  let err = "";
+  for (const c of PRIORITY_FRESH_CREATORS) {
+    try {
+      await fetchFreshForCreator(c, from, to, function(r){
+        if (seen[r.id]) return;
+        seen[r.id] = 1;
+        rows.push(r);
+        byCreator[c] = (byCreator[c] || 0) + 1;
+      });
+    } catch (e) { err = e.message; console.error("priority fresh " + c + " failed: " + e.message); }
+  }
+  PFRESH = { rows: rows, byCreator: byCreator, loadedAt: new Date().toISOString(), syncing: false, error: err || null };
+  POOL_REV++;
+  console.log("Priority fresh synced: " + rows.length + " across " + PRIORITY_FRESH_CREATORS.length + " creators");
+}
+
 let CN_POOL = { at: null, rows: [] };
 function callnowPool(){
-  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt) + "|" + POOL_REV;
+  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt) + "|" + String(PFRESH.loadedAt) + "|" + POOL_REV;
   if (CN_POOL.at === key && CN_POOL.rows.length) return CN_POOL.rows;
   const rows = CACHE.contacts.slice();
   const seen = {};
@@ -1678,6 +1739,11 @@ function callnowPool(){
     });
   });
   (UNOWNED.rows || []).forEach(function(c){ if (!seen[c.id]) { seen[c.id] = 1; rows.push(c); } });
+  (PFRESH.rows || []).forEach(function(c){
+    if (seen[c.id]) return;
+    seen[c.id] = 1;
+    rows.push(Object.assign({}, c, { contact_engagement_stage: "" }));
+  });
   CN_POOL = { at: key, rows: rows };
   return rows;
 }
@@ -1800,6 +1866,7 @@ app.get("/api/callnow", (req, res) => {
     loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
     formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
     formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
+    pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PRIORITY_FRESH_CREATORS,
     scoreMin: CONV_SCORE_MIN,
     matrix: matrix, totals: tot,
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
@@ -1876,6 +1943,6 @@ app.listen(PORT, () => {
   bootstrapLeadsTodayOnBoot();
   syncBackupPool();
   setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
-  setTimeout(function(){ syncForms().then(syncUnowned); }, 150 * 1000);
-  setInterval(function(){ syncForms().then(syncUnowned); }, COHORT_MINUTES * 60 * 1000);
+  setTimeout(function(){ syncForms().then(syncUnowned).then(syncPriorityFresh); }, 150 * 1000);
+  setInterval(function(){ syncForms().then(syncUnowned).then(syncPriorityFresh); }, COHORT_MINUTES * 60 * 1000);
 });

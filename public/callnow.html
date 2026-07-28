@@ -393,7 +393,8 @@ function draw(){
   else if (OWNER_MSG) h += "<div class='warn' style='background:#F1F7FF;border-color:#CFE2F7;color:#00447A'>" + esc(OWNER_MSG) + "</div>";
   h += drawFilters() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
   var meta = "Leads synced " + (J.loadedAt ? new Date(J.loadedAt).toLocaleString("en-IN") : "-") +
-    " · forms " + (J.formsLoadedAt ? new Date(J.formsLoadedAt).toLocaleString("en-IN") + " (" + esc(J.formsSource) + ")" : "pending");
+    " · forms " + (J.formsLoadedAt ? new Date(J.formsLoadedAt).toLocaleString("en-IN") + " (" + esc(J.formsSource) + ")" : "pending") +
+    " · creator fresh " + (J.pfreshLoadedAt ? fmt(J.pfreshCount) + " leads across " + (J.pfreshCreators || []).length + " creators" : "pending");
   h += "<div class='mut' style='font-size:10.5px;margin-top:6px'>" + meta + "</div>";
   document.getElementById("app").innerHTML = h;
   var badge = "";
