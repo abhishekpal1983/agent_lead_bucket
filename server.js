@@ -1824,7 +1824,10 @@ function cnFilter(q){
   const stages = String(q.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
   const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
   const ostate = q.ostate || "";
+  // Default scope is the tracked creator list: those are the buckets the floor actually works.
+  const scoped = String(q.scope || "tracked") !== "all";
   return callnowPool().filter(function(c){
+    if (scoped && PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return false;
     if (creator && (c.topmate_username || "") !== creator) return false;
     if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
     if (!intlMatch(c, intl)) return false;
@@ -1909,10 +1912,16 @@ app.get("/api/callnow", (req, res) => {
   const matrix = stageOrder.map(function(s){
     return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
   });
-  const allCreators = {}, allAgents = {};
+  const scoped = String(req.query.scope || "tracked") !== "all";
+  const allCreators = {}, scopedCreators = {}, allAgents = {};
   let unassignedPool = 0;
   callnowPool().forEach(function(c){
-    const u = c.topmate_username; if (u) allCreators[u] = (allCreators[u] || 0) + 1;
+    const u = c.topmate_username;
+    if (u) {
+      allCreators[u] = (allCreators[u] || 0) + 1;
+      if (PFRESH_LIST.indexOf(u) >= 0) scopedCreators[u] = (scopedCreators[u] || 0) + 1;
+    }
+    if (scoped && PFRESH_LIST.indexOf(u || "") < 0) return;
     const oid = String(c.hubspot_owner_id || "");
     if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1; else unassignedPool++;
   });
@@ -1930,8 +1939,11 @@ app.get("/api/callnow", (req, res) => {
       return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false, n: allAgents[id] };
     }).sort(function(a, b){ return b.n - a.n; })
       .concat(unassignedPool ? [{ id: "none", name: "(unassigned)", email: "", active: false, n: unassignedPool }] : []),
-    creatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
+    scope: scoped ? "tracked" : "all",
+    creatorOptions: Object.entries(scoped ? scopedCreators : allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
       .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
+    allCreatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
+      .sort(function(a, b){ return b.n - a.n; }).slice(0, 500),
     creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
     stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS },
     ownerRefreshedAt: req.query.agent ? (OWNER_REFRESH[req.query.agent] || null) : null,

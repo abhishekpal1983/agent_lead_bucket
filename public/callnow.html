@@ -118,6 +118,7 @@ var S = {
   creator: QS.get("creator") || localStorage.getItem("cn_creator") || "",
   intl: localStorage.getItem("cn_intl") || "",
   ostate: "",
+  scope: localStorage.getItem("cn_scope") || "tracked",
   stagesOpen: false,
   csyncOpen: false,
   stages: null,
@@ -137,6 +138,7 @@ function qsStr(extra){
   if (S.creator) p.set("creator", S.creator);
   if (S.intl) p.set("intl", S.intl);
   if (S.ostate) p.set("ostate", S.ostate);
+  if (S.scope) p.set("scope", S.scope);
   if (S.stages && S.stages.length) p.set("stages", S.stages.join(","));
   if (extra) Object.keys(extra).forEach(function(k){ if (extra[k]) p.set(k, extra[k]); });
   return p.toString();
@@ -145,6 +147,7 @@ function save(){
   if (!ME) localStorage.setItem("cn_agent", S.agent);
   localStorage.setItem("cn_creator", S.creator);
   localStorage.setItem("cn_intl", S.intl);
+  localStorage.setItem("cn_scope", S.scope);
 }
 
 function refreshOwner(id, then){
@@ -283,7 +286,8 @@ function drawFilters(){
     });
     h += "</select></div>";
   }
-  h += "<div><label>Creator</label><select onchange=\"setF('creator',this.value)\"><option value=''>All creators</option>";
+  h += "<div><label>Creator</label><select onchange=\"setF('creator',this.value)\"><option value=''>" +
+    (S.scope === "tracked" ? "All tracked creators" : "All creators") + "</option>";
   J.creatorOptions.forEach(function(c){
     h += "<option value='" + esc(c.u) + "'" + (S.creator === c.u ? " selected" : "") + ">" + esc(c.u) + " · " + fmt(c.n) + "</option>";
   });
@@ -300,7 +304,11 @@ function drawFilters(){
   h += "<button class='chipb" + (S.stages.length === nAll ? " on" : "") + "' onclick=\"presetStages('a')\">All stages</button>";
   h += "<button class='chipb' onclick=\"presetStages('o')\">Churned only</button>";
   h += "<button class='chipb' onclick=\"S.stagesOpen=!S.stagesOpen;draw()\">" + (S.stagesOpen ? "Hide" : "Pick") + " (" + S.stages.length + "/" + nAll + ")</button>";
-  h += "<span style='width:1px;height:18px;background:#E5E5E5;margin:0 3px'></span>";
+  h += "<span style='width:1px;height:18px;background:#E3E8EE;margin:0 3px'></span>";
+  h += "<span style='font-size:10.5px;color:#8B99A8;font-weight:500'>Scope</span>";
+  h += "<button class='chipb" + (S.scope === "tracked" ? " on" : "") + "' onclick=\"setF('scope','tracked')\">Tracked creators</button>";
+  h += "<button class='chipb" + (S.scope === "all" ? " on" : "") + "' onclick=\"setF('scope','all')\">All creators</button>";
+  h += "<span style='width:1px;height:18px;background:#E3E8EE;margin:0 3px'></span>";
   h += "<span style='font-size:10.5px;color:#737373;font-weight:500'>Owner</span>";
   h += "<button class='chipb" + (S.ostate === "" ? " on" : "") + "' onclick=\"setOstate('')\">All</button>";
   h += "<button class='chipb" + (S.ostate === "needs" ? " on" : "") + "' onclick=\"setOstate('needs')\">Needs owner</button>";
@@ -326,14 +334,14 @@ function drawCsync(){
   var list = J.pfreshCreators || [];
   var h = "<details class='csync'" + (S.csyncOpen ? " open" : "") + " ontoggle='S.csyncOpen=this.open'>";
   h += "<summary><span style='font-weight:600;color:#0A2540'>Creator fresh sync</span>" +
-       "<span style='color:#697386'>" + list.length + " creators · " + fmt(J.pfreshCount || 0) + " fresh leads</span>" +
+       "<span style='color:#697386'>" + list.length + " creators · " + fmt(J.pfreshCount || 0) + " fresh leads · this list scopes the whole page</span>" +
        "<span style='margin-left:auto;color:#0091AE;font-weight:600'>Manage</span></summary>";
   h += "<div class='cbody'>";
   list.forEach(function(c){
     h += "<button class='chipb on' title='Stop tracking this creator' onclick=\"dropCreator('" + esc(c) + "')\">" + esc(c) + " ×</button>";
   });
   h += "<select id='csel' style='min-width:186px'><option value=''>Add a creator...</option>";
-  (J.creatorOptions || []).forEach(function(c){
+  (J.allCreatorOptions || J.creatorOptions || []).forEach(function(c){
     if (list.indexOf(c.u) >= 0) return;
     h += "<option value='" + esc(c.u) + "'>" + esc(c.u) + " · " + fmt(c.n) + "</option>";
   });
