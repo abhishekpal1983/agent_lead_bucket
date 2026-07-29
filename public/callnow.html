@@ -137,7 +137,7 @@ var S = {
   cellStage: "", cellSeg: "",
   q: ""
 };
-var J = null, L = null, LOADING = false, SYNCING_OWNER = false, OWNER_MSG = "";
+var J = null, L = null, LOADING = false, SYNCING_OWNER = false, OWNER_MSG = "", SCROLL = false;
 
 function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function fmt(n){ return Math.round(n || 0).toLocaleString("en-IN"); }
@@ -216,8 +216,20 @@ function loadLeads(){
   if (S.fu) extra.fu = S.fu;
   var u = "/api/callnow/leads?" + qsStr(extra);
   L = { loading: true };
+  SCROLL = true;
   draw();
-  fetch(u).then(function(r){ return r.json(); }).then(function(j){ L = j; draw(); });
+  fetch(u).then(function(r){
+    if (r.status === 401) { location.href = "/login.html"; return null; }
+    if (!r.ok) throw new Error("server returned " + r.status);
+    return r.json();
+  }).then(function(j){
+    if (!j) return;
+    L = j;
+    draw();
+  }).catch(function(e){
+    L = { total: 0, shown: 0, rows: [], err: e.message };
+    draw();
+  });
 }
 function pick(stage, seg){
   if (S.cellStage === stage && S.cellSeg === seg) { S.cellStage = ""; S.cellSeg = ""; L = null; draw(); return; }
@@ -476,7 +488,8 @@ function why(r){
 
 function drawLeads(){
   if (!L) return "";
-  if (L.loading) return "<div class='sec'><div class='sub'>Loading leads...</div></div>";
+  if (L.loading) return "<div class='sec' id='leadsec'><div class='sub'>Loading leads...</div></div>";
+  if (L.err) return "<div class='sec' id='leadsec'><div class='warn'>Could not load that list: " + esc(L.err) + "</div></div>";
   var TODAY_LBL = { due: "due today", back: "backlog: no follow-up, overdue, or never called", done: "due today and called", missed: "due today and missed", bwork: "backlog worked today" };
   if (S.cellSeg.indexOf("|") > 0) {
     var pr = S.cellSeg.split("|");
@@ -551,6 +564,13 @@ function draw(){
     " · creator fresh " + (J.pfreshLoadedAt ? fmt(J.pfreshCount) + " leads across " + (J.pfreshCreators || []).length + " creators" : "pending");
   h += "<div class='mut' style='font-size:10.5px;margin-top:6px'>" + meta + "</div>";
   document.getElementById("app").innerHTML = h;
+  if (SCROLL) {
+    SCROLL = false;
+    setTimeout(function(){
+      var el = document.getElementById("leadsec");
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 30);
+  }
   var badge = "";
   if (WHO && WHO.authOn && WHO.email) {
     badge = "<span class='mebadge'>" + esc(WHO.name || WHO.email) + "</span>" +
