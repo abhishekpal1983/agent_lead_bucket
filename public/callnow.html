@@ -92,6 +92,7 @@ td.z{color:#C1C9D2}
 .sub3 .d{color:#425B76}.sub3 .c{color:#005B6E}.sub3 .m{color:#C5401A}
 .st{font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap;display:inline-block}
 .tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;white-space:nowrap;margin-right:4px;display:inline-block}
+.tag.p{background:#EFF2F5;color:#425B76}
 .tag.f{background:#EDE9FE;color:#4B2E9E}.tag.s{background:#E4F4F8;color:#005B6E}.tag.i{background:#E6EEF7;color:#1C4B7E}.tag.o{background:#FDEDE8;color:#8C2D12}
 .pill{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block;font-variant-numeric:tabular-nums}
 .pill.w{background:#B8791A}
@@ -468,6 +469,8 @@ function why(r){
   r.forms.forEach(function(f){ h += "<span class='tag f'>" + esc(f) + "</span>"; });
   if (r.score >= J.scoreMin) h += "<span class='tag s'>score " + r.score + "</span>";
   if (r.intl) h += "<span class='tag i'>INTL</span>";
+  if (r.sp === "S") h += "<span class='tag p'>Student</span>";
+  else if (r.sp === "P") h += "<span class='tag p'>Professional</span>";
   return h || "<span class='mut'>–</span>";
 }
 
@@ -520,10 +523,11 @@ function drawLeadsInner(segName){
 
 function exportCsv(){
   if (!L || !L.rows) return;
-  var head = ["Name","Stage","Forms","Conversion score","International","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
+  var head = ["Name","Stage","Forms","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
   var lines = [head.join(",")];
   L.rows.forEach(function(r){
     var v = [r.name, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.score || "", r.intl ? "Yes" : "No",
+      (r.sp === "S" ? "Student" : r.sp === "P" ? "Professional" : ""),
       r.ownerName, (r.unassigned ? "Unassigned" : (r.inactive ? "Deactivated owner" : "Active")), r.creator, r.last ? new Date(r.last).toISOString() : "", r.fu ? new Date(r.fu).toISOString() : "",
       r.calls, r.own, r.entered ? days(r.entered) : "", hsUrl(r.id)];
     lines.push(v.map(function(x){ return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(","));

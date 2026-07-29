@@ -168,7 +168,7 @@ async function fetchFreshForOwner(ownerId){
       ]}],
       properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source",
         "email", "phone", "conversion_probability_score", "recent_conversion_event_name", "first_conversion_event_name",
-        "follow_up_date_and_time", "last_call_date_and_time"],
+        "follow_up_date_and_time", "last_call_date_and_time", "tm_student_or_professional"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
     };
@@ -1694,7 +1694,7 @@ const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
   .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
 const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
   "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
-  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id"];
+  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id","tm_student_or_professional"];
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
 let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
 
@@ -1792,6 +1792,7 @@ function cnRow(c){
     entered: ts(c.engagement_stage_last_changed_at) || ts(c.createdate),
     created: ts(c.createdate),
     score: num(c.conversion_probability_score),
+    sp: classifySP(c.tm_student_or_professional),
     forms: formsOf(c),
     intl: intlOf(c),
     src: srcOf(c)
