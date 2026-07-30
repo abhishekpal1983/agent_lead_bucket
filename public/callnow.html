@@ -441,8 +441,8 @@ function drawMatrix(){
   var t = J.totals, tt = t.t || {};
   h += "<tr class='tot'><td>TOTAL</td>";
   h += totCell(t.form, "form", tt.form) + totCell(t.score, "score", tt.score) +
-       cell(t.uncalled, "", "uncalled") + totCell(t.intl, "intl", tt.intl) +
-       cell(t.nofu, "", "fu_none") + cell(t.overdue, "", "fu_overdue") +
+       totCell(t.uncalled, "uncalled", tt.uncalled) + totCell(t.intl, "intl", tt.intl) +
+       totCell(t.nofu, "nofu", tt.nofu) + totCell(t.overdue, "over", tt.over) +
        totCell(t.any, "any", tt.any) + totCell(t.needs, "needs", tt.needs) + totCell(t.total, "all", tt.all) + "</tr>";
   h += "</tbody></table></div></div>";
   return h;
@@ -502,7 +502,7 @@ function drawLeads(){
   var TODAY_LBL = { due: "due today", back: "backlog: no follow-up, overdue, or never called", done: "due today and called", missed: "due today and missed", bwork: "backlog worked today" };
   if (S.cellSeg.indexOf("|") > 0) {
     var pr = S.cellSeg.split("|");
-    var base = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Needs owner", all: "All leads" }[pr[0]] || pr[0];
+    var base = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Needs owner", all: "All leads", uncalled: "Never called", nofu: "No follow-up set", over: "Follow-up overdue" }[pr[0]] || pr[0];
     return drawLeadsInner(base + " · " + TODAY_LBL[pr[1]]);
   }
   var segName = { form: "Waitlist form leads", score: "Conv score ≥ " + J.scoreMin, intl: "International", any: "Any priority", needs: "Priority leads needing an owner", fu_overdue: "Follow-up overdue", fu_none: "No follow-up set", uncalled: "Never called", all: "All leads" }[S.cellSeg] || "Leads";

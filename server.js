@@ -1875,7 +1875,8 @@ app.get("/api/callnow", (req, res) => {
   const blankT = function(){ return { due: 0, back: 0, done: 0, missed: 0, bwork: 0 }; };
   const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
     due: 0, done: 0, missed: 0, touched: 0,
-    t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT() } }; };
+    t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT(),
+         uncalled: blankT(), nofu: blankT(), over: blankT() } }; };
   const byStage = {}, tot = blank();
   const byAgent = {}, byCreator = {};
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
@@ -1916,6 +1917,9 @@ app.get("/api/callnow", (req, res) => {
         if (s.score) bump("score");
         if (s.intl) bump("intl");
         if (r.needsOwner) bump("needs");
+        if (!r.last) bump("uncalled");
+        if (!r.fu) bump("nofu");
+        if (r.fu && r.fu < now) bump("over");
         bump("any");
       }
     });
@@ -2040,14 +2044,19 @@ app.get("/api/callnow/leads", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
   let rows = cnFilter(req.query);
   if (req.query.stage) rows = rows.filter(function(r){ return r.stage === req.query.stage; });
+  const nowSeg = Date.now();
   rows = rows.filter(function(r){
     const s = cnSegs(r);
+    const anyp = s.form || s.score || s.intl || s.fresh;
     if (seg === "form") return s.form;
     if (seg === "score") return s.score;
     if (seg === "intl") return s.intl;
     if (seg === "fresh") return s.fresh;
+    if (seg === "uncalled") return anyp && !r.last;
+    if (seg === "nofu") return anyp && !r.fu;
+    if (seg === "over") return anyp && r.fu && r.fu < nowSeg;
     if (seg === "all") return true;
-    return s.form || s.score || s.intl || s.fresh;
+    return anyp;
   });
   if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
   if (String(req.query.backlog || "") === "1") {
