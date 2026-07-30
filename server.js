@@ -1549,9 +1549,11 @@ async function syncForms(force){
       subs.forEach(function(s){
         const k = String(s.email || "").toLowerCase();
         if (!k) return;
-        if (!map.has(k)) map.set(k, {});
+        if (!map.has(k)) map.set(k, { labels: {}, n: 0, last: 0 });
         const e = map.get(k), at = ts(s.at);
-        if (!e[f.label] || at > e[f.label]) e[f.label] = at;
+        e.n++;
+        if (at > e.last) e.last = at;
+        if (!e.labels[f.label] || at > e.labels[f.label]) e.labels[f.label] = at;
       });
       counts[f.label] = subs.length;
       ok++;
@@ -1585,10 +1587,18 @@ async function syncForms(force){
 function formsOf(c){
   const out = {};
   const em = String(c.email || "").trim().toLowerCase();
-  if (em && FORMS.byEmail.has(em)) Object.keys(FORMS.byEmail.get(em)).forEach(function(k){ out[k] = 1; });
+  const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  if (hit) Object.keys(hit.labels || {}).forEach(function(k){ out[k] = 1; });
   const names = (String(c.recent_conversion_event_name || "") + " ~ " + String(c.first_conversion_event_name || "")).toLowerCase();
   WAITLIST_FORMS.forEach(function(f){ if (names.indexOf(f.match) >= 0) out[f.label] = 1; });
   return Object.keys(out);
+}
+// How many waitlist submissions this person made, and when the latest one was.
+// More than one means they raised their hand again, which matters whatever stage they sit in.
+function formMeta(c){
+  const em = String(c.email || "").trim().toLowerCase();
+  const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  return { n: hit ? (hit.n || 0) : 0, last: hit ? (hit.last || 0) : 0 };
 }
 
 /* Leads that no active agent is working: unassigned, or held by a deactivated owner.
@@ -1794,6 +1804,13 @@ function cnRow(c){
     score: num(c.conversion_probability_score),
     sp: classifySP(c.tm_student_or_professional),
     forms: formsOf(c),
+    formN: formMeta(c).n,
+    formLast: formMeta(c).last,
+    formAfterStage: (function(){
+      const m = formMeta(c);
+      const st = ts(c.engagement_stage_last_changed_at);
+      return !!(m.last && st && m.last > st);
+    })(),
     intl: intlOf(c),
     src: srcOf(c)
   };

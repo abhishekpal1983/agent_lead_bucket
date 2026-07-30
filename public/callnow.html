@@ -93,6 +93,7 @@ td.z{color:#C1C9D2}
 .st{font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap;display:inline-block}
 .tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;white-space:nowrap;margin-right:4px;display:inline-block}
 .tag.p{background:#EFF2F5;color:#425B76}
+.tag.rf{background:#FF7A59;color:#fff}
 .tag.f{background:#EDE9FE;color:#4B2E9E}.tag.s{background:#E4F4F8;color:#005B6E}.tag.i{background:#E6EEF7;color:#1C4B7E}.tag.o{background:#FDEDE8;color:#8C2D12}
 .pill{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block;font-variant-numeric:tabular-nums}
 .pill.w{background:#B8791A}
@@ -422,25 +423,26 @@ function drawCards(){
 
 function drawMatrix(){
   var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>International</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>Never called</th><th style='text-align:right'>International</th><th style='text-align:right'>No FU</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th></tr></thead><tbody>";
   var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
     h += "<tr><td>" + chip(r.stage, r.label) + "</td>";
     h += cell(r.form, r.stage, "form", "", hv(r, "form"));
     h += cell(r.score, r.stage, "score", "", hv(r, "score"));
+    h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "", hv(r, "uncalled"));
     h += cell(r.intl, r.stage, "intl", "", hv(r, "intl"));
+    h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "", hv(r, "nofu"));
+    h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "", hv(r, "overdue"));
     h += cell(r.any, r.stage, "any", "", hv(r, "any"));
     h += cell(r.needs, r.stage, "needs", "", hv(r, "needs"));
-    h += cell(r.total, r.stage, "all", "", hv(r, "total"));
-    h += cell(r.overdue, r.stage, "fu_overdue", r.overdue ? "cr" : "", hv(r, "overdue"));
-    h += cell(r.nofu, r.stage, "fu_none", r.nofu ? "ca" : "", hv(r, "nofu"));
-    h += cell(r.uncalled, r.stage, "uncalled", r.uncalled ? "cr" : "", hv(r, "uncalled")) + "</tr>";
+    h += cell(r.total, r.stage, "all", "", hv(r, "total")) + "</tr>";
   });
   var t = J.totals, tt = t.t || {};
   h += "<tr class='tot'><td>TOTAL</td>";
-  h += totCell(t.form, "form", tt.form) + totCell(t.score, "score", tt.score) + totCell(t.intl, "intl", tt.intl) +
-       totCell(t.any, "any", tt.any) + totCell(t.needs, "needs", tt.needs) + totCell(t.total, "all", tt.all);
-  h += cell(t.overdue, "", "fu_overdue") + cell(t.nofu, "", "fu_none") + cell(t.uncalled, "", "uncalled") + "</tr>";
+  h += totCell(t.form, "form", tt.form) + totCell(t.score, "score", tt.score) +
+       cell(t.uncalled, "", "uncalled") + totCell(t.intl, "intl", tt.intl) +
+       cell(t.nofu, "", "fu_none") + cell(t.overdue, "", "fu_overdue") +
+       totCell(t.any, "any", tt.any) + totCell(t.needs, "needs", tt.needs) + totCell(t.total, "all", tt.all) + "</tr>";
   h += "</tbody></table></div></div>";
   return h;
 }
@@ -479,6 +481,9 @@ function drawAgents(){
 function why(r){
   var h = "";
   r.forms.forEach(function(f){ h += "<span class='tag f'>" + esc(f) + "</span>"; });
+  if (r.formN > 1) h += "<span class='tag rf' title='Submitted a waitlist form " + r.formN + " times" +
+    (r.formAfterStage ? ", most recently after this stage was set" : "") + "'>Refill ×" + r.formN + "</span>";
+  else if (r.formAfterStage) h += "<span class='tag rf' title='Filled the form again after this stage was set'>Refilled</span>";
   if (r.score >= J.scoreMin) h += "<span class='tag s'>score " + r.score + "</span>";
   if (r.intl) h += "<span class='tag i'>INTL</span>";
   if (r.sp === "S") h += "<span class='tag p'>Student</span>";
@@ -536,10 +541,10 @@ function drawLeadsInner(segName){
 
 function exportCsv(){
   if (!L || !L.rows) return;
-  var head = ["Name","Stage","Forms","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
+  var head = ["Name","Stage","Forms","Form submissions","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
   var lines = [head.join(",")];
   L.rows.forEach(function(r){
-    var v = [r.name, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.score || "", r.intl ? "Yes" : "No",
+    var v = [r.name, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.formN || "", r.score || "", r.intl ? "Yes" : "No",
       (r.sp === "S" ? "Student" : r.sp === "P" ? "Professional" : ""),
       r.ownerName, (r.unassigned ? "Unassigned" : (r.inactive ? "Deactivated owner" : "Active")), r.creator, r.last ? new Date(r.last).toISOString() : "", r.fu ? new Date(r.fu).toISOString() : "",
       r.calls, r.own, r.entered ? days(r.entered) : "", hsUrl(r.id)];
