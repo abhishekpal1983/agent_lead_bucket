@@ -1513,6 +1513,9 @@ const WAITLIST_FORMS = [
 ];
 // HubSpot list 1611 ("Conversion score > 6") == conversion_probability_score >= 6 (verified: both 1,722 contacts)
 const CONV_SCORE_MIN = parseInt(process.env.CONV_SCORE_MIN || "6", 10);
+// Above this many leads owed in a day, an agent cannot realistically work the queue,
+// so the manager view flags them for parking and reassignment.
+const OVERLOAD_LIMIT = parseInt(process.env.OVERLOAD_LIMIT || "100", 10);
 let FORMS = { byEmail: new Map(), source: "", counts: {}, loadedAt: null, syncing: false, error: null };
 
 async function fetchFormSubmissions(guid){
@@ -1663,7 +1666,7 @@ async function syncUnowned(){
   }
 }
 
-const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","__fresh"];
+const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","dnp_other","__fresh"];
 const CN_OTHER_STAGES = ["IFC","ghosted","ni_not_interested","disqualified","deal_won"];
 // Rescue stages: churned stages that still belong in the must-call set, but ONLY for leads that
 // qualify on form submission or conversion score. International alone does not rescue a lead here.
@@ -1673,7 +1676,7 @@ const CN_STAGE_LABELS = {
   counselled: "Counselled", program_pitched: "Program pitched", discovery: "Discovery",
   pricing_pitched: "Pricing pitched", "Follow up": "Follow up", payment_prospect: "Payment prospect",
   FU_DNP: "FU - DNP", FU_RCB: "FU - RCB", rcb_requested_callback: "RCB - Requested callback",
-  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP (form or score only)",
+  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP (form or score)", dnp_other: "DNP (everything else)",
   ghosted: "Ghosted", ni_not_interested: "NI - Not interested", disqualified: "Disqualified", deal_won: "Deal won"
 };
 
@@ -1851,8 +1854,12 @@ function cnFilter(q){
     if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
     if (!intlMatch(c, intl)) return false;
     return stageSet.indexOf(cnStage(c)) >= 0;
-  }).map(cnRow).filter(function(r){
-    if (CN_RESCUE_STAGES.indexOf(r.stage) >= 0 && !cnRescued(r)) return false;
+  }).map(cnRow).map(function(r){
+    // DNP splits in two: the rescued ones (form or score) and the remainder, so the
+    // rest of the bucket stays visible instead of vanishing behind the rescue rule.
+    if (r.stage === "dnp_did_not_pick" && !cnRescued(r)) r.stage = "dnp_other";
+    return r;
+  }).filter(function(r){
     if (ostate === "needs" && !r.needsOwner) return false;
     if (ostate === "unassigned" && !r.unassigned) return false;
     if (ostate === "inactive" && !r.inactive) return false;
@@ -1952,13 +1959,17 @@ app.get("/api/callnow", (req, res) => {
     const oid = String(c.hubspot_owner_id || "");
     if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1; else unassignedPool++;
   });
+  Object.values(byAgent).forEach(function(a){
+    a.tocall = a.due + a.overdue;
+    a.overloaded = a.tocall > OVERLOAD_LIMIT;
+  });
   res.json({
     loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
     formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
     formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
     pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PFRESH_LIST,
     pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing,
-    scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY,
+    scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY, overloadLimit: OVERLOAD_LIMIT,
     matrix: matrix, totals: tot,
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
     agentOptions: Object.keys(allAgents).map(function(id){

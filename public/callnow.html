@@ -94,6 +94,7 @@ td.z{color:#C1C9D2}
 .tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;white-space:nowrap;margin-right:4px;display:inline-block}
 .tag.p{background:#EFF2F5;color:#425B76}
 .tag.rf{background:#FF7A59;color:#fff}
+.tag.src{background:#fff;color:#697386;border:1px solid #E3E8EE}
 .tag.f{background:#EDE9FE;color:#4B2E9E}.tag.s{background:#E4F4F8;color:#005B6E}.tag.i{background:#E6EEF7;color:#1C4B7E}.tag.o{background:#FDEDE8;color:#8C2D12}
 .pill{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block;font-variant-numeric:tabular-nums}
 .pill.w{background:#B8791A}
@@ -276,7 +277,7 @@ function dropCreator(c){
 function setOstate(v){ S.ostate = (S.ostate === v ? "" : v); S.cellStage = ""; S.cellSeg = ""; L = null; load(); }
 
 var STAGE_CHIP = {
-  payment_prospect: "#E3EEFB|#00447A", dnp_did_not_pick: "#FBE3D3|#7A2800", ghosted: "#FBE3D3|#7A2800",
+  payment_prospect: "#E3EEFB|#00447A", dnp_did_not_pick: "#FBE3D3|#7A2800", dnp_other: "#F2F2F4|#525252", ghosted: "#FBE3D3|#7A2800",
   ni_not_interested: "#FBE3D3|#7A2800", disqualified: "#FBE3D3|#7A2800"
 };
 function chip(stage, label){
@@ -451,17 +452,19 @@ function drawAgents(){
   if (ME || S.agent) return "";
   var rows = J.agents.filter(function(a){ return a.any > 0 || a.id === ""; });
   var mx = rows.reduce(function(m, a){ return a.any > m ? a.any : m; }, 0);
-  var h = "<div class='sec hero'><h2>Must-call load by agent</h2><div class='sub'>Every priority lead, split by who owns it. Click a row to filter the page to that agent, or open their own view. " +
+  var h = "<div class='sec hero'><h2>Must-call load by agent</h2><div class='sub'><b>To call now</b> is due today plus overdue backlog; over " + fmt(J.overloadLimit) + " it is flagged overloaded. Every priority lead, split by who owns it. Click a row to filter the page to that agent, or open their own view. " +
     "<span style='display:inline-block;width:3px;height:11px;background:#FF7A59;vertical-align:-1px;margin:0 5px 0 2px'></span>" +
     "means the agent has follow-ups that were due today and have not been called yet.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>Due today</th><th style='text-align:right'>Called</th><th style='text-align:right'>Missed</th><th style='text-align:right'>Backlog worked</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Link</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th style='text-align:right'>Must call</th><th style='text-align:right'>To call now</th><th style='text-align:right'>Form</th><th style='text-align:right'>Score</th><th style='text-align:right'>Intl</th><th style='text-align:right'>Due today</th><th style='text-align:right'>Called</th><th style='text-align:right'>Missed</th><th style='text-align:right'>Backlog worked</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>No FU</th><th style='text-align:right'>Never called</th><th style='text-align:right'>All leads</th><th style='text-align:right'>Must call %</th><th>Link</th></tr></thead><tbody>";
   rows.forEach(function(a){
     var w = mx ? Math.max(2, Math.round(58 * a.any / mx)) : 2;
     var nm = a.id ? esc(a.name) : "<span class='tag o'>UNASSIGNED</span>";
     if (a.id && a.active === false) nm += " <span class='tag o'>INACTIVE</span>";
-    h += "<tr class='rowlink" + (a.missed ? " alert" : "") + "' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td" +
+    if (a.overloaded) nm += " <span class='tag rf'>OVERLOADED</span>";
+    h += "<tr class='rowlink" + (a.missed || a.overloaded ? " alert" : "") + "' onclick=\"setF('agent','" + esc(a.id || "none") + "')\"><td" +
       (a.missed ? " title='" + fmt(a.missed) + " follow-up(s) due today, not called yet'" : "") + ">" + nm + "</td>" +
       "<td class='n'><span class='mbar' style='width:" + w + "px'></span><b>" + fmt(a.any) + "</b></td>" +
+      "<td class='n'>" + (a.overloaded ? "<span class='pill'>" + fmt(a.tocall) + "</span>" : (a.tocall ? fmt(a.tocall) : "<span class='mut'>0</span>")) + "</td>" +
       "<td class='n'>" + fmt(a.form) + "</td><td class='n'>" + fmt(a.score) + "</td><td class='n'>" + fmt(a.intl) + "</td>" +
       "<td class='n'>" + fmt(a.due) + "</td>" +
       "<td class='n " + (a.done ? "cg" : "mut") + "'>" + fmt(a.done) + "</td>" +
@@ -486,6 +489,7 @@ function why(r){
   else if (r.formAfterStage) h += "<span class='tag rf' title='Filled the form again after this stage was set'>Refilled</span>";
   if (r.score >= J.scoreMin) h += "<span class='tag s'>score " + r.score + "</span>";
   if (r.intl) h += "<span class='tag i'>INTL</span>";
+  if (r.stage === "__fresh" && r.src) h += "<span class='tag src'>" + esc(r.src) + "</span>";
   if (r.sp === "S") h += "<span class='tag p'>Student</span>";
   else if (r.sp === "P") h += "<span class='tag p'>Professional</span>";
   return h || "<span class='mut'>–</span>";
@@ -561,6 +565,16 @@ function draw(){
   if (J.error) h += "<div class='warn'>Lead sync error: " + esc(J.error) + "</div>";
   if (J.formsError) h += "<div class='warn'>" + esc(J.formsError) + "</div>";
   if (J.syncing) h += "<div class='warn'>Lead sync running - numbers may be partial.</div>";
+  if (!ME && !S.agent && J.agents) {
+    var ov = J.agents.filter(function(a){ return a.overloaded; });
+    if (ov.length) {
+      h += "<div class='warn' style='background:#FDEDE8;border-color:#F8C6B4;color:#8C2D12'><b>" + ov.length +
+        " agent" + (ov.length > 1 ? "s are" : " is") + " over the " + fmt(J.overloadLimit) + " lead daily limit.</b> " +
+        ov.slice(0, 8).map(function(a){ return esc(a.id ? a.name : "Unassigned") + " (" + fmt(a.tocall) + ")"; }).join(", ") +
+        (ov.length > 8 ? " and " + (ov.length - 8) + " more" : "") +
+        ". Park the excess and reassign it rather than letting it age.</div>";
+    }
+  }
   if (SYNCING_OWNER) h += "<div class='warn'>" + esc(OWNER_MSG) + "</div>";
   else if (OWNER_MSG) h += "<div class='warn' style='background:#F1F7FF;border-color:#CFE2F7;color:#00447A'>" + esc(OWNER_MSG) + "</div>";
   h += drawFilters() + drawCsync() + drawCards() + drawAgents() + drawMatrix() + drawLeads();
