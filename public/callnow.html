@@ -298,7 +298,8 @@ function setOstate(v){ S.ostate = (S.ostate === v ? "" : v); S.cellStage = ""; S
 
 var STAGE_CHIP = {
   payment_prospect: "#E3EEFB|#00447A", dnp_did_not_pick: "#FBE3D3|#7A2800", dnp_other: "#F2F2F4|#525252", ghosted: "#FBE3D3|#7A2800",
-  ni_not_interested: "#FBE3D3|#7A2800", disqualified: "#FBE3D3|#7A2800"
+  ni_not_interested: "#FBE3D3|#7A2800",
+  disqualified: "#FADFDA|#99301C", deal_won: "#DFEFE6|#15613F"
 };
 function chip(stage, label){
   var c = (STAGE_CHIP[stage] || "#F2F2F4|#525252").split("|");
@@ -470,7 +471,12 @@ function drawMatrix(){
 
 function drawAgents(){
   if (ME || S.agent) return "";
-  var rows = J.agents.filter(function(a){ return a.any > 0 || a.id === ""; });
+  var rows = J.agents.filter(function(a){ return a.any > 0 || a.id === ""; }).slice().sort(function(x, y){
+    // Unassigned counts as live work, so only genuinely deactivated owners sink.
+    var gx = (x.id && x.active === false) ? 1 : 0, gy = (y.id && y.active === false) ? 1 : 0;
+    if (gx !== gy) return gx - gy;
+    return y.any - x.any;
+  });
   var mx = rows.reduce(function(m, a){ return a.any > m ? a.any : m; }, 0);
   var h = "<div class='sec hero'><h2>Must-call load by agent</h2><div class='sub'><b>To call now</b> is due today plus overdue backlog; over " + fmt(J.overloadLimit) + " it is flagged overloaded. Every priority lead, split by who owns it. Click a row to filter the page to that agent, or open their own view. " +
     "<span style='display:inline-block;width:3px;height:11px;background:#FF7A59;vertical-align:-1px;margin:0 5px 0 2px'></span>" +
@@ -551,8 +557,7 @@ function drawLeadsInner(segName){
     var od = r.fu && r.fu < Date.now();
     var digits = String(r.phone || "").replace(/[^0-9]/g, "");
     var ph = r.phone ? "<span class='ph'>" + esc(r.phone) + "</span>" +
-      (digits ? "<a class='ico' href='tel:" + esc(r.phone) + "' title='Call'>call</a>" +
-                "<a class='ico' href='https://wa.me/" + digits + "' target='_blank' title='WhatsApp'>wa</a>" : "")
+      (digits ? "<a class='ico' href='https://wa.me/" + digits + "' target='_blank' title='Open WhatsApp'>WhatsApp</a>" : "")
       : "<span class='mut'>no number</span>";
     var ctx = [];
     if (r.why) ctx.push("<b>Why this lead can convert:</b> " + esc(r.why));
