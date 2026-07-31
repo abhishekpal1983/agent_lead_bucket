@@ -95,6 +95,15 @@ td.z{color:#C1C9D2}
 .tag.p{background:#EFF2F5;color:#425B76}
 .tag.rf{background:#FF7A59;color:#fff}
 .tag.src{background:#fff;color:#697386;border:1px solid #E3E8EE}
+.tag.paid{background:#00655A;color:#fff}
+.tag.opt{background:#525252;color:#fff}
+.tag.new{background:#0057B8;color:#fff}
+.ph{font-variant-numeric:tabular-nums;color:#0A2540}
+.ico{color:#0091AE;text-decoration:none;font-weight:600;margin-left:6px}
+.ico:hover{text-decoration:underline}
+tr.det td{background:#F7FAFC;white-space:normal;font-size:12px;color:#425B76;padding:10px 14px;line-height:1.6}
+tr.det b{color:#0A2540}
+.exp{cursor:pointer;color:#697386;font-weight:600;user-select:none}
 .tag.f{background:#EDE9FE;color:#4B2E9E}.tag.s{background:#E4F4F8;color:#005B6E}.tag.i{background:#E6EEF7;color:#1C4B7E}.tag.o{background:#FDEDE8;color:#8C2D12}
 .pill{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block;font-variant-numeric:tabular-nums}
 .pill.w{background:#B8791A}
@@ -145,6 +154,29 @@ function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replac
 function fmt(n){ return Math.round(n || 0).toLocaleString("en-IN"); }
 function dt(x){ return x ? new Date(x).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "–"; }
 function days(x){ return x ? Math.floor((Date.now() - x) / 86400000) : null; }
+function ago(x){
+  if (!x) return "";
+  var m = Math.floor((Date.now() - x) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  if (m < 1440) return Math.floor(m / 60) + "h ago";
+  return Math.floor(m / 1440) + "d ago";
+}
+function localTime(tz){
+  if (!tz) return "";
+  try { return new Date().toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" }); }
+  catch (e) { return ""; }
+}
+function sane(tz){
+  var t = localTime(tz);
+  if (!t) return true;
+  var hh = parseInt(t.split(":")[0], 10);
+  return hh >= 9 && hh < 21;
+}
+function toggleDet(i){
+  var el = document.getElementById("det" + i);
+  if (el) el.style.display = el.style.display === "none" ? "" : "none";
+}
 function qsStr(extra){
   var p = new URLSearchParams();
   if (S.agent) p.set("agent", S.agent);
@@ -423,7 +455,7 @@ function drawCards(){
 }
 
 function drawMatrix(){
-  var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
+  var h = "<div class='sec mini'><h2>Stage × priority segment</h2><div class='sub'>Click any number to open that call list below. Segments overlap; <b>Any priority</b> is the deduped queue. Leads who have already paid, or opted out, are excluded from every priority column and flagged in the list. <b>Needs owner</b> counts priority leads that are unassigned or held by a deactivated agent. Every <b>fresh</b> lead counts as priority in its own right, since nobody has spoken to it yet. The <b>DNP</b> row is a rescue row: it only contains DNP leads that submitted a waitlist form or score &ge;" + J.scoreMin + ", not the whole DNP bucket.</div>";
   h += "<div class='tw'><table><thead><tr><th>Stage</th><th style='text-align:right'>Form leads</th><th style='text-align:right'>Conv score &ge;" + J.scoreMin + "</th><th style='text-align:right'>Never called</th><th style='text-align:right'>International</th><th style='text-align:right'>No FU</th><th style='text-align:right'>FU overdue</th><th style='text-align:right'>Any priority</th><th style='text-align:right'>Needs owner</th><th style='text-align:right'>All in stage</th></tr></thead><tbody>";
   var hv = heats(J.matrix, ["form","score","intl","any","needs","total","overdue","nofu","uncalled"]);
   J.matrix.forEach(function(r){
@@ -489,6 +521,9 @@ function why(r){
   else if (r.formAfterStage) h += "<span class='tag rf' title='Filled the form again after this stage was set'>Refilled</span>";
   if (r.score >= J.scoreMin) h += "<span class='tag s'>score " + r.score + "</span>";
   if (r.intl) h += "<span class='tag i'>INTL</span>";
+  if (r.paid) h += "<span class='tag paid'>ALREADY PAID</span>";
+  if (r.optout) h += "<span class='tag opt'>OPTED OUT</span>";
+  if (r.stage === "__fresh" && r.created && (Date.now() - r.created) < 3600000) h += "<span class='tag new'>NEW " + ago(r.created) + "</span>";
   if (r.stage === "__fresh" && r.src) h += "<span class='tag src'>" + esc(r.src) + "</span>";
   if (r.sp === "S") h += "<span class='tag p'>Student</span>";
   else if (r.sp === "P") h += "<span class='tag p'>Professional</span>";
@@ -524,11 +559,24 @@ function drawLeadsInner(segName){
   h += "<input type='search' placeholder='search name / creator / agent' value='" + esc(S.q) + "' oninput=\"S.q=this.value;draw()\" style='min-width:210px'>";
   h += "<button class='btn p' onclick='exportCsv()'>Export CSV</button>";
   h += "</div>";
-  h += "<div class='tw'><table><thead><tr><th>#</th><th>Lead</th><th>Stage</th><th>Why call</th><th>Agent</th><th>Creator</th><th>Last call</th><th>Follow-up</th><th style='text-align:right'>Calls in stage</th><th style='text-align:right'>By owner</th><th style='text-align:right'>Days in stage</th><th>HubSpot</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>#</th><th>Lead</th><th>Phone</th><th>Stage</th><th>Why call</th><th>Agent</th><th>Creator</th><th>Last call</th><th>Follow-up</th><th style='text-align:right'>Calls in stage</th><th style='text-align:right'>By owner</th><th style='text-align:right'>Days in stage</th><th>Local time</th><th>HubSpot</th></tr></thead><tbody>";
   rows.forEach(function(r, i){
     var od = r.fu && r.fu < Date.now();
-    h += "<tr><td class='mut'>" + (i + 1) + "</td>" +
+    var digits = String(r.phone || "").replace(/[^0-9]/g, "");
+    var ph = r.phone ? "<span class='ph'>" + esc(r.phone) + "</span>" +
+      (digits ? "<a class='ico' href='tel:" + esc(r.phone) + "' title='Call'>call</a>" +
+                "<a class='ico' href='https://wa.me/" + digits + "' target='_blank' title='WhatsApp'>wa</a>" : "")
+      : "<span class='mut'>no number</span>";
+    var ctx = [];
+    if (r.why) ctx.push("<b>Why this lead can convert:</b> " + esc(r.why));
+    if (r.aiSummary) ctx.push("<b>AI call summary" + (r.aiHot ? " (hotness " + r.aiHot + "/3)" : "") + ":</b> " + esc(r.aiSummary));
+    if (r.outcome) ctx.push("<b>Last call outcome:</b> " + esc(r.outcome));
+    if (r.coldReason) ctx.push("<b>Reason they went cold:</b> " + esc(r.coldReason));
+    if (r.lastContact) ctx.push("<b>Last contact of any kind:</b> " + dt(r.lastContact) + " (" + ago(r.lastContact) + ")");
+    if (r.country) ctx.push("<b>Country:</b> " + esc(r.country));
+    h += "<tr><td class='mut'>" + (ctx.length ? "<span class='exp' onclick='toggleDet(" + i + ")'>+</span> " : "") + (i + 1) + "</td>" +
       "<td><a class='a2' href='" + hsUrl(r.id) + "' target='_blank'>" + esc(r.name) + "</a></td>" +
+      "<td>" + ph + "</td>" +
       "<td>" + chip(r.stage, J.stageGroups.labels[r.stage] || r.stage) + "</td>" +
       "<td>" + why(r) + "</td>" +
       "<td>" + (r.unassigned ? "<span class='tag o'>UNASSIGNED</span>" : (esc(r.ownerName) + (r.inactive ? " <span class='tag o'>INACTIVE</span>" : ""))) + "</td>" +
@@ -536,8 +584,12 @@ function drawLeadsInner(segName){
       "<td class='" + (r.last ? "" : "cr") + "'>" + (r.last ? dt(r.last) : "never called") + "</td>" +
       "<td class='" + (od ? "cr" : (r.fu ? "" : "ca")) + "'>" + (r.fu ? dt(r.fu) + (od ? " (overdue)" : "") : "not set") + "</td>" +
       "<td class='n'>" + fmt(r.calls) + "</td><td class='n'>" + fmt(r.own) + "</td>" +
-      "<td class='n mut'>" + (r.entered ? fmt(days(r.entered)) : "–") + "</td>" +
+      "<td class='n mut'>" + (r.stage === "__fresh" ? esc(ago(r.created)) : (r.entered ? fmt(days(r.entered)) : "–")) + "</td>" +
+      "<td class='" + (r.tz && !sane(r.tz) ? "cr" : "mut") + "'>" + (localTime(r.tz) || "–") + "</td>" +
       "<td><a class='a2' href='" + hsUrl(r.id) + "' target='_blank'>open ↗</a></td></tr>";
+    if (ctx.length) {
+      h += "<tr class='det' id='det" + i + "' style='display:none'><td></td><td colspan='12'>" + ctx.join("<br>") + "</td></tr>";
+    }
   });
   h += "</tbody></table></div></div>";
   return h;
@@ -545,10 +597,10 @@ function drawLeadsInner(segName){
 
 function exportCsv(){
   if (!L || !L.rows) return;
-  var head = ["Name","Stage","Forms","Form submissions","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
+  var head = ["Name","Phone","Stage","Forms","Form submissions","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
   var lines = [head.join(",")];
   L.rows.forEach(function(r){
-    var v = [r.name, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.formN || "", r.score || "", r.intl ? "Yes" : "No",
+    var v = [r.name, r.phone, (J.stageGroups.labels[r.stage] || r.stage), r.forms.join(" | "), r.formN || "", r.score || "", r.intl ? "Yes" : "No",
       (r.sp === "S" ? "Student" : r.sp === "P" ? "Professional" : ""),
       r.ownerName, (r.unassigned ? "Unassigned" : (r.inactive ? "Deactivated owner" : "Active")), r.creator, r.last ? new Date(r.last).toISOString() : "", r.fu ? new Date(r.fu).toISOString() : "",
       r.calls, r.own, r.entered ? days(r.entered) : "", hsUrl(r.id)];

@@ -31,6 +31,9 @@ const PROPS = [
   "engagement_stage_last_changed_at","tm_student_or_professional",
   "not_interested_reason","counselling_done","previous_engagement_stage",
   "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
+  "conversion_probability_reason","ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
+  "call_outcome","reason_for_notinteresteddisqualifiedghosted","notes_last_contacted",
+  "hs_timezone","country",
   "firstname","lastname"
 ];
 const WORKABLE = ["rcb_requested_callback","discovery","program_pitched","pricing_pitched","counselled","Follow up","FU_DNP","FU_RCB","payment_prospect"];
@@ -168,7 +171,8 @@ async function fetchFreshForOwner(ownerId){
       ]}],
       properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source",
         "email", "phone", "conversion_probability_score", "recent_conversion_event_name", "first_conversion_event_name",
-        "follow_up_date_and_time", "last_call_date_and_time", "tm_student_or_professional"],
+        "follow_up_date_and_time", "last_call_date_and_time", "tm_student_or_professional",
+        "hs_timezone", "country", "conversion_probability_reason"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
     };
@@ -1707,7 +1711,8 @@ const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
   .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
 const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
   "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
-  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id","tm_student_or_professional"];
+  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id","tm_student_or_professional",
+  "hs_timezone","country","conversion_probability_reason"];
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
 let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
 
@@ -1805,6 +1810,17 @@ function cnRow(c){
     entered: ts(c.engagement_stage_last_changed_at) || ts(c.createdate),
     created: ts(c.createdate),
     score: num(c.conversion_probability_score),
+    phone: String(c.phone || "").trim(),
+    tz: String(c.hs_timezone || "").trim(),
+    country: String(c.country || "").trim(),
+    why: clip(c.conversion_probability_reason, 400),
+    aiSummary: clip(c.ryl_aicall_summary, 400),
+    aiHot: num(c.ryl_aicall_hotness),
+    optout: String(c.ryl_aicall_optout || "").toLowerCase() === "true",
+    outcome: String(c.call_outcome || "").trim(),
+    coldReason: clip(c.reason_for_notinteresteddisqualifiedghosted || c.not_interested_reason, 300),
+    lastContact: ts(c.notes_last_contacted),
+    paid: (function(){ const p = paidOf(c); return p ? p.at || 1 : 0; })(),
     sp: classifySP(c.tm_student_or_professional),
     forms: formsOf(c),
     formN: formMeta(c).n,
@@ -1821,12 +1837,41 @@ function cnRow(c){
 // A never-worked lead is itself a call reason: nobody has spoken to it yet.
 // Set FRESH_IS_PRIORITY=0 in Railway to revert to signal-only priority.
 const FRESH_IS_PRIORITY = String(process.env.FRESH_IS_PRIORITY || "1") !== "0";
+// Anyone who already paid must never appear as a must-call prospect. The sheet is the
+// source of truth for payments, and deal_won on the contact often lags behind it.
+let PAID = { at: null, byEmail: {}, byPhone: {} };
+function paidIndex(){
+  if (PAID.at === SHEET.loadedAt) return PAID;
+  const byEmail = {}, byPhone = {};
+  (SHEET.rows || []).forEach(function(r){
+    const em = String(r.consumer_email || "").trim().toLowerCase();
+    const ph = normPhone(r.consumer_phone);
+    const rec = { at: ts(r.date), amount: num(r.price_inr), creator: r.creator_username || "" };
+    if (em && (!byEmail[em] || rec.at < byEmail[em].at)) byEmail[em] = rec;
+    if (ph && (!byPhone[ph] || rec.at < byPhone[ph].at)) byPhone[ph] = rec;
+  });
+  PAID = { at: SHEET.loadedAt, byEmail: byEmail, byPhone: byPhone };
+  return PAID;
+}
+function paidOf(c){
+  const idx = paidIndex();
+  const em = String(c.email || "").trim().toLowerCase();
+  if (em && idx.byEmail[em]) return idx.byEmail[em];
+  const ph = normPhone(c.phone);
+  if (ph && idx.byPhone[ph]) return idx.byPhone[ph];
+  return null;
+}
+function clip(v, n){ const t = String(v || "").trim(); return t.length > n ? t.slice(0, n) + "..." : t; }
+
 function istDayBounds(){
   const off = 5.5 * 3600000;
   const start = Math.floor((Date.now() + off) / 86400000) * 86400000 - off;
   return { start: start, end: start + 86400000 };
 }
 function cnSegs(r){
+  // A paying customer or someone who opted out is never a must-call prospect, whatever
+  // signals they carry. They stay visible in All in stage, flagged, but out of the queue.
+  if (r.paid || r.optout) return { form: false, score: false, intl: false, fresh: false };
   return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl,
     fresh: FRESH_IS_PRIORITY && r.stage === "__fresh" };
 }
