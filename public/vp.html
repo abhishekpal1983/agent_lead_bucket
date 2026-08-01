@@ -98,10 +98,16 @@ function draw(){
     "<span style='font-size:11px;color:#697386;margin-left:8px'>day " + J.dayOfMonth + " of " + J.daysInMonth + "</span>";
 }
 function monthOpts(){
-  var out = "", d = new Date();
-  for (var i = 0; i < 8; i++) {
-    var m = new Date(d.getFullYear(), d.getMonth() - i, 1).toISOString().slice(0, 7);
-    out += "<option value='" + m + "'" + (m === J.month ? " selected" : "") + ">" + m + "</option>";
+  // Built from the month string the server reports, so IST is authoritative and
+  // toISOString cannot shift the current month backwards. Six months either side,
+  // because targets are set ahead of the month, not during it.
+  var y = Number(J.month.slice(0, 4)), m = Number(J.month.slice(5, 7)) - 1;
+  var out = "";
+  for (var i = -6; i <= 6; i++) {
+    var d = new Date(y, m + i, 1);
+    var k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    var lbl = d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+    out += "<option value='" + k + "'" + (k === J.month ? " selected" : "") + ">" + lbl + (i > 0 ? " (future)" : "") + "</option>";
   }
   return out;
 }
