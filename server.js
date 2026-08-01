@@ -645,6 +645,17 @@ function agentMetrics(rows){
 }
 
 /* ---------- API ---------- */
+const REQUIRED_ROUTES = ["/api/meta", "/api/agents", "/api/callnow", "/api/callnow/leads", "/api/vp", "/api/payment-analysis", "/api/me"];
+app.get("/api/health", function(req, res){
+  const have = [];
+  (app._router && app._router.stack || []).forEach(function(l){
+    if (l.route && l.route.path) have.push(l.route.path);
+  });
+  const missing = REQUIRED_ROUTES.filter(function(r){ return have.indexOf(r) < 0; });
+  if (missing.length) return res.status(500).json({ ok: false, missing: missing });
+  res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()) });
+});
+
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
   sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
@@ -1577,6 +1588,7 @@ async function syncForms(force){
   // every FORMS_HOURS, and never discard a good snapshot because a later pull failed.
   if (!force && FORMS.byEmail.size > 0 && ageH < FORMS_HOURS && !FORMS.error) return;
   FORMS.syncing = true;
+  try {
   const map = new Map();
   const counts = {};
   let ok = 0, err = "";
@@ -1617,6 +1629,7 @@ async function syncForms(force){
     syncing: false, error: note
   };
   console.log("Forms synced: " + map.size + " emails across " + ok + "/" + WAITLIST_FORMS.length + " waitlist forms (" + FORMS.source + ")");
+  } finally { FORMS.syncing = false; }
 }
 
 // A lead counts as a form lead if the Forms API saw a submission on its email, OR its first/recent
@@ -1791,6 +1804,7 @@ async function syncPriorityFresh(){
   }
   PFRESH = { rows: rows, byCreator: byCreator, loadedAt: new Date().toISOString(), syncing: false, error: err || null };
   POOL_REV++;
+  PFRESH.syncing = false;
   console.log("Priority fresh synced: " + rows.length + " across " + PFRESH_LIST.length + " creators");
 }
 
@@ -2564,20 +2578,42 @@ app.post("/api/vp/benchmark", express.json(), function(req, res){
 });
 
 app.use(express.static("public"));
+// A background sync that rejects must never take the web server down with it.
+// Node 18 exits the process on an unhandled rejection, which is what produced the
+// "deploy crashed then recovered" restarts: one bad HubSpot response, whole app gone.
+process.on("unhandledRejection", function(e){
+  console.error("Unhandled rejection (kept alive): " + ((e && e.message) || e));
+});
+process.on("uncaughtException", function(e){
+  console.error("Uncaught exception (kept alive): " + ((e && e.stack) || e));
+});
+function guard(name, fn){
+  return function(){
+    try {
+      const r = fn();
+      if (r && typeof r.catch === "function") r.catch(function(e){ console.error(name + " failed: " + ((e && e.message) || e)); });
+      return r;
+    } catch (e) { console.error(name + " threw: " + ((e && e.message) || e)); }
+  };
+}
+const runChain = guard("boot chain", function(){
+  return syncForms().then(syncUnowned).then(syncPriorityFresh);
+});
+
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
-  sync().then(() => syncCounsel());
-  syncSheet().then(() => syncCohorts());
-  setInterval(sync, SYNC_MINUTES * 60 * 1000);
-  setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
-  setInterval(syncCohorts, COHORT_MINUTES * 60 * 1000);
-  setInterval(syncCounsel, COHORT_MINUTES * 60 * 1000);
-  setTimeout(syncCalls, 90 * 1000);
-  setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
-  setInterval(maybeRunLeadsTodayCheckpoint, 60 * 1000);
-  bootstrapLeadsTodayOnBoot();
-  syncBackupPool();
-  setInterval(syncBackupPool, COHORT_MINUTES * 60 * 1000);
-  setTimeout(function(){ syncForms().then(syncUnowned).then(syncPriorityFresh); }, 150 * 1000);
-  setInterval(function(){ syncForms().then(syncUnowned).then(syncPriorityFresh); }, COHORT_MINUTES * 60 * 1000);
+  guard("sync", function(){ return sync().then(() => syncCounsel()); })();
+  guard("sheet", function(){ return syncSheet().then(() => syncCohorts()); })();
+  setInterval(guard("sync", sync), SYNC_MINUTES * 60 * 1000);
+  setInterval(guard("sheet", syncSheet), SYNC_MINUTES * 60 * 1000);
+  setInterval(guard("cohorts", syncCohorts), COHORT_MINUTES * 60 * 1000);
+  setInterval(guard("counsel", syncCounsel), COHORT_MINUTES * 60 * 1000);
+  setTimeout(guard("calls", syncCalls), 90 * 1000);
+  setInterval(guard("calls", syncCalls), COHORT_MINUTES * 60 * 1000);
+  setInterval(guard("leadsToday", maybeRunLeadsTodayCheckpoint), 60 * 1000);
+  guard("leadsTodayBoot", bootstrapLeadsTodayOnBoot)();
+  guard("backupPool", syncBackupPool)();
+  setInterval(guard("backupPool", syncBackupPool), COHORT_MINUTES * 60 * 1000);
+  setTimeout(runChain, 150 * 1000);
+  setInterval(runChain, COHORT_MINUTES * 60 * 1000);
 });
