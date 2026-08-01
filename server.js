@@ -2310,7 +2310,9 @@ app.get("/api/me", function(req, res){
 function authGate(req, res, next){
   if (!AUTH_ON) return next();
   const p = req.path;
-  if (p.indexOf("/auth/") === 0 || p === "/login.html" || p === "/favicon.ico") return next();
+  // /api/health must stay open: Railway's healthcheck has no session, and a 401 there
+  // makes the platform mark the deploy unhealthy and stop serving the app entirely.
+  if (p.indexOf("/auth/") === 0 || p === "/login.html" || p === "/favicon.ico" || p === "/api/health") return next();
   const s = sessionOf(req);
   if (!s) {
     if (p === "/api/me") return res.json({ authOn: true, email: "", role: "", domain: ALLOWED_DOMAIN });
