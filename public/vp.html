@@ -31,7 +31,10 @@ tr.clik:hover td{background:#F7FAFC}
 tr.sub td{background:#FBFCFD;font-size:12px}
 tr.sub2 td{background:#F5F8FB;font-size:11.5px}
 .tw2{border:1px solid #E3E8EE;border-radius:6px;overflow:hidden;margin:2px 0 6px}
-.car{display:inline-block;width:12px;color:#8B99A8;font-weight:600}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
+.car{display:inline-block;width:12px;color:#8B99A8;font-weight:600}
+.tin{width:104px;padding:3px 7px;font-size:12px;text-align:right;border:1px solid #E3E8EE;border-radius:5px;font-variant-numeric:tabular-nums}
+.tin:hover{border-color:#C9D2DD}
+.tin.saved{border-color:#15613F;background:#F3FAF6}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block}
 .pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
 .warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
@@ -154,7 +157,13 @@ function drawTeams(){
     h += "<tr class='clik' onclick=\"tog('" + t.id + "')\"><td><span class='car'>" + (open ? "▾" : "▸") + "</span><b>" + esc(t.name || "(unnamed)") + "</b>" +
       "<div class='mut' style='font-size:11px;padding-left:12px'>" + esc(t.managerEmail || "no manager email") + " · " +
       t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
-      "<td class='n'>" + (t.target ? inr(t.target) : "<span class='mut'>not set</span>") + "</td>" +
+      "<td class='n'>" + (t.target ? inr(t.target) : "<span class='mut'>not set</span>") +
+        (function(){
+          var sum = (t.creatorRows || []).reduce(function(a, c){ return a + (c.target || 0); }, 0);
+          if (!sum) return "";
+          var cls = (t.target && Math.abs(sum - t.target) > 1) ? "cr" : "mut";
+          return "<div class='" + cls + "' style='font-size:11px' title='Sum of creator targets in this team'>creators " + inr(sum) + "</div>";
+        })() + "</td>" +
       "<td class='n'><b>" + inr(t.revenue) + "</b>" + (t.attainment !== null ? "<div class='mut' style='font-size:11px'>" + t.attainment + "%</div>" : "") + "</td>" +
       "<td class='n'>" + (t.target ? p : "<span class='mut'>–</span>") + "</td>" +
       "<td class='n'>" + fmt(t.enrolments) + "</td><td class='n'>" + fmt(t.queue) + "</td><td class='n'>" + fmt(t.due) + "</td>" +
@@ -168,6 +177,20 @@ function drawTeams(){
   return h;
 }
 function tog(id){ OPEN[id] = !OPEN[id]; draw(); }
+function saveCreatorTarget(u, el){
+  var v = el.value === "" ? 0 : Number(el.value);
+  var cur = 0;
+  J.teams.forEach(function(t){ (t.creatorRows || []).forEach(function(c){ if (c.u === u) cur = c.target || 0; }); });
+  if (v === cur) return;
+  el.disabled = true;
+  post("/api/vp/target", { month: J.month, scope: "creator", key: u, revenue: v }).then(function(r){
+    el.disabled = false;
+    if (r && r.error) { alert(r.error); return; }
+    el.className = "tin saved";
+    // reload quietly so the team's creator-sum hint and pace recompute
+    setTimeout(function(){ load(J.month); }, 400);
+  }).catch(function(){ el.disabled = false; });
+}
 function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
 function creatorRows(t){
   var h = "";
@@ -180,7 +203,10 @@ function creatorRows(t){
     h += "<tr class='sub clik' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
       "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) +
       (c.mapped ? "" : " <span class='pill a' title='This creator is not mapped to the team, revenue arrived through an agent'>unmapped</span>") + "</td>" +
-      "<td class='n'>" + (c.target ? inr(c.target) : "<span class='mut'>not set</span>") + "</td>" +
+      "<td class='n' onclick='event.stopPropagation()'>" + (J.isVP
+        ? "<input class='tin' id='ct_" + esc(c.u) + "' type='number' placeholder='not set' value='" + (c.target || "") + "'" +
+          " onkeydown=\"if(event.key==='Enter'){this.blur()}\" onblur=\"saveCreatorTarget('" + esc(c.u).replace(/'/g, "\\'") + "', this)\">"
+        : (c.target ? inr(c.target) : "<span class='mut'>not set</span>")) + "</td>" +
       "<td class='n'>" + inr(c.revenue) + "</td>" +
       "<td class='n'>" + (gap === null ? "<span class='mut'>–</span>" : (gap >= 0 ? "<span class='pill g'>+" + inr(gap) + "</span>" : "<span class='pill r'>" + inr(-gap) + "</span>")) + "</td>" +
       "<td class='n'>" + fmt(c.enrolments) + "</td><td class='n'>" + fmt(c.queue) + "</td><td class='n'>" + fmt(c.due) + "</td>" +
