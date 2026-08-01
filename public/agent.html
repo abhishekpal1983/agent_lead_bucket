@@ -153,7 +153,7 @@ function render(j){
   }).join("");
   const p=document.getElementById("page");
   p.innerHTML=
-  '<div class="hero"><div class="top"><h1>'+esc(j.agent.name)+"</h1><span class=\"em\">"+esc(j.agent.email)+'</span><a href="/callnow.html?id="+(new URLSearchParams(location.search).get("id")||"")+"" style="font-size:11px;font-weight:800;color:#4338CA;margin-left:10px">Call Now list &#8599;</a><span class="asof">Live · HubSpot '+(j.loadedAt?new Date(j.loadedAt).toLocaleTimeString():"")+" · payments "+(j.sheetLoadedAt?new Date(j.sheetLoadedAt).toLocaleTimeString():"")+"</span></div>"+
+  '<div class="hero"><div class="top"><h1>'+esc(j.agent.name)+"</h1><span class=\"em\">"+esc(j.agent.email)+'</span><span class="asof">Live · HubSpot '+(j.loadedAt?new Date(j.loadedAt).toLocaleTimeString():"")+" · payments "+(j.sheetLoadedAt?new Date(j.sheetLoadedAt).toLocaleTimeString():"")+"</span></div>"+
     '<div class="ranks">'+
     '<div class="rank">Revenue this month <b>'+rupee(j.revenue.month)+"</b> · rank <b>#"+j.ranks.revenue+"</b> of "+j.ranks.peers+"</div>"+
     '<div class="rank">Workable pipeline <b>'+m.workable+"</b> leads · rank <b>#"+j.ranks.workable+"</b></div>"+
