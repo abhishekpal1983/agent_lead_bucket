@@ -2395,42 +2395,56 @@ function orgDrift(){
   return out.sort(function(a, b){ return b.leads - a.leads; });
 }
 
-function teamActuals(team, month){
-  const emails = {};
-  (team.agentIds || []).forEach(function(id){
-    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
-    if (e) emails[e] = 1;
+// One pass over the sheet and one over the lead pool, bucketed by team, creator and
+// agent. Doing it per team would mean re-walking a 50k row pool for every manager.
+function vpAggregate(month){
+  const teamOf = {}, agentTeam = {};
+  (ORG.teams || []).forEach(function(t){
+    (t.agentIds || []).forEach(function(id){ teamOf[id] = t.id; });
   });
-  const creators = {};
-  (team.creators || []).forEach(function(c){ creators[c] = 1; });
-  let revenue = 0, enrol = 0;
+  const byEmail = {};
+  Object.keys(teamOf).forEach(function(id){
+    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+    if (e) byEmail[e] = id;
+  });
+  const agg = {};
+  const cell = function(tid, creator, agentId){
+    if (!agg[tid]) agg[tid] = {};
+    if (!agg[tid][creator]) agg[tid][creator] = {};
+    if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
+      revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0
+    };
+    return agg[tid][creator][agentId];
+  };
   const seen = {};
   (SHEET.rows || []).forEach(function(r){
     if (ymOf(r.date) !== month) return;
-    const oe = String(r.owner_email || "").toLowerCase();
-    if (!emails[oe]) return;
-    revenue += num(r.price_inr);
-    const key = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
-    if (!seen[key]) { seen[key] = 1; enrol++; }
+    const aid = byEmail[String(r.owner_email || "").toLowerCase()];
+    if (!aid) return;
+    const o = cell(teamOf[aid], r.creator_username || "(no creator)", aid);
+    o.revenue += num(r.price_inr);
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    if (!seen[k]) { seen[k] = 1; o.enrolments++; }
   });
-  const rows = callnowPool().filter(function(c){
-    return (team.agentIds || []).indexOf(String(c.hubspot_owner_id || "")) >= 0;
-  }).map(cnRow);
-  const day = istDayBounds();
-  let queue = 0, due = 0, done = 0, missed = 0, overdue = 0, uncalled = 0, touched = 0;
-  rows.forEach(function(r){
-    const s = cnSegs(r);
-    if (!(s.form || s.score || s.intl || s.fresh)) return;
-    queue++;
+  const day = istDayBounds(), now = Date.now();
+  callnowPool().forEach(function(c){
+    const aid = String(c.hubspot_owner_id || "");
+    const tid = teamOf[aid];
+    if (!tid) return;
+    const r = cnRow(c), sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    const o = cell(tid, r.creator || "(no creator)", aid);
+    o.queue++;
     const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
-    if (ct) touched++;
-    if (dt) { due++; if (ct) done++; else missed++; }
-    if (r.fu && r.fu < Date.now()) overdue++;
-    if (!r.last) uncalled++;
+    if (ct) o.touched++;
+    if (dt) { o.due++; if (ct) o.done++; else o.missed++; }
+    if (r.fu && r.fu < now) o.overdue++;
+    if (!r.last) o.uncalled++;
   });
-  return { revenue: revenue, enrolments: enrol, queue: queue, due: due, done: done,
-    missed: missed, overdue: overdue, uncalled: uncalled, touched: touched };
+  return agg;
 }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0 }; }
+function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 app.get("/api/vp", function(req, res){
   const month = String(req.query.month || curMonth());
@@ -2438,8 +2452,28 @@ app.get("/api/vp", function(req, res){
   const p = istParts(new Date());
   const dim = new Date(Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), 0).getDate();
   const dom = Number(p.date.slice(8, 10));
+  const agg = vpAggregate(month);
   const teams = (ORG.teams || []).map(function(team){
-    const a = teamActuals(team, month);
+    const byCreator = agg[team.id] || {};
+    const totals = zero();
+    const creatorRows = Object.keys(byCreator).map(function(cu){
+      const perAgent = byCreator[cu];
+      const ctot = zero();
+      const agents = Object.keys(perAgent).map(function(aid){
+        const o = CACHE.owners[aid] || {};
+        addInto(ctot, perAgent[aid]);
+        return Object.assign({ id: aid, name: o.name || ("Owner " + aid), email: o.email || "", active: o.active !== false }, perAgent[aid]);
+      }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
+      addInto(totals, ctot);
+      const ct = (t.creators || {})[cu] || {};
+      return Object.assign({ u: cu, target: num(ct.revenue), mapped: (team.creators || []).indexOf(cu) >= 0, agents: agents }, ctot);
+    }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
+    (team.creators || []).forEach(function(cu){
+      if (!byCreator[cu]) {
+        const ct = (t.creators || {})[cu] || {};
+        creatorRows.push(Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: [] }, zero()));
+      }
+    });
     const tg = t.teams[team.id] || {};
     const target = num(tg.revenue);
     const paceTarget = target * (dom / dim);
@@ -2450,11 +2484,12 @@ app.get("/api/vp", function(req, res){
         const o = CACHE.owners[id] || {};
         return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
       }),
+      creatorRows: creatorRows,
       target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
       paceTarget: Math.round(paceTarget),
-      gap: Math.round(a.revenue - paceTarget),
-      attainment: target ? Math.round(1000 * a.revenue / target) / 10 : null
-    }, a);
+      gap: Math.round(totals.revenue - paceTarget),
+      attainment: target ? Math.round(1000 * totals.revenue / target) / 10 : null
+    }, totals);
   }).sort(function(x, y){ return y.revenue - x.revenue; });
   res.json({
     month: month, dayOfMonth: dom, daysInMonth: dim,

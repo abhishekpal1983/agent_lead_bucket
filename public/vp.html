@@ -25,7 +25,13 @@ td{padding:9px 11px;border-bottom:1px solid #F0F3F7;white-space:nowrap;vertical-
 tr:last-child td{border-bottom:none}
 td.n{text-align:right;font-variant-numeric:tabular-nums}
 .tw{border:1px solid #E3E8EE;border-radius:8px;overflow:auto}
-.mut{color:#8B99A8}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
+.mut{color:#8B99A8}
+tr.clik{cursor:pointer}
+tr.clik:hover td{background:#F7FAFC}
+tr.sub td{background:#FBFCFD;font-size:12px}
+tr.sub2 td{background:#F5F8FB;font-size:11.5px}
+.tw2{border:1px solid #E3E8EE;border-radius:6px;overflow:hidden;margin:2px 0 6px}
+.car{display:inline-block;width:12px;color:#8B99A8;font-weight:600}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block}
 .pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
 .warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
@@ -64,7 +70,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums}
   <div id="app" style="display:none"></div>
 </div>
 <script>
-var J = null, EDIT = null;
+var J = null, EDIT = null, OPEN = {}, OPENC = {};
 function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
 function inr(v){ v = Math.round(v||0); return v>=1e7 ? "₹"+(v/1e7).toFixed(2)+"Cr" : v>=1e5 ? "₹"+(v/1e5).toFixed(1)+"L" : "₹"+fmt(v); }
@@ -139,32 +145,72 @@ function drawStrip(){
     "</div>";
 }
 function drawTeams(){
-  var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Pace compares actual against the share of the month elapsed.</div>";
+  var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
   h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target</th><th class='n'>Actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Queue</th><th class='n'>Due today</th><th class='n'>Called</th><th class='n'>Missed</th><th class='n'>Overdue</th><th class='n'>Never called</th></tr></thead><tbody>";
   J.teams.forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
-    h += "<tr><td><b>" + esc(t.name || "(unnamed)") + "</b><div class='mut' style='font-size:11px'>" +
-      esc(t.managerEmail || "no manager email") + " · " + t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
+    var open = !!OPEN[t.id];
+    h += "<tr class='clik' onclick=\"tog('" + t.id + "')\"><td><span class='car'>" + (open ? "▾" : "▸") + "</span><b>" + esc(t.name || "(unnamed)") + "</b>" +
+      "<div class='mut' style='font-size:11px;padding-left:12px'>" + esc(t.managerEmail || "no manager email") + " · " +
+      t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
       "<td class='n'>" + (t.target ? inr(t.target) : "<span class='mut'>not set</span>") + "</td>" +
       "<td class='n'><b>" + inr(t.revenue) + "</b>" + (t.attainment !== null ? "<div class='mut' style='font-size:11px'>" + t.attainment + "%</div>" : "") + "</td>" +
       "<td class='n'>" + (t.target ? p : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(t.enrolments) + "</td>" +
-      "<td class='n'>" + fmt(t.queue) + "</td>" +
-      "<td class='n'>" + fmt(t.due) + "</td>" +
+      "<td class='n'>" + fmt(t.enrolments) + "</td><td class='n'>" + fmt(t.queue) + "</td><td class='n'>" + fmt(t.due) + "</td>" +
       "<td class='n cg'>" + fmt(t.done) + "</td>" +
       "<td class='n'>" + (t.missed ? "<span class='pill r'>" + fmt(t.missed) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n " + (t.overdue ? "cr" : "mut") + "'>" + fmt(t.overdue) + "</td>" +
       "<td class='n " + (t.uncalled ? "cr" : "mut") + "'>" + fmt(t.uncalled) + "</td></tr>";
+    if (open) h += creatorRows(t);
   });
   h += "</tbody></table></div></div>";
   return h;
 }
+function tog(id){ OPEN[id] = !OPEN[id]; draw(); }
+function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
+function creatorRows(t){
+  var h = "";
+  if (!t.creatorRows.length) {
+    return "<tr class='sub'><td colspan='11' class='mut'>No revenue or queue for this team yet.</td></tr>";
+  }
+  t.creatorRows.forEach(function(c){
+    var k = t.id + "||" + c.u, open = !!OPENC[k];
+    var gap = c.target ? Math.round(c.revenue - c.target * (J.dayOfMonth / J.daysInMonth)) : null;
+    h += "<tr class='sub clik' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
+      "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) +
+      (c.mapped ? "" : " <span class='pill a' title='This creator is not mapped to the team, revenue arrived through an agent'>unmapped</span>") + "</td>" +
+      "<td class='n'>" + (c.target ? inr(c.target) : "<span class='mut'>not set</span>") + "</td>" +
+      "<td class='n'>" + inr(c.revenue) + "</td>" +
+      "<td class='n'>" + (gap === null ? "<span class='mut'>–</span>" : (gap >= 0 ? "<span class='pill g'>+" + inr(gap) + "</span>" : "<span class='pill r'>" + inr(-gap) + "</span>")) + "</td>" +
+      "<td class='n'>" + fmt(c.enrolments) + "</td><td class='n'>" + fmt(c.queue) + "</td><td class='n'>" + fmt(c.due) + "</td>" +
+      "<td class='n cg'>" + fmt(c.done) + "</td>" +
+      "<td class='n " + (c.missed ? "cr" : "mut") + "'>" + fmt(c.missed) + "</td>" +
+      "<td class='n " + (c.overdue ? "cr" : "mut") + "'>" + fmt(c.overdue) + "</td>" +
+      "<td class='n " + (c.uncalled ? "cr" : "mut") + "'>" + fmt(c.uncalled) + "</td></tr>";
+    if (open) {
+      if (!c.agents.length) h += "<tr class='sub2'><td colspan='11' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
+      c.agents.forEach(function(a){
+        h += "<tr class='sub2'><td style='padding-left:48px'>" + esc(a.name) +
+          (a.active ? "" : " <span class='pill a'>inactive</span>") + "</td>" +
+          "<td class='n mut'>–</td><td class='n'>" + inr(a.revenue) + "</td><td class='n mut'>–</td>" +
+          "<td class='n'>" + fmt(a.enrolments) + "</td><td class='n'>" + fmt(a.queue) + "</td><td class='n'>" + fmt(a.due) + "</td>" +
+          "<td class='n cg'>" + fmt(a.done) + "</td>" +
+          "<td class='n " + (a.missed ? "cr" : "mut") + "'>" + fmt(a.missed) + "</td>" +
+          "<td class='n " + (a.overdue ? "cr" : "mut") + "'>" + fmt(a.overdue) + "</td>" +
+          "<td class='n " + (a.uncalled ? "cr" : "mut") + "'>" + fmt(a.uncalled) + "</td></tr>";
+      });
+    }
+  });
+  return h;
+}
 function drawDrift(){
-  if (!J.drift.length) return "<div class='sec'><h2>Mapping</h2><div class='sub cg'>Every lead-owning agent is mapped to a team.</div></div>";
-  var h = "<div class='sec'><h2>Unmapped agents <span class='pill r'>" + J.drift.length + "</span></h2>" +
-    "<div class='sub'>These owners hold leads but belong to no team, so their numbers are missing from every roll-up above. Assign each to a manager.</div>";
-  h += "<div class='tw'><table><thead><tr><th>Agent</th><th>Email</th><th class='n'>Leads</th><th>Status</th><th>Assign to</th></tr></thead><tbody>";
+  if (!J.drift.length) return "";
+  var h = "<details class='sec' style='padding:10px 14px'><summary style='cursor:pointer;list-style:none;display:flex;gap:9px;align-items:center'>" +
+    "<b style='font-size:13px'>Unmapped agents</b><span class='pill r'>" + J.drift.length + "</span>" +
+    "<span class='mut' style='font-size:11.5px'>hold " + fmt(J.drift.reduce(function(a, d){ return a + d.leads; }, 0)) + " leads and are missing from every number above</span>" +
+    "<span style='margin-left:auto;color:#0091AE;font-weight:600;font-size:12px'>Assign</span></summary>";
+  h += "<div class='tw' style='margin-top:9px;max-height:280px;overflow:auto'><table><thead><tr><th>Agent</th><th>Email</th><th class='n'>Leads</th><th>Status</th><th>Assign to</th></tr></thead><tbody>";
   J.drift.forEach(function(d){
     h += "<tr><td><b>" + esc(d.name) + "</b></td><td class='mut'>" + esc(d.email) + "</td>" +
       "<td class='n'>" + fmt(d.leads) + "</td>" +
@@ -173,7 +219,7 @@ function drawDrift(){
       J.teams.map(function(t){ return "<option value='" + t.id + "'>" + esc(t.name || "(unnamed)") + "</option>"; }).join("") +
       "</select></td></tr>";
   });
-  h += "</tbody></table></div></div>";
+  h += "</tbody></table></div></details>";
   return h;
 }
 function assign(agentId, teamId){
