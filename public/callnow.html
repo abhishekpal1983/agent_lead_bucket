@@ -200,7 +200,13 @@ function refreshOwner(id, then){
 
 function load(){
   LOADING = true;
-  fetch("/api/callnow?" + qsStr()).then(function(r){ return r.json(); }).then(function(j){
+  fetch("/api/callnow?" + qsStr()).then(function(r){
+    if (r.status === 401) { location.href = "/login.html"; return null; }
+    if (r.status === 403) return r.json().then(function(x){ throw new Error(x.error || "access denied"); });
+    if (!r.ok) throw new Error("server returned " + r.status);
+    return r.json();
+  }).then(function(j){
+    if (!j) return;
     J = j;
     if (!S.stages) S.stages = j.stageGroups.priority.slice();
     LOADING = false;
@@ -209,7 +215,9 @@ function load(){
     draw();
     if (S.cellStage || S.cellSeg) loadLeads();
   }).catch(function(e){
-    document.getElementById("loading").innerHTML = "<div class='warn'>Could not load: " + esc(e.message) + "</div>";
+    document.getElementById("loading").innerHTML = "<div class='warn'>Could not load: " + esc(e.message) + "</div>" +
+      (WHO && WHO.email ? "<div style='font-size:11.5px;color:#8B99A8;margin-top:8px'>Signed in as " + esc(WHO.email) +
+        ", role " + esc(WHO.role) + ". <a href='/auth/logout' style='color:#0091AE'>Sign out</a></div>" : "");
   });
 }
 var KIND = {
@@ -645,10 +653,20 @@ function draw(){
   }
   document.getElementById("whobadge").innerHTML = badge;
 }
-function boot(){ if (ME) refreshOwner(ME, load); else load(); }
+function boot(){
+  load();
+  // Refresh this owner's bucket in the background. It can take 30s on a large bucket,
+  // so it must never gate the first paint.
+  if (ME) setTimeout(function(){ refreshOwner(ME); }, 1200);
+}
 fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
   WHO = j;
   if (j && j.role === "agent" && j.ownerId) ME = j.ownerId;
+  if (j && j.email) {
+    var el = document.getElementById("loading");
+    if (el) el.innerHTML += "<div style='font-size:11.5px;color:#8B99A8;margin-top:10px'>Signed in as " +
+      esc(j.email) + " · role " + esc(j.role || "unknown") + " <a href='/auth/logout' style='color:#0091AE'>sign out</a></div>";
+  }
   boot();
 }).catch(function(){ boot(); });
 setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 15 * 60 * 1000);

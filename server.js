@@ -2226,7 +2226,9 @@ function sessionOf(req){
   if (!AUTH_ON) return { email: "", name: "Open access", role: "manager", ownerId: "" };
   const p = verify(readCookie(req, "cn_session"));
   if (!p) return null;
-  const role = MANAGER_EMAILS.indexOf(String(p.email).toLowerCase()) >= 0 ? "manager" : "agent";
+  const em = String(p.email).toLowerCase();
+  const vps = (process.env.VP_EMAILS || "").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+  const role = (MANAGER_EMAILS.indexOf(em) >= 0 || vps.indexOf(em) >= 0) ? "manager" : "agent";
   return { email: p.email, name: p.name || p.email, role: role, ownerId: role === "agent" ? ownerIdForEmail(p.email) : "" };
 }
 
@@ -2284,7 +2286,8 @@ app.get("/auth/logout", function(req, res){
 app.get("/api/me", function(req, res){
   const s = sessionOf(req);
   if (!s) return res.status(401).json({ error: "not signed in" });
-  res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON, domain: ALLOWED_DOMAIN });
+  res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON,
+    domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS });
 });
 
 // Gate every page and API call. Agents are forced onto their own owner id, so a
