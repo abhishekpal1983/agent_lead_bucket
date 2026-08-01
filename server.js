@@ -601,6 +601,11 @@ function srcOptions(){
   CACHE.contacts.forEach(c => { s[srcOf(c)] = 1; });
   return Object.keys(s).sort();
 }
+function sheetCreators(){
+  const set = new Set();
+  SHEET.rows.forEach(r => { if (r.creator_username) set.add(r.creator_username); });
+  return set;
+}
 function filt(creator, agent, intl, src){
   return CACHE.contacts.filter(c =>
     (!creator || c.topmate_username === creator) &&
@@ -761,7 +766,12 @@ app.get("/api/agents", (req, res) => {
   res.json({ loadedAt: CACHE.loadedAt, error: CACHE.error,
     agents: agents,
     sources: srcOptions(),
-    creators: Object.entries(creators).map(([u, n]) => ({ u, n })).sort((a, b) => b.n - a.n).slice(0, 300) });
+    creators: (function(){
+      const sc = sheetCreators();
+      let list = Object.entries(creators).map(([u, n]) => ({ u, n }));
+      if (sc.size) list = list.filter(x => sc.has(x.u));
+      return list.sort((a, b) => b.n - a.n).slice(0, 300);
+    })() });
 });
 
 app.get("/api/drill/:id", (req, res) => {
@@ -993,7 +1003,12 @@ app.get("/api/conversion", (req, res) => {
     payMonths: Object.keys(optP).sort().reverse(),
     segments: ["Student", "Professional", "Unknown"],
     agents: Object.keys(optA).map(id => ({ id, name: (CACHE.owners[id] || {}).name || ("Owner " + id) })).sort((a, b) => a.name.localeCompare(b.name)),
-    creators: Object.keys(optC).sort(),
+    creators: (function(){
+      const sc = sheetCreators();
+      let list = Object.keys(optC);
+      if (sc.size) list = list.filter(u => sc.has(u));
+      return list.sort();
+    })(),
     sources: srcOptions()
   };
   // enrolment identity sets from the payment tracker (first payment per consumer per creator)
