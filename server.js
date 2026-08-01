@@ -854,7 +854,12 @@ app.get("/api/payment-analysis", (req, res) => {
     const key = (r.creator_username || "") + "|" + (em || ph || r.id);
     const isEnrol = !seen.has(key); seen.add(key);
     return { pym, cym, price: r.price, creator: r.creator_username || "(none)", agent: r.sales_rep || r.owner_email || "(none)",
-      src: rec ? src : "Not in HubSpot", seg: rec ? seg : "Unknown", cls, isEnrol };
+      src: rec ? src : "Not in HubSpot", seg: rec ? seg : "Unknown", cls, isEnrol,
+      loan: (function(){
+        const bt = String(r.booking_type || "").toLowerCase(), st2 = String(r.status || "").toLowerCase();
+        return bt.indexOf("loan") >= 0 || st2.indexOf("loan") >= 0;
+      })(),
+      btype: String(r.booking_type || "").trim() || String(r.status || "").trim() || "(blank)" };
   }).filter(p => p.pym &&
     (!fCreator || p.creator === fCreator) &&
     (!fSource || p.src === fSource) &&
@@ -900,6 +905,31 @@ app.get("/api/payment-analysis", (req, res) => {
       });
     });
   });
+  // loan vs direct bifurcation, from the sales sheet only (booking_type / status contains "loan")
+  const mSel2 = req.query.month || "";
+  const loanSplit = { byMonth: {}, byCreator: {}, byAgent: {}, types: {} };
+  function lacc(m, k, p){
+    if (!m[k]) m[k] = { k, ln: 0, lr: 0, dn: 0, dr: 0, lEnrol: 0, dEnrol: 0 };
+    const o = m[k];
+    if (p.loan) { o.ln++; o.lr += p.price; if (p.isEnrol) o.lEnrol++; }
+    else { o.dn++; o.dr += p.price; if (p.isEnrol) o.dEnrol++; }
+  }
+  pays.forEach(p => {
+    lacc(loanSplit.byMonth, p.pym, p);
+    if (!mSel2 || p.pym === mSel2) {
+      lacc(loanSplit.byCreator, p.creator, p);
+      lacc(loanSplit.byAgent, p.agent, p);
+      if (!loanSplit.types[p.btype]) loanSplit.types[p.btype] = { t: p.btype, n: 0, rev: 0 };
+      loanSplit.types[p.btype].n++; loanSplit.types[p.btype].rev += p.price;
+    }
+  });
+  const loanOut = {
+    byMonth: Object.values(loanSplit.byMonth).sort((a, b) => (a.k < b.k ? -1 : 1)),
+    byCreator: Object.values(loanSplit.byCreator).sort((a, b) => (b.lr + b.dr) - (a.lr + a.dr)),
+    byAgent: Object.values(loanSplit.byAgent).sort((a, b) => (b.lr + b.dr) - (a.lr + a.dr)),
+    types: Object.values(loanSplit.types).sort((a, b) => b.rev - a.rev)
+  };
+
   const cohortMonths = Array.from(new Set(Object.keys(hsByYm).concat(Object.keys(cohortEnrol)).concat(Object.keys(cohortBal)))).sort();
   const cohort = cohortMonths.map(cym => {
     const row = { cym, hs: hsByYm[cym] || 0,
@@ -924,7 +954,7 @@ app.get("/api/payment-analysis", (req, res) => {
     bySrc: Object.entries(bySrc).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
     byCreator: Object.entries(byCreator).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
     byAgent: Object.entries(byAgent).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
-    cohort, payMonths, notMatched
+    cohort, payMonths, notMatched, loanSplit: loanOut
   });
 });
 

@@ -81,6 +81,7 @@ tr.tot td{background:#F9FAFB;font-weight:700}
       <div class="sec"><h3>By creator</h3><div class="sub">creator_username from the sheet<span id="mNote2"></span></div><div id="tCr"></div></div>
     </div>
     <div class="sec"><h3>By sales agent</h3><div class="sub">sales_rep from the sheet<span id="mNote3"></span></div><div id="tAg"></div></div>
+    <div class="sec"><h3>Loan vs direct payments</h3><div class="sub">Bifurcation from the sales sheet only: loan = booking_type or status contains "loan"; direct = everything else (tokens, full payments, offline, etc.)<span id="mNote4"></span></div><div id="tLoan"></div></div>
     <div class="sec">
       <h3>Lead cohort matrix</h3>
       <div class="sub">Rows: HubSpot leads by create month (denominator respects creator/source/segment filters). Columns: how many of those leads made their first payment in each month. Conv % = unique enrolments / leads created.</div>
@@ -133,10 +134,30 @@ async function render(){
     j.byMonth.map(function(x){return "<tr"+(F.m===x.month?' style="background:#EEF2FF"':"")+"><td>"+mn(x.month)+"</td><td>"+x.total+"</td><td>"+x.enrol+"</td><td>"+x.bal+"</td><td>"+inr(x.revenue)+"</td><td>"+inr(x.enrolRev)+"</td><td>"+inr(x.balRev)+"</td>"+brk(x)+"</tr>";}).join("")+
     '<tr class="tot"><td>TOTAL</td><td>'+j.byMonth.reduce(function(t,x){return t+x.total;},0)+"</td><td>"+j.byMonth.reduce(function(t,x){return t+x.enrol;},0)+"</td><td>"+j.byMonth.reduce(function(t,x){return t+x.bal;},0)+"</td><td>"+inr(j.byMonth.reduce(function(t,x){return t+x.revenue;},0))+"</td><td></td><td></td>"+brk(j.byMonth.reduce(function(t,x){CLS.forEach(function(c){t[c]=(t[c]||0)+(x[c]||0);});return t;},{}))+"</tr></table>";
   const note=F.m?" · showing "+mn(F.m):" · all months";
-  ["mNote1","mNote2","mNote3"].forEach(function(id){document.getElementById(id).textContent=note;});
+  ["mNote1","mNote2","mNote3","mNote4"].forEach(function(id){document.getElementById(id).textContent=note;});
   tbl("tSrc",j.bySrc,"Source");
   tbl("tCr",j.byCreator,"Creator");
   tbl("tAg",j.byAgent,"Sales agent");
+  (function(){
+    const L=j.loanSplit||{byMonth:[],byCreator:[],byAgent:[],types:[]};
+    function share(l,d){const t=l+d;return t?Math.round(100*l/t)+"%":"–";}
+    function lrow(x,label){
+      return "<tr"+(label===false&&F.m===x.k?' style="background:#EEF2FF"':"")+"><td>"+(label===false?mn(x.k):esc(x.k))+"</td>"+
+        "<td>"+x.ln+"</td><td>"+inr(x.lr)+"</td><td>"+x.dn+"</td><td>"+inr(x.dr)+"</td>"+
+        '<td style="font-weight:700" class="'+(x.lr>x.dr?"ca":"")+'">'+share(x.lr,x.dr)+"</td></tr>";
+    }
+    function ltbl(arr,hdr,isMonth){
+      const T=arr.reduce(function(t,x){t.ln+=x.ln;t.lr+=x.lr;t.dn+=x.dn;t.dr+=x.dr;return t;},{ln:0,lr:0,dn:0,dr:0});
+      return "<table><tr><th>"+hdr+'</th><th>Loan pays</th><th>Loan revenue</th><th>Direct pays</th><th>Direct revenue</th><th>Loan % of rev</th></tr>'+
+        arr.slice(0,isMonth?99:14).map(function(x){return lrow(x,isMonth?false:true);}).join("")+
+        '<tr class="tot"><td>TOTAL</td><td>'+T.ln+"</td><td>"+inr(T.lr)+"</td><td>"+T.dn+"</td><td>"+inr(T.dr)+"</td><td>"+share(T.lr,T.dr)+"</td></tr></table>";
+    }
+    const chips=L.types.map(function(t){return '<span style="display:inline-block;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:999px;padding:2px 10px;font-size:10.5px;margin:2px 4px 2px 0">'+esc(t.t)+" · "+t.n+" · "+rupee(t.rev)+"</span>";}).join("");
+    document.getElementById("tLoan").innerHTML=
+      '<div style="margin-bottom:10px">'+ltbl(L.byMonth,"Month",true)+"</div>"+
+      '<div class="grid2"><div>'+ltbl(L.byCreator,"Creator"+(F.m?" ("+mn(F.m)+")":""))+"</div><div>"+ltbl(L.byAgent,"Sales agent"+(F.m?" ("+mn(F.m)+")":""))+"</div></div>"+
+      (L.types.length?'<div style="margin-top:10px;font-size:10.5px;color:#6B7280">Booking types in scope'+(F.m?" for "+mn(F.m):"")+": "+chips+"</div>":"");
+  })();
   const pm=j.payMonths;
   let mx=1;j.cohort.forEach(function(r){pm.forEach(function(p){mx=Math.max(mx,r.cols[p]||0);});});
   function cohCell(r,p){
