@@ -37,8 +37,17 @@ td.n{text-align:right;font-variant-numeric:tabular-nums}
 .strip .l{font-size:11px;color:#697386}
 .track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin:7px 0 5px;display:flex}
 .track i{display:block;height:6px}
-.pickbox{border:1px solid #E3E8EE;border-radius:6px;max-height:150px;overflow:auto;padding:6px 9px;background:#fff}
-.pickbox label{display:block;font-size:12px;padding:2px 0;cursor:pointer}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pane{border:1px solid #E3E8EE;border-radius:6px;height:158px;overflow:auto;background:#fff}
+.ph{position:sticky;top:0;background:#F7FAFC;border-bottom:1px solid #E3E8EE;padding:4px 9px;font-size:9.5px;font-weight:600;color:#8B99A8;letter-spacing:.05em;text-transform:uppercase}
+.it{padding:4px 9px;font-size:12px;cursor:pointer;display:flex;gap:6px;align-items:center;border-bottom:1px solid #F7FAFC}
+.it:hover{background:#F0F7FB}
+.it .ar{color:#0091AE;font-weight:600;opacity:0;font-size:11px}
+.it:hover .ar{opacity:1}
+.it.off{color:#B7C0C9;cursor:not-allowed}
+.it.off:hover{background:#fff}
+.it.on{background:#F7FAFC}
+.pane .none{padding:8px 9px;font-size:11.5px;color:#B7C0C9}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:820px){.grid{grid-template-columns:1fr}}
 #loading{padding:60px;text-align:center;color:#697386}
@@ -169,6 +178,7 @@ function drawDrift(){
 }
 function assign(agentId, teamId){
   if (!teamId) return;
+  SEL = {};
   var t = J.teams.filter(function(x){ return x.id === teamId; })[0];
   if (!t) return;
   var ids = t.agentIds.concat([agentId]);
@@ -182,35 +192,81 @@ function drawAdmin(){
   h += "</div></div>";
   return h;
 }
+var SEL = {}, TEAMS_BY_KEY = {};
+function cardKey(t){ return t.id || "new"; }
+function ensureSel(t){
+  var k = cardKey(t);
+  TEAMS_BY_KEY[k] = t;
+  if (!SEL[k]) SEL[k] = {
+    agents: (t.agentIds || []).slice(),
+    creators: (t.creators || []).slice(),
+    name: t.name || "",
+    email: t.managerEmail || "",
+    target: (((J.targets.teams || {})[t.id] || {}).revenue) || ""
+  };
+  return SEL[k];
+}
+function captureInputs(k){
+  var n = document.getElementById("n_" + k), e = document.getElementById("e_" + k), g = document.getElementById("t_" + k);
+  if (n) SEL[k].name = n.value;
+  if (e) SEL[k].email = e.value;
+  if (g) SEL[k].target = g.value;
+}
+function toggleItem(k, kind, val){
+  captureInputs(k);
+  var arr = SEL[k][kind], i = arr.indexOf(val);
+  if (i >= 0) arr.splice(i, 1); else arr.push(val);
+  var el = document.getElementById("card_" + k);
+  if (el) el.innerHTML = cardInner(TEAMS_BY_KEY[k]);
+}
+function pane(title, items, k, kind, side){
+  var h = "<div class='pane'><div class='ph'>" + title + "</div>";
+  if (!items.length) h += "<div class='none'>" + (side === "in" ? "nothing assigned yet" : "nothing left") + "</div>";
+  items.forEach(function(it){
+    if (it.off) {
+      h += "<div class='it off' title='Already in " + esc(it.off) + "'>" + esc(it.label) + " <span style='font-size:10.5px'>(" + esc(it.off) + ")</span></div>";
+    } else {
+      h += "<div class='it" + (side === "in" ? " on" : "") + "' onclick=\"toggleItem('" + k + "','" + kind + "','" + esc(it.v).replace(/'/g, "\\'") + "')\">" +
+        "<span>" + esc(it.label) + "</span><span class='ar' style='margin-left:auto'>" + (side === "in" ? "remove ✕" : "add →") + "</span></div>";
+    }
+  });
+  return h + "</div>";
+}
 function teamCard(t){
-  var isNew = !t.id;
-  var tg = (J.targets.teams || {})[t.id] || {};
-  var h = "<div style='border:1px solid #E3E8EE;border-radius:8px;padding:12px 13px'" + (isNew ? " id='newteam'" : "") + ">";
-  h += "<div style='display:flex;gap:8px;margin-bottom:8px'>" +
-    "<input id='n_" + (t.id || "new") + "' placeholder='Team or manager name' value='" + esc(t.name) + "' style='flex:1'>" +
-    "<input id='e_" + (t.id || "new") + "' placeholder='manager@topmate.io' value='" + esc(t.managerEmail) + "' style='flex:1'></div>";
-  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin-bottom:4px'>AGENTS</div><div class='pickbox' id='a_" + (t.id || "new") + "'>";
-  (J.drift || []).concat([]).forEach(function(){});
-  var all = allAgents();
-  all.forEach(function(o){
-    var on = t.agentIds.indexOf(o.id) >= 0;
-    var taken = !on && agentTeam(o.id);
-    h += "<label" + (taken ? " style='color:#B4B4B4'" : "") + "><input type='checkbox' value='" + o.id + "'" + (on ? " checked" : "") + (taken ? " disabled" : "") + "> " +
-      esc(o.name) + (taken ? " <span style='font-size:10.5px'>(" + esc(taken) + ")</span>" : "") + "</label>";
+  ensureSel(t);
+  return "<div id='card_" + cardKey(t) + "' style='border:1px solid #E3E8EE;border-radius:8px;padding:12px 13px'>" + cardInner(t) + "</div>";
+}
+function cardInner(t){
+  var k = cardKey(t), sel = SEL[k], isNew = !t.id;
+  var h = "<div style='display:flex;gap:8px;margin-bottom:9px'>" +
+    "<input id='n_" + k + "' placeholder='Team or manager name' value='" + esc(sel.name) + "' style='flex:1'>" +
+    "<input id='e_" + k + "' placeholder='manager@topmate.io' value='" + esc(sel.email) + "' style='flex:1'></div>";
+
+  var agents = allAgents(), inA = [], outA = [];
+  agents.forEach(function(o){
+    if (sel.agents.indexOf(o.id) >= 0) { inA.push({ v: o.id, label: o.name }); return; }
+    var taken = agentTeam(o.id, t.id);
+    outA.push({ v: o.id, label: o.name, off: taken });
   });
-  h += "</div>";
-  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin:8px 0 4px'>CREATORS</div><div class='pickbox' id='c_" + (t.id || "new") + "'>";
+  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin-bottom:4px'>AGENTS · " + inA.length + " assigned</div>";
+  h += "<div class='split'>" + pane("Available", outA, k, "agents", "out") + pane("In this team", inA, k, "agents", "in") + "</div>";
+
+  var inC = [], outC = [];
   (J.creators || []).forEach(function(c){
-    var on = t.creators.indexOf(c.u) >= 0;
-    h += "<label><input type='checkbox' value='" + esc(c.u) + "'" + (on ? " checked" : "") + "> " + esc(c.u) + " <span class='mut' style='font-size:10.5px'>" + fmt(c.n) + "</span></label>";
+    var label = c.u + "  " + fmt(c.n);
+    if (sel.creators.indexOf(c.u) >= 0) { inC.push({ v: c.u, label: label }); return; }
+    var taken = creatorTeam(c.u, t.id);
+    outC.push({ v: c.u, label: label, off: taken });
   });
-  h += "</div>";
-  h += "<div style='display:flex;gap:8px;margin-top:9px;align-items:center'>" +
+  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin:10px 0 4px'>CREATORS · " + inC.length + " assigned</div>";
+  h += "<div class='split'>" + pane("Available", outC, k, "creators", "out") + pane("In this team", inC, k, "creators", "in") + "</div>";
+
+  h += "<div style='display:flex;gap:8px;margin-top:10px;align-items:center'>" +
     "<span style='font-size:10.5px;color:#8B99A8;font-weight:600'>TARGET ₹</span>" +
-    "<input id='t_" + (t.id || "new") + "' type='number' placeholder='0' value='" + (tg.revenue || "") + "' style='width:110px'>" +
+    "<input id='t_" + k + "' type='number' placeholder='0' value='" + esc(sel.target) + "' style='width:120px'>" +
     "<button class='btn p' onclick=\"saveTeam('" + (t.id || "") + "')\">" + (isNew ? "Create team" : "Save") + "</button>" +
     (isNew ? "" : "<button class='btn d' onclick=\"delTeam('" + t.id + "')\">Delete</button>") +
-    "</div></div>";
+    "</div>";
   return h;
 }
 function allAgents(){
@@ -219,27 +275,22 @@ function allAgents(){
   (J.drift || []).forEach(function(d){ m[d.id] = { id: d.id, name: d.name, email: d.email, active: d.active }; });
   return Object.values(m).sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
 }
-function agentTeam(id){
-  var hit = J.teams.filter(function(t){ return t.agentIds.indexOf(id) >= 0; })[0];
+function agentTeam(id, exceptId){
+  var hit = J.teams.filter(function(t){ return t.id !== exceptId && t.agentIds.indexOf(id) >= 0; })[0];
   return hit ? (hit.name || "another team") : "";
 }
-function picked(boxId){
-  var box = document.getElementById(boxId);
-  if (!box) return [];
-  return Array.prototype.slice.call(box.querySelectorAll("input:checked")).map(function(i){ return i.value; });
+function creatorTeam(u, exceptId){
+  var hit = J.teams.filter(function(t){ return t.id !== exceptId && (t.creators || []).indexOf(u) >= 0; })[0];
+  return hit ? (hit.name || "another team") : "";
 }
 function saveTeam(id){
   var k = id || "new";
-  var body = {
-    id: id,
-    name: document.getElementById("n_" + k).value,
-    managerEmail: document.getElementById("e_" + k).value,
-    agentIds: picked("a_" + k),
-    creators: picked("c_" + k)
-  };
-  var target = document.getElementById("t_" + k).value;
+  captureInputs(k);
+  var body = { id: id, name: SEL[k].name, managerEmail: SEL[k].email, agentIds: SEL[k].agents, creators: SEL[k].creators };
+  var target = SEL[k].target;
   post("/api/vp/team", body).then(function(r){
     if (r.error) { alert(r.error); return; }
+    SEL = {};
     if (target !== "") {
       return post("/api/vp/target", { month: J.month, scope: "team", key: r.team.id, revenue: Number(target) });
     }
