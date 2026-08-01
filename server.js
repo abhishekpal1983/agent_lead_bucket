@@ -2287,6 +2287,214 @@ function authGate(req, res, next){
   next();
 }
 
+/* ---------- Org store: teams, targets, benchmarks ----------
+   The only state this app owns. HubSpot has no concept of a creator belonging to a
+   manager, nor of a monthly target, so it lives here. Written to a JSON file on a
+   Railway volume; if no writable volume is mounted it degrades to memory and says so
+   loudly, rather than pretending to persist. */
+const fs = require("fs");
+const path = require("path");
+const DATA_DIR = process.env.DATA_DIR || "/data";
+const ORG_FILE = path.join(DATA_DIR, "org.json");
+const VP_EMAILS = (process.env.VP_EMAILS || process.env.MANAGER_EMAILS || "abhishek.pal@topmate.io")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+
+let ORG = { teams: [], targets: {}, benchmarks: { creators: {}, company: {} }, log: [] };
+let ORG_PERSISTENT = false;
+
+function orgLoad(){
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+    ORG_PERSISTENT = true;
+    if (fs.existsSync(ORG_FILE)) {
+      const j = JSON.parse(fs.readFileSync(ORG_FILE, "utf8"));
+      ORG = Object.assign({ teams: [], targets: {}, benchmarks: { creators: {}, company: {} }, log: [] }, j);
+    }
+    console.log("Org store ready at " + ORG_FILE + " (" + ORG.teams.length + " teams)");
+  } catch (e) {
+    ORG_PERSISTENT = false;
+    console.error("Org store NOT persistent (" + e.message + "). Attach a Railway volume at " + DATA_DIR + ".");
+  }
+}
+function orgSave(action, detail, who){
+  ORG.log = (ORG.log || []).concat([{ at: new Date().toISOString(), by: who || "", action: action, detail: detail || "" }]).slice(-500);
+  if (!ORG_PERSISTENT) return false;
+  try {
+    const tmp = ORG_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(ORG, null, 2));
+    fs.renameSync(tmp, ORG_FILE);
+    return true;
+  } catch (e) { console.error("Org save failed: " + e.message); return false; }
+}
+orgLoad();
+
+function isVP(req){
+  if (!AUTH_ON) return true;
+  const s = req.session || sessionOf(req);
+  return !!(s && VP_EMAILS.indexOf(String(s.email).toLowerCase()) >= 0);
+}
+function whoami(req){ const s = req.session || sessionOf(req); return s ? s.email : ""; }
+function newId(){ return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function curMonth(){
+  const p = istParts(new Date());
+  return p.date.slice(0, 7);
+}
+
+// Every owner that holds leads but sits in no team. Without this the roll-up
+// silently under-reports the moment someone joins.
+function orgDrift(){
+  const mapped = {};
+  (ORG.teams || []).forEach(function(t){ (t.agentIds || []).forEach(function(id){ mapped[id] = t.name; }); });
+  const out = [];
+  const counts = {};
+  callnowPool().forEach(function(c){
+    const oid = String(c.hubspot_owner_id || "");
+    if (oid) counts[oid] = (counts[oid] || 0) + 1;
+  });
+  Object.keys(CACHE.owners || {}).forEach(function(id){
+    const o = CACHE.owners[id];
+    if (mapped[id]) return;
+    const n = counts[id] || 0;
+    if (!n && o.active === false) return;
+    out.push({ id: id, name: o.name, email: o.email, active: o.active !== false, leads: n });
+  });
+  return out.sort(function(a, b){ return b.leads - a.leads; });
+}
+
+function teamActuals(team, month){
+  const emails = {};
+  (team.agentIds || []).forEach(function(id){
+    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+    if (e) emails[e] = 1;
+  });
+  const creators = {};
+  (team.creators || []).forEach(function(c){ creators[c] = 1; });
+  let revenue = 0, enrol = 0;
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    if (ymOf(r.date) !== month) return;
+    const oe = String(r.owner_email || "").toLowerCase();
+    if (!emails[oe]) return;
+    revenue += num(r.price_inr);
+    const key = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    if (!seen[key]) { seen[key] = 1; enrol++; }
+  });
+  const rows = callnowPool().filter(function(c){
+    return (team.agentIds || []).indexOf(String(c.hubspot_owner_id || "")) >= 0;
+  }).map(cnRow);
+  const day = istDayBounds();
+  let queue = 0, due = 0, done = 0, missed = 0, overdue = 0, uncalled = 0, touched = 0;
+  rows.forEach(function(r){
+    const s = cnSegs(r);
+    if (!(s.form || s.score || s.intl || s.fresh)) return;
+    queue++;
+    const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
+    if (ct) touched++;
+    if (dt) { due++; if (ct) done++; else missed++; }
+    if (r.fu && r.fu < Date.now()) overdue++;
+    if (!r.last) uncalled++;
+  });
+  return { revenue: revenue, enrolments: enrol, queue: queue, due: due, done: done,
+    missed: missed, overdue: overdue, uncalled: uncalled, touched: touched };
+}
+
+app.get("/api/vp", function(req, res){
+  const month = String(req.query.month || curMonth());
+  const t = (ORG.targets || {})[month] || { teams: {}, creators: {} };
+  const p = istParts(new Date());
+  const dim = new Date(Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), 0).getDate();
+  const dom = Number(p.date.slice(8, 10));
+  const teams = (ORG.teams || []).map(function(team){
+    const a = teamActuals(team, month);
+    const tg = t.teams[team.id] || {};
+    const target = num(tg.revenue);
+    const paceTarget = target * (dom / dim);
+    return Object.assign({
+      id: team.id, name: team.name, managerEmail: team.managerEmail || "",
+      agentIds: team.agentIds || [], creators: team.creators || [],
+      agents: (team.agentIds || []).map(function(id){
+        const o = CACHE.owners[id] || {};
+        return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
+      }),
+      target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
+      paceTarget: Math.round(paceTarget),
+      gap: Math.round(a.revenue - paceTarget),
+      attainment: target ? Math.round(1000 * a.revenue / target) / 10 : null
+    }, a);
+  }).sort(function(x, y){ return y.revenue - x.revenue; });
+  res.json({
+    month: month, dayOfMonth: dom, daysInMonth: dim,
+    persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
+    teams: teams, drift: orgDrift(),
+    creators: (creatorsAll() || []),
+    targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
+    log: (ORG.log || []).slice(-30).reverse()
+  });
+});
+
+function creatorsAll(){
+  const m = {};
+  callnowPool().forEach(function(c){ const u = c.topmate_username; if (u) m[u] = (m[u] || 0) + 1; });
+  return Object.entries(m).map(function(e){ return { u: e[0], n: e[1] }; })
+    .sort(function(a, b){ return b.n - a.n; }).slice(0, 400);
+}
+
+app.post("/api/vp/team", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  const id = String(b.id || "");
+  let team = (ORG.teams || []).filter(function(t){ return t.id === id; })[0];
+  if (!team) {
+    team = { id: newId(), name: "", managerEmail: "", agentIds: [], creators: [] };
+    ORG.teams.push(team);
+  }
+  if (b.name !== undefined) team.name = String(b.name).trim();
+  if (b.managerEmail !== undefined) team.managerEmail = String(b.managerEmail).trim().toLowerCase();
+  if (Array.isArray(b.agentIds)) team.agentIds = b.agentIds.map(String);
+  if (Array.isArray(b.creators)) team.creators = b.creators.map(String);
+  orgSave("team.save", team.name, whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, team: team });
+});
+
+app.post("/api/vp/team/delete", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const id = String((req.body || {}).id || "");
+  const gone = (ORG.teams || []).filter(function(t){ return t.id === id; })[0];
+  ORG.teams = (ORG.teams || []).filter(function(t){ return t.id !== id; });
+  orgSave("team.delete", gone ? gone.name : id, whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT });
+});
+
+app.post("/api/vp/target", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  const month = String(b.month || curMonth());
+  ORG.targets = ORG.targets || {};
+  ORG.targets[month] = ORG.targets[month] || { teams: {}, creators: {} };
+  const bucket = b.scope === "creator" ? "creators" : "teams";
+  const key = String(b.key || "");
+  if (!key) return res.status(400).json({ error: "key required" });
+  ORG.targets[month][bucket][key] = {
+    revenue: num(b.revenue), enrolments: num(b.enrolments), counsellings: num(b.counsellings)
+  };
+  orgSave("target.set", month + " " + bucket + " " + key + " = " + num(b.revenue), whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, targets: ORG.targets[month] });
+});
+
+app.post("/api/vp/benchmark", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  ORG.benchmarks = ORG.benchmarks || { creators: {}, company: {} };
+  if (b.creator) {
+    ORG.benchmarks.creators[String(b.creator)] = { c2e: num(b.c2e), l2c: num(b.l2c), ticket: num(b.ticket), source: "manual" };
+  } else {
+    ORG.benchmarks.company = { c2e: num(b.c2e), l2c: num(b.l2c), ticket: num(b.ticket), source: "manual" };
+  }
+  orgSave("benchmark.set", b.creator || "company", whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, benchmarks: ORG.benchmarks });
+});
+
 app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);

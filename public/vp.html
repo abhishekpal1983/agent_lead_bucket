@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Revenue command</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F6F9FC;color:#0A2540;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.hdr{background:#fff;border-bottom:1px solid #E3E8EE;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hdr h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.wrap{max-width:1500px;margin:0 auto;padding:16px 22px 60px}
+.sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;padding:14px 16px}
+.sec h2{font-size:14px;font-weight:600;margin-bottom:2px}
+.sec .sub{font-size:12px;color:#697386;margin-bottom:11px}
+select,input{border:1px solid #E3E8EE;border-radius:6px;padding:6px 9px;font-size:12.5px;background:#fff;font-family:inherit;color:#0A2540}
+input:focus,select:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #E4F4F8}
+.btn{border:1px solid #E3E8EE;background:#fff;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#425B76}
+.btn:hover{background:#F7FAFC}
+.btn.p{background:#FF7A59;color:#fff;border-color:#FF7A59}
+.btn.d{color:#99301C;border-color:#F8C6B4}
+table{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%}
+th{background:#F7FAFC;padding:8px 11px;text-align:left;font-size:10.5px;font-weight:600;color:#697386;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #E3E8EE}
+td{padding:9px 11px;border-bottom:1px solid #F0F3F7;white-space:nowrap;vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.tw{border:1px solid #E3E8EE;border-radius:8px;overflow:auto}
+.mut{color:#8B99A8}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
+.pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block}
+.pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
+.warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
+.warn.bad{background:#FADFDA;border-color:#F0B5AA;color:#99301C}
+.strip{display:flex;background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;overflow:hidden}
+.strip>div{flex:1;padding:11px 15px;border-right:1px solid #F0F3F7}
+.strip>div:last-child{border-right:none}
+.strip .v{font-size:18px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.strip .l{font-size:11px;color:#697386}
+.track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin:7px 0 5px;display:flex}
+.track i{display:block;height:6px}
+.pickbox{border:1px solid #E3E8EE;border-radius:6px;max-height:150px;overflow:auto;padding:6px 9px;background:#fff}
+.pickbox label{display:block;font-size:12px;padding:2px 0;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+#loading{padding:60px;text-align:center;color:#697386}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Revenue command</h1>
+  <span id="mon"></span>
+  <a href="/callnow.html" style="font-size:11px;color:#0091AE;margin-left:auto;text-decoration:none;font-weight:600">Call Now &rarr;</a>
+</div>
+<div class="wrap">
+  <div id="loading">Loading...</div>
+  <div id="app" style="display:none"></div>
+</div>
+<script>
+var J = null, EDIT = null;
+function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
+function inr(v){ v = Math.round(v||0); return v>=1e7 ? "₹"+(v/1e7).toFixed(2)+"Cr" : v>=1e5 ? "₹"+(v/1e5).toFixed(1)+"L" : "₹"+fmt(v); }
+function post(url, body){
+  return fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body||{}) })
+    .then(function(r){ return r.json(); });
+}
+function load(month){
+  fetch("/api/vp" + (month ? "?month=" + month : "")).then(function(r){ return r.json(); }).then(function(j){
+    J = j;
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("app").style.display = "";
+    draw();
+  });
+}
+function draw(){
+  var h = "";
+  if (!J.persistent) h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, so teams and targets vanish on the next deploy. In Railway add a Volume mounted at <b>/data</b>.</div>";
+  if (!J.isVP) h += "<div class='warn'>Read only. Editing is limited to the emails in VP_EMAILS.</div>";
+  h += drawStrip() + drawTeams() + drawDrift() + drawAdmin();
+  document.getElementById("app").innerHTML = h;
+  document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
+    "<span style='font-size:11px;color:#697386;margin-left:8px'>day " + J.dayOfMonth + " of " + J.daysInMonth + "</span>";
+}
+function monthOpts(){
+  var out = "", d = new Date();
+  for (var i = 0; i < 8; i++) {
+    var m = new Date(d.getFullYear(), d.getMonth() - i, 1).toISOString().slice(0, 7);
+    out += "<option value='" + m + "'" + (m === J.month ? " selected" : "") + ">" + m + "</option>";
+  }
+  return out;
+}
+function drawStrip(){
+  var t = 0, a = 0, e = 0, due = 0, done = 0, missed = 0;
+  J.teams.forEach(function(x){ t += x.target; a += x.revenue; e += x.enrolments; due += x.due; done += x.done; missed += x.missed; });
+  var pace = t * (J.dayOfMonth / J.daysInMonth);
+  var att = t ? Math.round(1000 * a / t) / 10 : 0;
+  var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
+  var gap = Math.round(a - pace);
+  return "<div class='strip'><div style='flex:1.6'>" +
+    "<div class='v'>" + inr(a) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + inr(t) + "</span></div>" +
+    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#0091AE'></i></div>" +
+    "<div class='l'>" + att + "% attained · " + el + "% of month elapsed · " +
+    (gap >= 0 ? "<span class='cg'>" + inr(gap) + " ahead</span>" : "<span class='cr'>" + inr(-gap) + " behind</span>") + "</div></div>" +
+    "<div><div class='v'>" + fmt(e) + "</div><div class='l'>Enrolments</div></div>" +
+    "<div><div class='v'>" + fmt(done) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + fmt(due) + "</span></div><div class='l'>Due calls made today</div></div>" +
+    "<div><div class='v " + (missed ? "cr" : "") + "'>" + fmt(missed) + "</div><div class='l'>Missed today</div></div>" +
+    "<div><div class='v " + (J.drift.length ? "cr" : "") + "'>" + fmt(J.drift.length) + "</div><div class='l'>Agents unmapped</div></div>" +
+    "</div>";
+}
+function drawTeams(){
+  var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Pace compares actual against the share of the month elapsed.</div>";
+  if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
+  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target</th><th class='n'>Actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Queue</th><th class='n'>Due today</th><th class='n'>Called</th><th class='n'>Missed</th><th class='n'>Overdue</th><th class='n'>Never called</th></tr></thead><tbody>";
+  J.teams.forEach(function(t){
+    var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
+    h += "<tr><td><b>" + esc(t.name || "(unnamed)") + "</b><div class='mut' style='font-size:11px'>" +
+      esc(t.managerEmail || "no manager email") + " · " + t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
+      "<td class='n'>" + (t.target ? inr(t.target) : "<span class='mut'>not set</span>") + "</td>" +
+      "<td class='n'><b>" + inr(t.revenue) + "</b>" + (t.attainment !== null ? "<div class='mut' style='font-size:11px'>" + t.attainment + "%</div>" : "") + "</td>" +
+      "<td class='n'>" + (t.target ? p : "<span class='mut'>–</span>") + "</td>" +
+      "<td class='n'>" + fmt(t.enrolments) + "</td>" +
+      "<td class='n'>" + fmt(t.queue) + "</td>" +
+      "<td class='n'>" + fmt(t.due) + "</td>" +
+      "<td class='n cg'>" + fmt(t.done) + "</td>" +
+      "<td class='n'>" + (t.missed ? "<span class='pill r'>" + fmt(t.missed) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
+      "<td class='n " + (t.overdue ? "cr" : "mut") + "'>" + fmt(t.overdue) + "</td>" +
+      "<td class='n " + (t.uncalled ? "cr" : "mut") + "'>" + fmt(t.uncalled) + "</td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
+}
+function drawDrift(){
+  if (!J.drift.length) return "<div class='sec'><h2>Mapping</h2><div class='sub cg'>Every lead-owning agent is mapped to a team.</div></div>";
+  var h = "<div class='sec'><h2>Unmapped agents <span class='pill r'>" + J.drift.length + "</span></h2>" +
+    "<div class='sub'>These owners hold leads but belong to no team, so their numbers are missing from every roll-up above. Assign each to a manager.</div>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th>Email</th><th class='n'>Leads</th><th>Status</th><th>Assign to</th></tr></thead><tbody>";
+  J.drift.forEach(function(d){
+    h += "<tr><td><b>" + esc(d.name) + "</b></td><td class='mut'>" + esc(d.email) + "</td>" +
+      "<td class='n'>" + fmt(d.leads) + "</td>" +
+      "<td>" + (d.active ? "<span class='pill g'>active</span>" : "<span class='pill a'>inactive</span>") + "</td>" +
+      "<td><select onchange=\"assign('" + esc(d.id) + "', this.value)\"><option value=''>choose team...</option>" +
+      J.teams.map(function(t){ return "<option value='" + t.id + "'>" + esc(t.name || "(unnamed)") + "</option>"; }).join("") +
+      "</select></td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
+}
+function assign(agentId, teamId){
+  if (!teamId) return;
+  var t = J.teams.filter(function(x){ return x.id === teamId; })[0];
+  if (!t) return;
+  var ids = t.agentIds.concat([agentId]);
+  post("/api/vp/team", { id: teamId, agentIds: ids }).then(function(){ load(J.month); });
+}
+function drawAdmin(){
+  var h = "<div class='sec'><h2>Teams and targets</h2><div class='sub'>A team is one manager. Agents map to exactly one team; creators can belong to one team each.</div>";
+  h += "<div class='grid'>";
+  J.teams.forEach(function(t){ h += teamCard(t); });
+  h += teamCard({ id: "", name: "", managerEmail: "", agentIds: [], creators: [] });
+  h += "</div></div>";
+  return h;
+}
+function teamCard(t){
+  var isNew = !t.id;
+  var tg = (J.targets.teams || {})[t.id] || {};
+  var h = "<div style='border:1px solid #E3E8EE;border-radius:8px;padding:12px 13px'" + (isNew ? " id='newteam'" : "") + ">";
+  h += "<div style='display:flex;gap:8px;margin-bottom:8px'>" +
+    "<input id='n_" + (t.id || "new") + "' placeholder='Team or manager name' value='" + esc(t.name) + "' style='flex:1'>" +
+    "<input id='e_" + (t.id || "new") + "' placeholder='manager@topmate.io' value='" + esc(t.managerEmail) + "' style='flex:1'></div>";
+  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin-bottom:4px'>AGENTS</div><div class='pickbox' id='a_" + (t.id || "new") + "'>";
+  (J.drift || []).concat([]).forEach(function(){});
+  var all = allAgents();
+  all.forEach(function(o){
+    var on = t.agentIds.indexOf(o.id) >= 0;
+    var taken = !on && agentTeam(o.id);
+    h += "<label" + (taken ? " style='color:#B4B4B4'" : "") + "><input type='checkbox' value='" + o.id + "'" + (on ? " checked" : "") + (taken ? " disabled" : "") + "> " +
+      esc(o.name) + (taken ? " <span style='font-size:10.5px'>(" + esc(taken) + ")</span>" : "") + "</label>";
+  });
+  h += "</div>";
+  h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin:8px 0 4px'>CREATORS</div><div class='pickbox' id='c_" + (t.id || "new") + "'>";
+  (J.creators || []).forEach(function(c){
+    var on = t.creators.indexOf(c.u) >= 0;
+    h += "<label><input type='checkbox' value='" + esc(c.u) + "'" + (on ? " checked" : "") + "> " + esc(c.u) + " <span class='mut' style='font-size:10.5px'>" + fmt(c.n) + "</span></label>";
+  });
+  h += "</div>";
+  h += "<div style='display:flex;gap:8px;margin-top:9px;align-items:center'>" +
+    "<span style='font-size:10.5px;color:#8B99A8;font-weight:600'>TARGET ₹</span>" +
+    "<input id='t_" + (t.id || "new") + "' type='number' placeholder='0' value='" + (tg.revenue || "") + "' style='width:110px'>" +
+    "<button class='btn p' onclick=\"saveTeam('" + (t.id || "") + "')\">" + (isNew ? "Create team" : "Save") + "</button>" +
+    (isNew ? "" : "<button class='btn d' onclick=\"delTeam('" + t.id + "')\">Delete</button>") +
+    "</div></div>";
+  return h;
+}
+function allAgents(){
+  var m = {};
+  J.teams.forEach(function(t){ t.agents.forEach(function(a){ m[a.id] = a; }); });
+  (J.drift || []).forEach(function(d){ m[d.id] = { id: d.id, name: d.name, email: d.email, active: d.active }; });
+  return Object.values(m).sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
+}
+function agentTeam(id){
+  var hit = J.teams.filter(function(t){ return t.agentIds.indexOf(id) >= 0; })[0];
+  return hit ? (hit.name || "another team") : "";
+}
+function picked(boxId){
+  var box = document.getElementById(boxId);
+  if (!box) return [];
+  return Array.prototype.slice.call(box.querySelectorAll("input:checked")).map(function(i){ return i.value; });
+}
+function saveTeam(id){
+  var k = id || "new";
+  var body = {
+    id: id,
+    name: document.getElementById("n_" + k).value,
+    managerEmail: document.getElementById("e_" + k).value,
+    agentIds: picked("a_" + k),
+    creators: picked("c_" + k)
+  };
+  var target = document.getElementById("t_" + k).value;
+  post("/api/vp/team", body).then(function(r){
+    if (r.error) { alert(r.error); return; }
+    if (target !== "") {
+      return post("/api/vp/target", { month: J.month, scope: "team", key: r.team.id, revenue: Number(target) });
+    }
+  }).then(function(){ load(J.month); });
+}
+function delTeam(id){
+  if (!confirm("Delete this team? Agents become unmapped.")) return;
+  post("/api/vp/team/delete", { id: id }).then(function(){ load(J.month); });
+}
+load();
+</script>
+</body>
+</html>
