@@ -44,12 +44,7 @@ tr.tot td{background:#F9FAFB;font-weight:700}
 .ptabs{display:flex;gap:6px;margin-bottom:14px}
 .ptabs button{border:1px solid #E5E7EB;background:#fff;color:#6B7280;border-radius:9px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer}
 .ptabs button.on{background:#111827;border-color:#111827;color:#fff}
-.chbox{position:relative;height:235px}
-.chhint{font-size:9.5px;color:#C4C9D2;margin-top:4px}
-.dflex{display:flex;gap:10px;flex-wrap:wrap}
-.dflex>div{flex:1;min-width:180px;position:relative;height:210px}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="hdr">
@@ -76,16 +71,6 @@ tr.tot td{background:#F9FAFB;font-weight:700}
       <span id="syncinfo" style="color:#9CA3AF;font-size:11px"></span>
     </div>
     <div class="cards" id="cards"></div>
-    <div class="grid2">
-      <div class="sec" style="margin-bottom:0"><h3>Revenue trend by month</h3><div class="sub">Enrolment vs balance revenue · click a bar to focus that month (click again to clear)</div><div class="chbox"><canvas id="chMonth"></canvas></div></div>
-      <div class="sec" style="margin-bottom:0"><h3>Loan vs direct revenue by month</h3><div class="sub">From the sales sheet only · click a bar to focus that month</div><div class="chbox"><canvas id="chLoanM"></canvas></div></div>
-    </div>
-    <div class="grid2" style="margin:14px 0">
-      <div class="sec" style="margin-bottom:0"><h3>Top creators by revenue</h3><div class="sub" id="chCrNote">Click a bar to filter that creator</div><div class="chbox"><canvas id="chCr"></canvas></div></div>
-      <div class="sec" style="margin-bottom:0"><h3>Payment mix in current scope</h3><div class="sub">Loan vs direct · enrolment vs balance · HubSpot match classification</div>
-        <div class="dflex"><div><canvas id="chDL"></canvas></div><div><canvas id="chEB"></canvas></div><div><canvas id="chCls"></canvas></div></div>
-      </div>
-    </div>
     <div class="sec">
       <h3>Monthly summary</h3>
       <div class="sub">Every payment from the sheet, classified by HubSpot match: New Lead = contact created in payment month, Old Lead = created earlier, Lead After Payment = contact created after paying, Not in HubSpot = no email/phone match.</div>
@@ -172,7 +157,6 @@ async function render(){
       '<div style="margin-bottom:10px">'+ltbl(L.byMonth,"Month",true)+"</div>"+
       '<div class="grid2"><div>'+ltbl(L.byCreator,"Creator"+(F.m?" ("+mn(F.m)+")":""))+"</div><div>"+ltbl(L.byAgent,"Sales agent"+(F.m?" ("+mn(F.m)+")":""))+"</div></div>"+
       (L.types.length?'<div style="margin-top:10px;font-size:10.5px;color:#6B7280">Booking types in scope'+(F.m?" for "+mn(F.m):"")+": "+chips+"</div>":"");
-    drawCharts(j,L,T);
   })();
   const pm=j.payMonths;
   let mx=1;j.cohort.forEach(function(r){pm.forEach(function(p){mx=Math.max(mx,r.cols[p]||0);});});
@@ -197,73 +181,6 @@ async function render(){
   document.getElementById("load").style.display="none";
   document.getElementById("app").style.display="block";
   if(PVIEW==="conv")renderConv();
-}
-/* ---------- interactive charts (tables stay the source of truth) ---------- */
-const _CH={};
-function mkChart(id,cfg){
-  if(typeof Chart==="undefined")return;
-  const el=document.getElementById(id);
-  if(!el)return;
-  if(_CH[id]){_CH[id].destroy();delete _CH[id];}
-  _CH[id]=new Chart(el.getContext("2d"),cfg);
-}
-function lakh(v){return v>=1e7?"₹"+(v/1e7).toFixed(1)+"Cr":"₹"+(v/1e5).toFixed(1)+"L";}
-const PAL=["#4F46E5","#059669","#D97706","#DC2626","#0891B2","#7C3AED","#DB2777","#65A30D","#475569","#B45309"];
-function fade(hex,a){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return "rgba("+r+","+g+","+b+","+a+")";}
-function baseOpts(moneyY){
-  return {responsive:true,maintainAspectRatio:false,animation:{duration:300},
-    plugins:{legend:{labels:{boxWidth:11,font:{size:10}}},
-      tooltip:{callbacks:{label:function(c){const v=c.parsed.y!==undefined&&c.parsed.y!==null?c.parsed.y:c.parsed;return c.dataset.label+": "+(moneyY?inr(v):v);}}}},
-    scales:{x:{stacked:true,ticks:{font:{size:10}},grid:{display:false}},
-      y:{stacked:true,ticks:{font:{size:10},callback:function(v){return moneyY?lakh(v):v;}},grid:{color:"#F3F4F6"}}}};
-}
-function drawCharts(j,L,T){
-  if(typeof Chart==="undefined")return;
-  const selM=F.m;
-  function mAlpha(k){return !selM||selM===k?1:0.25;}
-  // 1. revenue trend: enrolment vs balance stacked, click = month filter
-  mkChart("chMonth",{type:"bar",
-    data:{labels:j.byMonth.map(function(x){return mn(x.month);}),
-      datasets:[
-        {label:"Enrolment revenue",data:j.byMonth.map(function(x){return x.enrolRev;}),backgroundColor:j.byMonth.map(function(x){return fade("#4F46E5",mAlpha(x.month));})},
-        {label:"Balance revenue",data:j.byMonth.map(function(x){return x.balRev;}),backgroundColor:j.byMonth.map(function(x){return fade("#D97706",mAlpha(x.month));})}
-      ]},
-    options:Object.assign(baseOpts(true),{onClick:function(e,els){
-      if(els&&els.length){const m=j.byMonth[els[0].index].month;F.m=(F.m===m)?"":m;render();}}})});
-  // 2. loan vs direct by month
-  mkChart("chLoanM",{type:"bar",
-    data:{labels:L.byMonth.map(function(x){return mn(x.k);}),
-      datasets:[
-        {label:"Loan revenue",data:L.byMonth.map(function(x){return x.lr;}),backgroundColor:L.byMonth.map(function(x){return fade("#0891B2",mAlpha(x.k));})},
-        {label:"Direct revenue",data:L.byMonth.map(function(x){return x.dr;}),backgroundColor:L.byMonth.map(function(x){return fade("#059669",mAlpha(x.k));})}
-      ]},
-    options:Object.assign(baseOpts(true),{onClick:function(e,els){
-      if(els&&els.length){const m=L.byMonth[els[0].index].k;F.m=(F.m===m)?"":m;render();}}})});
-  // 3. top creators horizontal bars, click = creator filter
-  const crs=j.byCreator.slice(0,10);
-  document.getElementById("chCrNote").textContent=(F.m?"Showing "+mn(F.m)+" · ":"All months · ")+(F.c?"filtered to "+F.c+" (click to clear)":"click a bar to filter that creator");
-  const crOpts=baseOpts(true);
-  crOpts.indexAxis="y";
-  crOpts.scales={x:{ticks:{font:{size:10},callback:function(v){return lakh(v);}},grid:{color:"#F3F4F6"}},y:{ticks:{font:{size:10}},grid:{display:false}}};
-  crOpts.plugins.legend={display:false};
-  crOpts.plugins.tooltip={callbacks:{label:function(c){return inr(c.parsed.x);}}};
-  crOpts.onClick=function(e,els){if(els&&els.length){const c=crs[els[0].index].name;F.c=(F.c===c)?"":c;render();}};
-  mkChart("chCr",{type:"bar",
-    data:{labels:crs.map(function(x){return x.name;}),
-      datasets:[{label:"Revenue",data:crs.map(function(x){return x.revenue;}),backgroundColor:crs.map(function(x,i){return fade(PAL[i%PAL.length],(!F.c||F.c===x.name)?0.9:0.25);})}]},
-    options:crOpts});
-  // 4. doughnuts: loan/direct, enrol/balance, HubSpot classification
-  const LT=L.byMonth.filter(function(x){return !F.m||x.k===F.m;}).reduce(function(t,x){t.lr+=x.lr;t.dr+=x.dr;return t;},{lr:0,dr:0});
-  function dough(id,labels,data,colors,money){
-    mkChart(id,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:colors,borderWidth:1}]},
-      options:{responsive:true,maintainAspectRatio:false,cutout:"58%",
-        plugins:{legend:{position:"bottom",labels:{boxWidth:10,font:{size:9.5}}},
-          tooltip:{callbacks:{label:function(c){const tot=c.dataset.data.reduce(function(a,b){return a+b;},0)||1;
-            return c.label+": "+(money?rupee(c.parsed):c.parsed)+" ("+Math.round(100*c.parsed/tot)+"%)";}}}}}});
-  }
-  dough("chDL",["Loan","Direct"],[LT.lr,LT.dr],["#0891B2","#059669"],true);
-  dough("chEB",["Enrolment rev","Balance rev"],[T.enrolRev||0,T.balRev||0],["#4F46E5","#D97706"],true);
-  dough("chCls",CLS,CLS.map(function(c){return T[c]||0;}),["#059669","#4F46E5","#D97706","#9CA3AF"],false);
 }
 let PVIEW="pay";
 let PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:"",s:""};

@@ -4,7 +4,8 @@
   "description": "Live HubSpot agent lead bucket health dashboard",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "healthcheck": "node -e \"fetch('http://localhost:'+(process.env.PORT||3000)+'/api/health').then(r=>r.json()).then(j=>{if(!j.ok){console.error('missing',j.missing);process.exit(1)}console.log('ok',j.routes,'routes')})\""
   },
   "engines": {
     "node": ">=18"

@@ -12,10 +12,12 @@
  */
 const express = require("express");
 const app = express();
+app.use(function(req, res, next){ return authGate(req, res, next); });
+app.use(express.json());
 
 const TOKEN = process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY;
 const PORT = process.env.PORT || 3000;
-const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "10", 10);
+const SYNC_MINUTES = parseInt(process.env.SYNC_MINUTES || "30", 10);
 const REFRESH_KEY = process.env.REFRESH_KEY || "";
 const PORTAL_ID = process.env.HS_PORTAL_ID || "244132076";
 const UI_DOMAIN = process.env.HS_UI_DOMAIN || "app-na2.hubspot.com";
@@ -28,11 +30,36 @@ const PROPS = [
   "createdate","follow_up_date_and_time","last_call_date_and_time",
   "engagement_stage_last_changed_at","tm_student_or_professional",
   "not_interested_reason","counselling_done","previous_engagement_stage",
+  "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
+  "conversion_probability_reason","ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
+  "call_outcome","reason_for_notinteresteddisqualifiedghosted","notes_last_contacted",
+  "hs_timezone","country",
   "firstname","lastname"
 ];
 const WORKABLE = ["rcb_requested_callback","discovery","program_pitched","pricing_pitched","counselled","Follow up","FU_DNP","FU_RCB","payment_prospect"];
 const CHURN = ["dnp_did_not_pick","ghosted","ni_not_interested","disqualified"];
 const POST_STAGES = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","IFC","FU_DNP","FU_RCB","Follow up"];
+
+/* ---------- Leads-Today checkpoint tracker ---------- */
+const LEADS_TODAY_LIST_ID = process.env.LEADS_TODAY_LIST_ID || "1623"; // ILS segment id for "Leads-Today"
+const CLOSED_STAGES = ["ni_not_interested", "disqualified", "IFC"];
+const CHECKPOINT_TIMES = ["10:00", "15:30", "17:30", "19:30", "21:30"]; // IST, HH:MM 24h
+const LT_PROPS = [
+  "contact_engagement_stage", "follow_up_date_and_time", "last_call_date_and_time",
+  "engagement_stage_last_changed_at", "hubspot_owner_id", "topmate_username",
+  "llm_personalised_email_clicked", "personalised_email_link_clicked_date",
+  "firstname", "lastname"
+];
+let LEADS_TODAY = { date: null, byId: {}, ranToday: {}, loadedAt: null, syncing: false, error: null };
+
+/* ---------- Agent bucket refill: leads parked with Abhishek Pal, tagged to a backup owner ---------- */
+const ABHISHEK_OWNER_ID = process.env.ABHISHEK_OWNER_ID || "165087274";
+const BACKUP_PROPS = [
+  "contact_engagement_stage", "backup_owner", "topmate_username", "createdate",
+  "follow_up_date_and_time", "firstname", "lastname", "international_number", "actual_source"
+];
+let BACKUP = { rows: [], loadedAt: null, syncing: false, error: null };
+let ASSIGN_LOG = [];
 
 const SHEET_CSV_URL = process.env.SHEET_CSV_URL || "";
 
@@ -142,7 +169,10 @@ async function fetchFreshForOwner(ownerId){
         { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
         { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
       ]}],
-      properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source"],
+      properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source",
+        "email", "phone", "conversion_probability_score", "recent_conversion_event_name", "first_conversion_event_name",
+        "follow_up_date_and_time", "last_call_date_and_time", "tm_student_or_professional",
+        "hs_timezone", "country", "conversion_probability_reason"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
     };
@@ -161,6 +191,7 @@ async function sync(){
   CACHE.syncing = true;
   try {
     const owners = await fetchOwners();
+    CACHE.owners = owners; // make owner names available immediately, before the (slower) per-owner contact fetch below finishes
     const ids = Object.keys(owners);
     const contacts = [];
     const fresh = {};
@@ -374,6 +405,161 @@ async function syncCalls(){
   }
 }
 
+/* ---------- Leads-Today: IST time + list membership + checkpoint job ---------- */
+function istParts(d){
+  d = d || new Date();
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = {};
+  fmt.formatToParts(d).forEach(function(p){ parts[p.type] = p.value; });
+  return { date: parts.year + "-" + parts.month + "-" + parts.day, hm: parts.hour + ":" + parts.minute };
+}
+
+async function fetchListMemberIds(listId){
+  const ids = [];
+  let after;
+  do {
+    const j = await hs("/crm/v3/lists/" + listId + "/memberships?limit=100" + (after ? "&after=" + after : ""));
+    (j.results || []).forEach(function(r){ ids.push(String(r.recordId || r.id)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+  return ids;
+}
+
+async function batchReadLeadsToday(ids){
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const inputs = ids.slice(i, i + 50).map(function(id){ return { id: id }; });
+    try {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST", body: JSON.stringify({ properties: LT_PROPS, inputs: inputs }) });
+      (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    } catch (e) { console.error("leads-today batch read @" + i + ": " + e.message); }
+    await sleep(130);
+  }
+  return out;
+}
+
+async function runLeadsTodayCheckpoint(label){
+  if (!TOKEN) { LEADS_TODAY.error = "HUBSPOT_TOKEN not set"; return; }
+  if (LEADS_TODAY.syncing) return;
+  LEADS_TODAY.syncing = true;
+  try {
+    const today = istParts().date;
+    if (LEADS_TODAY.date !== today) {
+      LEADS_TODAY = { date: today, byId: {}, ranToday: {}, loadedAt: null, syncing: true, error: null };
+    }
+    const listIds = await fetchListMemberIds(LEADS_TODAY_LIST_ID);
+    const trackedIds = Object.keys(LEADS_TODAY.byId);
+    const idSet = Array.from(new Set(listIds.concat(trackedIds)));
+    const rows = await batchReadLeadsToday(idSet);
+    const now = Date.now();
+    rows.forEach(function(c){
+      const stage = c.contact_engagement_stage || "";
+      const fu = ts(c.follow_up_date_and_time);
+      const lastCall = ts(c.last_call_date_and_time);
+      const stageEnteredAt = ts(c.engagement_stage_last_changed_at);
+      const clicked = String(c.llm_personalised_email_clicked).toLowerCase() === "true";
+      const clickedAt = ts(c.personalised_email_link_clicked_date);
+      let rec = LEADS_TODAY.byId[c.id];
+      if (!rec) {
+        rec = LEADS_TODAY.byId[c.id] = {
+          id: c.id,
+          name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || ("Contact " + c.id),
+          owner: c.hubspot_owner_id || "",
+          creator: c.topmate_username || "",
+          firstSeenAt: now,
+          firstSeenLabel: label,
+          baselineStage: stage,
+          baselineFollowUp: fu
+        };
+      }
+      rec.currentStage = stage;
+      rec.lastCallAt = lastCall;
+      rec.stageEnteredAt = stageEnteredAt;
+      rec.emailClicked = rec.emailClicked || clicked;
+      if (clickedAt && (!rec.emailClickedAt || clickedAt > rec.emailClickedAt)) rec.emailClickedAt = clickedAt;
+      rec.lastCheckedAt = now;
+      rec.lastCheckedLabel = label;
+      if (rec.baselineFollowUp && rec.baselineFollowUp > now) rec.status = "excluded_future_followup";
+      else if (rec.lastCallAt && rec.lastCallAt > rec.firstSeenAt) rec.status = "worked";
+      else rec.status = "flagged";
+    });
+    LEADS_TODAY.ranToday[label] = now;
+    LEADS_TODAY.loadedAt = new Date().toISOString();
+    LEADS_TODAY.syncing = false;
+    LEADS_TODAY.error = null;
+    console.log("Leads-Today checkpoint [" + label + "]: " + listIds.length + " live list members, " + Object.keys(LEADS_TODAY.byId).length + " tracked today");
+  } catch (e) {
+    LEADS_TODAY.syncing = false;
+    LEADS_TODAY.error = e.message;
+    console.error("Leads-Today checkpoint failed: " + e.message);
+  }
+}
+
+function maybeRunLeadsTodayCheckpoint(){
+  const p = istParts();
+  if (CHECKPOINT_TIMES.indexOf(p.hm) < 0) return;
+  if (LEADS_TODAY.date === p.date && LEADS_TODAY.ranToday[p.hm]) return;
+  runLeadsTodayCheckpoint(p.hm);
+}
+
+function mostRecentPassedCheckpoint(hm){
+  // greatest CHECKPOINT_TIMES entry <= hm (both "HH:MM" strings, safe to compare lexically)
+  let best = null;
+  CHECKPOINT_TIMES.forEach(function(c){ if (c <= hm) best = c; });
+  return best;
+}
+
+function bootstrapLeadsTodayOnBoot(){
+  // Railway restarts (redeploys, crashes) wipe the in-memory tracker. Rather than
+  // leaving today blank until the next scheduled checkpoint, immediately catch up
+  // on whichever checkpoint should have already run today.
+  const p = istParts();
+  const cp = mostRecentPassedCheckpoint(p.hm);
+  if (cp) runLeadsTodayCheckpoint(cp);
+}
+
+/* ---------- bucket refill: fetch + assign ---------- */
+async function fetchBackupRange(from, to, sink){
+  const filters = [
+    { propertyName: "hubspot_owner_id", operator: "EQ", value: ABHISHEK_OWNER_ID },
+    { propertyName: "backup_owner", operator: "HAS_PROPERTY" }
+  ];
+  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
+  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters: filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && from && to && (to - from) > 86400000) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchBackupRange(from, mid, sink);
+    await fetchBackupRange(mid, to, sink);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters: filters }], properties: BACKUP_PROPS, sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+}
+
+async function syncBackupPool(){
+  if (!TOKEN || BACKUP.syncing) return;
+  BACKUP.syncing = true;
+  try {
+    const rows = [];
+    await fetchBackupRange(Date.parse("2024-01-01"), Date.now() + 86400000, function(r){ rows.push(r); });
+    BACKUP = { rows: rows, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Backup pool synced: " + rows.length + " contacts parked with Abhishek Pal, tagged to a backup owner");
+  } catch (e) {
+    BACKUP.syncing = false; BACKUP.error = e.message;
+    console.error("Backup pool sync failed: " + e.message);
+  }
+}
+
 /* ---------- aggregation helpers ---------- */
 function ts(v){ if (!v) return 0; const n = Date.parse(v); if (!isNaN(n)) return n; const f = parseFloat(v); return (!isNaN(f) && f > 1e11) ? f : 0; }
 function num(v){ const f = parseFloat(v); return isNaN(f) ? 0 : f; }
@@ -459,11 +645,27 @@ function agentMetrics(rows){
 }
 
 /* ---------- API ---------- */
+const REQUIRED_ROUTES = ["/api/meta", "/api/agents", "/api/callnow", "/api/callnow/leads", "/api/vp", "/api/payment-analysis", "/api/me"];
+app.get("/api/health", function(req, res){
+  const have = [];
+  (app._router && app._router.stack || []).forEach(function(l){
+    if (l.route && l.route.path) have.push(l.route.path);
+  });
+  const missing = REQUIRED_ROUTES.filter(function(r){ return have.indexOf(r) < 0; });
+  if (missing.length) return res.status(500).json({ ok: false, missing: missing });
+  res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()) });
+});
+
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
   contacts: CACHE.contacts.length, portalId: PORTAL_ID, uiDomain: UI_DOMAIN,
   sheetLoadedAt: SHEET.loadedAt, sheetRows: SHEET.rows.length, sheetError: SHEET.error,
   cohortLoadedAt: COHORT.loadedAt, cohortContacts: COHORT.emails.size, cohortSyncing: COHORT.syncing, cohortError: COHORT.error,
-  counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error }));
+  counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
+  leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
+  backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error,
+  formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error,
+  unownedLoadedAt: UNOWNED.loadedAt, unownedCount: UNOWNED.rows.length, unownedSyncing: UNOWNED.syncing, unownedError: UNOWNED.error,
+  pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing, pfreshError: PFRESH.error }));
 
 app.get("/api/enrolments", (req, res) => {
   const creator = req.query.creator || "";
@@ -662,11 +864,13 @@ app.get("/api/payment-analysis", (req, res) => {
     if (rec) cls = cym === pym ? "New Lead" : (cym < pym ? "Old Lead" : "Lead After Payment");
     const key = (r.creator_username || "") + "|" + (em || ph || r.id);
     const isEnrol = !seen.has(key); seen.add(key);
-    const bt = (r.booking_type || "").trim(), st2 = (r.status || "").trim();
-    const isLoan = bt.toLowerCase().indexOf("loan") >= 0 || st2.toLowerCase().indexOf("loan") >= 0;
     return { pym, cym, price: r.price, creator: r.creator_username || "(none)", agent: r.sales_rep || r.owner_email || "(none)",
       src: rec ? src : "Not in HubSpot", seg: rec ? seg : "Unknown", cls, isEnrol,
-      loan: isLoan, btype: bt || st2 || "(blank)" };
+      loan: (function(){
+        const bt = String(r.booking_type || "").toLowerCase(), st2 = String(r.status || "").toLowerCase();
+        return bt.indexOf("loan") >= 0 || st2.indexOf("loan") >= 0;
+      })(),
+      btype: String(r.booking_type || "").trim() || String(r.status || "").trim() || "(blank)" };
   }).filter(p => p.pym &&
     (!fCreator || p.creator === fCreator) &&
     (!fSource || p.src === fSource) &&
@@ -689,6 +893,29 @@ app.get("/api/payment-analysis", (req, res) => {
     }
   });
 
+  // cohort matrix: rows = contact create month, cols = first-payment month (+ balance payments)
+  const payMonths = Object.keys(byMonth).sort();
+  const cohortEnrol = {}, cohortBal = {}; // cym -> pym -> n
+  pays.forEach(p => {
+    if (!p.cym) return;
+    const tgt = p.isEnrol ? cohortEnrol : cohortBal;
+    if (!tgt[p.cym]) tgt[p.cym] = { _n: 0 };
+    tgt[p.cym][p.pym] = (tgt[p.cym][p.pym] || 0) + 1;
+    tgt[p.cym]._n++;
+  });
+  const hsByYm = {};
+  Object.keys(COHORT.counts).forEach(cr => {
+    if (fCreator && cr !== fCreator) return;
+    Object.keys(COHORT.counts[cr]).forEach(ym => {
+      Object.keys(COHORT.counts[cr][ym]).forEach(src => {
+        if (fSource && src !== fSource) return;
+        Object.keys(COHORT.counts[cr][ym][src]).forEach(seg => {
+          if (fSegment && seg !== fSegment) return;
+          hsByYm[ym] = (hsByYm[ym] || 0) + COHORT.counts[cr][ym][src][seg];
+        });
+      });
+    });
+  });
   // loan vs direct bifurcation, from the sales sheet only (booking_type / status contains "loan")
   const mSel2 = req.query.month || "";
   const loanSplit = { byMonth: {}, byCreator: {}, byAgent: {}, types: {} };
@@ -714,29 +941,6 @@ app.get("/api/payment-analysis", (req, res) => {
     types: Object.values(loanSplit.types).sort((a, b) => b.rev - a.rev)
   };
 
-  // cohort matrix: rows = contact create month, cols = first-payment month (+ balance payments)
-  const payMonths = Object.keys(byMonth).sort();
-  const cohortEnrol = {}, cohortBal = {}; // cym -> pym -> n
-  pays.forEach(p => {
-    if (!p.cym) return;
-    const tgt = p.isEnrol ? cohortEnrol : cohortBal;
-    if (!tgt[p.cym]) tgt[p.cym] = { _n: 0 };
-    tgt[p.cym][p.pym] = (tgt[p.cym][p.pym] || 0) + 1;
-    tgt[p.cym]._n++;
-  });
-  const hsByYm = {};
-  Object.keys(COHORT.counts).forEach(cr => {
-    if (fCreator && cr !== fCreator) return;
-    Object.keys(COHORT.counts[cr]).forEach(ym => {
-      Object.keys(COHORT.counts[cr][ym]).forEach(src => {
-        if (fSource && src !== fSource) return;
-        Object.keys(COHORT.counts[cr][ym][src]).forEach(seg => {
-          if (fSegment && seg !== fSegment) return;
-          hsByYm[ym] = (hsByYm[ym] || 0) + COHORT.counts[cr][ym][src][seg];
-        });
-      });
-    });
-  });
   const cohortMonths = Array.from(new Set(Object.keys(hsByYm).concat(Object.keys(cohortEnrol)).concat(Object.keys(cohortBal)))).sort();
   const cohort = cohortMonths.map(cym => {
     const row = { cym, hs: hsByYm[cym] || 0,
@@ -924,94 +1128,6 @@ app.get("/api/conversion", (req, res) => {
     bySource: out(bySource, "source", null, l2e.bySource),
     byCreateMonth: out(byCreateMonth, "month", null, l2e.byCreateMonth).sort((a, b) => (a.month < b.month ? -1 : 1)),
     byMonth: out(byMonth, "month").sort((a, b) => (a.month < b.month ? -1 : 1))
-  });
-});
-
-function plannerMonth(ym, fSrc){
-  // funnel metrics per creator for one month: leads created, counsellings, enrolments, revenue
-  const per = {};
-  const row = cr => per[cr] || (per[cr] = { leads: 0, couns: 0, enr: 0, rev: 0 });
-  Object.keys(COHORT.counts).forEach(cr => {
-    const m = COHORT.counts[cr][ym];
-    if (!m) return;
-    let n = 0;
-    Object.keys(m).forEach(src => { if (fSrc && src !== fSrc) return; Object.keys(m[src]).forEach(seg => { n += m[src][seg]; }); });
-    row(cr).leads = n;
-  });
-  CACHE.contacts.forEach(c => {
-    if (!srcMatch(c, fSrc)) return;
-    const ts0 = COUNSEL.byId[c.id];
-    if (ts0 && ymOf(ts0) === ym) row(c.topmate_username || "(no creator)").couns++;
-  });
-  const seen = new Set();
-  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
-    if ((r.date || "").slice(0, 7) !== ym) { // still need seen keys from earlier months for first-payment logic
-      if ((r.date || "").slice(0, 7) < ym) {
-        const em0 = (r.consumer_email || "").toLowerCase(), ph0 = normPhone(r.consumer_phone);
-        seen.add((r.creator_username || "") + "|" + (em0 || ph0 || r.id));
-      }
-      return;
-    }
-    const cr = r.creator_username || "(no creator)";
-    if (fSrc && !sheetSrcMatch(r, fSrc)) return;
-    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
-    const key = cr + "|" + (em || ph || r.id);
-    row(cr).rev += r.price;
-    if (!seen.has(key)) { seen.add(key); row(cr).enr++; }
-  });
-  Object.keys(per).forEach(cr => {
-    const p = per[cr];
-    p.ticket = p.enr ? Math.round(p.rev / p.enr) : 0;
-    p.l2c = p.leads ? +(100 * p.couns / p.leads).toFixed(2) : null;
-    p.c2e = p.couns ? +(100 * p.enr / p.couns).toFixed(2) : null;
-  });
-  return per;
-}
-
-app.get("/api/planner", (req, res) => {
-  const baseYm = req.query.baseline || BASELINE_MONTH;
-  const fSrcP = req.query.src || "";
-  const curYm = new Date().toISOString().slice(0, 7);
-  const base = plannerMonth(baseYm, fSrcP);
-  const cur = plannerMonth(curYm, fSrcP);
-  function totals(per){
-    const t = { leads: 0, couns: 0, enr: 0, rev: 0 };
-    Object.values(per).forEach(p => { t.leads += p.leads; t.couns += p.couns; t.enr += p.enr; t.rev += p.rev; });
-    t.ticket = t.enr ? Math.round(t.rev / t.enr) : 0;
-    t.l2c = t.leads ? +(100 * t.couns / t.leads).toFixed(2) : null;
-    t.c2e = t.couns ? +(100 * t.enr / t.couns).toFixed(2) : null;
-    return t;
-  }
-  function callsFor(ym, counsTotal){
-    const c = CALLS.byMonth[ym];
-    if (!c || !c.att) return null;
-    const agents = {};
-    Object.keys(c.byOwner).forEach(oid => {
-      const o = CACHE.owners[oid];
-      agents[oid] = { name: o ? o.name : (oid || "(unassigned)"), att: c.byOwner[oid].att, conn: c.byOwner[oid].conn,
-        connectivity: c.byOwner[oid].att ? +(100 * c.byOwner[oid].conn / c.byOwner[oid].att).toFixed(1) : 0 };
-    });
-    return { att: c.att, conn: c.conn, connectivity: +(100 * c.conn / c.att).toFixed(1),
-      callsPerCouns: counsTotal ? +(c.att / counsTotal).toFixed(1) : null,
-      byAgent: Object.values(agents).sort((a, b) => b.att - a.att).slice(0, 40), partial: !!c.partial };
-  }
-  // agent capacity from baseline counsellings
-  const counsByAgentBase = {};
-  CACHE.contacts.forEach(c => {
-    const ts0 = COUNSEL.byId[c.id];
-    if (ts0 && ymOf(ts0) === baseYm) counsByAgentBase[c.hubspot_owner_id] = (counsByAgentBase[c.hubspot_owner_id] || 0) + 1;
-  });
-  const activeCounsellors = Object.values(counsByAgentBase).filter(n => n >= 3).length;
-  const baseTot = totals(base);
-  const now = new Date();
-  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  res.json({
-    baseline: { ym: baseYm, perCreator: base, totals: baseTot, calls: callsFor(baseYm, baseTot.couns),
-      agents: { counsellors: activeCounsellors, counsPerAgent: activeCounsellors ? +(baseTot.couns / activeCounsellors).toFixed(1) : null } },
-    current: { ym: curYm, perCreator: cur, totals: totals(cur), calls: callsFor(curYm, totals(cur).couns),
-      day: now.getDate(), dim, frac: +(now.getDate() / dim).toFixed(3) },
-    sources: srcOptions(), filterSrc: fSrcP,
-    loadedAt: { hubspot: CACHE.loadedAt, sheet: SHEET.loadedAt, counsel: COUNSEL.loadedAt, calls: CALLS.loadedAt, callsSyncing: CALLS.syncing }
   });
 });
 
@@ -1208,15 +1324,1210 @@ app.get("/api/summary", (req, res) => {
   res.json({ cells: Object.values(cells) });
 });
 
+app.get("/api/leads-today", (req, res) => {
+  const rows = Object.values(LEADS_TODAY.byId);
+  const leads = rows.map(function(r){
+    return {
+      id: r.id, name: r.name, creator: r.creator,
+      owner: r.owner, ownerName: (CACHE.owners[r.owner] && CACHE.owners[r.owner].name) || r.owner || "(unassigned)",
+      ownerEmail: (CACHE.owners[r.owner] && CACHE.owners[r.owner].email) || "",
+      firstSeenAt: r.firstSeenAt, firstSeenLabel: r.firstSeenLabel,
+      baselineStage: r.baselineStage, currentStage: r.currentStage,
+      baselineFollowUp: r.baselineFollowUp, lastCallAt: r.lastCallAt,
+      status: r.status, emailClicked: r.emailClicked, emailClickedAt: r.emailClickedAt,
+      emailOk: r.emailClicked ? (CLOSED_STAGES.indexOf(r.currentStage) >= 0 && r.stageEnteredAt > r.emailClickedAt) : null
+    };
+  });
+  const summary = {
+    total: leads.length,
+    worked: leads.filter(function(l){ return l.status === "worked"; }).length,
+    flagged: leads.filter(function(l){ return l.status === "flagged"; }).length,
+    excluded: leads.filter(function(l){ return l.status === "excluded_future_followup"; }).length
+  };
+  const moves = {};
+  leads.forEach(function(l){
+    const key = (l.baselineStage || "(fresh/blank)") + "|" + (l.currentStage || "(fresh/blank)");
+    moves[key] = (moves[key] || 0) + 1;
+  });
+  const movement = Object.entries(moves).map(function(e){
+    const k = e[0], n = e[1], parts = k.split("|");
+    return { from: parts[0], to: parts[1], count: n, changed: parts[0] !== parts[1] };
+  }).sort(function(a, b){ return b.count - a.count; });
+  const clicked = leads.filter(function(l){ return l.emailClicked; });
+  const emailClicks = {
+    total: clicked.length,
+    flagged: clicked.filter(function(l){ return !l.emailOk; }).length,
+    rows: clicked.map(function(l){ return { id: l.id, name: l.name, creator: l.creator, ownerName: l.ownerName, currentStage: l.currentStage, emailClickedAt: l.emailClickedAt, ok: l.emailOk }; })
+  };
+  res.json({
+    date: LEADS_TODAY.date, loadedAt: LEADS_TODAY.loadedAt, syncing: LEADS_TODAY.syncing, error: LEADS_TODAY.error,
+    checkpoints: CHECKPOINT_TIMES, ranToday: LEADS_TODAY.ranToday,
+    summary: summary, movement: movement, leads: leads, emailClicks: emailClicks,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.post("/api/leads-today/checkpoint", (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const label = req.query.label || istParts().hm;
+  runLeadsTodayCheckpoint(label);
+  res.json({ ok: true, label: label });
+});
+
+app.get("/api/leads-today/checkpoint", (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const label = req.query.label || istParts().hm;
+  runLeadsTodayCheckpoint(label);
+  res.json({ ok: true, label: label, note: "manual test run; visit /leads_today.html shortly after to see results" });
+});
+
+app.get("/api/bucket-refill", (req, res) => {
+  const poolByAgent = {};
+  BACKUP.rows.forEach(function(r){
+    const agent = r.backup_owner || "";
+    if (!agent) return;
+    if (!poolByAgent[agent]) poolByAgent[agent] = { total: 0, byStage: {} };
+    const p = poolByAgent[agent];
+    p.total++;
+    const st = r.contact_engagement_stage || "(fresh/no stage)";
+    p.byStage[st] = (p.byStage[st] || 0) + 1;
+  });
+  const workableByAgent = {};
+  CACHE.contacts.forEach(function(c){
+    if (WORKABLE.indexOf(c.contact_engagement_stage) >= 0) workableByAgent[c.hubspot_owner_id] = (workableByAgent[c.hubspot_owner_id] || 0) + 1;
+  });
+  const freshByAgent = {};
+  Object.keys(CACHE.fresh || {}).forEach(function(oid){ freshByAgent[oid] = (CACHE.fresh[oid] || []).length; });
+  const agents = Object.keys(CACHE.owners).filter(function(id){ return id !== ABHISHEK_OWNER_ID; }).map(function(id){
+    const o = CACHE.owners[id];
+    const workable = workableByAgent[id] || 0;
+    const fresh = freshByAgent[id] || 0;
+    const pool = poolByAgent[id] || { total: 0, byStage: {} };
+    return {
+      id: id, name: o.name, active: o.active,
+      workable: workable, serviceable: workable + fresh,
+      target: 100, needsRefill: workable < 30,
+      pool: pool
+    };
+  }).sort(function(a, b){
+    if (a.needsRefill !== b.needsRefill) return a.needsRefill ? -1 : 1;
+    return b.pool.total - a.pool.total;
+  });
+  res.json({
+    loadedAt: BACKUP.loadedAt, syncing: BACKUP.syncing, error: BACKUP.error,
+    abhishekOwnerId: ABHISHEK_OWNER_ID, totalPool: BACKUP.rows.length,
+    agents: agents,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.get("/api/bucket-refill/leads", (req, res) => {
+  const agent = req.query.agent || "";
+  const rows = BACKUP.rows.filter(function(r){ return r.backup_owner === agent; }).map(function(r){
+    return {
+      id: r.id, name: ((r.firstname || "") + " " + (r.lastname || "")).trim() || ("Contact " + r.id),
+      creator: r.topmate_username || "", stage: r.contact_engagement_stage || "(fresh/no stage)",
+      createdate: r.createdate, followUp: r.follow_up_date_and_time,
+      workable: WORKABLE.indexOf(r.contact_engagement_stage) >= 0
+    };
+  });
+  res.json({ agent: agent, leads: rows });
+});
+
+app.post("/api/bucket-refill/assign", async (req, res) => {
+  if (REFRESH_KEY && req.query.key !== REFRESH_KEY) return res.status(403).json({ ok: false, error: "bad key" });
+  const agentId = String((req.body && req.body.agentOwnerId) || "");
+  const leadIds = Array.isArray(req.body && req.body.leadIds) ? req.body.leadIds.map(String) : [];
+  if (!agentId || !leadIds.length) return res.status(400).json({ ok: false, error: "agentOwnerId and leadIds required" });
+  const p = istParts();
+  const tempTagMs = Date.UTC(parseInt(p.date.slice(0, 4), 10), parseInt(p.date.slice(5, 7), 10) - 1, parseInt(p.date.slice(8, 10), 10));
+  try {
+    for (let i = 0; i < leadIds.length; i += 100) {
+      const inputs = leadIds.slice(i, i + 100).map(function(id){
+        return { id: id, properties: { hubspot_owner_id: agentId, temp_tag: String(tempTagMs) } };
+      });
+      await hs("/crm/v3/objects/contacts/batch/update", { method: "POST", body: JSON.stringify({ inputs: inputs }) });
+      await sleep(150);
+    }
+    const assignedAt = new Date().toISOString();
+    const agentName = (CACHE.owners[agentId] && CACHE.owners[agentId].name) || agentId;
+    ASSIGN_LOG.unshift({ agentId: agentId, agentName: agentName, count: leadIds.length, leadIds: leadIds, assignedAt: assignedAt, tempTagDate: p.date });
+    ASSIGN_LOG = ASSIGN_LOG.slice(0, 200);
+    BACKUP.rows = BACKUP.rows.filter(function(r){ return leadIds.indexOf(r.id) < 0; });
+    res.json({ ok: true, assigned: leadIds.length, agentId: agentId, tempTagDate: p.date });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get("/api/bucket-refill/log", (req, res) => res.json({ log: ASSIGN_LOG }));
+
+/* ---------- Call-now: waitlist form leads, conversion score, international ---------- */
+const WAITLIST_FORMS = [
+  { guid: "09fd2bc5-c716-4e70-ae2c-18aaec35eb4a", label: "Payal Waitlist", match: "payal waitlist" },
+  { guid: "5bed7f99-9a35-4355-8695-23df4bab2618", label: "Ayush Waitlist", match: "ayush waitlist" },
+  { guid: "f56bd773-4d5b-43bb-b4c4-6bfe657bcd10", label: "Priyanka Waitlist", match: "priyanka waitlist" }
+];
+// HubSpot list 1611 ("Conversion score > 6") == conversion_probability_score >= 6 (verified: both 1,722 contacts)
+const CONV_SCORE_MIN = parseInt(process.env.CONV_SCORE_MIN || "6", 10);
+// Above this many leads owed in a day, an agent cannot realistically work the queue,
+// so the manager view flags them for parking and reassignment.
+const OVERLOAD_LIMIT = parseInt(process.env.OVERLOAD_LIMIT || "100", 10);
+let FORMS = { byEmail: new Map(), source: "", counts: {}, loadedAt: null, syncing: false, error: null };
+
+async function fetchFormSubmissions(guid){
+  const out = [];
+  let after, pages = 0;
+  do {
+    const j = await hs("/form-integrations/v1/submissions/forms/" + guid + "?limit=50" + (after ? "&after=" + encodeURIComponent(after) : ""));
+    (j.results || []).forEach(function(r){
+      let em = "";
+      (r.values || []).forEach(function(v){ if (String(v.name || "").toLowerCase() === "email") em = String(v.value || "").trim().toLowerCase(); });
+      if (em) out.push({ email: em, at: r.submittedAt || 0 });
+    });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    pages++;
+    await sleep(150);
+  } while (after && pages < 200);
+  return out;
+}
+
+const FORMS_HOURS = parseFloat(process.env.FORMS_HOURS || "6");
+async function syncForms(force){
+  if (!TOKEN || FORMS.syncing) return;
+  const ageH = FORMS.loadedAt ? (Date.now() - Date.parse(FORMS.loadedAt)) / 3600000 : 1e9;
+  // Waitlist submissions barely change and the endpoint is quota-expensive: refresh at most
+  // every FORMS_HOURS, and never discard a good snapshot because a later pull failed.
+  if (!force && FORMS.byEmail.size > 0 && ageH < FORMS_HOURS && !FORMS.error) return;
+  FORMS.syncing = true;
+  try {
+  const map = new Map();
+  const counts = {};
+  let ok = 0, err = "";
+  for (const f of WAITLIST_FORMS) {
+    try {
+      const subs = await fetchFormSubmissions(f.guid);
+      subs.forEach(function(s){
+        const k = String(s.email || "").toLowerCase();
+        if (!k) return;
+        if (!map.has(k)) map.set(k, { labels: {}, n: 0, last: 0 });
+        const e = map.get(k), at = ts(s.at);
+        e.n++;
+        if (at > e.last) e.last = at;
+        if (!e.labels[f.label] || at > e.labels[f.label]) e.labels[f.label] = at;
+      });
+      counts[f.label] = subs.length;
+      ok++;
+    } catch (e) { counts[f.label] = null; err = e.message; }
+  }
+  const quota = /429|daily limit|rate limit/i.test(err);
+  const denied = /\b40[13]\b|scope/i.test(err);
+  let note = null;
+  if (ok < WAITLIST_FORMS.length) {
+    note = quota
+      ? "HubSpot daily API limit reached, so waitlist form data was not refreshed this cycle. Showing the last good snapshot; it retries automatically."
+      : denied
+        ? "Forms submissions API denied: the private app is missing the 'forms' scope. Falling back to first and recent conversion event names."
+        : ("Waitlist form refresh failed: " + err);
+    note = note.slice(0, 300);
+  }
+  // A failed pull must never wipe a good snapshot.
+  const keepOld = ok === 0 && FORMS.byEmail.size > 0;
+  FORMS = {
+    byEmail: keepOld ? FORMS.byEmail : map,
+    counts: keepOld ? FORMS.counts : counts,
+    source: ok === WAITLIST_FORMS.length ? "forms-api" : (keepOld ? "forms-api (cached)" : (ok > 0 ? "forms-api (partial)" : "conversion-event fallback only")),
+    loadedAt: keepOld ? FORMS.loadedAt : new Date().toISOString(),
+    syncing: false, error: note
+  };
+  console.log("Forms synced: " + map.size + " emails across " + ok + "/" + WAITLIST_FORMS.length + " waitlist forms (" + FORMS.source + ")");
+  } finally { FORMS.syncing = false; }
+}
+
+// A lead counts as a form lead if the Forms API saw a submission on its email, OR its first/recent
+// conversion event names it. The union keeps the view working even without the forms scope.
+function formsOf(c){
+  const out = {};
+  const em = String(c.email || "").trim().toLowerCase();
+  const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  if (hit) Object.keys(hit.labels || {}).forEach(function(k){ out[k] = 1; });
+  const names = (String(c.recent_conversion_event_name || "") + " ~ " + String(c.first_conversion_event_name || "")).toLowerCase();
+  WAITLIST_FORMS.forEach(function(f){ if (names.indexOf(f.match) >= 0) out[f.label] = 1; });
+  return Object.keys(out);
+}
+// How many waitlist submissions this person made, and when the latest one was.
+// More than one means they raised their hand again, which matters whatever stage they sit in.
+function formMeta(c){
+  const em = String(c.email || "").trim().toLowerCase();
+  const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  return { n: hit ? (hit.n || 0) : 0, last: hit ? (hit.last || 0) : 0 };
+}
+
+/* Leads that no active agent is working: unassigned, or held by a deactivated owner.
+   Unassigned leads are NOT in CACHE (that sync is partitioned per owner), so pull the
+   priority ones separately: conversion score >= threshold, plus any waitlist form
+   submitter we could not match to a pooled contact. Both sets are bounded (~200 + ~60). */
+let UNOWNED = { rows: [], loadedAt: null, syncing: false, error: null };
+
+async function fetchUnownedScored(){
+  const out = [];
+  let after;
+  do {
+    const body = {
+      filterGroups: [{ filters: [
+        { propertyName: "hubspot_owner_id", operator: "NOT_HAS_PROPERTY" },
+        { propertyName: "conversion_probability_score", operator: "GTE", value: String(CONV_SCORE_MIN) }
+      ]}],
+      properties: PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+      limit: 100, after: after
+    };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(140);
+    if (out.length >= 9500) break;
+  } while (after);
+  return out;
+}
+
+async function fetchContactsByEmails(emails){
+  const out = [];
+  for (let i = 0; i < emails.length; i += 50) {
+    const batch = emails.slice(i, i + 50);
+    try {
+      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: [{ propertyName: "email", operator: "IN", values: batch }] }],
+        properties: PROPS, limit: 100
+      })});
+      (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    } catch (e) { console.error("form email lookup failed: " + e.message); }
+    await sleep(140);
+  }
+  return out;
+}
+
+async function syncUnowned(){
+  if (!TOKEN || UNOWNED.syncing) return;
+  UNOWNED.syncing = true;
+  try {
+    const rows = [];
+    const seen = {};
+    const push = function(r){ if (!seen[r.id]) { seen[r.id] = 1; rows.push(r); } };
+    (await fetchUnownedScored()).forEach(push);
+    const emails = Array.from(FORMS.byEmail.keys());
+    if (emails.length) (await fetchContactsByEmails(emails)).forEach(push);
+    UNOWNED = { rows: rows, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Unowned/priority pool synced: " + rows.length + " contacts");
+  } catch (e) {
+    UNOWNED.syncing = false; UNOWNED.error = e.message;
+    console.error("Unowned sync failed: " + e.message);
+  }
+}
+
+const CN_DEFAULT_STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","dnp_other","__fresh"];
+const CN_OTHER_STAGES = ["IFC","ghosted","ni_not_interested","disqualified","deal_won"];
+// Rescue stages: churned stages that still belong in the must-call set, but ONLY for leads that
+// qualify on form submission or conversion score. International alone does not rescue a lead here.
+const CN_RESCUE_STAGES = ["dnp_did_not_pick"];
+function cnRescued(r){ return r.forms.length > 0 || r.score >= CONV_SCORE_MIN; }
+const CN_STAGE_LABELS = {
+  counselled: "Counselled", program_pitched: "Program pitched", discovery: "Discovery",
+  pricing_pitched: "Pricing pitched", "Follow up": "Follow up", payment_prospect: "Payment prospect",
+  FU_DNP: "FU - DNP", FU_RCB: "FU - RCB", rcb_requested_callback: "RCB - Requested callback",
+  __fresh: "Fresh leads", IFC: "Interested in future", dnp_did_not_pick: "DNP (form or score)", dnp_other: "DNP (everything else)",
+  ghosted: "Ghosted", ni_not_interested: "NI - Not interested", disqualified: "Disqualified", deal_won: "Deal won"
+};
+
+/* On-demand single-owner refresh: a bulk reassignment in HubSpot otherwise takes a full
+   10-minute sync pass to show up. Re-pulling one owner is 1-2 API pages, so an agent can
+   see their current bucket in seconds. */
+let OWNER_REFRESH = {};
+let POOL_REV = 0;
+async function refreshOwner(ownerId){
+  const rows = await fetchContactsForOwner(ownerId);
+  let fr = [];
+  try { fr = await fetchFreshForOwner(ownerId); } catch (e) { console.error("fresh refresh failed: " + e.message); }
+  CACHE.contacts = CACHE.contacts.filter(function(c){ return String(c.hubspot_owner_id || "") !== String(ownerId); }).concat(rows);
+  const nf = Object.assign({}, CACHE.fresh || {});
+  if (fr.length) nf[ownerId] = fr; else delete nf[ownerId];
+  CACHE.fresh = nf;
+  POOL_REV++;
+  OWNER_REFRESH[ownerId] = new Date().toISOString();
+  return { staged: rows.length, fresh: fr.length };
+}
+
+/* Fresh leads for the creators the floor actually works. The per-owner fresh pull caps at
+   9,500, and one parking-bucket owner holds >500k fresh leads, so creator-scoped fresh is
+   the only way these become visible. ~20k rows total, recursive date-window split for the
+   creators that exceed the 10k search cap. */
+const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
+  "ayush_singh13,payalineurope,wanderess_priyanka,saurav_chaudhary_1,ankita_gulati,vijaychandola,technomanagers,kartikkapoorconsultation")
+  .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
+  "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
+  "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id","tm_student_or_professional",
+  "hs_timezone","country","conversion_probability_reason"];
+let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
+let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
+
+async function fetchFreshForCreator(creator, from, to, sink){
+  const filters = [
+    { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
+    { propertyName: "topmate_username", operator: "EQ", value: creator }
+  ];
+  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
+  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && from && to && (to - from) > 86400000) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchFreshForCreator(creator, from, mid, sink);
+    await fetchFreshForCreator(creator, mid, to, sink);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters }], properties: PFRESH_PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(130);
+  } while (after);
+}
+
+async function syncPriorityFresh(){
+  if (!TOKEN || PFRESH.syncing) return;
+  PFRESH.syncing = true;
+  const from = Date.parse("2020-01-01T00:00:00Z"), to = Date.now() + 86400000;
+  const rows = [], seen = {}, byCreator = {};
+  let err = "";
+  for (const c of PFRESH_LIST) {
+    try {
+      await fetchFreshForCreator(c, from, to, function(r){
+        if (seen[r.id]) return;
+        seen[r.id] = 1;
+        rows.push(r);
+        byCreator[c] = (byCreator[c] || 0) + 1;
+      });
+    } catch (e) { err = e.message; console.error("priority fresh " + c + " failed: " + e.message); }
+  }
+  PFRESH = { rows: rows, byCreator: byCreator, loadedAt: new Date().toISOString(), syncing: false, error: err || null };
+  POOL_REV++;
+  PFRESH.syncing = false;
+  console.log("Priority fresh synced: " + rows.length + " across " + PFRESH_LIST.length + " creators");
+}
+
+let CN_POOL = { at: null, rows: [] };
+function callnowPool(){
+  const key = String(CACHE.loadedAt) + "|" + String(UNOWNED.loadedAt) + "|" + String(PFRESH.loadedAt) + "|" + POOL_REV;
+  if (CN_POOL.at === key && CN_POOL.rows.length) return CN_POOL.rows;
+  const rows = CACHE.contacts.slice();
+  const seen = {};
+  rows.forEach(function(c){ seen[c.id] = 1; });
+  Object.keys(CACHE.fresh || {}).forEach(function(oid){
+    (CACHE.fresh[oid] || []).forEach(function(f){
+      seen[f.id] = 1;
+      rows.push(Object.assign({}, f, { hubspot_owner_id: oid, contact_engagement_stage: "" }));
+    });
+  });
+  (UNOWNED.rows || []).forEach(function(c){ if (!seen[c.id]) { seen[c.id] = 1; rows.push(c); } });
+  (PFRESH.rows || []).forEach(function(c){
+    if (seen[c.id]) return;
+    seen[c.id] = 1;
+    rows.push(Object.assign({}, c, { contact_engagement_stage: "" }));
+  });
+  CN_POOL = { at: key, rows: rows };
+  return rows;
+}
+
+function cnStage(c){ return c.contact_engagement_stage || "__fresh"; }
+function cnRow(c){
+  const oid = String(c.hubspot_owner_id || "");
+  const o = CACHE.owners[oid] || {};
+  const unassigned = !oid;
+  const inactive = !unassigned && o.active === false;
+  return {
+    id: c.id,
+    unassigned: unassigned,
+    inactive: inactive,
+    needsOwner: unassigned || inactive,
+    name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || "(no name)",
+    stage: cnStage(c),
+    owner: String(c.hubspot_owner_id || ""),
+    ownerName: o.name || (oid ? "Owner " + oid : "(unassigned)"),
+    creator: c.topmate_username || "",
+    last: ts(c.last_call_date_and_time),
+    fu: ts(c.follow_up_date_and_time),
+    calls: num(c.callscurrent_stage),
+    own: num(c.call_in_current_stage_by_current_owner),
+    entered: ts(c.engagement_stage_last_changed_at) || ts(c.createdate),
+    created: ts(c.createdate),
+    score: num(c.conversion_probability_score),
+    phone: String(c.phone || "").trim(),
+    tz: String(c.hs_timezone || "").trim(),
+    country: String(c.country || "").trim(),
+    why: clip(c.conversion_probability_reason, 400),
+    aiSummary: clip(c.ryl_aicall_summary, 400),
+    aiHot: num(c.ryl_aicall_hotness),
+    optout: String(c.ryl_aicall_optout || "").toLowerCase() === "true",
+    outcome: String(c.call_outcome || "").trim(),
+    coldReason: clip(c.reason_for_notinteresteddisqualifiedghosted || c.not_interested_reason, 300),
+    lastContact: ts(c.notes_last_contacted),
+    paid: (function(){ const p = paidOf(c); return p ? p.at || 1 : 0; })(),
+    sp: classifySP(c.tm_student_or_professional),
+    forms: formsOf(c),
+    formN: formMeta(c).n,
+    formLast: formMeta(c).last,
+    formAfterStage: (function(){
+      const m = formMeta(c);
+      const st = ts(c.engagement_stage_last_changed_at);
+      return !!(m.last && st && m.last > st);
+    })(),
+    intl: intlOf(c),
+    src: srcOf(c)
+  };
+}
+// A never-worked lead is itself a call reason: nobody has spoken to it yet.
+// Set FRESH_IS_PRIORITY=0 in Railway to revert to signal-only priority.
+const FRESH_IS_PRIORITY = String(process.env.FRESH_IS_PRIORITY || "1") !== "0";
+// Anyone who already paid must never appear as a must-call prospect. The sheet is the
+// source of truth for payments, and deal_won on the contact often lags behind it.
+let PAID = { at: null, byEmail: {}, byPhone: {} };
+function paidIndex(){
+  if (PAID.at === SHEET.loadedAt) return PAID;
+  const byEmail = {}, byPhone = {};
+  (SHEET.rows || []).forEach(function(r){
+    const em = String(r.consumer_email || "").trim().toLowerCase();
+    const ph = normPhone(r.consumer_phone);
+    const rec = { at: ts(r.date), amount: num(r.price_inr), creator: r.creator_username || "" };
+    if (em && (!byEmail[em] || rec.at < byEmail[em].at)) byEmail[em] = rec;
+    if (ph && (!byPhone[ph] || rec.at < byPhone[ph].at)) byPhone[ph] = rec;
+  });
+  PAID = { at: SHEET.loadedAt, byEmail: byEmail, byPhone: byPhone };
+  return PAID;
+}
+function paidOf(c){
+  const idx = paidIndex();
+  const em = String(c.email || "").trim().toLowerCase();
+  if (em && idx.byEmail[em]) return idx.byEmail[em];
+  const ph = normPhone(c.phone);
+  if (ph && idx.byPhone[ph]) return idx.byPhone[ph];
+  return null;
+}
+function clip(v, n){ const t = String(v || "").trim(); return t.length > n ? t.slice(0, n) + "..." : t; }
+
+function istDayBounds(){
+  const off = 5.5 * 3600000;
+  const start = Math.floor((Date.now() + off) / 86400000) * 86400000 - off;
+  return { start: start, end: start + 86400000 };
+}
+function cnSegs(r){
+  // A paying customer or someone who opted out is never a must-call prospect, whatever
+  // signals they carry. They stay visible in All in stage, flagged, but out of the queue.
+  if (r.paid || r.optout) return { form: false, score: false, intl: false, fresh: false };
+  return { form: r.forms.length > 0, score: r.score >= CONV_SCORE_MIN, intl: r.intl,
+    fresh: FRESH_IS_PRIORITY && r.stage === "__fresh" };
+}
+function cnSort(a, b){
+  const now = Date.now();
+  const af = a.forms.length ? 1 : 0, bf = b.forms.length ? 1 : 0;
+  if (af !== bf) return bf - af;
+  if (a.score !== b.score) return b.score - a.score;
+  const ao = (a.fu && a.fu < now) ? 1 : 0, bo = (b.fu && b.fu < now) ? 1 : 0;
+  if (ao !== bo) return bo - ao;
+  const ai = a.intl ? 1 : 0, bi = b.intl ? 1 : 0;
+  if (ai !== bi) return bi - ai;
+  return (a.last || 0) - (b.last || 0);
+}
+function cnFilter(q){
+  const creator = q.creator || "", agent = q.agent || q.owner || "", intl = q.intl || "";
+  const stages = String(q.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+  const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
+  const ostate = q.ostate || "";
+  // Default scope is the tracked creator list: those are the buckets the floor actually works.
+  const scoped = String(q.scope || "tracked") !== "all";
+  return callnowPool().filter(function(c){
+    if (scoped && PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return false;
+    if (creator && (c.topmate_username || "") !== creator) return false;
+    if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
+    if (!intlMatch(c, intl)) return false;
+    return stageSet.indexOf(cnStage(c)) >= 0;
+  }).map(cnRow).map(function(r){
+    // DNP splits in two: the rescued ones (form or score) and the remainder, so the
+    // rest of the bucket stays visible instead of vanishing behind the rescue rule.
+    if (r.stage === "dnp_did_not_pick" && !cnRescued(r)) r.stage = "dnp_other";
+    return r;
+  }).filter(function(r){
+    if (ostate === "needs" && !r.needsOwner) return false;
+    if (ostate === "unassigned" && !r.unassigned) return false;
+    if (ostate === "inactive" && !r.inactive) return false;
+    return true;
+  });
+}
+
+app.get("/api/callnow", (req, res) => {
+  const rows = cnFilter(req.query);
+  const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
+  const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
+  const day = istDayBounds();
+  const blankT = function(){ return { due: 0, back: 0, done: 0, missed: 0, bwork: 0 }; };
+  const blank = function(){ return { total: 0, form: 0, score: 0, intl: 0, any: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
+    due: 0, done: 0, missed: 0, touched: 0,
+    t: { form: blankT(), score: blankT(), intl: blankT(), any: blankT(), needs: blankT(), all: blankT(),
+         uncalled: blankT(), nofu: blankT(), over: blankT() } }; };
+  const byStage = {}, tot = blank();
+  const byAgent = {}, byCreator = {};
+  stageOrder.forEach(function(s){ byStage[s] = blank(); });
+  rows.forEach(function(r){
+    const s = cnSegs(r), any = s.form || s.score || s.intl || s.fresh;
+    const b = byStage[r.stage] || (byStage[r.stage] = blank());
+    const now = Date.now();
+    const calledToday = r.last >= day.start && r.last < day.end;
+    const dueToday = r.fu >= day.start && r.fu < day.end;
+    [b, tot].forEach(function(x){
+      // Backlog: no next step scheduled, or the next step is already past, or never called.
+      // Deduped union, so a lead that is all three still counts once.
+      const inBacklog = !r.fu || r.fu < now || !r.last;
+      const bump = function(k){
+        const o = x.t[k];
+        if (inBacklog) o.back++;
+        // A call made today on a lead that was NOT scheduled for today: backlog being worked.
+        // Disjoint from done, so done + bwork equals every call made today.
+        if (calledToday && !dueToday) o.bwork++;
+        if (!dueToday) return;
+        o.due++;
+        if (calledToday) o.done++; else o.missed++;
+      };
+      x.total++;
+      bump("all");
+      if (s.form) x.form++;
+      if (s.score) x.score++;
+      if (s.intl) x.intl++;
+      if (any) {
+        x.any++;
+        if (r.needsOwner) x.needs++;
+        if (r.fu && r.fu < now) x.overdue++;
+        if (!r.fu) x.nofu++;
+        if (!r.last) x.uncalled++;
+        if (calledToday) x.touched++;
+        if (dueToday) { x.due++; if (calledToday) x.done++; else x.missed++; }
+        if (s.form) bump("form");
+        if (s.score) bump("score");
+        if (s.intl) bump("intl");
+        if (r.needsOwner) bump("needs");
+        if (!r.last) bump("uncalled");
+        if (!r.fu) bump("nofu");
+        if (r.fu && r.fu < now) bump("over");
+        bump("any");
+      }
+    });
+    if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
+      total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
+      due: 0, done: 0, missed: 0, touched: 0, bwork: 0 };
+    const a = byAgent[r.owner];
+    a.total++;
+    if (any) {
+      a.any++;
+      if (s.form) a.form++;
+      if (s.score) a.score++;
+      if (s.intl) a.intl++;
+      if (r.needsOwner) a.needs++;
+      if (r.fu && r.fu < now) a.overdue++;
+      if (!r.fu) a.nofu++;
+      if (!r.last) a.uncalled++;
+      const ct = r.last >= day.start && r.last < day.end;
+      const dt = r.fu >= day.start && r.fu < day.end;
+      if (ct) a.touched++;
+      if (ct && !dt) a.bwork++;
+      if (dt) { a.due++; if (ct) a.done++; else a.missed++; }
+    }
+    const ck = r.creator || "(none)";
+    if (!byCreator[ck]) byCreator[ck] = { u: ck, total: 0, any: 0 };
+    byCreator[ck].total++; if (any) byCreator[ck].any++;
+  });
+  const matrix = stageOrder.map(function(s){
+    return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
+  });
+  const scoped = String(req.query.scope || "tracked") !== "all";
+  const allCreators = {}, scopedCreators = {}, allAgents = {};
+  let unassignedPool = 0;
+  callnowPool().forEach(function(c){
+    const u = c.topmate_username;
+    if (u) {
+      allCreators[u] = (allCreators[u] || 0) + 1;
+      if (PFRESH_LIST.indexOf(u) >= 0) scopedCreators[u] = (scopedCreators[u] || 0) + 1;
+    }
+    if (scoped && PFRESH_LIST.indexOf(u || "") < 0) return;
+    const oid = String(c.hubspot_owner_id || "");
+    if (oid) allAgents[oid] = (allAgents[oid] || 0) + 1; else unassignedPool++;
+  });
+  Object.values(byAgent).forEach(function(a){
+    a.tocall = a.due + a.overdue;
+    a.overloaded = a.tocall > OVERLOAD_LIMIT;
+  });
+  res.json({
+    loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
+    formsLoadedAt: FORMS.loadedAt, formsSource: FORMS.source, formsError: FORMS.error, formsCounts: FORMS.counts,
+    formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
+    pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PFRESH_LIST,
+    pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing,
+    scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY, overloadLimit: OVERLOAD_LIMIT,
+    matrix: matrix, totals: tot,
+    agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
+    agentOptions: Object.keys(allAgents).map(function(id){
+      const o = CACHE.owners[id] || {};
+      return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false, n: allAgents[id] };
+    }).sort(function(a, b){ return b.n - a.n; })
+      .concat(unassignedPool ? [{ id: "none", name: "(unassigned)", email: "", active: false, n: unassignedPool }] : []),
+    scope: scoped ? "tracked" : "all",
+    creatorOptions: Object.entries(scoped ? scopedCreators : allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
+      .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
+    allCreatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
+      .sort(function(a, b){ return b.n - a.n; }).slice(0, 500),
+    creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
+    stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS },
+    ownerRefreshedAt: req.query.agent ? (OWNER_REFRESH[req.query.agent] || null) : null,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.post("/api/callnow/refresh-owner/:id", async (req, res) => {
+  const id = String(req.params.id || "");
+  if (!id || !CACHE.owners[id]) return res.status(400).json({ error: "unknown owner id" });
+  const last = OWNER_REFRESH[id] ? Date.parse(OWNER_REFRESH[id]) : 0;
+  if (Date.now() - last < 20000) return res.json({ ok: true, skipped: "cooldown", at: OWNER_REFRESH[id] });
+  try {
+    const r = await refreshOwner(id);
+    res.json(Object.assign({ ok: true, at: OWNER_REFRESH[id] }, r));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/callnow/sync-creator", async (req, res) => {
+  const creator = String(req.query.creator || "").trim();
+  if (!creator) return res.status(400).json({ error: "creator required" });
+  if (PFRESH.syncing) return res.status(409).json({ error: "a creator sync is already running" });
+  PFRESH.syncing = true;
+  try {
+    const from = Date.parse("2020-01-01T00:00:00Z"), to = Date.now() + 86400000;
+    const seen = {};
+    PFRESH.rows.forEach(function(r){ seen[r.id] = 1; });
+    const added = [];
+    await fetchFreshForCreator(creator, from, to, function(r){ if (!seen[r.id]) { seen[r.id] = 1; added.push(r); } });
+    PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; }).concat(added);
+    PFRESH.byCreator[creator] = added.length;
+    PFRESH.loadedAt = new Date().toISOString();
+    if (PFRESH_LIST.indexOf(creator) < 0) PFRESH_LIST.push(creator);
+    POOL_REV++;
+    PFRESH.syncing = false;
+    res.json({ ok: true, creator: creator, added: added.length, total: PFRESH.rows.length, creators: PFRESH_LIST });
+  } catch (e) {
+    PFRESH.syncing = false;
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/callnow/drop-creator", (req, res) => {
+  const creator = String(req.query.creator || "").trim();
+  PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; });
+  delete PFRESH.byCreator[creator];
+  PFRESH_LIST = PFRESH_LIST.filter(function(c){ return c !== creator; });
+  POOL_REV++;
+  res.json({ ok: true, creators: PFRESH_LIST, total: PFRESH.rows.length });
+});
+
+app.get("/api/callnow/leads", (req, res) => {
+  const seg = String(req.query.seg || "any");
+  const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
+  let rows = cnFilter(req.query);
+  if (req.query.stage) rows = rows.filter(function(r){ return r.stage === req.query.stage; });
+  const nowSeg = Date.now();
+  rows = rows.filter(function(r){
+    const s = cnSegs(r);
+    const anyp = s.form || s.score || s.intl || s.fresh;
+    if (seg === "form") return s.form;
+    if (seg === "score") return s.score;
+    if (seg === "intl") return s.intl;
+    if (seg === "fresh") return s.fresh;
+    if (seg === "uncalled") return anyp && !r.last;
+    if (seg === "nofu") return anyp && !r.fu;
+    if (seg === "over") return anyp && r.fu && r.fu < nowSeg;
+    if (seg === "all") return true;
+    return anyp;
+  });
+  if (String(req.query.uncalled || "") === "1") rows = rows.filter(function(r){ return !r.last; });
+  if (String(req.query.backlog || "") === "1") {
+    const bn = Date.now();
+    rows = rows.filter(function(r){ return !r.fu || r.fu < bn || !r.last; });
+  }
+  const today = String(req.query.today || "");
+  if (today) {
+    const d = istDayBounds();
+    rows = rows.filter(function(r){
+      const ct = r.last >= d.start && r.last < d.end, dt = r.fu >= d.start && r.fu < d.end;
+      if (today === "due") return dt;
+      if (today === "done") return dt && ct;
+      if (today === "missed") return dt && !ct;
+      if (today === "touched") return ct;
+      if (today === "bwork") return ct && !dt;
+      return true;
+    });
+  }
+  const fu = String(req.query.fu || "");
+  if (fu) {
+    const now = Date.now(), sod = new Date(); sod.setHours(0, 0, 0, 0);
+    const eod = sod.getTime() + 86400000;
+    rows = rows.filter(function(r){
+      if (fu === "overdue") return r.fu && r.fu < now;
+      if (fu === "today") return r.fu && r.fu >= sod.getTime() && r.fu < eod;
+      if (fu === "none") return !r.fu;
+      return true;
+    });
+  }
+  const total = rows.length;
+  rows.sort(cnSort);
+  res.json({ total: total, shown: Math.min(total, limit), rows: rows.slice(0, limit),
+    scoreMin: CONV_SCORE_MIN, portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID } });
+});
+
+/* ---------- Google sign-in, restricted to one workspace domain ----------
+   Authorization-code flow, no OAuth library. The id_token arrives over TLS
+   direct from Google's token endpoint, so decoding it without re-verifying the
+   signature is the documented-safe path for this flow. Sessions are a signed
+   cookie (HMAC), so nothing needs a database.
+   Auth stays OFF until GOOGLE_CLIENT_ID is set, so the app keeps working
+   before the env vars land. */
+const crypto = require("crypto");
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || "topmate.io").toLowerCase();
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+const MANAGER_EMAILS = (process.env.MANAGER_EMAILS || "abhishek.pal@topmate.io")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+const AUTH_ON = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+const SESSION_HOURS = parseInt(process.env.SESSION_HOURS || "12", 10);
+
+function b64u(buf){ return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function unb64u(str){ return Buffer.from(String(str).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); }
+function sign(payload){
+  const body = b64u(JSON.stringify(payload));
+  const mac = b64u(crypto.createHmac("sha256", SESSION_SECRET).update(body).digest());
+  return body + "." + mac;
+}
+function verify(token){
+  if (!token || token.indexOf(".") < 0) return null;
+  const parts = token.split(".");
+  const expect = b64u(crypto.createHmac("sha256", SESSION_SECRET).update(parts[0]).digest());
+  const a = Buffer.from(parts[1] || ""), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const p = JSON.parse(unb64u(parts[0]));
+    if (!p.exp || p.exp < Date.now()) return null;
+    return p;
+  } catch (e) { return null; }
+}
+function readCookie(req, name){
+  const raw = req.headers.cookie || "";
+  const hit = raw.split(";").map(function(x){ return x.trim(); })
+    .filter(function(x){ return x.indexOf(name + "=") === 0; })[0];
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : "";
+}
+function baseUrl(req){
+  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
+  return proto + "://" + req.headers.host;
+}
+function ownerIdForEmail(email){
+  const e = String(email || "").toLowerCase();
+  const ids = Object.keys(CACHE.owners || {});
+  for (const id of ids) {
+    if (String((CACHE.owners[id] || {}).email || "").toLowerCase() === e) return id;
+  }
+  return "";
+}
+function sessionOf(req){
+  if (!AUTH_ON) return { email: "", name: "Open access", role: "manager", ownerId: "" };
+  const p = verify(readCookie(req, "cn_session"));
+  if (!p) return null;
+  const em = String(p.email).toLowerCase();
+  const vps = (process.env.VP_EMAILS || "").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+  const role = (MANAGER_EMAILS.indexOf(em) >= 0 || vps.indexOf(em) >= 0) ? "manager" : "agent";
+  return { email: p.email, name: p.name || p.email, role: role, ownerId: role === "agent" ? ownerIdForEmail(p.email) : "" };
+}
+
+app.get("/auth/login", function(req, res){
+  if (!AUTH_ON) return res.redirect("/");
+  const state = sign({ n: crypto.randomBytes(8).toString("hex"), exp: Date.now() + 10 * 60 * 1000 });
+  const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  u.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  u.searchParams.set("redirect_uri", baseUrl(req) + "/auth/callback");
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", "openid email profile");
+  u.searchParams.set("hd", ALLOWED_DOMAIN);
+  u.searchParams.set("prompt", "select_account");
+  u.searchParams.set("state", state);
+  res.redirect(u.toString());
+});
+
+app.get("/auth/callback", async function(req, res){
+  if (!AUTH_ON) return res.redirect("/");
+  if (!verify(String(req.query.state || ""))) return res.status(400).send("Sign-in expired. <a href='/auth/login'>Try again</a>");
+  try {
+    const body = new URLSearchParams({
+      code: String(req.query.code || ""),
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: baseUrl(req) + "/auth/callback",
+      grant_type: "authorization_code"
+    });
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString()
+    });
+    const j = await r.json();
+    if (!j.id_token) return res.status(401).send("Sign-in failed. <a href='/auth/login'>Try again</a>");
+    const claims = JSON.parse(unb64u(j.id_token.split(".")[1]));
+    const email = String(claims.email || "").toLowerCase();
+    const domainOk = String(claims.hd || "").toLowerCase() === ALLOWED_DOMAIN || email.endsWith("@" + ALLOWED_DOMAIN);
+    if (!claims.email_verified || !domainOk) {
+      return res.status(403).send("<p style='font:14px -apple-system;padding:40px'>Only @" + ALLOWED_DOMAIN +
+        " accounts can open this dashboard. You signed in as " + email + ". <a href='/auth/login'>Use a different account</a></p>");
+    }
+    const token = sign({ email: email, name: claims.name || email, exp: Date.now() + SESSION_HOURS * 3600000 });
+    res.setHeader("Set-Cookie", "cn_session=" + encodeURIComponent(token) +
+      "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + (SESSION_HOURS * 3600));
+    res.redirect("/callnow.html");
+  } catch (e) {
+    res.status(500).send("Sign-in error: " + e.message);
+  }
+});
+
+app.get("/auth/logout", function(req, res){
+  res.setHeader("Set-Cookie", "cn_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
+  res.redirect("/login.html");
+});
+
+app.get("/api/me", function(req, res){
+  const s = sessionOf(req);
+  if (!s) return res.status(401).json({ error: "not signed in" });
+  res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON,
+    domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS });
+});
+
+// Gate every page and API call. Agents are forced onto their own owner id, so a
+// hand-edited ?agent= in the URL cannot widen their view. Registered at the very
+// top of the stack (see app.use(authGate) above) so it runs before any route.
+function authGate(req, res, next){
+  if (!AUTH_ON) return next();
+  const p = req.path;
+  // /api/health must stay open: Railway's healthcheck has no session, and a 401 there
+  // makes the platform mark the deploy unhealthy and stop serving the app entirely.
+  if (p.indexOf("/auth/") === 0 || p === "/login.html" || p === "/favicon.ico" || p === "/api/health") return next();
+  const s = sessionOf(req);
+  if (!s) {
+    if (p === "/api/me") return res.json({ authOn: true, email: "", role: "", domain: ALLOWED_DOMAIN });
+    if (p.indexOf("/api/") === 0) return res.status(401).json({ error: "not signed in" });
+    return res.redirect("/login.html");
+  }
+  req.session = s;
+  if (s.role === "agent") {
+    if (!s.ownerId && p.indexOf("/api/") === 0) {
+      return res.status(403).json({ error: "no HubSpot lead owner matches " + s.email });
+    }
+    if (p.indexOf("/api/") === 0) {
+      req.query.agent = s.ownerId;
+      req.query.owner = s.ownerId;
+    }
+    // agents only get the call list and their own snapshot
+    const allowed = ["/callnow.html", "/agent.html", "/login.html", "/"];
+    if (p.indexOf("/api/") !== 0 && allowed.indexOf(p) < 0 && p.endsWith(".html")) return res.redirect("/callnow.html");
+    if (p === "/") return res.redirect("/callnow.html");
+  }
+  next();
+}
+
+/* ---------- Org store: teams, targets, benchmarks ----------
+   The only state this app owns. HubSpot has no concept of a creator belonging to a
+   manager, nor of a monthly target, so it lives here. Written to a JSON file on a
+   Railway volume; if no writable volume is mounted it degrades to memory and says so
+   loudly, rather than pretending to persist. */
+const fs = require("fs");
+const path = require("path");
+const DATA_DIR = process.env.DATA_DIR || "/data";
+const ORG_FILE = path.join(DATA_DIR, "org.json");
+const VP_EMAILS = (process.env.VP_EMAILS || process.env.MANAGER_EMAILS || "abhishek.pal@topmate.io")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+
+let ORG = { teams: [], targets: {}, benchmarks: { creators: {}, company: {} }, log: [] };
+let ORG_PERSISTENT = false;
+
+function orgLoad(){
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+    ORG_PERSISTENT = true;
+    if (fs.existsSync(ORG_FILE)) {
+      const j = JSON.parse(fs.readFileSync(ORG_FILE, "utf8"));
+      ORG = Object.assign({ teams: [], targets: {}, benchmarks: { creators: {}, company: {} }, log: [] }, j);
+    }
+    console.log("Org store ready at " + ORG_FILE + " (" + ORG.teams.length + " teams)");
+  } catch (e) {
+    ORG_PERSISTENT = false;
+    console.error("Org store NOT persistent (" + e.message + "). Attach a Railway volume at " + DATA_DIR + ".");
+  }
+}
+function orgSave(action, detail, who){
+  ORG.log = (ORG.log || []).concat([{ at: new Date().toISOString(), by: who || "", action: action, detail: detail || "" }]).slice(-500);
+  if (!ORG_PERSISTENT) return false;
+  try {
+    const tmp = ORG_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(ORG, null, 2));
+    fs.renameSync(tmp, ORG_FILE);
+    return true;
+  } catch (e) { console.error("Org save failed: " + e.message); return false; }
+}
+orgLoad();
+
+function isVP(req){
+  if (!AUTH_ON) return true;
+  const s = req.session || sessionOf(req);
+  return !!(s && VP_EMAILS.indexOf(String(s.email).toLowerCase()) >= 0);
+}
+function whoami(req){ const s = req.session || sessionOf(req); return s ? s.email : ""; }
+function newId(){ return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function curMonth(){
+  const p = istParts(new Date());
+  return p.date.slice(0, 7);
+}
+
+// Every owner that holds leads but sits in no team. Without this the roll-up
+// silently under-reports the moment someone joins.
+function orgDrift(){
+  const mapped = {};
+  (ORG.teams || []).forEach(function(t){ (t.agentIds || []).forEach(function(id){ mapped[id] = t.name; }); });
+  const out = [];
+  const counts = {};
+  callnowPool().forEach(function(c){
+    const oid = String(c.hubspot_owner_id || "");
+    if (oid) counts[oid] = (counts[oid] || 0) + 1;
+  });
+  Object.keys(CACHE.owners || {}).forEach(function(id){
+    const o = CACHE.owners[id];
+    if (mapped[id]) return;
+    const n = counts[id] || 0;
+    if (!n && o.active === false) return;
+    out.push({ id: id, name: o.name, email: o.email, active: o.active !== false, leads: n });
+  });
+  return out.sort(function(a, b){ return b.leads - a.leads; });
+}
+
+// One pass over the sheet and one over the lead pool, bucketed by team, creator and
+// agent. Doing it per team would mean re-walking a 50k row pool for every manager.
+function vpAggregate(month){
+  const teamOf = {}, agentTeam = {};
+  (ORG.teams || []).forEach(function(t){
+    (t.agentIds || []).forEach(function(id){ teamOf[id] = t.id; });
+  });
+  const byEmail = {};
+  Object.keys(teamOf).forEach(function(id){
+    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+    if (e) byEmail[e] = id;
+  });
+  const agg = {};
+  const cell = function(tid, creator, agentId){
+    if (!agg[tid]) agg[tid] = {};
+    if (!agg[tid][creator]) agg[tid][creator] = {};
+    if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
+      revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0
+    };
+    return agg[tid][creator][agentId];
+  };
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    if (ymOf(r.date) !== month) return;
+    const aid = byEmail[String(r.owner_email || "").toLowerCase()];
+    if (!aid) return;
+    const o = cell(teamOf[aid], r.creator_username || "(no creator)", aid);
+    o.revenue += num(r.price_inr);
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    if (!seen[k]) { seen[k] = 1; o.enrolments++; }
+  });
+  const day = istDayBounds(), now = Date.now();
+  callnowPool().forEach(function(c){
+    const aid = String(c.hubspot_owner_id || "");
+    const tid = teamOf[aid];
+    if (!tid) return;
+    const r = cnRow(c), sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    const o = cell(tid, r.creator || "(no creator)", aid);
+    o.queue++;
+    const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
+    if (ct) o.touched++;
+    if (dt) { o.due++; if (ct) o.done++; else o.missed++; }
+    if (r.fu && r.fu < now) o.overdue++;
+    if (!r.last) o.uncalled++;
+  });
+  return agg;
+}
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0 }; }
+function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
+
+app.get("/api/vp", function(req, res){
+  const month = String(req.query.month || curMonth());
+  const t = (ORG.targets || {})[month] || { teams: {}, creators: {} };
+  const p = istParts(new Date());
+  const dim = new Date(Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), 0).getDate();
+  const dom = Number(p.date.slice(8, 10));
+  const agg = vpAggregate(month);
+  const teams = (ORG.teams || []).map(function(team){
+    const byCreator = agg[team.id] || {};
+    const totals = zero();
+    const creatorRows = Object.keys(byCreator).map(function(cu){
+      const perAgent = byCreator[cu];
+      const ctot = zero();
+      const agents = Object.keys(perAgent).map(function(aid){
+        const o = CACHE.owners[aid] || {};
+        addInto(ctot, perAgent[aid]);
+        return Object.assign({ id: aid, name: o.name || ("Owner " + aid), email: o.email || "", active: o.active !== false }, perAgent[aid]);
+      }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
+      addInto(totals, ctot);
+      const ct = (t.creators || {})[cu] || {};
+      return Object.assign({ u: cu, target: num(ct.revenue), mapped: (team.creators || []).indexOf(cu) >= 0, agents: agents }, ctot);
+    }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
+    (team.creators || []).forEach(function(cu){
+      if (!byCreator[cu]) {
+        const ct = (t.creators || {})[cu] || {};
+        creatorRows.push(Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: [] }, zero()));
+      }
+    });
+    const tg = t.teams[team.id] || {};
+    const target = num(tg.revenue);
+    const paceTarget = target * (dom / dim);
+    return Object.assign({
+      id: team.id, name: team.name, managerEmail: team.managerEmail || "",
+      agentIds: team.agentIds || [], creators: team.creators || [],
+      agents: (team.agentIds || []).map(function(id){
+        const o = CACHE.owners[id] || {};
+        return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
+      }),
+      creatorRows: creatorRows,
+      target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
+      paceTarget: Math.round(paceTarget),
+      gap: Math.round(totals.revenue - paceTarget),
+      attainment: target ? Math.round(1000 * totals.revenue / target) / 10 : null
+    }, totals);
+  }).sort(function(x, y){ return y.revenue - x.revenue; });
+  res.json({
+    month: month, dayOfMonth: dom, daysInMonth: dim,
+    persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
+    teams: teams, drift: orgDrift(),
+    creators: (creatorsAll() || []),
+    targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
+    log: (ORG.log || []).slice(-30).reverse()
+  });
+});
+
+function creatorsAll(){
+  const m = {};
+  callnowPool().forEach(function(c){ const u = c.topmate_username; if (u) m[u] = (m[u] || 0) + 1; });
+  return Object.entries(m).map(function(e){ return { u: e[0], n: e[1] }; })
+    .sort(function(a, b){ return b.n - a.n; }).slice(0, 400);
+}
+
+app.post("/api/vp/team", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  const id = String(b.id || "");
+  let team = (ORG.teams || []).filter(function(t){ return t.id === id; })[0];
+  if (!team) {
+    team = { id: newId(), name: "", managerEmail: "", agentIds: [], creators: [] };
+    ORG.teams.push(team);
+  }
+  if (b.name !== undefined) team.name = String(b.name).trim();
+  if (b.managerEmail !== undefined) team.managerEmail = String(b.managerEmail).trim().toLowerCase();
+  if (Array.isArray(b.agentIds)) team.agentIds = b.agentIds.map(String);
+  if (Array.isArray(b.creators)) team.creators = b.creators.map(String);
+  orgSave("team.save", team.name, whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, team: team });
+});
+
+app.post("/api/vp/team/delete", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const id = String((req.body || {}).id || "");
+  const gone = (ORG.teams || []).filter(function(t){ return t.id === id; })[0];
+  ORG.teams = (ORG.teams || []).filter(function(t){ return t.id !== id; });
+  orgSave("team.delete", gone ? gone.name : id, whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT });
+});
+
+app.post("/api/vp/target", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  const month = String(b.month || curMonth());
+  ORG.targets = ORG.targets || {};
+  ORG.targets[month] = ORG.targets[month] || { teams: {}, creators: {} };
+  const bucket = b.scope === "creator" ? "creators" : "teams";
+  const key = String(b.key || "");
+  if (!key) return res.status(400).json({ error: "key required" });
+  ORG.targets[month][bucket][key] = {
+    revenue: num(b.revenue), enrolments: num(b.enrolments), counsellings: num(b.counsellings)
+  };
+  orgSave("target.set", month + " " + bucket + " " + key + " = " + num(b.revenue), whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, targets: ORG.targets[month] });
+});
+
+app.post("/api/vp/benchmark", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  ORG.benchmarks = ORG.benchmarks || { creators: {}, company: {} };
+  if (b.creator) {
+    ORG.benchmarks.creators[String(b.creator)] = { c2e: num(b.c2e), l2c: num(b.l2c), ticket: num(b.ticket), source: "manual" };
+  } else {
+    ORG.benchmarks.company = { c2e: num(b.c2e), l2c: num(b.l2c), ticket: num(b.ticket), source: "manual" };
+  }
+  orgSave("benchmark.set", b.creator || "company", whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, benchmarks: ORG.benchmarks });
+});
+
 app.use(express.static("public"));
+// A background sync that rejects must never take the web server down with it.
+// Node 18 exits the process on an unhandled rejection, which is what produced the
+// "deploy crashed then recovered" restarts: one bad HubSpot response, whole app gone.
+process.on("unhandledRejection", function(e){
+  console.error("Unhandled rejection (kept alive): " + ((e && e.message) || e));
+});
+process.on("uncaughtException", function(e){
+  console.error("Uncaught exception (kept alive): " + ((e && e.stack) || e));
+});
+function guard(name, fn){
+  return function(){
+    try {
+      const r = fn();
+      if (r && typeof r.catch === "function") r.catch(function(e){ console.error(name + " failed: " + ((e && e.message) || e)); });
+      return r;
+    } catch (e) { console.error(name + " threw: " + ((e && e.message) || e)); }
+  };
+}
+const runChain = guard("boot chain", function(){
+  return syncForms().then(syncUnowned).then(syncPriorityFresh);
+});
+
 app.listen(PORT, () => {
   console.log("Listening on " + PORT);
-  sync().then(() => syncCounsel());
-  syncSheet().then(() => syncCohorts());
-  setInterval(sync, SYNC_MINUTES * 60 * 1000);
-  setInterval(syncSheet, SYNC_MINUTES * 60 * 1000);
-  setInterval(syncCohorts, COHORT_MINUTES * 60 * 1000);
-  setInterval(syncCounsel, COHORT_MINUTES * 60 * 1000);
-  setTimeout(syncCalls, 90 * 1000);
-  setInterval(syncCalls, COHORT_MINUTES * 60 * 1000);
+  guard("sync", function(){ return sync().then(() => syncCounsel()); })();
+  guard("sheet", function(){ return syncSheet().then(() => syncCohorts()); })();
+  setInterval(guard("sync", sync), SYNC_MINUTES * 60 * 1000);
+  setInterval(guard("sheet", syncSheet), SYNC_MINUTES * 60 * 1000);
+  setInterval(guard("cohorts", syncCohorts), COHORT_MINUTES * 60 * 1000);
+  setInterval(guard("counsel", syncCounsel), COHORT_MINUTES * 60 * 1000);
+  setTimeout(guard("calls", syncCalls), 90 * 1000);
+  setInterval(guard("calls", syncCalls), COHORT_MINUTES * 60 * 1000);
+  setInterval(guard("leadsToday", maybeRunLeadsTodayCheckpoint), 60 * 1000);
+  guard("leadsTodayBoot", bootstrapLeadsTodayOnBoot)();
+  guard("backupPool", syncBackupPool)();
+  setInterval(guard("backupPool", syncBackupPool), COHORT_MINUTES * 60 * 1000);
+  setTimeout(runChain, 150 * 1000);
+  setInterval(runChain, COHORT_MINUTES * 60 * 1000);
 });
