@@ -281,21 +281,24 @@ function dayView(cv){
   function dd(x){if(!x)return '<span class="mut">not matched</span>';return x;}
   const rows=days.map(function(x,i){
     const detail=x.items.map(function(it){
-      return "<tr><td>"+esc(it.name)+"</td><td>"+esc(it.creator)+"</td><td>"+esc(it.agent)+"</td><td>"+inr(it.price)+"</td>"+
+      return "<tr"+(it.bal?' style="opacity:.62"':"")+"><td>"+esc(it.name)+(it.bal?' <span class="pill" style="background:#FEF3C7;color:#92400E">balance</span>':"")+"</td><td>"+esc(it.creator)+"</td><td>"+esc(it.agent)+"</td><td>"+inr(it.price)+"</td>"+
         "<td>"+(it.created?it.created+' <span class="mut">('+it.lagC+"d before)</span>":'<span class="mut">not matched</span>')+"</td>"+
         "<td>"+(it.couns?it.couns+' <span class="mut">('+it.lagK+"d before)</span>":'<span class="mut">—</span>')+"</td></tr>";
     }).join("");
+    const tot=(x.total!==undefined?x.total:x.rev), bn=x.balN||0, br=x.balRev||0;
     return '<tr style="cursor:pointer" onclick="toggleDay('+i+')"><td>▸ '+x.d+"</td><td>"+x.n+"</td><td style=\"font-weight:700\">"+inr(x.rev)+"</td>"+
+      "<td>"+(bn?bn+' · <span class="ca">'+inr(br)+"</span>":'<span class="mut">—</span>')+"</td>"+
+      '<td style="font-weight:700" class="ci">'+inr(tot)+"</td>"+
       "<td>"+inr(x.n?x.rev/x.n:0)+"</td>"+
       "<td>"+(x.avgLagC===null?'<span class="mut">—</span>':x.avgLagC+"d")+"</td>"+
       "<td>"+(x.avgLagK===null?'<span class="mut">—</span>':x.avgLagK+"d")+"</td>"+
       "<td>"+x.matched+"/"+x.n+"</td></tr>"+
-      '<tr id="dd'+i+'" style="display:none"><td colspan="7" style="text-align:left;background:#F9FAFB;padding:10px 14px">'+
+      '<tr id="dd'+i+'" style="display:none"><td colspan="9" style="text-align:left;background:#F9FAFB;padding:10px 14px">'+
       '<table><tr><th>Student</th><th>Creator</th><th>Agent</th><th>Amount</th><th>Lead created</th><th>First counselled</th></tr>'+detail+"</table>"+
-      (x.n>x.items.length?'<div class="mut" style="font-size:10.5px;margin-top:5px">Showing first '+x.items.length+" of "+x.n+"</div>":"")+"</td></tr>";
+      ((x.n+bn)>x.items.length?'<div class="mut" style="font-size:10.5px;margin-top:5px">Showing first '+x.items.length+" of "+(x.n+bn)+" payments</div>":"")+"</td></tr>";
   }).join("");
-  return '<div class="sec"><h3>Day by day conversions</h3><div class="sub">Enrolments (first payments) per day and where those leads came from: how many days before the payment the lead was created and first counselled. Click a day to see each conversion. Respects all filters above; matching covers owned staged leads.</div>'+
-    '<div style="max-height:460px;overflow:auto"><table><tr><th>Payment day</th><th>Enrolments</th><th>Revenue</th><th>Avg ticket</th><th>Avg lead age</th><th>Avg counsel→pay</th><th>Matched</th></tr>'+rows+"</table></div></div>";
+  return '<div class="sec"><h3>Day by day conversions</h3><div class="sub">Enrolments (first payments) per day plus balance payments (later instalments, token closures), so Day total matches the sales sheet for that day. Lead journey lags apply to enrolments. Click a day to see every payment. Respects all filters above; matching covers owned staged leads.</div>'+
+    '<div style="max-height:460px;overflow:auto"><table><tr><th>Payment day</th><th>Enrolments</th><th>Enrol revenue</th><th>Balance pays · rev</th><th>Day total (sheet)</th><th>Avg ticket</th><th>Avg lead age</th><th>Avg counsel→pay</th><th>Matched</th></tr>'+rows+"</table></div></div>";
 }
 function toggleDay(i){
   const el=document.getElementById("dd"+i);

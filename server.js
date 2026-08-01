@@ -99,6 +99,7 @@ async function syncSheet(){
       o.price = parseFloat(String(o.price_inr).replace(/[^0-9.\-]/g, "")) || 0;
       return o;
     }).filter(o => o.date);
+    rows.forEach((o, i) => { o._row = i; });
     SHEET = { rows, loadedAt: new Date().toISOString(), error: null };
     console.log("Sheet synced: " + rows.length + " rows");
   } catch (e) {
@@ -862,7 +863,7 @@ app.get("/api/payment-analysis", (req, res) => {
     const pym = (r.date || "").slice(0, 7);
     let cls = "Not in HubSpot";
     if (rec) cls = cym === pym ? "New Lead" : (cym < pym ? "Old Lead" : "Lead After Payment");
-    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
     const isEnrol = !seen.has(key); seen.add(key);
     return { pym, cym, price: r.price, creator: r.creator_username || "(none)", agent: r.sales_rep || r.owner_email || "(none)",
       src: rec ? src : "Not in HubSpot", seg: rec ? seg : "Unknown", cls, isEnrol,
@@ -999,7 +1000,7 @@ app.get("/api/conversion", (req, res) => {
   const seen = new Set(), eEmailDate = {}, ePhoneDate = {};
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
     const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
-    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
     if (seen.has(key)) return;
     seen.add(key);
     if (em && !eEmailDate[em]) eEmailDate[em] = r.date;
@@ -1079,30 +1080,42 @@ app.get("/api/conversion", (req, res) => {
   const dayMap = {}, seenD = new Set();
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
     const em2 = (r.consumer_email || "").toLowerCase(), ph2 = normPhone(r.consumer_phone);
-    const key = (r.creator_username || "") + "|" + (em2 || ph2 || r.id);
-    if (seenD.has(key)) return;
+    const key = (r.creator_username || "") + "|" + (em2 || ph2 || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
+    const isEnrolD = !seenD.has(key);
     seenD.add(key);
     const d = (r.date || "").slice(0, 10);
     if (!d) return;
     if (fPay && d.slice(0, 7) !== fPay) return;
     const m = (em2 && contactBy.get(em2)) || (ph2 && contactBy.get(ph2)) || null;
     if (anyContactFilter && !m) return;
-    if (!dayMap[d]) dayMap[d] = { d, n: 0, rev: 0, matched: 0, lagCSum: 0, lagCN: 0, lagKSum: 0, lagKN: 0, items: [] };
+    if (!dayMap[d]) dayMap[d] = { d, n: 0, rev: 0, balN: 0, balRev: 0, matched: 0, lagCSum: 0, lagCN: 0, lagKSum: 0, lagKN: 0, items: [] };
     const dm = dayMap[d];
-    dm.n++; dm.rev += r.price;
     const payTs = Date.parse(d);
     let lagC = null, lagK = null;
     if (m) {
+      if (m.created) lagC = Math.max(0, Math.round((payTs - m.created) / 86400000));
+      if (m.couns) lagK = Math.max(0, Math.round((payTs - m.couns) / 86400000));
+    }
+    if (!isEnrolD) {
+      // balance payment: counted so the day total ties to the sales sheet, but kept out of enrolment metrics
+      dm.balN++; dm.balRev += r.price;
+      if (dm.items.length < 25) dm.items.push({ name: r.consumer_name || "", creator: r.creator_username || "", agent: r.sales_rep || "", price: r.price,
+        created: m && m.created ? new Date(m.created).toISOString().slice(0, 10) : "", couns: m && m.couns ? new Date(m.couns).toISOString().slice(0, 10) : "",
+        lagC, lagK, bal: 1 });
+      return;
+    }
+    dm.n++; dm.rev += r.price;
+    if (m) {
       dm.matched++;
-      if (m.created) { lagC = Math.max(0, Math.round((payTs - m.created) / 86400000)); dm.lagCSum += lagC; dm.lagCN++; }
-      if (m.couns) { lagK = Math.max(0, Math.round((payTs - m.couns) / 86400000)); dm.lagKSum += lagK; dm.lagKN++; }
+      if (lagC !== null) { dm.lagCSum += lagC; dm.lagCN++; }
+      if (lagK !== null) { dm.lagKSum += lagK; dm.lagKN++; }
     }
     if (dm.items.length < 25) dm.items.push({ name: r.consumer_name || "", creator: r.creator_username || "", agent: r.sales_rep || "", price: r.price,
       created: m && m.created ? new Date(m.created).toISOString().slice(0, 10) : "", couns: m && m.couns ? new Date(m.couns).toISOString().slice(0, 10) : "",
       lagC, lagK });
   });
   const days = Object.values(dayMap).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, 62).map(x => ({
-    d: x.d, n: x.n, rev: x.rev, matched: x.matched,
+    d: x.d, n: x.n, rev: x.rev, balN: x.balN, balRev: x.balRev, total: x.rev + x.balRev, totalN: x.n + x.balN, matched: x.matched,
     avgLagC: x.lagCN ? Math.round(x.lagCSum / x.lagCN) : null,
     avgLagK: x.lagKN ? Math.round(x.lagKSum / x.lagKN) : null,
     items: x.items
@@ -1175,7 +1188,7 @@ app.get("/api/agent/:id", (req, res) => {
   const seen = new Set(), eEmails = new Set(), ePhones = new Set();
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
     const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
-    const key = (r.creator_username || "") + "|" + (em || ph || r.id);
+    const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
     if (seen.has(key)) return;
     seen.add(key);
     if (em) eEmails.add(em);
