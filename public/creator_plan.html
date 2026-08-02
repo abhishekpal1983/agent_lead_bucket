@@ -111,7 +111,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 .mini.wide{width:92px}
 </style></head><body><div class="wrap">
 <h1>Creator monthly lead plan</h1>
-<p style="margin:4px 0 0"><a href="/plan_summary.html" style="font-size:12px;color:#1d4ed8">All-creator summary (CSV / PDF) →</a> &nbsp; <a href="/plan_tracking.html" style="font-size:12px;color:#1d4ed8">Plan vs actual tracking →</a></p>
+<p style="margin:4px 0 0"><a href="/plan_summary.html" style="font-size:12px;color:#1d4ed8">All-creator summary (CSV / PDF) →</a> &nbsp; <a href="/plan_tracking.html" style="font-size:12px;color:#1d4ed8">Plan vs actual tracking →</a> <span id="savest" style="margin-left:10px;font-size:12px;color:#68707c"></span></p>
 <p class="dek">Pick a creator, set the team, and the model spends every available call on the highest-yielding leads first — then shows where the month runs out.</p>
 
 <div class="tabs" id="tabs"></div>
@@ -127,7 +127,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 <div id="flags"></div>
 <div class="strip" id="strip"></div>
 
-<div class="sec"><h2>1 &nbsp; Set the month</h2><p>Everything below recalculates from these.</p></div>
+<div class="sec"><h2>1 &nbsp; Set the month</h2><p>Everything below recalculates from these. <button onclick="resetCreator()" style="border:1px solid #e4e7ec;background:#f3f4f6;color:#68707c;border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;cursor:pointer;margin-left:8px">Reset this creator to defaults</button></p></div>
 <div class="ctrl">
   <label><span>Agents</span><input id="ag" type="number" value="6" min="0" step="1"></label>
   <label><span>Working days</span><input id="days" type="number" value="22" min="1" step="1"></label>
@@ -450,9 +450,31 @@ function matrix(){
   g('matrix').innerHTML=h;
 }
 let _pt=null;
-function syncPrefs(){clearTimeout(_pt);_pt=setTimeout(function(){
-  fetch('/api/plan-prefs',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({all:store,custom:custom,cur:cur})}).catch(function(){});},800);}
+function setSaveSt(t,col){const el=document.getElementById('savest');if(el){el.textContent=t;el.style.color=col||'#68707c';}}
+function syncPrefs(){
+  setSaveSt('Saving…','#92600a');
+  clearTimeout(_pt);_pt=setTimeout(function(){
+    fetch('/api/plan-prefs',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({all:store,custom:custom,cur:cur})})
+    .then(function(r){setSaveSt(r.ok?('Saved ✓ '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Saved locally · account sync failed',r.ok?'#15803d':'#b91c1c');})
+    .catch(function(){setSaveSt('Saved locally · account sync failed','#b91c1c');});},800);}
+let BASE0={};
+function snapshotBase(){
+  BASE0={};
+  Object.keys(BASEDATA.creators).forEach(function(k){
+    BASE0[k]=BASEDATA.creators[k].tiers.map(function(t){return {convN:t.convN,convI:t.convI,cpl:t.cpl};});
+  });
+}
+function resetCreator(){
+  const c=C();
+  if(c.custom){alert('This is a creator you added — every number here is yours, there are no measured defaults to reset to.');return;}
+  if(!confirm('Reset '+cur+' to measured defaults? Your saved assumptions for this creator (team, tickets, target, tier edits) will be cleared.'))return;
+  const b=BASE0[cur];
+  if(b)c.tiers.forEach(function(t,i){if(b[i]){t.convN=b[i].convN;t.convI=b[i].convI;t.cpl=b[i].cpl;}});
+  delete store[cur];
+  localStorage.setItem('mc_all',JSON.stringify(store));syncPrefs();
+  loadCreator();draw();
+}
 (async function(){
   try{
     const r=await fetch('/api/creator-plan');
@@ -476,6 +498,8 @@ function syncPrefs(){clearTimeout(_pt);_pt=setTimeout(function(){
     }
   }catch(e){}
   if(!allCreators()[cur])cur=BASEDATA.order[0];
+  snapshotBase();
   loadCreator();draw();
+  setSaveSt('All changes save automatically','#68707c');
 })();
 </script></body></html>
