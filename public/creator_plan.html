@@ -237,7 +237,8 @@ function loadCreator(){
   g('fn').value=s.fn??(e.has&&e.nat_leads?(100*e.enat/e.nat_leads).toFixed(2):'');
   g('fi').value=s.fi??(e.has&&e.intl_leads?(100*e.eintl/e.intl_leads).toFixed(2):'');
   g('fmx').value=s.fmx??((c.nat+c.intl)?(100*c.nat/(c.nat+c.intl)).toFixed(0):85);
-  ['ag','days','cpd','fcp'].forEach(k=>{if(s[k]!==undefined)g(k).value=s[k];});
+  const capDef={ag:6,days:22,cpd:60,fcp:3};
+  ['ag','days','cpd','fcp'].forEach(k=>{g(k).value=s[k]!==undefined?s[k]:capDef[k];});
   if(c.custom){c.nat=c.tiers.reduce((a,t)=>a+t.nat,0);c.intl=c.tiers.reduce((a,t)=>a+t.intl,0);
     c.actionable=c.nat+c.intl;c.pool=c.actionable;}
 }
