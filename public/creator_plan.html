@@ -108,6 +108,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 .newform input[type=text]:focus{outline:0;border-color:var(--acc)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .segh{font-size:13px;font-weight:700;margin:14px 0 6px;color:#111}
+.mini.wide{width:92px}
 </style></head><body><div class="wrap">
 <h1>Creator monthly lead plan</h1>
 <p class="dek">Pick a creator, set the team, and the model spends every available call on the highest-yielding leads first — then shows where the month runs out.</p>
@@ -148,7 +149,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 </div>
 <div class="note" id="fnote"></div>
 
-<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">One call budget, spent across national and international tiers together, highest revenue per call first. Rows stay in tier order; dimmed rows did not make the cut this month.</p></div>
+<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">One call budget, spent across national and international tiers together, highest revenue per call first. Rows stay in tier order; dimmed rows did not make the cut this month. Conv %, enrolments and revenue are one dial: edit any of the three and the other two re-solve. Enrolments are fresh enrolments only (a consumer's first payment); the ₹ per enrolment ticket includes the balance instalments those consumers go on to pay, so revenue reads as expected total collection.</p></div>
 <h3 class="segh">National</h3>
 <div class="scroll"><table id="planN"></table></div>
 <h3 class="segh" style="margin-top:18px">International</h3>
@@ -342,8 +343,8 @@ function draw(){
        `<td><input class="mini" data-k="${s.k}" data-f="cpl" type="number" step="1" value="${s.cpl}"></td>`+
        `<td>₹${fmt(s.rpc)}</td>`+
        `<td class="${s.pCalls?'':'z'}">${s.pCalls?fmt(s.pCalls):'—'}</td>`+
-       `<td class="${s.pEnrol?'':'z'}">${s.pEnrol?fmt(s.pEnrol):'—'}</td>`+
-       `<td class="${s.pRev?'':'z'}">${s.pRev?inr(s.pRev):'—'}</td></tr>`;
+       `<td><input class="mini" data-k="${s.k}" data-f="enr" data-seg="${seg}" type="number" step="0.5" value="${+s.pEnrol.toFixed(1)}"></td>`+
+       `<td><input class="mini wide" data-k="${s.k}" data-f="rev" data-seg="${seg}" type="number" step="1000" value="${Math.round(s.pRev)}"></td></tr>`;
     });
     const T2=rows.reduce((a,s)=>({l:a.l+s.leads,pc:a.pc+s.pCalls,pe:a.pe+s.pEnrol,pr:a.pr+s.pRev}),{l:0,pc:0,pe:0,pr:0});
     t+=`<tr class="tot"><td><b>Total ${seg==='N'?'national':'international'}</b></td><td>${ed?'':fmt(T2.l)}</td><td></td><td></td><td></td><td></td>`+
@@ -353,9 +354,22 @@ function draw(){
   g('planN').innerHTML=segTable('N');
   g('planI').innerHTML=segTable('I');
   document.querySelectorAll('#planN input.mini, #planI input.mini').forEach(i=>i.onchange=()=>{
-    const t=C().tiers.find(x=>x.k===i.dataset.k);
-    t[i.dataset.f]=parseFloat(i.value)||0;
-    if(C().custom){t.leads=t.nat+t.intl;persistCustom();}
+    const t=C().tiers.find(x=>x.k===i.dataset.k), f=i.dataset.f;
+    if(f==='enr'||f==='rev'){
+      // editing the outcome back-solves the conv% that produces it
+      const seg=i.dataset.seg;
+      const leads=seg==='N'?t.nat:t.intl;
+      const ticket=seg==='N'?n('tkn'):n('tki');
+      const row=S.find(x=>x.k===t.k&&x.seg===seg);
+      const frac=row&&row.frac>0?row.frac:1; // value shown is capacity-allocated; scale back to full tier
+      let enr=parseFloat(i.value)||0;
+      if(f==='rev') enr=ticket>0?enr/ticket:0;
+      const conv=leads>0?+(100*(enr/frac)/leads).toFixed(3):0;
+      if(seg==='N')t.convN=conv; else t.convI=conv;
+    } else {
+      t[f]=parseFloat(i.value)||0;
+      if(C().custom){t.leads=t.nat+t.intl;persistCustom();}
+    }
     save();loadCreator();draw();});
 
   const inp=R.filter(t=>t.pCalls>0);
