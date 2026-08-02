@@ -107,6 +107,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 .newform input[type=text]{font:inherit;font-size:15px;padding:8px 11px;border:1px solid var(--rule);border-radius:7px;width:260px}
 .newform input[type=text]:focus{outline:0;border-color:var(--acc)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.segh{font-size:13px;font-weight:700;margin:14px 0 6px;color:#111}
 </style></head><body><div class="wrap">
 <h1>Creator monthly lead plan</h1>
 <p class="dek">Pick a creator, set the team, and the model spends every available call on the highest-yielding leads first — then shows where the month runs out.</p>
@@ -147,8 +148,11 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 </div>
 <div class="note" id="fnote"></div>
 
-<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">Tiers ranked by revenue per call. Everything above the line fits inside this month.</p></div>
-<div class="scroll"><table id="plan"></table></div>
+<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">One call budget, spent across national and international tiers together, highest revenue per call first. Rows stay in tier order; dimmed rows did not make the cut this month.</p></div>
+<h3 class="segh">National</h3>
+<div class="scroll"><table id="planN"></table></div>
+<h3 class="segh" style="margin-top:18px">International</h3>
+<div class="scroll"><table id="planI"></table></div>
 <div class="eff" id="eff"></div>
 <div class="efflg" id="efflg"></div>
 
@@ -269,22 +273,25 @@ g('newok').onclick=()=>{
   loadCreator(); draw();
 };
 function model(){
-  const c=C(),tn=n('tkn'),ti=n('tki');
-  const T=c.tiers.map(t=>{
-    const en=t.nat*t.convN/100, ei=t.intl*t.convI/100;
-    const rev=en*tn+ei*ti, calls=t.leads*t.cpl;
-    return Object.assign({},t,{en,ei,enrol:en+ei,rev,calls,rpc:calls?rev/calls:0});
-  }).sort((a,b)=>b.rpc-a.rpc||b.leads-a.leads);
+  const c=C(),tn=n('tkn'),ti=n('tki'),e=c.econ;
+  const S=[];
+  c.tiers.forEach(t=>{
+    S.push({k:t.k,name:t.name,note:t.note,seg:'N',leads:t.nat,conv:t.convN,cpl:t.cpl,ticket:tn,base:e.bn});
+    S.push({k:t.k,name:t.name,note:t.note,seg:'I',leads:t.intl,conv:t.convI,cpl:t.cpl,ticket:ti,base:e.bi});
+  });
+  S.forEach(s=>{s.enrol=s.leads*s.conv/100;s.rev=s.enrol*s.ticket;
+    s.calls=s.leads*s.cpl;s.rpc=s.calls?s.rev/s.calls:0;});
+  const R=S.slice().sort((a,b)=>b.rpc-a.rpc||b.leads-a.leads);
   let cap=n('ag')*n('days')*n('cpd'),left=cap;
-  T.forEach(t=>{const take=Math.max(0,Math.min(t.calls,left));
-    t.frac=t.calls?take/t.calls:0;t.pCalls=take;t.pLeads=t.leads*t.frac;
-    t.pEnrol=t.enrol*t.frac;t.pRev=t.rev*t.frac;left-=take;});
-  return {T,cap,used:cap-left};
+  R.forEach(s=>{const take=Math.max(0,Math.min(s.calls,left));
+    s.frac=s.calls?take/s.calls:0;s.pCalls=take;s.pLeads=s.leads*s.frac;
+    s.pEnrol=s.enrol*s.frac;s.pRev=s.rev*s.frac;left-=take;});
+  return {S,R,cap,used:cap-left};
 }
 function draw(){
-  const c=C(),e=c.econ,{T,cap,used}=model();
-  const P=T.reduce((a,t)=>({l:a.l+t.pLeads,c:a.c+t.pCalls,e:a.e+t.pEnrol,r:a.r+t.pRev}),{l:0,c:0,e:0,r:0});
-  const F=T.reduce((a,t)=>({l:a.l+t.leads,r:a.r+t.rev,c:a.c+t.calls}),{l:0,r:0,c:0});
+  const c=C(),e=c.econ,{S,R,cap,used}=model();
+  const P=S.reduce((a,t)=>({l:a.l+t.pLeads,c:a.c+t.pCalls,e:a.e+t.pEnrol,r:a.r+t.pRev}),{l:0,c:0,e:0,r:0});
+  const F=S.reduce((a,t)=>({l:a.l+t.leads,r:a.r+t.rev,c:a.c+t.calls}),{l:0,r:0,c:0});
   const mk=Object.keys(e.months),lastM=mk.length?e.months[mk[mk.length-1]]:0;
   const tot=c.calls.nat+c.calls.intl;
 
@@ -308,7 +315,8 @@ function draw(){
     localStorage.setItem('mc_all',JSON.stringify(store));syncPrefs();
     cur=BASEDATA.order[0];localStorage.setItem('mc_cur',cur);syncPrefs();loadCreator();draw();};
 
-  g('capline').textContent=`${fmt(cap)} calls of capacity — ${n('ag')} agents × ${n('days')} days × ${n('cpd')} calls. That reaches ${fmt(P.l)} of ${fmt(F.l)} actionable leads.`;
+  g('capline').textContent=`${fmt(cap)} calls of capacity — ${n('ag')} agents × ${n('days')} days × ${n('cpd')} calls. That reaches ${fmt(P.l)} of ${fmt(F.l)} actionable leads.`+
+    (F.c>cap?` Capacity runs out: ${fmt(F.l-P.l)} leads and ${inr(F.r-P.r)} stay uncovered this month.`:` Capacity covers the whole backlog with ${fmt(cap-used)} calls to spare.`);
   g('head').innerHTML=[
     ['lead',inr(P.r),'Revenue this month',`${pc(P.r,F.r)} of the ${inr(F.r)} in the whole backlog`],
     ['',fmt(P.e),'Enrolments',lastM?`actual last month: ${lastM}`:'no payment history to compare'],
@@ -318,40 +326,41 @@ function draw(){
   ].map(k=>`<div class="hc ${k[0]}"><div class="v">${k[1]}</div><div class="k">${k[2]}</div><div class="n">${k[3]}</div></div>`).join('');
 
   const ed=c.custom;
-  let h='<thead><tr><th>Tier</th>'+(ed?'<th>Nat leads</th><th>Intl leads</th>':'<th>Leads</th><th>Nat</th><th>Intl</th>')+
-    '<th>Conv % nat</th><th>vs base</th><th>Conv % intl</th><th>vs base</th><th>Calls / lead</th>'+
-    '<th>₹ per call</th><th>Calls used</th><th>Enrolments</th><th>Revenue</th></tr></thead><tbody>';
-  const cols=ed?12:13;
-  let cut=false;
-  T.forEach(t=>{
-    if(!cut&&t.frac<=0&&F.c>cap){h+=`<tr class="cut"><td colspan="${cols}"><div class="cutbar"><b>Capacity runs out</b><i></i>${fmt(F.l-P.l)} leads and ${inr(F.r-P.r)} left on the table</div></td></tr>`;cut=true;}
-    const part=t.frac>0&&t.frac<1;
-    h+=`<tr class="${t.frac>0?'':'out'}"><td><span class="tname">${t.k} · ${t.name}</span>`+
-     `${part?`<span class="part">${Math.round(t.frac*100)}% covered</span>`:''}<div class="tnote">${t.note}</div></td>`+
-     (ed
-      ?`<td><input class="mini" data-k="${t.k}" data-f="nat" type="number" step="1" value="${t.nat}"></td>`+
-       `<td><input class="mini" data-k="${t.k}" data-f="intl" type="number" step="1" value="${t.intl}"></td>`
-      :`<td>${fmt(t.leads)}</td><td>${fmt(t.nat)}</td><td>${fmt(t.intl)}</td>`)+
-     `<td><input class="mini" data-k="${t.k}" data-f="convN" type="number" step="0.05" value="${t.convN}"></td><td>${mult(t.convN,e.bn)}</td>`+
-     `<td><input class="mini" data-k="${t.k}" data-f="convI" type="number" step="0.05" value="${t.convI}"></td><td>${mult(t.convI,e.bi)}</td>`+
-     `<td><input class="mini" data-k="${t.k}" data-f="cpl" type="number" step="1" value="${t.cpl}"></td>`+
-     `<td>₹${fmt(t.rpc)}</td>`+
-     `<td class="${t.pCalls?'':'z'}">${t.pCalls?fmt(t.pCalls):'—'}</td>`+
-     `<td class="${t.pEnrol?'':'z'}">${t.pEnrol?fmt(t.pEnrol):'—'}</td>`+
-     `<td class="${t.pRev?'':'z'}">${t.pRev?inr(t.pRev):'—'}</td></tr>`;
-  });
-  if(!cut&&F.c<=cap&&F.c>0) h+=`<tr class="cut"><td colspan="${cols}"><div class="cutbar full"><b>Capacity covers the whole backlog</b><i></i>${fmt(cap-used)} spare calls</div></td></tr>`;
-  g('plan').innerHTML=h+'</tbody>';
-  g('plan').querySelectorAll('input.mini').forEach(i=>i.onchange=()=>{
+  function segTable(seg){
+    const rows=S.filter(s=>s.seg===seg);
+    const lf=seg==='N'?'nat':'intl', cf=seg==='N'?'convN':'convI';
+    let t='<thead><tr><th>Tier</th><th>Leads</th><th>Conv %</th><th>vs base</th><th>Calls / lead</th>'+
+      '<th>₹ per call</th><th>Calls used</th><th>Enrolments</th><th>Revenue</th></tr></thead><tbody>';
+    rows.forEach(s=>{
+      const part=s.frac>0&&s.frac<1;
+      t+=`<tr class="${s.frac>0?'':'out'}"><td><span class="tname">${s.k} · ${s.name}</span>`+
+       `${part?`<span class="part">${Math.round(s.frac*100)}% covered</span>`:''}<div class="tnote">${s.note}</div></td>`+
+       (ed?`<td><input class="mini" data-k="${s.k}" data-f="${lf}" type="number" step="1" value="${s.leads}"></td>`
+          :`<td>${fmt(s.leads)}</td>`)+
+       `<td><input class="mini" data-k="${s.k}" data-f="${cf}" type="number" step="0.05" value="${s.conv}"></td><td>${mult(s.conv,s.base)}</td>`+
+       `<td><input class="mini" data-k="${s.k}" data-f="cpl" type="number" step="1" value="${s.cpl}"></td>`+
+       `<td>₹${fmt(s.rpc)}</td>`+
+       `<td class="${s.pCalls?'':'z'}">${s.pCalls?fmt(s.pCalls):'—'}</td>`+
+       `<td class="${s.pEnrol?'':'z'}">${s.pEnrol?fmt(s.pEnrol):'—'}</td>`+
+       `<td class="${s.pRev?'':'z'}">${s.pRev?inr(s.pRev):'—'}</td></tr>`;
+    });
+    const T2=rows.reduce((a,s)=>({l:a.l+s.leads,pc:a.pc+s.pCalls,pe:a.pe+s.pEnrol,pr:a.pr+s.pRev}),{l:0,pc:0,pe:0,pr:0});
+    t+=`<tr class="tot"><td><b>Total ${seg==='N'?'national':'international'}</b></td><td>${ed?'':fmt(T2.l)}</td><td></td><td></td><td></td><td></td>`+
+       `<td><b>${fmt(T2.pc)}</b></td><td><b>${fmt(T2.pe)}</b></td><td><b>${inr(T2.pr)}</b></td></tr>`;
+    return t+'</tbody>';
+  }
+  g('planN').innerHTML=segTable('N');
+  g('planI').innerHTML=segTable('I');
+  document.querySelectorAll('#planN input.mini, #planI input.mini').forEach(i=>i.onchange=()=>{
     const t=C().tiers.find(x=>x.k===i.dataset.k);
     t[i.dataset.f]=parseFloat(i.value)||0;
     if(C().custom){t.leads=t.nat+t.intl;persistCustom();}
     save();loadCreator();draw();});
 
-  const inp=T.filter(t=>t.pCalls>0);
+  const inp=R.filter(t=>t.pCalls>0);
   g('eff').innerHTML=inp.map((t,i)=>`<div style="width:${100*t.pCalls/(used||1)}%;background:${PAL[i%PAL.length]}"></div>`).join('')
    +(cap>used?`<div style="width:${100*(cap-used)/cap}%;background:var(--rule)"></div>`:'');
-  g('efflg').innerHTML=inp.slice(0,6).map((t,i)=>`<span><em style="background:${PAL[i%PAL.length]}"></em>${t.k} · ${fmt(t.pCalls)} calls → ${inr(t.pRev)}</span>`).join('');
+  g('efflg').innerHTML=inp.slice(0,8).map((t,i)=>`<span><em style="background:${PAL[i%PAL.length]}"></em>${t.k}·${t.seg==='N'?'Nat':'Intl'} · ${fmt(t.pCalls)} calls → ${inr(t.pRev)}</span>`).join('');
 
   const tgt=n('tgt'),gapv=Math.max(0,tgt-P.r);
   const fn=n('fn')/100,fi=n('fi')/100,mx=n('fmx')/100;
