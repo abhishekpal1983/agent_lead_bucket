@@ -2528,7 +2528,7 @@ app.post("/api/vp/benchmark", express.json(), function(req, res){
    callscurrent_stage. Tier conversion defaults follow the page's documented rule:
    ayush tier shape rescaled to each creator's measured HubSpot-matched lead-to-
    enrolment rate, international clamped to 0.48x national on thin samples. */
-const PLAN_MINUTES = parseInt(process.env.PLAN_MINUTES || "180", 10);
+const PLAN_MINUTES = parseInt(process.env.PLAN_MINUTES || "720", 10); // 12h delta refresh
 const PLAN_CREATORS = (process.env.PLAN_CREATORS ||
   "ayush_singh13,payalineurope,wanderess_priyanka,kartikkapoorconsultation,technomanagers,vijaychandola,manasbichoo,ankita_gulati,simrankhokha")
   .split(",").map(function(s){ return s.trim(); }).filter(Boolean);
@@ -2555,6 +2555,14 @@ const PLAN_FILE = path.join(DATA_DIR, "plan_data.json");
 const PLAN_PREFS_FILE = path.join(DATA_DIR, "plan_prefs.json");
 let PLAN = { data: null, loadedAt: null, syncing: false, error: null };
 try { if (fs.existsSync(PLAN_FILE)) { const j = JSON.parse(fs.readFileSync(PLAN_FILE, "utf8")); PLAN.data = j.data; PLAN.loadedAt = j.loadedAt; } } catch (e) { console.error("plan restore: " + e.message); }
+/* Incremental sync state: per creator a map of contactId -> [stage, callsInStage,
+   intlState, segClass, totalCalls]. Persisted to the volume so each cycle only
+   fetches contacts whose hs_lastmodifieddate moved (call logging bumps it via
+   callscurrent_stage). A weekly full rebuild catches deletions/creator moves. */
+const PLAN_STATE_FILE = path.join(DATA_DIR, "plan_state.json");
+const PLAN_FULL_MS = parseInt(process.env.PLAN_FULL_HOURS || "168", 10) * 3600000;
+let PLAN_STATE = { creators: {}, lastFull: 0 };
+try { if (fs.existsSync(PLAN_STATE_FILE)) PLAN_STATE = JSON.parse(fs.readFileSync(PLAN_STATE_FILE, "utf8")); } catch (e) { console.error("plan state restore: " + e.message); }
 
 function planTierOf(st, cs){
   if (!st) return "H";
@@ -2630,88 +2638,154 @@ function planEcon(creator){
     enat: enat, eintl: eintl,
     revN: revN, revI: revI, mNat: mNat, mIntl: mIntl, months: sortedMonths, has: rows.length > 0 };
 }
-async function syncPlan(){
+function planIvOf(p){ const v = String(p.international_number || "").toLowerCase(); return v === "true" || v === "yes" ? "i" : (v === "false" || v === "no" ? "n" : "u"); }
+function planSpcOf(p){
+  const raw = (p.tm_student_or_professional || "").trim();
+  if (!raw) return "E";
+  const c = classifySP(raw);
+  return c === "P" ? "P" : c === "S" ? "S" : "U";
+}
+async function fetchPlanDelta(creator, sinceMs){
+  // contacts modified since the last cycle; null = too many, caller should do a full pull
+  const filters = [
+    { propertyName: "topmate_username", operator: "EQ", value: creator },
+    { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(sinceMs) }
+  ];
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return [];
+  if (total > 9000) return null;
+  const out = [];
+  let after;
+  do {
+    const body = { filterGroups: [{ filters }],
+      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number", "tm_student_or_professional"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+  return out;
+}
+function planAggregate(cr, cmap){
+  const sp = cr === PLAN_SP_CREATOR;
+  const stAgg = {}, tierAgg = {};
+  PLAN_STAGES.forEach(function(s2){ stAgg[s2] = { ln: 0, li: 0, tn: 0, ti: 0, vals: [], pro: 0, oth: 0, nul: 0 }; });
+  PLAN_TIERS.forEach(function(t){ tierAgg[t.k] = { leads: 0, nat: 0, intl: 0, callsdone: 0 }; });
+  let pool = 0, won = 0, natC = 0, intlC = 0, callsNat = 0, callsIntl = 0, callsCS = 0;
+  Object.keys(cmap).forEach(function(id){
+    const rec = cmap[id];
+    const st = rec[0], cs = rec[1], iv = rec[2], spc = rec[3], tc = rec[4] || 0;
+    const stKey = st || "Fresh";
+    const a = stAgg[stKey];
+    if (a) {
+      a.vals.push(cs);
+      if (sp) { if (spc === "P") a.pro++; else if (spc === "E") a.nul++; else a.oth++; }
+    }
+    if (sp && spc === "S") return; // pool excludes students for the sp creator
+    pool++;
+    if (iv === "i") intlC++; else if (iv === "n") natC++;
+    if (iv === "i") callsIntl += tc; else callsNat += tc;
+    callsCS += cs;
+    if (a) { if (iv === "i") { a.li++; a.ti += tc; } else { a.ln++; a.tn += tc; } }
+    if (stKey === "deal_won") { won++; return; }
+    const tk = planTierOf(st, cs);
+    if (tk && tierAgg[tk]) { const t = tierAgg[tk]; t.leads++; if (iv === "i") t.intl++; else t.nat++; t.callsdone += cs; }
+  });
+  const econ = planEcon(cr);
+  const bnRaw = natC ? +(100 * econ.mNat / natC).toFixed(2) : null;
+  const thin = intlC < 200 || econ.eintl < 5;
+  const biRaw = thin ? (bnRaw !== null ? +(0.48 * bnRaw).toFixed(2) : null)
+                     : (intlC ? +(100 * econ.mIntl / intlC).toFixed(2) : null);
+  const bnEff = bnRaw || 0.5;
+  const biEff = biRaw || +(0.48 * bnEff).toFixed(2);
+  return {
+    stages: PLAN_STAGES.map(function(s2){
+      const a = stAgg[s2];
+      const vals = a.vals.slice().sort(function(x, y){ return x - y; });
+      const n = vals.length, sum = vals.reduce(function(t, v){ return t + v; }, 0);
+      const cs = { n: n, sum: sum, mean: n ? +(sum / n).toFixed(1) : 0,
+        median: n ? vals[Math.floor((n - 1) / 2)] : 0,
+        p90: n ? vals[Math.min(n - 1, Math.floor(0.9 * n))] : 0,
+        b0: vals.filter(function(v){ return v === 0; }).length,
+        b12: vals.filter(function(v){ return v >= 1 && v <= 2; }).length,
+        b35: vals.filter(function(v){ return v >= 3 && v <= 5; }).length,
+        b6: vals.filter(function(v){ return v >= 6; }).length };
+      const row = { stage: s2, label: PLAN_LABELS[s2] || s2, ln: a.ln, li: a.li, tn: a.tn, ti: a.ti, cs: cs, total: a.ln + a.li };
+      if (sp) { row.pro = a.pro; row.oth = a.oth; row.nul = a.nul; }
+      return row;
+    }),
+    tiers: PLAN_TIERS.map(function(t){
+      const g = tierAgg[t.k], shape = t.convN / PLAN_BN0;
+      return { k: t.k, name: t.name, note: t.note, leads: g.leads, nat: g.nat, intl: g.intl,
+        callsdone: g.callsdone, convN: +(shape * bnEff).toFixed(2), convI: +(shape * biEff).toFixed(2), cpl: t.cpl };
+    }),
+    econ: { has: econ.has, enrol: econ.enrol, rev: econ.rev, payments: econ.payments, enat: econ.enat, eintl: econ.eintl,
+      tkn: econ.enat ? Math.round(econ.revN / econ.enat) : null, tki: econ.eintl ? Math.round(econ.revI / econ.eintl) : null,
+      bn: bnRaw, bi: biRaw, months: econ.months, thin_i: thin, intl_leads: intlC, nat_leads: natC },
+    poolnote: sp ? "non-student leads only" : "all leads",
+    pool: pool, actionable: pool - won, won: won, nat: natC, intl: intlC,
+    calls: { nat: callsNat, intl: callsIntl, cs: callsCS }, sp: sp
+  };
+}
+async function syncPlan(force){
   if (!TOKEN || PLAN.syncing) return;
   if (!SHEET.rows.length || !COHORT.emails.size) { setTimeout(syncPlan, 5 * 60 * 1000); return; }
   PLAN.syncing = true;
+  const t0 = Date.now();
+  const needFull = !!force || !PLAN_STATE.lastFull || (t0 - PLAN_STATE.lastFull) > PLAN_FULL_MS;
   try {
     const creators = {};
-    const now = Date.now();
+    let fullCount = 0, deltaCount = 0;
     for (const cr of PLAN_CREATORS) {
-      const rows = [];
-      try { await fetchPlanRange(cr, Date.parse("2024-01-01"), now + 86400000, function(p){ rows.push(p); }); }
-      catch (e) { console.error("plan " + cr + ": " + e.message); continue; }
-      const tot = await planCallCounts(rows.map(function(r){ return r.id; }));
-      const sp = cr === PLAN_SP_CREATOR;
-      const inPool = function(p){ return !sp || classifySP(p.tm_student_or_professional) !== "S"; };
-      const intlState = function(p){ const v = String(p.international_number || "").toLowerCase(); return v === "true" || v === "yes" ? "i" : (v === "false" || v === "no" ? "n" : "u"); };
-      const stAgg = {}, tierAgg = {};
-      PLAN_STAGES.forEach(function(s){ stAgg[s] = { ln: 0, li: 0, tn: 0, ti: 0, vals: [], pro: 0, oth: 0, nul: 0 }; });
-      PLAN_TIERS.forEach(function(t){ tierAgg[t.k] = { leads: 0, nat: 0, intl: 0, callsdone: 0 }; });
-      let pool = 0, won = 0, natC = 0, intlC = 0, callsNat = 0, callsIntl = 0, callsCS = 0;
-      rows.forEach(function(p){
-        const st = p.contact_engagement_stage || "";
-        const stKey = st || "Fresh";
-        const cs = num(p.callscurrent_stage);
-        const tc = tot[p.id] || 0;
-        const iv = intlState(p);
-        const a = stAgg[stKey];
-        if (a) {
-          a.vals.push(cs); // cs distribution + segment cols cover ALL leads in the stage
-          if (sp) { const c2 = classifySP(p.tm_student_or_professional); if (c2 === "P") a.pro++; else if (c2 === "?" && !(p.tm_student_or_professional || "").trim()) a.nul++; else a.oth++; }
+      try {
+        let st = PLAN_STATE.creators[cr];
+        let doFull = needFull || !st || !st.last || !st.c;
+        if (!doFull) {
+          const delta = await fetchPlanDelta(cr, st.last - 3600000); // 1h overlap
+          if (delta === null) doFull = true;
+          else {
+            const tot = await planCallCounts(delta.map(function(r){ return r.id; }));
+            delta.forEach(function(p){
+              const prev = st.c[p.id];
+              st.c[p.id] = [p.contact_engagement_stage || "", num(p.callscurrent_stage), planIvOf(p), planSpcOf(p),
+                tot[p.id] !== undefined ? tot[p.id] : (prev ? prev[4] : 0)];
+            });
+            st.last = t0;
+            deltaCount += delta.length;
+          }
         }
-        if (!inPool(p)) return;
-        pool++;
-        if (iv === "i") intlC++; else if (iv === "n") natC++;
-        if (iv === "i") { callsIntl += tc; } else { callsNat += tc; }
-        callsCS += cs;
-        if (a) { if (iv === "i") { a.li++; a.ti += tc; } else { a.ln++; a.tn += tc; } }
-        if (stKey === "deal_won") { won++; return; }
-        const tk = planTierOf(st, cs);
-        if (tk && tierAgg[tk]) { const t = tierAgg[tk]; t.leads++; if (iv === "i") t.intl++; else t.nat++; t.callsdone += cs; }
-      });
-      const econ = planEcon(cr);
-      const bnRaw = natC ? +(100 * econ.mNat / natC).toFixed(2) : null;
-      const thin = intlC < 200 || econ.eintl < 5;
-      const biRaw = thin ? (bnRaw !== null ? +(0.48 * bnRaw).toFixed(2) : null)
-                         : (intlC ? +(100 * econ.mIntl / intlC).toFixed(2) : null);
-      const bnEff = bnRaw || 0.5; // conservative default when nothing measured yet
-      const biEff = biRaw || +(0.48 * bnEff).toFixed(2);
-      creators[cr] = {
-        stages: PLAN_STAGES.map(function(s){
-          const a = stAgg[s];
-          const vals = a.vals.slice().sort(function(x, y){ return x - y; });
-          const n = vals.length, sum = vals.reduce(function(t, v){ return t + v; }, 0);
-          const cs = { n: n, sum: sum, mean: n ? +(sum / n).toFixed(1) : 0,
-            median: n ? vals[Math.floor((n - 1) / 2)] : 0,
-            p90: n ? vals[Math.min(n - 1, Math.floor(0.9 * n))] : 0,
-            b0: vals.filter(function(v){ return v === 0; }).length,
-            b12: vals.filter(function(v){ return v >= 1 && v <= 2; }).length,
-            b35: vals.filter(function(v){ return v >= 3 && v <= 5; }).length,
-            b6: vals.filter(function(v){ return v >= 6; }).length };
-          const row = { stage: s, label: PLAN_LABELS[s] || s, ln: a.ln, li: a.li, tn: a.tn, ti: a.ti, cs: cs, total: a.ln + a.li };
-          if (sp) { row.pro = a.pro; row.oth = a.oth; row.nul = a.nul; }
-          return row;
-        }),
-        tiers: PLAN_TIERS.map(function(t){
-          const g = tierAgg[t.k], shape = t.convN / PLAN_BN0;
-          return { k: t.k, name: t.name, note: t.note, leads: g.leads, nat: g.nat, intl: g.intl,
-            callsdone: g.callsdone, convN: +(shape * bnEff).toFixed(2), convI: +(shape * biEff).toFixed(2), cpl: t.cpl };
-        }),
-        econ: { has: econ.has, enrol: econ.enrol, rev: econ.rev, payments: econ.payments, enat: econ.enat, eintl: econ.eintl,
-          tkn: econ.enat ? Math.round(econ.revN / econ.enat) : null, tki: econ.eintl ? Math.round(econ.revI / econ.eintl) : null,
-          bn: bnRaw, bi: biRaw, months: econ.months, thin_i: thin, intl_leads: intlC, nat_leads: natC },
-        poolnote: sp ? "non-student leads only" : "all leads",
-        pool: pool, actionable: pool - won, won: won, nat: natC, intl: intlC,
-        calls: { nat: callsNat, intl: callsIntl, cs: callsCS }, sp: sp
-      };
-      console.log("plan " + cr + ": " + rows.length + " contacts, pool " + pool);
+        if (doFull) {
+          const rows = [];
+          await fetchPlanRange(cr, Date.parse("2024-01-01"), t0 + 86400000, function(p){ rows.push(p); });
+          const tot = await planCallCounts(rows.map(function(r){ return r.id; }));
+          const cmap = {};
+          rows.forEach(function(p){ cmap[p.id] = [p.contact_engagement_stage || "", num(p.callscurrent_stage), planIvOf(p), planSpcOf(p), tot[p.id] || 0]; });
+          st = PLAN_STATE.creators[cr] = { c: cmap, last: t0 };
+          fullCount++;
+        }
+        creators[cr] = planAggregate(cr, st.c);
+        console.log("plan " + cr + ": " + Object.keys(st.c).length + " contacts (" + (doFull ? "full" : "delta") + ")");
+      } catch (e) {
+        console.error("plan " + cr + ": " + e.message);
+        // keep last aggregate for this creator if we have state
+        const st2 = PLAN_STATE.creators[cr];
+        if (st2 && st2.c) creators[cr] = planAggregate(cr, st2.c);
+      }
     }
-    PLAN.data = { creators: creators, order: PLAN_CREATORS.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS };
+    if (needFull) PLAN_STATE.lastFull = t0;
+    PLAN.data = { creators: creators, order: PLAN_CREATORS.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS,
+      mode: needFull ? "full" : "delta", lastFull: PLAN_STATE.lastFull ? new Date(PLAN_STATE.lastFull).toISOString() : null };
     PLAN.loadedAt = new Date().toISOString();
     PLAN.syncing = false; PLAN.error = null;
-    try { if (ORG_PERSISTENT) fs.writeFileSync(PLAN_FILE, JSON.stringify({ data: PLAN.data, loadedAt: PLAN.loadedAt })); } catch (e) { console.error("plan save: " + e.message); }
-    console.log("Plan sync complete: " + Object.keys(creators).length + " creators");
+    try {
+      if (ORG_PERSISTENT) {
+        fs.writeFileSync(PLAN_FILE, JSON.stringify({ data: PLAN.data, loadedAt: PLAN.loadedAt }));
+        fs.writeFileSync(PLAN_STATE_FILE, JSON.stringify(PLAN_STATE));
+      }
+    } catch (e) { console.error("plan save: " + e.message); }
+    console.log("Plan sync complete (" + (needFull ? "full" : "delta, " + deltaCount + " changed") + "): " + Object.keys(creators).length + " creators");
   } catch (e) {
     PLAN.syncing = false; PLAN.error = e.message;
     console.error("Plan sync failed: " + e.message);
