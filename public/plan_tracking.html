@@ -129,7 +129,9 @@ function draw(){
     });
     rows+='<tr><td class="mut">New leads since baseline</td><td>'+fmt(d.newLeads)+'</td><td></td><td>'+fmt(d.newCalls)+'</td><td colspan="3" class="mut">worked outside the baseline plan</td></tr>';
     rows+='<tr class="tot"><td>TOTAL</td><td>'+fmt(T.l0)+'</td><td>'+fmt(T.tgt)+'</td><td>'+fmt(T.calls+d.newCalls)+'</td><td>'+pace(T.calls+d.newCalls,T.tgt)+'</td><td>'+fmt(T.touch)+'</td><td>'+fmt(T.moved)+(T.won?' <span class="good">+'+T.won+' won</span>':'')+'</td></tr>';
-    html+='<div class="card"><div class="chead"><h2>'+esc(cr)+'</h2><span class="m">'+fmt(T.l0)+' baseline leads</span></div>'+
+    html+='<div class="card"><div class="chead"><h2>'+esc(cr)+'</h2><span class="m">'+fmt(T.l0)+' baseline leads</span>'+
+      '<button class="save saveCr" data-cr="'+esc(cr)+'" style="margin-left:auto">Save '+esc(cr)+' targets</button>'+
+      '<span class="mut crmsg" data-cr="'+esc(cr)+'" style="font-size:11.5px"></span></div>'+
       '<div class="kpis">'+
       '<div class="kpi"><div class="v">'+fmt(d.actual.enrol)+' <span class="mut" style="font-size:12px">/ <input class="mini etgt" data-cr="'+esc(cr)+'" type="number" step="1" value="'+tg.enrol+'"></span></div><div class="k">Enrolments vs target</div></div>'+
       '<div class="kpi"><div class="v">'+pace(d.actual.enrol,tg.enrol)+'</div><div class="k">Enrolment pace</div></div>'+
@@ -153,15 +155,28 @@ function collectTargets(){
     const cr=i.dataset.cr;if(!TG[ym][cr])TG[ym][cr]={tiers:{}};
     TG[ym][cr].rev=parseFloat(i.value)||0;});
 }
-document.getElementById('saveT').onclick=async function(){
+async function saveTargets(){
   collectTargets();
-  const m=document.getElementById('savemsg');
   try{
     const r=await fetch('/api/plan-prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:TG})});
-    m.textContent=r.ok?'Targets saved · tracking now runs against them':'Save failed ('+r.status+')';
-  }catch(e){m.textContent='Save failed: '+e.message;}
+    return r.ok?null:('Save failed ('+r.status+')');
+  }catch(e){return 'Save failed: '+e.message;}
+}
+document.getElementById('saveT').onclick=async function(){
+  const err=await saveTargets();
+  document.getElementById('savemsg').textContent=err||'All targets saved · tracking now runs against them';
   draw();
 };
+document.addEventListener('click',async function(e){
+  const b=e.target.closest&&e.target.closest('.saveCr');
+  if(!b)return;
+  const cr=b.dataset.cr;
+  const err=await saveTargets();
+  draw();
+  const m=document.querySelector('.crmsg[data-cr="'+CSS.escape(cr)+'"]');
+  if(m)m.textContent=err||'Saved · '+new Date().toLocaleTimeString();
+  document.getElementById('savemsg').textContent=err||'';
+});
 document.addEventListener('change',e=>{
   if(e.target.classList&&(e.target.classList.contains('tgt')||e.target.classList.contains('etgt')||e.target.classList.contains('rtgt'))){
     collectTargets();draw();
