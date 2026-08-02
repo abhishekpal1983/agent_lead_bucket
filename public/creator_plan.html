@@ -149,7 +149,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
 </div>
 <div class="note" id="fnote"></div>
 
-<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">One call budget, spent across national and international tiers together, highest revenue per call first. Rows stay in tier order; dimmed rows did not make the cut this month. Conv %, enrolments and revenue are one dial: edit any of the three and the other two re-solve. Enrolments are fresh enrolments only (a consumer's first payment); the ₹ per enrolment ticket includes the balance instalments those consumers go on to pay, so revenue reads as expected total collection.</p></div>
+<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">One call budget, spent across national and international tiers together, highest-yielding tiers first. Rows stay in tier order; dimmed rows did not make the cut this month. Conv %, enrolments and revenue are one dial: edit any of the three and the other two re-solve. Enrolments are fresh enrolments only (a consumer's first payment); the ₹ per enrolment ticket includes the balance instalments those consumers go on to pay, so revenue reads as expected total collection.</p></div>
 <h3 class="segh">National</h3>
 <div class="scroll"><table id="planN"></table></div>
 <h3 class="segh" style="margin-top:18px">International</h3>
@@ -324,7 +324,6 @@ function draw(){
     ['',fmt(P.e),'Enrolments',lastM?`actual last month: ${lastM}`:'no payment history to compare'],
     ['',lastM?(P.e/lastM).toFixed(1)+'x':'—','Versus recent run rate',lastM?'against a normal month':'needs payment history'],
     ['',fmt(P.l),'Leads worked',`${fmt(F.l-P.l)} untouched at this capacity`],
-    ['','₹'+fmt(P.c?P.r/P.c:0),'Revenue per call','blended above the line'],
   ].map(k=>`<div class="hc ${k[0]}"><div class="v">${k[1]}</div><div class="k">${k[2]}</div><div class="n">${k[3]}</div></div>`).join('');
 
   const ed=c.custom;
@@ -332,7 +331,7 @@ function draw(){
     const rows=S.filter(s=>s.seg===seg);
     const lf=seg==='N'?'nat':'intl', cf=seg==='N'?'convN':'convI';
     let t='<thead><tr><th>Tier</th><th>Leads</th><th>Conv %</th><th>vs base</th><th>Calls / lead</th>'+
-      '<th>₹ per call</th><th>Calls used</th><th>Enrolments</th><th>Revenue</th></tr></thead><tbody>';
+      '<th>Calls used</th><th>Enrolments</th><th>Revenue</th></tr></thead><tbody>';
     rows.forEach(s=>{
       const part=s.frac>0&&s.frac<1;
       t+=`<tr class="${s.frac>0?'':'out'}"><td><span class="tname">${s.k} · ${s.name}</span>`+
@@ -341,13 +340,12 @@ function draw(){
           :`<td>${fmt(s.leads)}</td>`)+
        `<td><input class="mini" data-k="${s.k}" data-f="${cf}" type="number" step="0.05" value="${s.conv}"></td><td>${mult(s.conv,s.base)}</td>`+
        `<td><input class="mini" data-k="${s.k}" data-f="cpl" type="number" step="1" value="${s.cpl}"></td>`+
-       `<td>₹${fmt(s.rpc)}</td>`+
        `<td class="${s.pCalls?'':'z'}">${s.pCalls?fmt(s.pCalls):'—'}</td>`+
        `<td><input class="mini" data-k="${s.k}" data-f="enr" data-seg="${seg}" type="number" step="0.5" value="${+s.pEnrol.toFixed(1)}"></td>`+
        `<td><input class="mini wide" data-k="${s.k}" data-f="rev" data-seg="${seg}" type="number" step="1000" value="${Math.round(s.pRev)}"></td></tr>`;
     });
     const T2=rows.reduce((a,s)=>({l:a.l+s.leads,pc:a.pc+s.pCalls,pe:a.pe+s.pEnrol,pr:a.pr+s.pRev}),{l:0,pc:0,pe:0,pr:0});
-    t+=`<tr class="tot"><td><b>Total ${seg==='N'?'national':'international'}</b></td><td>${ed?'':fmt(T2.l)}</td><td></td><td></td><td></td><td></td>`+
+    t+=`<tr class="tot"><td><b>Total ${seg==='N'?'national':'international'}</b></td><td>${ed?'':fmt(T2.l)}</td><td></td><td></td><td></td>`+
        `<td><b>${fmt(T2.pc)}</b></td><td><b>${fmt(T2.pe)}</b></td><td><b>${inr(T2.pr)}</b></td></tr>`;
     return t+'</tbody>';
   }
@@ -405,22 +403,20 @@ function draw(){
     <div class="r"><span>Enrolments</span><b>${e.has?e.enat:'—'}</b></div>
     <div class="r"><span>Lead → enrolment</span><b>${e.has&&e.nat_leads?(100*e.enat/e.nat_leads).toFixed(2)+'%':'—'}</b></div>
     <div class="r"><span>₹ per enrolment</span><b>${n('tkn')?inr(n('tkn')):'—'}</b></div>
-    <div class="r"><span>Lifetime calls per lead</span><b>${cn?cn.toFixed(2):'—'}</b></div>
-    <div class="hl"><span>Revenue per call placed</span><b>${cn&&vn?'₹'+fmt(vn/cn):'—'}</b></div></div>
+    <div class="r"><span>Lifetime calls per lead</span><b>${cn?cn.toFixed(2):'—'}</b></div></div>
    <div><h3>International</h3>
     <div class="r"><span>Leads</span><b>${fmt(c.intl)}</b></div>
     <div class="r"><span>Enrolments</span><b>${e.has?e.eintl:'—'}</b></div>
     <div class="r"><span>Lead → enrolment</span><b>${e.has&&e.intl_leads?(100*e.eintl/e.intl_leads).toFixed(2)+'%':'—'}</b></div>
     <div class="r"><span>₹ per enrolment</span><b>${n('tki')?inr(n('tki')):'—'}</b></div>
-    <div class="r"><span>Lifetime calls per lead</span><b>${ci?ci.toFixed(2):'—'}</b></div>
-    <div class="hl"><span>Revenue per call placed</span><b>${ci&&vi?'₹'+fmt(vi/ci):'—'}</b></div></div>`;
+    <div class="r"><span>Lifetime calls per lead</span><b>${ci?ci.toFixed(2):'—'}</b></div></div>`;
   let co='';
   if(c.custom) co=`<b>${cur}</b> is yours to fill in. Once you have real lead counts and a ticket size, this section will compare the two segments the same way it does for the tracked creators.`;
   else if(!e.has) co=`No payment history for <b>${cur}</b>, so there is nothing to compare. The lead split is ${fmt(c.nat)} national to ${fmt(c.intl)} international and only ${fmt(tot)} calls have ever been logged — work it first, then come back when there is revenue to measure.`;
   else if(cn&&ci&&vn&&vi){const rn=vn/cn,ri=vi/ci;
     co = ri>rn
-      ?`An international lead is worth <b>₹${fmt(vi)}</b> against <b>₹${fmt(vn)}</b> national, so on lead value alone you would deprioritise it. But it receives <b>${(cn/ci).toFixed(1)}x less</b> calling effort, and every call placed to one returns <b>₹${fmt(ri)}</b> against <b>₹${fmt(rn)}</b>. Per unit of effort international is the under-served segment here${e.thin_i?', though on only '+e.eintl+' international enrolments — test before you reallocate':''}.`
-      :`National leads win on both counts for <b>${cur}</b>: <b>₹${fmt(vn)}</b> per lead against <b>₹${fmt(vi)}</b>, and <b>₹${fmt(rn)}</b> per call against <b>₹${fmt(ri)}</b>. No hidden international upside here — effort is already pointed the right way.`;}
+      ?`An international lead is worth <b>₹${fmt(vi)}</b> against <b>₹${fmt(vn)}</b> national, yet it receives <b>${(cn/ci).toFixed(1)}x less</b> calling effort. Relative to the attention it gets, international is the under-served segment here${e.thin_i?', though on only '+e.eintl+' international enrolments — treat with care':''}.`
+      :`National leads win for <b>${cur}</b>: <b>₹${fmt(vn)}</b> of value per lead against <b>₹${fmt(vi)}</b> international, even after accounting for the difference in calling effort. Effort is already pointed the right way.`;}
   else co=`Not enough international volume for <b>${cur}</b> to compare the two segments meaningfully.`;
   g('callout').innerHTML=co;
 
