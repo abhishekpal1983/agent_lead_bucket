@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Creator monthly lead plan</title><style>
+:root{color-scheme:light;
+ --ink:#1b1b1b;--mid:#5c5f63;--soft:#8b8f94;--faint:#b8bcc0;
+ --rule:#e6e7e9;--bg:#fafafa;--acc:#0b6e4f;--acctint:#f1f8f5;--flag:#8a5a10;--flagtint:#fdf8ef}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--ink);
+ font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+ -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.wrap{max-width:1140px;margin:0 auto;padding:20px 22px 90px}
+h1{font-size:26px;margin:0 0 6px;font-weight:600;letter-spacing:-.015em}
+.dek{color:var(--mid);font-size:15px;margin:0 0 26px;max-width:660px}
+h2{font-size:13px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.1em;margin:0}
+.sec{margin:44px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.sec p{margin:6px 0 0;color:var(--mid);font-size:14px}
+/* creator tabs */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.tab{padding:7px 14px;border:1px solid var(--rule);border-radius:8px;background:#fff;cursor:pointer;
+ font:inherit;font-size:14px;color:var(--mid)}
+.tab:hover{border-color:var(--faint);color:var(--ink)}
+.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tab .c{opacity:.55;margin-left:7px;font-size:13px}
+.tab.new{border-style:dashed;color:var(--soft)}
+/* stat strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:26px;
+ padding:18px 0 22px;border-bottom:1px solid var(--rule);margin-bottom:24px}
+.strip .v{font-size:20px;font-weight:600;letter-spacing:-.015em}
+.strip .k{font-size:13px;color:var(--soft);margin-top:2px}
+/* inputs */
+.ctrl{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;
+ background:var(--rule);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.ctrl label{background:#fff;padding:13px 16px;display:block}
+.ctrl span{display:block;font-size:13px;color:var(--soft);margin-bottom:4px}
+.ctrl input{width:100%;border:0;background:transparent;font:inherit;font-size:19px;font-weight:600;
+ letter-spacing:-.015em;padding:0;color:var(--ink)}
+.ctrl input::placeholder{color:var(--faint);font-weight:400}
+.ctrl input:focus{outline:0;color:var(--acc)}
+.ctrl label.key{background:var(--acctint)}
+/* headline */
+.head{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:28px;margin-top:22px}
+.hc .v{font-size:32px;font-weight:600;letter-spacing:-.025em;line-height:1.15}
+.hc.lead .v{color:var(--acc)}
+.hc .k{font-size:14px;color:var(--mid);margin-top:4px}
+.hc .n{font-size:13px;color:var(--soft);margin-top:3px;line-height:1.45}
+/* tables */
+.scroll{overflow-x:auto;margin-top:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:11px 14px;text-align:right;white-space:nowrap}
+th{font-size:12px;font-weight:600;color:var(--soft);border-bottom:1px solid var(--ink)}
+td{border-bottom:1px solid var(--rule)}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+th:last-child,td:last-child{padding-right:0}
+tbody tr:last-child td{border-bottom:0}
+tr.out td{color:var(--faint)}
+tr.cut td{padding:0;border:0}
+.cutbar{display:flex;align-items:center;gap:14px;padding:11px 0;font-size:13px;color:var(--mid)}
+.cutbar b{color:var(--ink);font-weight:600}
+.cutbar i{flex:1;height:1px;background:var(--ink);display:block;opacity:.35}
+.cutbar.full i{background:var(--acc);opacity:.4}
+.cutbar.full,.cutbar.full b{color:var(--acc)}
+.tname{font-weight:600}
+.tnote{font-size:13px;color:var(--soft);white-space:normal;max-width:320px;margin-top:2px;font-weight:400}
+.part{font-size:12px;color:var(--flag);margin-left:8px;font-weight:600}
+.grp td{font-size:12px;color:var(--soft);font-weight:600;padding:16px 0 6px;border-bottom:1px solid var(--rule)}
+input.mini{font:inherit;font-size:14px;padding:4px 7px;border:1px solid var(--rule);border-radius:6px;
+ width:66px;text-align:right;background:#fff;color:var(--ink)}
+input.mini:hover{border-color:var(--faint)}
+input.mini:focus{outline:0;border-color:var(--acc)}
+.mx{font-size:13px}
+.z{color:var(--faint)}
+/* effort bar */
+.eff{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:22px;background:var(--rule)}
+.efflg{display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--mid)}
+.efflg em{font-style:normal;width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:7px}
+/* two-col compare */
+.cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:34px;margin-top:6px}
+.cmp h3{margin:0 0 12px;font-size:13px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.08em}
+.cmp .r{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;color:var(--mid);border-bottom:1px solid var(--rule)}
+.cmp .r b{color:var(--ink);font-weight:500}
+.cmp .hl{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px}
+.cmp .hl span{font-size:14px;color:var(--mid)}
+.cmp .hl b{font-size:24px;font-weight:600;letter-spacing:-.02em}
+/* prose blocks */
+.note{border-left:2px solid var(--acc);padding:2px 0 2px 18px;margin-top:26px;font-size:14px;color:var(--mid);line-height:1.65}
+.note b{color:var(--ink);font-weight:600}
+.flag{border-left:2px solid var(--flag);background:var(--flagtint);padding:14px 18px;border-radius:0 8px 8px 0;
+ font-size:14px;color:#6b4a12;line-height:1.6;margin-bottom:20px}
+.flag b{color:#4a3208}
+details{border-top:1px solid var(--rule)}
+summary{padding:15px 0;cursor:pointer;font-size:14px;font-weight:500;list-style:none;display:flex;justify-content:space-between}
+summary::-webkit-details-marker{display:none}
+summary:after{content:'+';color:var(--soft);font-weight:400}
+details[open] summary:after{content:'–'}
+.dtext{padding:0 0 20px;font-size:14px;color:var(--mid);line-height:1.7;max-width:820px}
+.dtext b{color:var(--ink);font-weight:600}
+.dtext ul{margin:10px 0 0;padding-left:20px}.dtext li{margin:7px 0}
+code{background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px;
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mid)}
+.foot{color:var(--soft);font-size:13px;margin-top:44px;padding-top:20px;border-top:1px solid var(--rule);line-height:1.7;max-width:880px}
+.mkbtn{font:inherit;font-size:14px;padding:8px 15px;border:1px solid var(--rule);border-radius:8px;background:#fff;cursor:pointer;color:var(--mid)}
+.mkbtn:hover{border-color:var(--faint);color:var(--ink)}
+.mkbtn.danger:hover{color:var(--flag);border-color:#e7cfa8}
+.newform{border:1px dashed var(--faint);border-radius:10px;padding:18px 20px;margin-bottom:20px;display:none}
+.newform.on{display:block}
+.newform h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.newform p{margin:0 0 14px;color:var(--mid);font-size:14px}
+.newform input[type=text]{font:inherit;font-size:15px;padding:8px 11px;border:1px solid var(--rule);border-radius:7px;width:260px}
+.newform input[type=text]:focus{outline:0;border-color:var(--acc)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+</style></head><body><div class="wrap">
+<h1>Creator monthly lead plan</h1>
+<p class="dek">Pick a creator, set the team, and the model spends every available call on the highest-yielding leads first — then shows where the month runs out.</p>
+
+<div class="tabs" id="tabs"></div>
+<div class="newform" id="newform">
+  <h3>Add a creator</h3>
+  <p>Starts empty. Type the lead counts into the tier table, then set ticket size and conversion. Nothing is assumed for you.</p>
+  <div class="row">
+    <input type="text" id="newname" placeholder="creator username" autocomplete="off">
+    <button class="mkbtn" id="newok">Create</button>
+    <button class="mkbtn" id="newcancel">Cancel</button>
+  </div>
+</div>
+<div id="flags"></div>
+<div class="strip" id="strip"></div>
+
+<div class="sec"><h2>1 &nbsp; Set the month</h2><p>Everything below recalculates from these.</p></div>
+<div class="ctrl">
+  <label><span>Agents</span><input id="ag" type="number" value="6" min="0" step="1"></label>
+  <label><span>Working days</span><input id="days" type="number" value="22" min="1" step="1"></label>
+  <label><span>Calls / agent / day</span><input id="cpd" type="number" value="60" min="1" step="5"></label>
+  <label><span>₹ per enrolment · national</span><input id="tkn" type="number" step="1000" placeholder="—"></label>
+  <label><span>₹ per enrolment · intl</span><input id="tki" type="number" step="1000" placeholder="—"></label>
+  <label class="key"><span>Revenue target</span><input id="tgt" type="number" step="500000"></label>
+</div>
+
+<div class="sec"><h2>2 &nbsp; What the month produces</h2><p id="capline"></p></div>
+<div class="head" id="head"></div>
+
+<div class="sec"><h2>3 &nbsp; Target versus what the backlog can give</h2><p id="gapline"></p></div>
+<div class="head" id="gap"></div>
+<div class="ctrl" style="margin-top:24px">
+  <label><span>New lead conv % · national</span><input id="fn" type="number" step="0.05" placeholder="—"></label>
+  <label><span>New lead conv % · intl</span><input id="fi" type="number" step="0.05" placeholder="—"></label>
+  <label><span>New lead mix · % national</span><input id="fmx" type="number" step="1"></label>
+  <label><span>Calls per fresh lead</span><input id="fcp" type="number" step="0.5" value="3"></label>
+</div>
+<div class="note" id="fnote"></div>
+
+<div class="sec"><h2>4 &nbsp; Where the calls go</h2><p id="planline">Tiers ranked by revenue per call. Everything above the line fits inside this month.</p></div>
+<div class="scroll"><table id="plan"></table></div>
+<div class="eff" id="eff"></div>
+<div class="efflg" id="efflg"></div>
+
+<div class="sec"><h2>5 &nbsp; National versus international</h2><p id="econline"></p></div>
+<div class="cmp" id="econ"></div>
+<div class="note" id="callout"></div>
+
+<div class="sec"><h2>6 &nbsp; Detail and method</h2><p>Open only if you need to defend a number.</p></div>
+
+<details><summary>Full stage table</summary>
+<div class="scroll"><table id="matrix"></table></div>
+<div class="dtext" style="padding-top:14px"><b>Total calls</b> is every call ever logged against the lead, from the Contact&nbsp;→&nbsp;Calls association — not <code>call_attempts</code>, which is populated on under 1% of records. <b>In current stage</b> is <code>callscurrent_stage</code>, which resets on every stage change, so the gap between them is effort spent before the lead reached its present stage. Student and professional columns appear for ayush_singh13 only: <code>tm_student_or_professional</code> is over 99% empty for every other creator.</div></details>
+
+<details><summary>How the conversion benchmark works</summary>
+<div class="dtext">
+A conversion rate measured <b>per stage</b> is not recoverable from this CRM. Three routes were tried; all are circular or unavailable:
+<ul>
+<li><code>previous_engagement_stage</code> is self-referencing on 325 of 339 wins.</li>
+<li>Matching paying consumers back to HubSpot puts 253 of 256 matches in <code>deal_won</code> — the stage is overwritten the moment someone pays, destroying the pre-payment stage.</li>
+<li>True stage history needs <code>propertiesWithHistory</code> batch reads, which this connector does not expose.</li>
+</ul>
+So each creator is anchored on its own <b>measured lead-to-enrolment rate</b>, split national and international. Tier defaults are the ayush tier <i>shape</i> rescaled to that creator's measured level, so a creator converting at a third of ayush's rate starts with tier assumptions a third as high.
+<br><br>Each tier shows its multiple of the matching baseline. Late-funnel tiers deserve to run high — a payment prospect genuinely converts far better than an average lead — but a high multiple marks a claim you are asserting, not one the data proves.
+<br><br><b>To make this measurable</b>, write a <code>stage_at_payment</code> field when a payment lands.
+</div></details>
+
+<details><summary>Data quality and naming</summary>
+<div class="dtext">
+<ul>
+<li><b>Two handles in the original brief do not exist in HubSpot.</b> <code>kartikapoorconsultation</code> is really <code>kartikkapoorconsultation</code> (1,136 leads) and <code>simrankhoka</code> is really <code>simrankhokha</code> (159 leads).</li>
+<li><b>19% of ayush revenue is unattributed</b> — 60 of 316 paying consumers have no HubSpot contact under that creator.</li>
+<li><b><code>deal_won</code> overstates enrolment by about 25%</b>: 339 ayush contacts marked won against 253 with a payment behind them. The model is anchored on the payment sheet for this reason.</li>
+<li><b>Thin international samples.</b> Where a creator has under 200 international leads or under 5 international enrolments, the measured international rate is unreliable and is set to 0.48x national. Those creators are flagged above.</li>
+<li><b>Sheet composition.</b> 317 of 1,503 payment rows are <code>loan</code>, <code>ongoing</code>, <code>manual</code> or <code>upcoming</code> rather than <code>completed</code>, and all are counted; 48 rows carry <code>price_inr</code> of 1.</li>
+</ul></div></details>
+
+<p class="foot">Leads and calls: HubSpot portal 244132076 by <code>topmate_username</code>. Money: payment tracker to 1 Aug 2026 — 1,503 payments across 26 creators, revenue measured as <code>price_inr</code>, enrolment as a consumer's first payment per creator. For ayush_singh13 the pool excludes students via a keyword list on <code>tm_student_or_professional</code>; for other creators that field is empty, so the pool is all leads. Already-won leads are excluded. Creators you add yourself are marked as such and contain only the numbers you type.</p>
+</div><script>
+const BASEDATA={"creators":{"ayush_singh13":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":1418,"li":535,"tn":98,"ti":18,"cs":{"n":2093,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":2093,"b12":0,"b35":0,"b6":0},"total":1953,"pro":298,"oth":256,"nul":1539},{"stage":"payment_prospect","label":"Payment prospect","ln":35,"li":4,"tn":349,"ti":6,"cs":{"n":47,"sum":127,"mean":2.7,"median":1,"p90":9,"b0":21,"b12":10,"b35":6,"b6":10},"total":39,"pro":23,"oth":13,"nul":11},{"stage":"pricing_pitched","label":"Pricing pitched","ln":54,"li":1,"tn":416,"ti":1,"cs":{"n":62,"sum":137,"mean":2.21,"median":1,"p90":7,"b0":22,"b12":21,"b35":9,"b6":10},"total":55,"pro":28,"oth":10,"nul":24},{"stage":"program_pitched","label":"Program pitched","ln":197,"li":9,"tn":1068,"ti":9,"cs":{"n":208,"sum":353,"mean":1.7,"median":1,"p90":4,"b0":97,"b12":58,"b35":38,"b6":15},"total":206,"pro":123,"oth":19,"nul":66},{"stage":"counselled","label":"Counselled","ln":574,"li":84,"tn":3518,"ti":75,"cs":{"n":687,"sum":949,"mean":1.38,"median":1,"p90":4,"b0":397,"b12":168,"b35":72,"b6":50},"total":658,"pro":501,"oth":82,"nul":104},{"stage":"discovery","label":"Discovery","ln":275,"li":28,"tn":1848,"ti":4,"cs":{"n":303,"sum":860,"mean":2.84,"median":1,"p90":9,"b0":123,"b12":65,"b35":60,"b6":55},"total":303,"pro":198,"oth":25,"nul":80},{"stage":"rcb_requested_callback","label":"RCB","ln":1316,"li":179,"tn":2066,"ti":39,"cs":{"n":1504,"sum":352,"mean":0.23,"median":1,"p90":1,"b0":1354,"b12":109,"b35":30,"b6":11},"total":1495,"pro":1333,"oth":90,"nul":81},{"stage":"FU_RCB","label":"FU - RCB","ln":35,"li":1,"tn":349,"ti":6,"cs":{"n":38,"sum":81,"mean":2.13,"median":1,"p90":6,"b0":16,"b12":9,"b35":9,"b6":4},"total":36,"pro":30,"oth":3,"nul":5},{"stage":"Follow up","label":"Follow up","ln":40,"li":6,"tn":468,"ti":14,"cs":{"n":46,"sum":43,"mean":0.93,"median":1,"p90":3,"b0":28,"b12":12,"b35":5,"b6":1},"total":46,"pro":30,"oth":1,"nul":15},{"stage":"FU_DNP","label":"FU - DNP","ln":179,"li":12,"tn":2725,"ti":110,"cs":{"n":191,"sum":578,"mean":3.03,"median":2,"p90":9,"b0":73,"b12":44,"b35":30,"b6":44},"total":191,"pro":143,"oth":9,"nul":39},{"stage":"dnp_did_not_pick","label":"DNP","ln":3714,"li":632,"tn":9173,"ti":247,"cs":{"n":4362,"sum":2489,"mean":0.57,"median":1,"p90":2,"b0":3470,"b12":576,"b35":219,"b6":97},"total":4346,"pro":3058,"oth":353,"nul":951},{"stage":"ghosted","label":"Ghosted","ln":344,"li":58,"tn":2253,"ti":13,"cs":{"n":411,"sum":92,"mean":0.22,"median":1,"p90":1,"b0":365,"b12":34,"b35":11,"b6":1},"total":402,"pro":365,"oth":26,"nul":20},{"stage":"ni_not_interested","label":"NI - Not interested","ln":2661,"li":118,"tn":11515,"ti":136,"cs":{"n":2771,"sum":150,"mean":0.05,"median":1,"p90":1,"b0":2670,"b12":91,"b35":9,"b6":1},"total":2779,"pro":2046,"oth":230,"nul":495},{"stage":"disqualified","label":"Disqualified","ln":2044,"li":846,"tn":3222,"ti":232,"cs":{"n":3316,"sum":147,"mean":0.04,"median":1,"p90":1,"b0":3249,"b12":60,"b35":5,"b6":2},"total":2890,"pro":1809,"oth":775,"nul":732},{"stage":"IFC","label":"IFC (parked)","ln":419,"li":9,"tn":3687,"ti":25,"cs":{"n":415,"sum":79,"mean":0.19,"median":1,"p90":1,"b0":363,"b12":47,"b35":3,"b6":2},"total":428,"pro":312,"oth":21,"nul":82},{"stage":"deal_won","label":"Deal won","ln":274,"li":23,"tn":1833,"ti":53,"cs":{"n":294,"sum":78,"mean":0.27,"median":1,"p90":1,"b0":262,"b12":22,"b35":7,"b6":3},"total":297,"pro":219,"oth":10,"nul":65}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":193,"nat":184,"intl":9,"callsdone":53,"convN":12.0,"convI":6.03,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":124,"nat":118,"intl":6,"callsdone":564,"convN":8.0,"convI":4.02,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":669,"nat":589,"intl":80,"callsdone":149,"convN":5.0,"convI":2.51,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":321,"nat":285,"intl":36,"callsdone":1660,"convN":3.0,"convI":1.51,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":1370,"nat":1207,"intl":163,"callsdone":0,"convN":3.0,"convI":1.51,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":172,"nat":153,"intl":19,"callsdone":433,"convN":1.5,"convI":0.75,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":237,"nat":219,"intl":18,"callsdone":621,"convN":3.0,"convI":1.51,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":2093,"nat":1520,"intl":573,"callsdone":0,"convN":1.5,"convI":0.75,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":4445,"nat":3799,"intl":646,"callsdone":812,"convN":0.8,"convI":0.4,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":328,"nat":280,"intl":48,"callsdone":1769,"convN":0.3,"convI":0.15,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":415,"nat":406,"intl":9,"callsdone":79,"convN":2.0,"convI":1.01,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":6087,"nat":4999,"intl":1088,"callsdone":297,"convN":0.15,"convI":0.08,"cpl":1}],"econ":{"has":true,"enrol":317,"rev":34509120,"payments":492,"enat":290,"eintl":27,"tkn":111846,"tki":76809,"bn":1.87,"bi":0.94,"months":{"2026-02":1,"2026-03":31,"2026-04":60,"2026-05":61,"2026-06":66,"2026-07":98},"thin_i":false,"intl_leads":2545,"nat_leads":13579},"poolnote":"non-student leads only","pool":16751,"actionable":16454,"won":297,"nat":13579,"intl":2545,"calls":{"nat":44588,"intl":988,"cs":6515},"sp":true},"payalineurope":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":78,"li":111,"tn":8321,"ti":16,"cs":{"n":189,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":189,"b12":0,"b35":0,"b6":0},"total":189},{"stage":"payment_prospect","label":"Payment prospect","ln":13,"li":1,"tn":126,"ti":6,"cs":{"n":14,"sum":39,"mean":2.79,"median":1,"p90":7,"b0":6,"b12":3,"b35":2,"b6":3},"total":14},{"stage":"pricing_pitched","label":"Pricing pitched","ln":16,"li":3,"tn":262,"ti":50,"cs":{"n":19,"sum":42,"mean":2.21,"median":2,"p90":9,"b0":9,"b12":5,"b35":3,"b6":2},"total":19},{"stage":"program_pitched","label":"Program pitched","ln":23,"li":4,"tn":313,"ti":12,"cs":{"n":27,"sum":38,"mean":1.41,"median":1,"p90":5,"b0":14,"b12":6,"b35":6,"b6":1},"total":27},{"stage":"counselled","label":"Counselled","ln":170,"li":45,"tn":1831,"ti":124,"cs":{"n":215,"sum":509,"mean":2.37,"median":1,"p90":8,"b0":120,"b12":37,"b35":25,"b6":33},"total":215},{"stage":"discovery","label":"Discovery","ln":47,"li":5,"tn":681,"ti":45,"cs":{"n":52,"sum":111,"mean":2.13,"median":1,"p90":8,"b0":23,"b12":13,"b35":8,"b6":8},"total":52},{"stage":"rcb_requested_callback","label":"RCB","ln":380,"li":124,"tn":3542,"ti":202,"cs":{"n":504,"sum":1200,"mean":2.38,"median":1,"p90":7,"b0":306,"b12":60,"b35":54,"b6":84},"total":504},{"stage":"FU_RCB","label":"FU - RCB","ln":35,"li":4,"tn":707,"ti":52,"cs":{"n":39,"sum":79,"mean":2.03,"median":1,"p90":7,"b0":18,"b12":12,"b35":5,"b6":4},"total":39},{"stage":"Follow up","label":"Follow up","ln":24,"li":4,"tn":508,"ti":65,"cs":{"n":28,"sum":57,"mean":2.04,"median":1,"p90":7,"b0":12,"b12":8,"b35":4,"b6":4},"total":28},{"stage":"FU_DNP","label":"FU - DNP","ln":153,"li":25,"tn":3683,"ti":286,"cs":{"n":178,"sum":714,"mean":4.01,"median":2,"p90":12,"b0":59,"b12":37,"b35":30,"b6":52},"total":178},{"stage":"dnp_did_not_pick","label":"DNP","ln":704,"li":405,"tn":9908,"ti":1065,"cs":{"n":1109,"sum":2774,"mean":2.5,"median":1,"p90":8,"b0":653,"b12":167,"b35":122,"b6":167},"total":1109},{"stage":"ghosted","label":"Ghosted","ln":121,"li":26,"tn":1252,"ti":117,"cs":{"n":147,"sum":89,"mean":0.61,"median":1,"p90":2,"b0":118,"b12":16,"b35":9,"b6":4},"total":147},{"stage":"ni_not_interested","label":"NI - Not interested","ln":1667,"li":153,"tn":11885,"ti":355,"cs":{"n":1820,"sum":291,"mean":0.16,"median":1,"p90":1,"b0":1666,"b12":130,"b35":20,"b6":4},"total":1820},{"stage":"disqualified","label":"Disqualified","ln":534,"li":228,"tn":3401,"ti":476,"cs":{"n":762,"sum":203,"mean":0.27,"median":1,"p90":1,"b0":693,"b12":41,"b35":22,"b6":6},"total":762},{"stage":"IFC","label":"IFC (parked)","ln":175,"li":21,"tn":2807,"ti":126,"cs":{"n":196,"sum":92,"mean":0.47,"median":1,"p90":1,"b0":157,"b12":27,"b35":10,"b6":2},"total":196},{"stage":"deal_won","label":"Deal won","ln":111,"li":32,"tn":894,"ti":157,"cs":{"n":143,"sum":25,"mean":0.17,"median":1,"p90":1,"b0":130,"b12":11,"b35":1,"b6":1},"total":143}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":35,"nat":30,"intl":5,"callsdone":6,"convN":15.85,"convI":15.59,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":25,"nat":22,"intl":3,"callsdone":113,"convN":10.57,"convI":10.4,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":172,"nat":140,"intl":32,"callsdone":29,"convN":6.6,"convI":6.49,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":95,"nat":77,"intl":18,"callsdone":591,"convN":3.96,"convI":3.9,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":324,"nat":247,"intl":77,"callsdone":0,"convN":3.96,"convI":3.9,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":219,"nat":168,"intl":51,"callsdone":1279,"convN":1.98,"convI":1.95,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":206,"nat":177,"intl":29,"callsdone":771,"convN":3.96,"convI":3.9,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":189,"nat":78,"intl":111,"callsdone":0,"convN":1.98,"convI":1.95,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":954,"nat":631,"intl":323,"callsdone":264,"convN":1.06,"convI":1.04,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":302,"nat":194,"intl":108,"callsdone":2599,"convN":0.4,"convI":0.39,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":196,"nat":175,"intl":21,"callsdone":92,"convN":2.64,"convI":2.6,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":2582,"nat":2201,"intl":381,"callsdone":494,"convN":0.2,"convI":0.2,"cpl":1}],"econ":{"has":true,"enrol":134,"rev":4592665,"payments":179,"enat":105,"eintl":29,"tkn":34157,"tki":34695,"bn":2.47,"bi":2.43,"months":{"2026-01":8,"2026-02":16,"2026-03":14,"2026-04":20,"2026-05":23,"2026-06":24,"2026-07":29},"thin_i":false,"intl_leads":1191,"nat_leads":4251},"poolnote":"all leads","pool":5442,"actionable":5299,"won":143,"nat":4251,"intl":1191,"calls":{"nat":50121,"intl":3154,"cs":6263},"sp":false},"wanderess_priyanka":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":26,"li":146,"tn":24,"ti":235,"cs":{"n":172,"sum":11,"mean":0.06,"median":2,"p90":2,"b0":169,"b12":2,"b35":0,"b6":1},"total":172},{"stage":"payment_prospect","label":"Payment prospect","ln":6,"li":0,"tn":116,"ti":0,"cs":{"n":6,"sum":27,"mean":4.5,"median":3,"p90":10,"b0":2,"b12":0,"b35":1,"b6":3},"total":6},{"stage":"pricing_pitched","label":"Pricing pitched","ln":7,"li":2,"tn":72,"ti":9,"cs":{"n":9,"sum":37,"mean":4.11,"median":4,"p90":10,"b0":3,"b12":1,"b35":2,"b6":3},"total":9},{"stage":"program_pitched","label":"Program pitched","ln":10,"li":1,"tn":126,"ti":3,"cs":{"n":11,"sum":40,"mean":3.64,"median":2,"p90":11,"b0":2,"b12":6,"b35":1,"b6":2},"total":11},{"stage":"counselled","label":"Counselled","ln":144,"li":17,"tn":1371,"ti":66,"cs":{"n":161,"sum":298,"mean":1.85,"median":1,"p90":6,"b0":100,"b12":31,"b35":11,"b6":19},"total":161},{"stage":"discovery","label":"Discovery","ln":20,"li":3,"tn":175,"ti":15,"cs":{"n":23,"sum":55,"mean":2.39,"median":1,"p90":7,"b0":13,"b12":3,"b35":4,"b6":3},"total":23},{"stage":"rcb_requested_callback","label":"RCB","ln":99,"li":4,"tn":1191,"ti":28,"cs":{"n":103,"sum":418,"mean":4.06,"median":2,"p90":11,"b0":35,"b12":22,"b35":16,"b6":30},"total":103},{"stage":"FU_RCB","label":"FU - RCB","ln":14,"li":3,"tn":136,"ti":22,"cs":{"n":17,"sum":31,"mean":1.82,"median":1,"p90":7,"b0":8,"b12":4,"b35":3,"b6":2},"total":17},{"stage":"Follow up","label":"Follow up","ln":8,"li":0,"tn":121,"ti":5,"cs":{"n":8,"sum":9,"mean":1.12,"median":1,"p90":3,"b0":4,"b12":2,"b35":2,"b6":0},"total":8},{"stage":"FU_DNP","label":"FU - DNP","ln":106,"li":6,"tn":1816,"ti":32,"cs":{"n":112,"sum":500,"mean":4.46,"median":3,"p90":10,"b0":28,"b12":21,"b35":25,"b6":38},"total":112},{"stage":"dnp_did_not_pick","label":"DNP","ln":394,"li":116,"tn":4178,"ti":479,"cs":{"n":510,"sum":1126,"mean":2.21,"median":1,"p90":6,"b0":209,"b12":101,"b35":140,"b6":60},"total":510},{"stage":"ghosted","label":"Ghosted","ln":51,"li":2,"tn":1011,"ti":13,"cs":{"n":53,"sum":9,"mean":0.17,"median":1,"p90":1,"b0":48,"b12":4,"b35":1,"b6":0},"total":53},{"stage":"ni_not_interested","label":"NI - Not interested","ln":556,"li":56,"tn":5959,"ti":188,"cs":{"n":612,"sum":103,"mean":0.17,"median":1,"p90":1,"b0":553,"b12":46,"b35":13,"b6":0},"total":612},{"stage":"disqualified","label":"Disqualified","ln":321,"li":98,"tn":2063,"ti":165,"cs":{"n":419,"sum":54,"mean":0.13,"median":1,"p90":1,"b0":383,"b12":33,"b35":3,"b6":0},"total":419},{"stage":"IFC","label":"IFC (parked)","ln":186,"li":4,"tn":2341,"ti":20,"cs":{"n":190,"sum":53,"mean":0.28,"median":1,"p90":1,"b0":156,"b12":30,"b35":3,"b6":1},"total":190},{"stage":"deal_won","label":"Deal won","ln":41,"li":6,"tn":682,"ti":34,"cs":{"n":47,"sum":64,"mean":1.36,"median":1,"p90":5,"b0":31,"b12":8,"b35":5,"b6":3},"total":47}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":10,"nat":9,"intl":1,"callsdone":3,"convN":11.61,"convI":9.69,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":16,"nat":14,"intl":2,"callsdone":101,"convN":7.74,"convI":6.46,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":129,"nat":115,"intl":14,"callsdone":16,"convN":4.84,"convI":4.04,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":55,"nat":49,"intl":6,"callsdone":337,"convN":2.9,"convI":2.42,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":43,"nat":40,"intl":3,"callsdone":0,"convN":2.9,"convI":2.42,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":77,"nat":73,"intl":4,"callsdone":449,"convN":1.45,"convI":1.21,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":120,"nat":114,"intl":6,"callsdone":509,"convN":2.9,"convI":2.42,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":169,"nat":26,"intl":143,"callsdone":0,"convN":1.45,"convI":1.21,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":362,"nat":290,"intl":72,"callsdone":154,"convN":0.77,"convI":0.64,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":201,"nat":155,"intl":46,"callsdone":981,"convN":0.29,"convI":0.24,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":190,"nat":186,"intl":4,"callsdone":53,"convN":1.94,"convI":1.62,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":1031,"nat":877,"intl":154,"callsdone":157,"convN":0.15,"convI":0.13,"cpl":1}],"econ":{"has":true,"enrol":43,"rev":3467886,"payments":61,"enat":36,"eintl":7,"tkn":83292,"tki":67053,"bn":1.81,"bi":1.51,"months":{"2026-05":7,"2026-06":15,"2026-07":20,"2026-08":1},"thin_i":false,"intl_leads":464,"nat_leads":1989},"poolnote":"all leads","pool":2450,"actionable":2403,"won":47,"nat":1989,"intl":464,"calls":{"nat":21382,"intl":1314,"cs":2835},"sp":false},"kartikkapoorconsultation":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":22,"li":5,"tn":0,"ti":0,"cs":{"n":27,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":27,"b12":0,"b35":0,"b6":0},"total":27},{"stage":"payment_prospect","label":"Payment prospect","ln":0,"li":0,"tn":40,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"pricing_pitched","label":"Pricing pitched","ln":27,"li":0,"tn":275,"ti":0,"cs":{"n":27,"sum":63,"mean":2.33,"median":2,"p90":5,"b0":5,"b12":10,"b35":11,"b6":1},"total":27},{"stage":"program_pitched","label":"Program pitched","ln":37,"li":2,"tn":320,"ti":4,"cs":{"n":39,"sum":82,"mean":2.1,"median":1,"p90":5,"b0":14,"b12":15,"b35":7,"b6":3},"total":39},{"stage":"counselled","label":"Counselled","ln":117,"li":1,"tn":978,"ti":0,"cs":{"n":118,"sum":306,"mean":2.59,"median":1,"p90":7,"b0":43,"b12":33,"b35":24,"b6":18},"total":118},{"stage":"discovery","label":"Discovery","ln":38,"li":1,"tn":411,"ti":0,"cs":{"n":39,"sum":131,"mean":3.36,"median":1,"p90":15,"b0":16,"b12":8,"b35":8,"b6":7},"total":39},{"stage":"rcb_requested_callback","label":"RCB","ln":69,"li":3,"tn":554,"ti":2,"cs":{"n":72,"sum":111,"mean":1.54,"median":1,"p90":5,"b0":35,"b12":20,"b35":10,"b6":7},"total":72},{"stage":"FU_RCB","label":"FU - RCB","ln":6,"li":0,"tn":60,"ti":0,"cs":{"n":6,"sum":7,"mean":1.17,"median":1,"p90":6,"b0":4,"b12":1,"b35":0,"b6":1},"total":6},{"stage":"Follow up","label":"Follow up","ln":17,"li":1,"tn":238,"ti":0,"cs":{"n":18,"sum":33,"mean":1.83,"median":1,"p90":7,"b0":10,"b12":3,"b35":3,"b6":2},"total":18},{"stage":"FU_DNP","label":"FU - DNP","ln":42,"li":2,"tn":596,"ti":11,"cs":{"n":44,"sum":89,"mean":2.02,"median":1,"p90":6,"b0":19,"b12":11,"b35":9,"b6":5},"total":44},{"stage":"dnp_did_not_pick","label":"DNP","ln":220,"li":2,"tn":1582,"ti":0,"cs":{"n":222,"sum":812,"mean":3.66,"median":2,"p90":10,"b0":70,"b12":54,"b35":47,"b6":51},"total":222},{"stage":"ghosted","label":"Ghosted","ln":7,"li":0,"tn":116,"ti":0,"cs":{"n":7,"sum":3,"mean":0.43,"median":1,"p90":2,"b0":5,"b12":2,"b35":0,"b6":0},"total":7},{"stage":"ni_not_interested","label":"NI - Not interested","ln":233,"li":7,"tn":1506,"ti":10,"cs":{"n":240,"sum":73,"mean":0.3,"median":1,"p90":1,"b0":214,"b12":14,"b35":10,"b6":2},"total":240},{"stage":"disqualified","label":"Disqualified","ln":108,"li":2,"tn":744,"ti":4,"cs":{"n":110,"sum":69,"mean":0.63,"median":1,"p90":3,"b0":85,"b12":13,"b35":10,"b6":2},"total":110},{"stage":"IFC","label":"IFC (parked)","ln":116,"li":1,"tn":912,"ti":1,"cs":{"n":117,"sum":100,"mean":0.85,"median":1,"p90":3,"b0":79,"b12":23,"b35":13,"b6":2},"total":117},{"stage":"deal_won","label":"Deal won","ln":45,"li":2,"tn":401,"ti":2,"cs":{"n":47,"sum":17,"mean":0.36,"median":1,"p90":1,"b0":40,"b12":5,"b35":1,"b6":1},"total":47}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":36,"nat":35,"intl":1,"callsdone":17,"convN":27.91,"convI":13.41,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":30,"nat":29,"intl":1,"callsdone":128,"convN":18.61,"convI":8.94,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":83,"nat":82,"intl":1,"callsdone":24,"convN":11.63,"convI":5.59,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":74,"nat":73,"intl":1,"callsdone":413,"convN":6.98,"convI":3.35,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":39,"nat":38,"intl":1,"callsdone":0,"convN":6.98,"convI":3.35,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":39,"nat":37,"intl":2,"callsdone":118,"convN":3.49,"convI":1.68,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":62,"nat":59,"intl":3,"callsdone":122,"convN":6.98,"convI":3.35,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":27,"nat":22,"intl":5,"callsdone":0,"convN":3.49,"convI":1.68,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":131,"nat":130,"intl":1,"callsdone":85,"convN":1.86,"convI":0.89,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":98,"nat":97,"intl":1,"callsdone":730,"convN":0.7,"convI":0.34,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":117,"nat":116,"intl":1,"callsdone":100,"convN":4.65,"convI":2.23,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":350,"nat":341,"intl":9,"callsdone":142,"convN":0.35,"convI":0.17,"cpl":1}],"econ":{"has":true,"enrol":49,"rev":2580499,"payments":64,"enat":48,"eintl":1,"tkn":52509,"tki":60050,"bn":4.35,"bi":2.09,"months":{"2026-05":2,"2026-06":24,"2026-07":22,"2026-08":1},"thin_i":true,"intl_leads":29,"nat_leads":1104},"poolnote":"all leads","pool":1133,"actionable":1086,"won":47,"nat":1104,"intl":29,"calls":{"nat":8733,"intl":34,"cs":1896},"sp":false},"technomanagers":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":542,"li":114,"tn":13,"ti":5,"cs":{"n":656,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":656,"b12":0,"b35":0,"b6":0},"total":656},{"stage":"payment_prospect","label":"Payment prospect","ln":4,"li":2,"tn":49,"ti":5,"cs":{"n":6,"sum":25,"mean":4.17,"median":1,"p90":12,"b0":2,"b12":1,"b35":1,"b6":2},"total":6},{"stage":"pricing_pitched","label":"Pricing pitched","ln":3,"li":0,"tn":32,"ti":0,"cs":{"n":3,"sum":1,"mean":0.33,"median":1,"p90":1,"b0":2,"b12":1,"b35":0,"b6":0},"total":3},{"stage":"program_pitched","label":"Program pitched","ln":12,"li":1,"tn":84,"ti":4,"cs":{"n":13,"sum":15,"mean":1.15,"median":1,"p90":2,"b0":6,"b12":6,"b35":0,"b6":1},"total":13},{"stage":"counselled","label":"Counselled","ln":33,"li":1,"tn":184,"ti":0,"cs":{"n":34,"sum":96,"mean":2.82,"median":2,"p90":7,"b0":9,"b12":8,"b35":10,"b6":7},"total":34},{"stage":"discovery","label":"Discovery","ln":7,"li":5,"tn":62,"ti":0,"cs":{"n":12,"sum":10,"mean":0.83,"median":1,"p90":4,"b0":9,"b12":1,"b35":2,"b6":0},"total":12},{"stage":"rcb_requested_callback","label":"RCB","ln":32,"li":1,"tn":176,"ti":0,"cs":{"n":33,"sum":41,"mean":1.24,"median":1,"p90":3,"b0":15,"b12":10,"b35":8,"b6":0},"total":33},{"stage":"FU_RCB","label":"FU - RCB","ln":1,"li":0,"tn":4,"ti":0,"cs":{"n":1,"sum":2,"mean":2.0,"median":2,"p90":2,"b0":0,"b12":1,"b35":0,"b6":0},"total":1},{"stage":"Follow up","label":"Follow up","ln":9,"li":0,"tn":57,"ti":0,"cs":{"n":9,"sum":23,"mean":2.56,"median":3,"p90":6,"b0":2,"b12":2,"b35":4,"b6":1},"total":9},{"stage":"FU_DNP","label":"FU - DNP","ln":5,"li":0,"tn":52,"ti":0,"cs":{"n":5,"sum":17,"mean":3.4,"median":4,"p90":6,"b0":0,"b12":2,"b35":2,"b6":1},"total":5},{"stage":"dnp_did_not_pick","label":"DNP","ln":464,"li":67,"tn":2293,"ti":71,"cs":{"n":531,"sum":1099,"mean":2.07,"median":1,"p90":6,"b0":236,"b12":137,"b35":94,"b6":64},"total":531},{"stage":"ghosted","label":"Ghosted","ln":82,"li":5,"tn":761,"ti":33,"cs":{"n":87,"sum":17,"mean":0.2,"median":1,"p90":1,"b0":74,"b12":12,"b35":1,"b6":0},"total":87},{"stage":"ni_not_interested","label":"NI - Not interested","ln":950,"li":18,"tn":3814,"ti":29,"cs":{"n":968,"sum":162,"mean":0.17,"median":1,"p90":1,"b0":884,"b12":63,"b35":17,"b6":4},"total":968},{"stage":"disqualified","label":"Disqualified","ln":121,"li":21,"tn":492,"ti":27,"cs":{"n":142,"sum":17,"mean":0.12,"median":1,"p90":1,"b0":129,"b12":13,"b35":0,"b6":0},"total":142},{"stage":"IFC","label":"IFC (parked)","ln":199,"li":2,"tn":1205,"ti":5,"cs":{"n":201,"sum":33,"mean":0.16,"median":1,"p90":1,"b0":187,"b12":13,"b35":0,"b6":1},"total":201},{"stage":"deal_won","label":"Deal won","ln":23,"li":3,"tn":148,"ti":7,"cs":{"n":26,"sum":3,"mean":0.12,"median":1,"p90":1,"b0":24,"b12":2,"b35":0,"b6":0},"total":26}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":17,"nat":15,"intl":2,"callsdone":7,"convN":9.3,"convI":4.43,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":5,"nat":4,"intl":1,"callsdone":34,"convN":6.2,"convI":2.95,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":23,"nat":18,"intl":5,"callsdone":5,"convN":3.88,"convI":1.85,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":23,"nat":22,"intl":1,"callsdone":101,"convN":2.33,"convI":1.11,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":15,"nat":15,"intl":0,"callsdone":0,"convN":2.33,"convI":1.11,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":19,"nat":18,"intl":1,"callsdone":43,"convN":1.16,"convI":0.55,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":14,"nat":14,"intl":0,"callsdone":40,"convN":2.33,"convI":1.11,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":656,"nat":542,"intl":114,"callsdone":0,"convN":1.16,"convI":0.55,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":459,"nat":407,"intl":52,"callsdone":215,"convN":0.62,"convI":0.3,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":159,"nat":139,"intl":20,"callsdone":901,"convN":0.23,"convI":0.11,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":201,"nat":199,"intl":2,"callsdone":33,"convN":1.55,"convI":0.74,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":1110,"nat":1071,"intl":39,"callsdone":179,"convN":0.12,"convI":0.06,"cpl":1}],"econ":{"has":true,"enrol":39,"rev":1331312,"payments":52,"enat":36,"eintl":3,"tkn":32036,"tki":59333,"bn":1.45,"bi":0.69,"months":{"2026-05":13,"2026-06":13,"2026-07":10,"2026-08":3},"thin_i":true,"intl_leads":240,"nat_leads":2487},"poolnote":"all leads","pool":2727,"actionable":2701,"won":26,"nat":2487,"intl":240,"calls":{"nat":9426,"intl":186,"cs":1561},"sp":false},"vijaychandola":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":3251,"li":11,"tn":66,"ti":3,"cs":{"n":3262,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":3262,"b12":0,"b35":0,"b6":0},"total":3262},{"stage":"payment_prospect","label":"Payment prospect","ln":6,"li":0,"tn":84,"ti":0,"cs":{"n":6,"sum":48,"mean":8.0,"median":1,"p90":26,"b0":2,"b12":1,"b35":1,"b6":2},"total":6},{"stage":"pricing_pitched","label":"Pricing pitched","ln":7,"li":0,"tn":55,"ti":0,"cs":{"n":7,"sum":10,"mean":1.43,"median":2,"p90":6,"b0":4,"b12":2,"b35":0,"b6":1},"total":7},{"stage":"program_pitched","label":"Program pitched","ln":17,"li":0,"tn":100,"ti":0,"cs":{"n":17,"sum":26,"mean":1.53,"median":1,"p90":5,"b0":10,"b12":4,"b35":2,"b6":1},"total":17},{"stage":"counselled","label":"Counselled","ln":218,"li":0,"tn":1359,"ti":0,"cs":{"n":218,"sum":347,"mean":1.59,"median":1,"p90":6,"b0":132,"b12":40,"b35":23,"b6":23},"total":218},{"stage":"discovery","label":"Discovery","ln":91,"li":0,"tn":663,"ti":0,"cs":{"n":91,"sum":147,"mean":1.62,"median":1,"p90":5,"b0":35,"b12":33,"b35":16,"b6":7},"total":91},{"stage":"rcb_requested_callback","label":"RCB","ln":346,"li":4,"tn":1734,"ti":4,"cs":{"n":350,"sum":534,"mean":1.53,"median":1,"p90":4,"b0":207,"b12":76,"b35":44,"b6":23},"total":350},{"stage":"FU_RCB","label":"FU - RCB","ln":16,"li":0,"tn":105,"ti":0,"cs":{"n":16,"sum":12,"mean":0.75,"median":1,"p90":3,"b0":10,"b12":4,"b35":2,"b6":0},"total":16},{"stage":"Follow up","label":"Follow up","ln":41,"li":0,"tn":333,"ti":0,"cs":{"n":41,"sum":41,"mean":1.0,"median":1,"p90":3,"b0":23,"b12":12,"b35":5,"b6":1},"total":41},{"stage":"FU_DNP","label":"FU - DNP","ln":100,"li":0,"tn":1123,"ti":0,"cs":{"n":100,"sum":235,"mean":2.35,"median":2,"p90":6,"b0":35,"b12":22,"b35":31,"b6":12},"total":100},{"stage":"dnp_did_not_pick","label":"DNP","ln":702,"li":11,"tn":4525,"ti":0,"cs":{"n":713,"sum":2262,"mean":3.17,"median":2,"p90":8,"b0":200,"b12":197,"b35":188,"b6":128},"total":713},{"stage":"ghosted","label":"Ghosted","ln":49,"li":3,"tn":456,"ti":1,"cs":{"n":52,"sum":34,"mean":0.65,"median":1,"p90":1,"b0":32,"b12":18,"b35":1,"b6":1},"total":52},{"stage":"ni_not_interested","label":"NI - Not interested","ln":1173,"li":9,"tn":5302,"ti":3,"cs":{"n":1182,"sum":79,"mean":0.07,"median":1,"p90":1,"b0":1126,"b12":49,"b35":7,"b6":0},"total":1182},{"stage":"disqualified","label":"Disqualified","ln":316,"li":3,"tn":1101,"ti":0,"cs":{"n":319,"sum":62,"mean":0.19,"median":1,"p90":1,"b0":295,"b12":18,"b35":5,"b6":1},"total":319},{"stage":"IFC","label":"IFC (parked)","ln":79,"li":1,"tn":715,"ti":5,"cs":{"n":80,"sum":15,"mean":0.19,"median":1,"p90":1,"b0":71,"b12":7,"b35":2,"b6":0},"total":80},{"stage":"deal_won","label":"Deal won","ln":58,"li":2,"tn":389,"ti":1,"cs":{"n":60,"sum":25,"mean":0.42,"median":1,"p90":1,"b0":51,"b12":5,"b35":2,"b6":2},"total":60}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":20,"nat":20,"intl":0,"callsdone":4,"convN":6.16,"convI":2.95,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":10,"nat":10,"intl":0,"callsdone":80,"convN":4.11,"convI":1.97,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":216,"nat":216,"intl":0,"callsdone":49,"convN":2.57,"convI":1.23,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":93,"nat":93,"intl":0,"callsdone":445,"convN":1.54,"convI":0.74,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":217,"nat":215,"intl":2,"callsdone":0,"convN":1.54,"convI":0.74,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":149,"nat":147,"intl":2,"callsdone":546,"convN":0.77,"convI":0.37,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":141,"nat":141,"intl":0,"callsdone":276,"convN":1.54,"convI":0.74,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":3262,"nat":3251,"intl":11,"callsdone":0,"convN":0.77,"convI":0.37,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":447,"nat":438,"intl":9,"callsdone":303,"convN":0.41,"convI":0.2,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":318,"nat":313,"intl":5,"callsdone":1993,"convN":0.15,"convI":0.07,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":80,"nat":79,"intl":1,"callsdone":15,"convN":1.03,"convI":0.49,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":1501,"nat":1489,"intl":12,"callsdone":141,"convN":0.08,"convI":0.04,"cpl":1}],"econ":{"has":true,"enrol":63,"rev":2677286,"payments":75,"enat":62,"eintl":1,"tkn":41892,"tki":80000,"bn":0.96,"bi":0.46,"months":{"2025-12":3,"2026-01":12,"2026-02":7,"2026-03":9,"2026-04":12,"2026-05":6,"2026-06":6,"2026-07":7,"2026-08":1},"thin_i":true,"intl_leads":44,"nat_leads":6470},"poolnote":"all leads","pool":6514,"actionable":6454,"won":60,"nat":6470,"intl":44,"calls":{"nat":18110,"intl":17,"cs":3877},"sp":false},"manasbichoo":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":35066,"li":29,"tn":88,"ti":0,"cs":{"n":35095,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":35095,"b12":0,"b35":0,"b6":0},"total":35095},{"stage":"payment_prospect","label":"Payment prospect","ln":14,"li":0,"tn":216,"ti":0,"cs":{"n":14,"sum":30,"mean":2.14,"median":1,"p90":8,"b0":6,"b12":5,"b35":1,"b6":2},"total":14},{"stage":"pricing_pitched","label":"Pricing pitched","ln":5,"li":0,"tn":52,"ti":0,"cs":{"n":5,"sum":17,"mean":3.4,"median":1,"p90":8,"b0":2,"b12":1,"b35":0,"b6":2},"total":5},{"stage":"program_pitched","label":"Program pitched","ln":8,"li":0,"tn":61,"ti":0,"cs":{"n":8,"sum":4,"mean":0.5,"median":4,"p90":4,"b0":7,"b12":0,"b35":1,"b6":0},"total":8},{"stage":"counselled","label":"Counselled","ln":414,"li":8,"tn":3437,"ti":17,"cs":{"n":422,"sum":714,"mean":1.69,"median":1,"p90":5,"b0":249,"b12":67,"b35":64,"b6":42},"total":422},{"stage":"discovery","label":"Discovery","ln":35,"li":0,"tn":424,"ti":0,"cs":{"n":35,"sum":108,"mean":3.09,"median":3,"p90":7,"b0":12,"b12":5,"b35":9,"b6":9},"total":35},{"stage":"rcb_requested_callback","label":"RCB","ln":473,"li":3,"tn":2577,"ti":3,"cs":{"n":476,"sum":609,"mean":1.28,"median":1,"p90":4,"b0":281,"b12":117,"b35":47,"b6":31},"total":476},{"stage":"FU_RCB","label":"FU - RCB","ln":10,"li":0,"tn":92,"ti":0,"cs":{"n":10,"sum":3,"mean":0.3,"median":1,"p90":1,"b0":8,"b12":2,"b35":0,"b6":0},"total":10},{"stage":"Follow up","label":"Follow up","ln":1,"li":0,"tn":12,"ti":0,"cs":{"n":1,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":1,"b12":0,"b35":0,"b6":0},"total":1},{"stage":"FU_DNP","label":"FU - DNP","ln":36,"li":0,"tn":673,"ti":0,"cs":{"n":36,"sum":69,"mean":1.92,"median":1,"p90":3,"b0":7,"b12":21,"b35":5,"b6":3},"total":36},{"stage":"dnp_did_not_pick","label":"DNP","ln":1930,"li":20,"tn":7534,"ti":31,"cs":{"n":1950,"sum":1480,"mean":0.76,"median":1,"p90":2,"b0":1467,"b12":340,"b35":68,"b6":75},"total":1950},{"stage":"ghosted","label":"Ghosted","ln":250,"li":6,"tn":2916,"ti":45,"cs":{"n":256,"sum":19,"mean":0.07,"median":1,"p90":1,"b0":241,"b12":14,"b35":1,"b6":0},"total":256},{"stage":"ni_not_interested","label":"NI - Not interested","ln":1284,"li":4,"tn":7127,"ti":19,"cs":{"n":1288,"sum":93,"mean":0.07,"median":1,"p90":1,"b0":1237,"b12":43,"b35":5,"b6":3},"total":1288},{"stage":"disqualified","label":"Disqualified","ln":982,"li":28,"tn":4122,"ti":51,"cs":{"n":1010,"sum":114,"mean":0.11,"median":1,"p90":1,"b0":963,"b12":35,"b35":8,"b6":4},"total":1010},{"stage":"IFC","label":"IFC (parked)","ln":38,"li":0,"tn":427,"ti":0,"cs":{"n":38,"sum":12,"mean":0.32,"median":1,"p90":1,"b0":34,"b12":2,"b35":2,"b6":0},"total":38},{"stage":"deal_won","label":"Deal won","ln":84,"li":0,"tn":650,"ti":0,"cs":{"n":84,"sum":106,"mean":1.26,"median":1,"p90":4,"b0":64,"b12":9,"b35":6,"b6":5},"total":84}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":18,"nat":18,"intl":0,"callsdone":3,"convN":1.22,"convI":0.58,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":9,"nat":9,"intl":0,"callsdone":48,"convN":0.81,"convI":0.38,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":303,"nat":298,"intl":5,"callsdone":42,"convN":0.51,"convI":0.24,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":154,"nat":151,"intl":3,"callsdone":780,"convN":0.3,"convI":0.14,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":289,"nat":287,"intl":2,"callsdone":0,"convN":0.3,"convI":0.14,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":197,"nat":196,"intl":1,"callsdone":612,"convN":0.15,"convI":0.07,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":37,"nat":37,"intl":0,"callsdone":69,"convN":0.3,"convI":0.14,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":35095,"nat":35066,"intl":29,"callsdone":0,"convN":0.15,"convI":0.07,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":2062,"nat":2037,"intl":25,"callsdone":430,"convN":0.08,"convI":0.04,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":144,"nat":143,"intl":1,"callsdone":1069,"convN":0.03,"convI":0.01,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":38,"nat":38,"intl":0,"callsdone":12,"convN":0.2,"convI":0.09,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":2298,"nat":2266,"intl":32,"callsdone":207,"convN":0.02,"convI":0.01,"cpl":1}],"econ":{"has":true,"enrol":81,"rev":2624692,"payments":113,"enat":79,"eintl":2,"tkn":32233,"tki":39136,"bn":0.19,"bi":0.09,"months":{"2025-12":7,"2026-01":8,"2026-02":7,"2026-03":11,"2026-04":30,"2026-05":14,"2026-06":4},"thin_i":true,"intl_leads":98,"nat_leads":40630},"poolnote":"all leads","pool":40728,"actionable":40644,"won":84,"nat":40630,"intl":98,"calls":{"nat":30408,"intl":166,"cs":3378},"sp":false},"ankita_gulati":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":438,"li":299,"tn":94,"ti":15,"cs":{"n":737,"sum":16,"mean":0.02,"median":1,"p90":1,"b0":732,"b12":3,"b35":1,"b6":1},"total":737},{"stage":"payment_prospect","label":"Payment prospect","ln":8,"li":0,"tn":42,"ti":0,"cs":{"n":8,"sum":9,"mean":1.12,"median":1,"p90":6,"b0":4,"b12":3,"b35":0,"b6":1},"total":8},{"stage":"pricing_pitched","label":"Pricing pitched","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"program_pitched","label":"Program pitched","ln":9,"li":1,"tn":32,"ti":0,"cs":{"n":10,"sum":20,"mean":2.0,"median":1,"p90":5,"b0":4,"b12":2,"b35":3,"b6":1},"total":10},{"stage":"counselled","label":"Counselled","ln":57,"li":3,"tn":225,"ti":5,"cs":{"n":60,"sum":64,"mean":1.07,"median":1,"p90":3,"b0":34,"b12":17,"b35":6,"b6":3},"total":60},{"stage":"discovery","label":"Discovery","ln":18,"li":0,"tn":145,"ti":0,"cs":{"n":18,"sum":76,"mean":4.22,"median":5,"p90":8,"b0":4,"b12":1,"b35":6,"b6":7},"total":18},{"stage":"rcb_requested_callback","label":"RCB","ln":251,"li":32,"tn":849,"ti":36,"cs":{"n":283,"sum":161,"mean":0.57,"median":1,"p90":2,"b0":191,"b12":74,"b35":18,"b6":0},"total":283},{"stage":"FU_RCB","label":"FU - RCB","ln":9,"li":0,"tn":59,"ti":0,"cs":{"n":9,"sum":7,"mean":0.78,"median":3,"p90":4,"b0":7,"b12":0,"b35":2,"b6":0},"total":9},{"stage":"Follow up","label":"Follow up","ln":7,"li":0,"tn":44,"ti":0,"cs":{"n":7,"sum":9,"mean":1.29,"median":2,"p90":4,"b0":4,"b12":1,"b35":2,"b6":0},"total":7},{"stage":"FU_DNP","label":"FU - DNP","ln":69,"li":0,"tn":833,"ti":0,"cs":{"n":69,"sum":286,"mean":4.14,"median":3,"p90":11,"b0":17,"b12":17,"b35":16,"b6":19},"total":69},{"stage":"dnp_did_not_pick","label":"DNP","ln":849,"li":106,"tn":3867,"ti":26,"cs":{"n":955,"sum":1650,"mean":1.73,"median":1,"p90":5,"b0":447,"b12":251,"b35":173,"b6":84},"total":955},{"stage":"ghosted","label":"Ghosted","ln":81,"li":1,"tn":394,"ti":0,"cs":{"n":82,"sum":21,"mean":0.26,"median":1,"p90":1,"b0":65,"b12":16,"b35":1,"b6":0},"total":82},{"stage":"ni_not_interested","label":"NI - Not interested","ln":873,"li":12,"tn":3195,"ti":1,"cs":{"n":885,"sum":33,"mean":0.04,"median":1,"p90":1,"b0":861,"b12":22,"b35":2,"b6":0},"total":885},{"stage":"disqualified","label":"Disqualified","ln":139,"li":19,"tn":421,"ti":11,"cs":{"n":158,"sum":55,"mean":0.35,"median":1,"p90":1,"b0":143,"b12":7,"b35":5,"b6":3},"total":158},{"stage":"IFC","label":"IFC (parked)","ln":178,"li":1,"tn":885,"ti":0,"cs":{"n":179,"sum":56,"mean":0.31,"median":1,"p90":1,"b0":148,"b12":27,"b35":3,"b6":1},"total":179},{"stage":"deal_won","label":"Deal won","ln":30,"li":6,"tn":186,"ti":13,"cs":{"n":36,"sum":9,"mean":0.25,"median":1,"p90":1,"b0":33,"b12":2,"b35":0,"b6":1},"total":36}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":12,"nat":12,"intl":0,"callsdone":4,"convN":4.88,"convI":2.38,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":6,"nat":6,"intl":0,"callsdone":25,"convN":3.25,"convI":1.58,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":50,"nat":48,"intl":2,"callsdone":12,"convN":2.03,"convI":0.99,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":28,"nat":27,"intl":1,"callsdone":128,"convN":1.22,"convI":0.59,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":198,"nat":176,"intl":22,"callsdone":0,"convN":1.22,"convI":0.59,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":94,"nat":84,"intl":10,"callsdone":168,"convN":0.61,"convI":0.3,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":76,"nat":76,"intl":0,"callsdone":295,"convN":1.22,"convI":0.59,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":732,"nat":435,"intl":297,"callsdone":0,"convN":0.61,"convI":0.3,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":779,"nat":701,"intl":78,"callsdone":374,"convN":0.33,"convI":0.16,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":258,"nat":229,"intl":29,"callsdone":1297,"convN":0.12,"convI":0.06,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":179,"nat":178,"intl":1,"callsdone":56,"convN":0.81,"convI":0.39,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":1043,"nat":1012,"intl":31,"callsdone":88,"convN":0.06,"convI":0.03,"cpl":1}],"econ":{"has":true,"enrol":25,"rev":833937,"payments":28,"enat":23,"eintl":2,"tkn":32823,"tki":39500,"bn":0.76,"bi":0.37,"months":{"2026-04":16,"2026-06":8,"2026-07":1},"thin_i":true,"intl_leads":480,"nat_leads":3016},"poolnote":"all leads","pool":3491,"actionable":3455,"won":36,"nat":3016,"intl":480,"calls":{"nat":11271,"intl":107,"cs":2472},"sp":false},"simrankhokha":{"stages":[{"stage":"Fresh","label":"FRESH (never worked)","ln":87,"li":67,"tn":9,"ti":1,"cs":{"n":154,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":154,"b12":0,"b35":0,"b6":0},"total":154},{"stage":"payment_prospect","label":"Payment prospect","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"pricing_pitched","label":"Pricing pitched","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"program_pitched","label":"Program pitched","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"counselled","label":"Counselled","ln":1,"li":0,"tn":5,"ti":0,"cs":{"n":1,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":1,"b12":0,"b35":0,"b6":0},"total":1},{"stage":"discovery","label":"Discovery","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"rcb_requested_callback","label":"RCB","ln":1,"li":0,"tn":7,"ti":0,"cs":{"n":1,"sum":3,"mean":3.0,"median":3,"p90":3,"b0":0,"b12":0,"b35":1,"b6":0},"total":1},{"stage":"FU_RCB","label":"FU - RCB","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"Follow up","label":"Follow up","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"FU_DNP","label":"FU - DNP","ln":1,"li":0,"tn":9,"ti":0,"cs":{"n":1,"sum":6,"mean":6.0,"median":6,"p90":6,"b0":0,"b12":0,"b35":0,"b6":1},"total":1},{"stage":"dnp_did_not_pick","label":"DNP","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"ghosted","label":"Ghosted","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"ni_not_interested","label":"NI - Not interested","ln":1,"li":0,"tn":12,"ti":0,"cs":{"n":1,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":1,"b12":0,"b35":0,"b6":0},"total":1},{"stage":"disqualified","label":"Disqualified","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"IFC","label":"IFC (parked)","ln":0,"li":0,"tn":0,"ti":0,"cs":{"n":0,"sum":0,"mean":0,"median":0,"p90":0,"b0":0,"b12":0,"b35":0,"b6":0},"total":0},{"stage":"deal_won","label":"Deal won","ln":0,"li":1,"tn":0,"ti":6,"cs":{"n":1,"sum":0,"mean":0.0,"median":0,"p90":0,"b0":1,"b12":0,"b35":0,"b6":0},"total":1}],"tiers":[{"k":"A","name":"Payment prospect + pitched, under-called","note":"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":12.0,"convI":5.76,"cpl":3},{"k":"B","name":"Payment prospect + pitched, worked","note":"Same stages, 2+ calls already spent. Needs closing, not dialling.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":8.0,"convI":3.84,"cpl":2},{"k":"C","name":"Counselled / discovery, under-called","note":"Engaged then stalled, 0-1 calls in stage.","leads":1,"nat":1,"intl":0,"callsdone":0,"convN":5.0,"convI":2.4,"cpl":3},{"k":"D","name":"Counselled / discovery, worked","note":"2+ calls in stage already.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":3.0,"convI":1.44,"cpl":2},{"k":"E","name":"Callback requested, never called back","note":"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":3.0,"convI":1.44,"cpl":2},{"k":"F","name":"Callback requested, called","note":"RCB / FU-RCB with 1+ calls in stage.","leads":1,"nat":1,"intl":0,"callsdone":3,"convN":1.5,"convI":0.72,"cpl":2},{"k":"G","name":"Follow-up queue","note":"Follow up and FU-DNP stages.","leads":1,"nat":1,"intl":0,"callsdone":6,"convN":3.0,"convI":1.44,"cpl":3},{"k":"H","name":"Fresh, never touched","note":"No stage, no calls. Raw inventory.","leads":154,"nat":87,"intl":67,"callsdone":0,"convN":1.5,"convI":0.72,"cpl":3},{"k":"I","name":"Soft churn, never actually reached","note":"DNP or Ghosted on 0-2 calls in stage.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":0.8,"convI":0.38,"cpl":3},{"k":"J","name":"Worked churn","note":"DNP or Ghosted with 3+ calls in stage.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":0.3,"convI":0.14,"cpl":2},{"k":"K","name":"Parked (IFC)","note":"Interested in future. Timing play.","leads":0,"nat":0,"intl":0,"callsdone":0,"convN":2.0,"convI":0.96,"cpl":2},{"k":"L","name":"NI / Disqualified","note":"Said no or failed qualification.","leads":1,"nat":1,"intl":0,"callsdone":0,"convN":0.15,"convI":0.07,"cpl":1}],"econ":{"has":false,"enrol":0,"rev":0,"payments":0,"enat":0,"eintl":0,"tkn":null,"tki":null,"bn":null,"bi":null,"months":{},"thin_i":true,"intl_leads":68,"nat_leads":91},"poolnote":"all leads","pool":159,"actionable":158,"won":1,"nat":91,"intl":68,"calls":{"nat":42,"intl":7,"cs":9},"sp":false}},"order":["ayush_singh13","payalineurope","wanderess_priyanka","kartikkapoorconsultation","technomanagers","vijaychandola","manasbichoo","ankita_gulati","simrankhokha"],"stages":["Fresh","payment_prospect","pricing_pitched","program_pitched","counselled","discovery","rcb_requested_callback","FU_RCB","Follow up","FU_DNP","dnp_did_not_pick","ghosted","ni_not_interested","disqualified","IFC","deal_won"],"labels":{"Fresh":"FRESH (never worked)","rcb_requested_callback":"RCB","discovery":"Discovery","program_pitched":"Program pitched","pricing_pitched":"Pricing pitched","counselled":"Counselled","Follow up":"Follow up","FU_DNP":"FU - DNP","FU_RCB":"FU - RCB","payment_prospect":"Payment prospect","dnp_did_not_pick":"DNP","ghosted":"Ghosted","ni_not_interested":"NI - Not interested","disqualified":"Disqualified","IFC":"IFC (parked)","deal_won":"Deal won"}};
+const GRP={Fresh:'fresh',payment_prospect:'work',pricing_pitched:'work',program_pitched:'work',
+ counselled:'work',discovery:'work',rcb_requested_callback:'work',FU_RCB:'work','Follow up':'work',
+ FU_DNP:'work',dnp_did_not_pick:'churn',ghosted:'churn',ni_not_interested:'churn',disqualified:'churn',
+ IFC:'other',deal_won:'other'};
+const GN={fresh:'Fresh',work:'Workable',churn:'Churned',other:'Outside workable / churned'};
+const PAL=['#0b6e4f','#3c8d70','#63a992','#8bc4b3','#b2ded1','#d3ece4','#9aa3ad','#bcc3cb','#d8dde2','#eceef1','#f4f5f7','#fafafa'];
+const g=i=>document.getElementById(i), n=i=>parseFloat(g(i).value)||0;
+const fmt=v=>Math.round(v).toLocaleString('en-IN');
+const pc=(a,b)=>b?(100*a/b).toFixed(1)+'%':'—';
+const inr=v=>{v=Math.round(v);return v>=1e7?'₹'+(v/1e7).toFixed(2)+' Cr':v>=1e5?'₹'+(v/1e5).toFixed(1)+' L':'₹'+v.toLocaleString('en-IN')};
+const TSHAPE=BASEDATA.creators['ayush_singh13'].tiers.map(t=>({k:t.k,name:t.name,note:t.note}));
+
+const custom=JSON.parse(localStorage.getItem('mc_custom')||'{}');
+const store=JSON.parse(localStorage.getItem('mc_all')||'{}');
+function allCreators(){
+  const o={}; BASEDATA.order.forEach(k=>o[k]=BASEDATA.creators[k]);
+  Object.keys(custom).forEach(k=>o[k]=custom[k]);
+  return o;
+}
+function order(){ return BASEDATA.order.concat(Object.keys(custom)); }
+let cur=localStorage.getItem('mc_cur')||BASEDATA.order[0];
+if(!allCreators()[cur]) cur=BASEDATA.order[0];
+const C=()=>allCreators()[cur];
+
+function blankCreator(name){
+  return {custom:true,name:name,sp:false,poolnote:'your figures',
+    stages:[],pool:0,actionable:0,won:0,nat:0,intl:0,
+    calls:{nat:0,intl:0,cs:0},
+    econ:{has:false,enrol:0,rev:0,payments:0,enat:0,eintl:0,tkn:null,tki:null,
+          bn:null,bi:null,months:{},thin_i:true,intl_leads:0,nat_leads:0},
+    tiers:TSHAPE.map(t=>({k:t.k,name:t.name,note:t.note,leads:0,nat:0,intl:0,
+      callsdone:0,convN:0,convI:0,cpl:3}))};
+}
+function persistCustom(){localStorage.setItem('mc_custom',JSON.stringify(custom));}
+
+function loadCreator(){
+  const c=C(), e=c.econ, s=store[cur]||{};
+  c.tiers.forEach(t=>{const v=s.t&&s.t[t.k]; if(v){t.convN=v.a;t.convI=v.b;t.cpl=v.c;
+    if(c.custom){t.nat=v.ln||0;t.intl=v.li||0;t.leads=t.nat+t.intl;}}});
+  g('tkn').value=s.tkn??(e.tkn??''); g('tki').value=s.tki??(e.tki??'');
+  g('tgt').value=s.tgt??2000000;
+  g('fn').value=s.fn??(e.has&&e.nat_leads?(100*e.enat/e.nat_leads).toFixed(2):'');
+  g('fi').value=s.fi??(e.has&&e.intl_leads?(100*e.eintl/e.intl_leads).toFixed(2):'');
+  g('fmx').value=s.fmx??((c.nat+c.intl)?(100*c.nat/(c.nat+c.intl)).toFixed(0):85);
+  ['ag','days','cpd','fcp'].forEach(k=>{if(s[k]!==undefined)g(k).value=s[k];});
+  if(c.custom){c.nat=c.tiers.reduce((a,t)=>a+t.nat,0);c.intl=c.tiers.reduce((a,t)=>a+t.intl,0);
+    c.actionable=c.nat+c.intl;c.pool=c.actionable;}
+}
+function save(){
+  const c=C(),t={};
+  c.tiers.forEach(x=>t[x.k]={a:x.convN,b:x.convI,c:x.cpl,ln:x.nat,li:x.intl});
+  store[cur]={t,tkn:g('tkn').value,tki:g('tki').value,tgt:g('tgt').value,fn:g('fn').value,
+    fi:g('fi').value,fmx:g('fmx').value,ag:g('ag').value,days:g('days').value,
+    cpd:g('cpd').value,fcp:g('fcp').value};
+  localStorage.setItem('mc_all',JSON.stringify(store));
+}
+function mult(v,b){
+  if(!b) return '<span class="mx z">—</span>';
+  const m=v/b; return `<span class="mx" style="color:${m>=3?'var(--flag)':'var(--mid)'}">${m.toFixed(1)}x</span>`;
+}
+function tabs(){
+  const A=allCreators();
+  g('tabs').innerHTML=order().map(k=>`<button class="tab${k===cur?' on':''}" data-k="${k}">${k}<span class="c">${fmt(A[k].actionable)}</span></button>`).join('')
+   +`<button class="tab new" id="addbtn">+ Add creator</button>`;
+  g('tabs').querySelectorAll('.tab[data-k]').forEach(b=>b.onclick=()=>{
+    save();cur=b.dataset.k;localStorage.setItem('mc_cur',cur);g('newform').classList.remove('on');
+    loadCreator();draw();});
+  g('addbtn').onclick=()=>{g('newform').classList.add('on');g('newname').focus();};
+}
+g('newcancel').onclick=()=>g('newform').classList.remove('on');
+g('newok').onclick=()=>{
+  const nm=g('newname').value.trim();
+  if(!nm) return;
+  if(allCreators()[nm]){alert('That name already exists.');return;}
+  custom[nm]=blankCreator(nm); persistCustom();
+  save(); cur=nm; localStorage.setItem('mc_cur',cur);
+  g('newname').value=''; g('newform').classList.remove('on');
+  loadCreator(); draw();
+};
+function model(){
+  const c=C(),tn=n('tkn'),ti=n('tki');
+  const T=c.tiers.map(t=>{
+    const en=t.nat*t.convN/100, ei=t.intl*t.convI/100;
+    const rev=en*tn+ei*ti, calls=t.leads*t.cpl;
+    return Object.assign({},t,{en,ei,enrol:en+ei,rev,calls,rpc:calls?rev/calls:0});
+  }).sort((a,b)=>b.rpc-a.rpc||b.leads-a.leads);
+  let cap=n('ag')*n('days')*n('cpd'),left=cap;
+  T.forEach(t=>{const take=Math.max(0,Math.min(t.calls,left));
+    t.frac=t.calls?take/t.calls:0;t.pCalls=take;t.pLeads=t.leads*t.frac;
+    t.pEnrol=t.enrol*t.frac;t.pRev=t.rev*t.frac;left-=take;});
+  return {T,cap,used:cap-left};
+}
+function draw(){
+  const c=C(),e=c.econ,{T,cap,used}=model();
+  const P=T.reduce((a,t)=>({l:a.l+t.pLeads,c:a.c+t.pCalls,e:a.e+t.pEnrol,r:a.r+t.pRev}),{l:0,c:0,e:0,r:0});
+  const F=T.reduce((a,t)=>({l:a.l+t.leads,r:a.r+t.rev,c:a.c+t.calls}),{l:0,r:0,c:0});
+  const mk=Object.keys(e.months),lastM=mk.length?e.months[mk[mk.length-1]]:0;
+  const tot=c.calls.nat+c.calls.intl;
+
+  g('strip').innerHTML=[
+    ['Actionable leads',fmt(c.actionable)],['National',fmt(c.nat)],['International',fmt(c.intl)],
+    ['Calls logged',fmt(tot)],['Calls per lead',c.pool?(tot/c.pool).toFixed(2):'—'],
+    ['Enrolments',e.has?fmt(e.enrol):'—'],['Revenue',e.has?inr(e.rev):'—'],
+    ['Measured L→E',e.bn!==null?e.bn+'% / '+e.bi+'%':'—']
+  ].map(k=>`<div><div class="v">${k[1]}</div><div class="k">${k[0]}</div></div>`).join('');
+
+  let fl='';
+  if(c.custom) fl=`<div class="flag"><b>${cur} is a creator you added.</b> It holds no HubSpot or payment data — every number comes from what you type. Enter lead counts in the National and Intl columns of the tier table below, then set ticket size and conversion. <button class="mkbtn danger" id="delc" style="margin-left:10px">Delete this creator</button></div>`;
+  else if(!e.has) fl=`<div class="flag"><b>No payment history for ${cur}.</b> This creator is not in the payment tracker, so there is no measured ticket size or conversion to anchor on. The money columns run entirely off what you type — treat the output as a scenario you built, not a forecast. Lead and call counts are real.</div>`;
+  else if(e.thin_i) fl=`<div class="flag"><b>Thin international sample.</b> ${cur} has ${fmt(e.intl_leads)} international leads and ${e.eintl} international enrolments — too few for a reliable rate, so the international baseline is set to 0.48x national rather than measured. National figures are sound.</div>`;
+  if(!c.custom && c.pool>0 && tot/c.pool<0.5)
+    fl+=`<div class="flag"><b>This bucket is barely worked.</b> ${fmt(tot)} calls across ${fmt(c.pool)} leads. Most tiers are Fresh, so the plan below is closer to a cold-calling schedule than a backlog rescue.</div>`;
+  g('flags').innerHTML=fl;
+  if(g('delc')) g('delc').onclick=()=>{
+    if(!confirm('Delete '+cur+'? This removes only your local copy.'))return;
+    delete custom[cur];delete store[cur];persistCustom();
+    localStorage.setItem('mc_all',JSON.stringify(store));
+    cur=BASEDATA.order[0];localStorage.setItem('mc_cur',cur);loadCreator();draw();};
+
+  g('capline').textContent=`${fmt(cap)} calls of capacity — ${n('ag')} agents × ${n('days')} days × ${n('cpd')} calls. That reaches ${fmt(P.l)} of ${fmt(F.l)} actionable leads.`;
+  g('head').innerHTML=[
+    ['lead',inr(P.r),'Revenue this month',`${pc(P.r,F.r)} of the ${inr(F.r)} in the whole backlog`],
+    ['',fmt(P.e),'Enrolments',lastM?`actual last month: ${lastM}`:'no payment history to compare'],
+    ['',lastM?(P.e/lastM).toFixed(1)+'x':'—','Versus recent run rate',lastM?'against a normal month':'needs payment history'],
+    ['',fmt(P.l),'Leads worked',`${fmt(F.l-P.l)} untouched at this capacity`],
+    ['','₹'+fmt(P.c?P.r/P.c:0),'Revenue per call','blended above the line'],
+  ].map(k=>`<div class="hc ${k[0]}"><div class="v">${k[1]}</div><div class="k">${k[2]}</div><div class="n">${k[3]}</div></div>`).join('');
+
+  const ed=c.custom;
+  let h='<thead><tr><th>Tier</th>'+(ed?'<th>Nat leads</th><th>Intl leads</th>':'<th>Leads</th><th>Nat</th><th>Intl</th>')+
+    '<th>Conv % nat</th><th>vs base</th><th>Conv % intl</th><th>vs base</th><th>Calls / lead</th>'+
+    '<th>₹ per call</th><th>Calls used</th><th>Enrolments</th><th>Revenue</th></tr></thead><tbody>';
+  const cols=ed?12:13;
+  let cut=false;
+  T.forEach(t=>{
+    if(!cut&&t.frac<=0&&F.c>cap){h+=`<tr class="cut"><td colspan="${cols}"><div class="cutbar"><b>Capacity runs out</b><i></i>${fmt(F.l-P.l)} leads and ${inr(F.r-P.r)} left on the table</div></td></tr>`;cut=true;}
+    const part=t.frac>0&&t.frac<1;
+    h+=`<tr class="${t.frac>0?'':'out'}"><td><span class="tname">${t.k} · ${t.name}</span>`+
+     `${part?`<span class="part">${Math.round(t.frac*100)}% covered</span>`:''}<div class="tnote">${t.note}</div></td>`+
+     (ed
+      ?`<td><input class="mini" data-k="${t.k}" data-f="nat" type="number" step="1" value="${t.nat}"></td>`+
+       `<td><input class="mini" data-k="${t.k}" data-f="intl" type="number" step="1" value="${t.intl}"></td>`
+      :`<td>${fmt(t.leads)}</td><td>${fmt(t.nat)}</td><td>${fmt(t.intl)}</td>`)+
+     `<td><input class="mini" data-k="${t.k}" data-f="convN" type="number" step="0.05" value="${t.convN}"></td><td>${mult(t.convN,e.bn)}</td>`+
+     `<td><input class="mini" data-k="${t.k}" data-f="convI" type="number" step="0.05" value="${t.convI}"></td><td>${mult(t.convI,e.bi)}</td>`+
+     `<td><input class="mini" data-k="${t.k}" data-f="cpl" type="number" step="1" value="${t.cpl}"></td>`+
+     `<td>₹${fmt(t.rpc)}</td>`+
+     `<td class="${t.pCalls?'':'z'}">${t.pCalls?fmt(t.pCalls):'—'}</td>`+
+     `<td class="${t.pEnrol?'':'z'}">${t.pEnrol?fmt(t.pEnrol):'—'}</td>`+
+     `<td class="${t.pRev?'':'z'}">${t.pRev?inr(t.pRev):'—'}</td></tr>`;
+  });
+  if(!cut&&F.c<=cap&&F.c>0) h+=`<tr class="cut"><td colspan="${cols}"><div class="cutbar full"><b>Capacity covers the whole backlog</b><i></i>${fmt(cap-used)} spare calls</div></td></tr>`;
+  g('plan').innerHTML=h+'</tbody>';
+  g('plan').querySelectorAll('input.mini').forEach(i=>i.onchange=()=>{
+    const t=C().tiers.find(x=>x.k===i.dataset.k);
+    t[i.dataset.f]=parseFloat(i.value)||0;
+    if(C().custom){t.leads=t.nat+t.intl;persistCustom();}
+    save();loadCreator();draw();});
+
+  const inp=T.filter(t=>t.pCalls>0);
+  g('eff').innerHTML=inp.map((t,i)=>`<div style="width:${100*t.pCalls/(used||1)}%;background:${PAL[i%PAL.length]}"></div>`).join('')
+   +(cap>used?`<div style="width:${100*(cap-used)/cap}%;background:var(--rule)"></div>`:'');
+  g('efflg').innerHTML=inp.slice(0,6).map((t,i)=>`<span><em style="background:${PAL[i%PAL.length]}"></em>${t.k} · ${fmt(t.pCalls)} calls → ${inr(t.pRev)}</span>`).join('');
+
+  const tgt=n('tgt'),gapv=Math.max(0,tgt-P.r);
+  const fn=n('fn')/100,fi=n('fi')/100,mx=n('fmx')/100;
+  const per=mx*fn*n('tkn')+(1-mx)*fi*n('tki');
+  const fresh=per>0?gapv/per:0,fcalls=fresh*n('fcp');
+  const extra=n('days')&&n('cpd')?fcalls/(n('days')*n('cpd')):0;
+  g('gapline').textContent = per<=0?'Enter a ticket size and new-lead conversion rate to size the gap.'
+    :gapv>0?'The backlog alone cannot reach the target. The shortfall has to be bought as new leads.'
+    :'The existing backlog covers the target on its own — no new lead spend needed.';
+  g('gap').innerHTML=[
+    ['',inr(tgt),'Revenue target','what the month must deliver'],
+    ['',inr(P.r),'From existing leads',`${fmt(P.e)} enrolments at this capacity`],
+    ['lead',gapv>0?inr(gapv):'covered',gapv>0?'Gap to fill':'Surplus',gapv>0?pc(gapv,tgt)+' of the target':inr(P.r-tgt)+' above target'],
+    ['lead',per>0?(gapv>0?fmt(fresh):'0'):'—','Fresh leads required',per>0&&gapv>0?`${fmt(fresh*mx)} national · ${fmt(fresh*(1-mx))} intl`:(per>0?'backlog is sufficient':'needs conversion inputs')],
+    ['',per>0&&gapv>0?fmt(fcalls):'0','Extra calls they need',per>0&&gapv>0?`about ${extra.toFixed(1)} more agents on top of ${n('ag')}`:'—'],
+  ].map(k=>`<div class="hc ${k[0]}"><div class="v">${k[1]}</div><div class="k">${k[2]}</div><div class="n">${k[3]}</div></div>`).join('');
+  g('fnote').innerHTML=e.has
+    ?`New-lead conversion defaults to <b>${cur}</b>'s own measured all-lead rate. A freshly acquired lead has not been qualified yet, which is exactly why the backlog tiers convert better than it.`
+    :`No measured rate exists for <b>${cur}</b>. Type your own new-lead conversion, or borrow a comparable creator's from the strip at the top.`;
+
+  const vn=e.nat_leads?e.enat/e.nat_leads*n('tkn'):0,vi=e.intl_leads?e.eintl/e.intl_leads*n('tki'):0;
+  const cn=c.nat?c.calls.nat/c.nat:0,ci=c.intl?c.calls.intl/c.intl:0;
+  g('econline').textContent=e.has?'Realised figures from the payment tracker, not assumptions.':'No payment history — lead and call figures are real, the money columns are blank.';
+  g('econ').innerHTML=`
+   <div><h3>National</h3>
+    <div class="r"><span>Leads</span><b>${fmt(c.nat)}</b></div>
+    <div class="r"><span>Enrolments</span><b>${e.has?e.enat:'—'}</b></div>
+    <div class="r"><span>Lead → enrolment</span><b>${e.has&&e.nat_leads?(100*e.enat/e.nat_leads).toFixed(2)+'%':'—'}</b></div>
+    <div class="r"><span>₹ per enrolment</span><b>${n('tkn')?inr(n('tkn')):'—'}</b></div>
+    <div class="r"><span>Lifetime calls per lead</span><b>${cn?cn.toFixed(2):'—'}</b></div>
+    <div class="hl"><span>Revenue per call placed</span><b>${cn&&vn?'₹'+fmt(vn/cn):'—'}</b></div></div>
+   <div><h3>International</h3>
+    <div class="r"><span>Leads</span><b>${fmt(c.intl)}</b></div>
+    <div class="r"><span>Enrolments</span><b>${e.has?e.eintl:'—'}</b></div>
+    <div class="r"><span>Lead → enrolment</span><b>${e.has&&e.intl_leads?(100*e.eintl/e.intl_leads).toFixed(2)+'%':'—'}</b></div>
+    <div class="r"><span>₹ per enrolment</span><b>${n('tki')?inr(n('tki')):'—'}</b></div>
+    <div class="r"><span>Lifetime calls per lead</span><b>${ci?ci.toFixed(2):'—'}</b></div>
+    <div class="hl"><span>Revenue per call placed</span><b>${ci&&vi?'₹'+fmt(vi/ci):'—'}</b></div></div>`;
+  let co='';
+  if(c.custom) co=`<b>${cur}</b> is yours to fill in. Once you have real lead counts and a ticket size, this section will compare the two segments the same way it does for the tracked creators.`;
+  else if(!e.has) co=`No payment history for <b>${cur}</b>, so there is nothing to compare. The lead split is ${fmt(c.nat)} national to ${fmt(c.intl)} international and only ${fmt(tot)} calls have ever been logged — work it first, then come back when there is revenue to measure.`;
+  else if(cn&&ci&&vn&&vi){const rn=vn/cn,ri=vi/ci;
+    co = ri>rn
+      ?`An international lead is worth <b>₹${fmt(vi)}</b> against <b>₹${fmt(vn)}</b> national, so on lead value alone you would deprioritise it. But it receives <b>${(cn/ci).toFixed(1)}x less</b> calling effort, and every call placed to one returns <b>₹${fmt(ri)}</b> against <b>₹${fmt(rn)}</b>. Per unit of effort international is the under-served segment here${e.thin_i?', though on only '+e.eintl+' international enrolments — test before you reallocate':''}.`
+      :`National leads win on both counts for <b>${cur}</b>: <b>₹${fmt(vn)}</b> per lead against <b>₹${fmt(vi)}</b>, and <b>₹${fmt(rn)}</b> per call against <b>₹${fmt(ri)}</b>. No hidden international upside here — effort is already pointed the right way.`;}
+  else co=`Not enough international volume for <b>${cur}</b> to compare the two segments meaningfully.`;
+  g('callout').innerHTML=co;
+
+  matrix();tabs();
+}
+['ag','days','cpd','tkn','tki','tgt','fn','fi','fmx','fcp'].forEach(i=>g(i).oninput=()=>{save();draw();});
+
+function matrix(){
+  const c=C(),sp=c.sp;
+  if(!c.stages.length){g('matrix').innerHTML='<tbody><tr><td style="color:var(--soft);padding:18px 0">No stage data — this creator was added by you.</td></tr></tbody>';return;}
+  let h='<thead><tr><th>Contact engagement stage</th><th>Leads</th>'+
+   (sp?'<th>Pro</th><th>Other</th><th>Not captured</th>':'')+
+   '<th>Nat</th><th>Intl</th><th>Calls nat</th><th>Calls intl</th><th>Per lead nat / intl</th>'+
+   '<th>In stage</th><th>Median</th><th>Mean</th><th>% never called</th></tr></thead><tbody>';
+  const span=sp?14:11; let last='';
+  c.stages.forEach(r=>{const gg=GRP[r.stage];
+    if(gg!==last){h+=`<tr class="grp"><td colspan="${span}">${GN[gg]}</td></tr>`;last=gg}
+    const s=r.cs,cell=v=>`<td class="${v?'':'z'}">${v?fmt(v):'·'}</td>`;
+    h+=`<tr><td>${r.label}</td><td>${fmt(r.total)}</td>`+
+      (sp?cell(r.pro)+cell(r.oth)+cell(r.nul):'')+
+      cell(r.ln)+cell(r.li)+cell(r.tn)+cell(r.ti)+
+      `<td>${r.ln?(r.tn/r.ln).toFixed(2):'—'} / ${r.li?(r.ti/r.li).toFixed(2):'—'}</td>`+
+      cell(s.sum)+`<td>${s.median}</td><td>${s.mean.toFixed(2)}</td><td>${pc(s.b0,s.n)}</td></tr>`;});
+  const S=k=>c.stages.reduce((a,r)=>a+(k==='cs'?r.cs.sum:(r[k]||0)),0);
+  h+=`<tr style="font-weight:600"><td>Total</td><td>${fmt(S('total'))}</td>`+
+    (sp?`<td>${fmt(S('pro'))}</td><td>${fmt(S('oth'))}</td><td>${fmt(S('nul'))}</td>`:'')+
+    `<td>${fmt(c.nat)}</td><td>${fmt(c.intl)}</td><td>${fmt(c.calls.nat)}</td><td>${fmt(c.calls.intl)}</td>`+
+    `<td>${c.nat?(c.calls.nat/c.nat).toFixed(2):'—'} / ${c.intl?(c.calls.intl/c.intl).toFixed(2):'—'}</td>`+
+    `<td>${fmt(S('cs'))}</td><td></td><td>${(S('cs')/Math.max(S('total'),1)).toFixed(2)}</td><td></td></tr></tbody>`;
+  g('matrix').innerHTML=h;
+}
+loadCreator();draw();
+</script></body></html>

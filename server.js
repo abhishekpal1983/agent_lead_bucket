@@ -2519,6 +2519,23 @@ app.post("/api/vp/benchmark", express.json(), function(req, res){
   res.json({ ok: true, persistent: ORG_PERSISTENT, benchmarks: ORG.benchmarks });
 });
 
+/* ---------- creator_plan.html: admin-only page ----------
+   Allowlist comes from ADMIN_EMAILS (comma separated, set in Railway). The session
+   email lives at req.session.email (set by authGate via the signed cn_session
+   cookie); there is no req.user in this app. Route must stay registered BEFORE
+   express.static, otherwise static serves the file and the guard never runs. */
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+);
+function adminOnly(req, res, next) {
+  const email = ((req.session || sessionOf(req) || {}).email || '').toLowerCase();
+  if (!email) return res.redirect('/login.html');
+  if (!ADMIN_EMAILS.has(email)) return res.status(403).send('Not authorised.');
+  next();
+}
+app.get('/creator_plan.html', adminOnly, (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'creator_plan.html'))
+);
 app.use(express.static("public"));
 // A background sync that rejects must never take the web server down with it.
 // Node 18 exits the process on an unhandled rejection, which is what produced the
