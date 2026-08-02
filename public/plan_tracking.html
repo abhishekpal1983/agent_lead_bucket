@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Plan vs actual · tracking</title>
+<style>
+:root{color-scheme:light;--mut:#68707c;--line:#e4e7ec;--ink:#191c20;--lead:#1d4ed8;--bad:#b91c1c;--good:#15803d;--amber:#92600a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13.5px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f6f8;color:var(--ink);padding:26px}
+.wrap{max-width:1280px;margin:0 auto}
+h1{font-size:20px;letter-spacing:-.01em}
+.sub{color:var(--mut);font-size:12px;margin:4px 0 14px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.bar a{font-size:12px;color:var(--lead)}
+button{border:1px solid #c9d7f5;background:#e9effc;color:var(--lead);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer}
+button:hover{background:#dbe6fb}
+button.save{border-color:#86d3a2;background:#e8f6ee;color:var(--good)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 1px 2px rgba(16,24,40,.05);margin-bottom:16px}
+.chead{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.chead h2{font-size:15px}
+.chead .m{font-size:12px;color:var(--mut)}
+.kpis{display:flex;gap:22px;flex-wrap:wrap;margin:8px 0 12px}
+.kpi .v{font-size:17px;font-weight:700}
+.kpi .k{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.kpi input{border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:14px;font-weight:700;width:120px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font-size:9.8px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:6px 8px;text-align:right;border-bottom:2px solid var(--ink);white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:6px 8px;text-align:right;border-bottom:1px solid #eef0f3;white-space:nowrap}
+td:first-child{text-align:left;font-weight:600}
+tr.tot td{border-top:2px solid var(--ink);font-weight:700;background:#fafbfc}
+input.mini{border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px;width:74px;text-align:right}
+.bad{color:var(--bad);font-weight:700}.good{color:var(--good);font-weight:700}.amb{color:var(--amber);font-weight:700}.mut{color:var(--mut)}
+.pb{display:inline-block;width:64px;height:7px;background:#eceff3;border-radius:4px;overflow:hidden;vertical-align:middle;margin-left:6px}
+.pb i{display:block;height:100%}
+#state{padding:40px;text-align:center;color:var(--mut)}
+.note{color:var(--mut);font-size:11.5px;margin-top:6px;max-width:1000px;line-height:1.55}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Plan vs actual — <span id="mon"></span></h1>
+<div class="sub" id="asof">Loading…</div>
+<div class="bar">
+  <button class="save" id="saveT">Save targets</button>
+  <span id="savemsg" class="mut" style="font-size:12px"></span>
+  <a href="/creator_plan.html">← planner</a>
+  <a href="/plan_summary.html">summary</a>
+</div>
+<div id="state">Loading tracking data…</div>
+<div id="body"></div>
+<div class="note" id="foot" style="display:none">
+Baseline freezes on the first data sync of the month; every call, stage move and payment since then counts against it. Calls credit the tier a lead sat in at baseline, so working the list you were given shows up even when leads progress. Target calls per tier default to what the planner allocated but are yours to edit — Save stores them to your account for this month and tracking runs against the saved numbers. Enrolments are fresh enrolments only; revenue is all cash collected in the month. Data refreshes with the 12-hour plan sync.
+</div>
+</div>
+<script>
+function fmt(n){return Math.round(n||0).toLocaleString('en-IN');}
+function inr(n){n=Math.round(n||0);return n>=1e7?'₹'+(n/1e7).toFixed(2)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(1)+'L':'₹'+n.toLocaleString('en-IN');}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+const TIERS=[['A','Payment prospect + pitched, under-called'],['B','Payment prospect + pitched, worked'],
+['C','Counselled / discovery, under-called'],['D','Counselled / discovery, worked'],
+['E','Callback requested, never called back'],['F','Callback requested, called'],
+['G','Follow-up queue'],['H','Fresh, never touched'],['I','Soft churn, never reached'],
+['J','Worked churn'],['K','Parked (IFC)'],['L','NI / Disqualified']];
+const CAPDEF={ag:6,days:22,cpd:60};
+let TR=null,PLANDATA=null,PREFS={},TG={},FRAC=0;
+
+function planDefaults(key,c,s){
+  // same allocation as the planner: per-tier planned calls + creator projections
+  s=s||{};const nv=(x,d)=>{const f=parseFloat(x);return isNaN(f)?d:f;};
+  const e=c.econ||{};
+  const tiers=(c.tiers||[]).map(t=>{const v=s.t&&s.t[t.k]||{};
+    return {k:t.k,nat:c.custom?nv(v.ln,0):t.nat,intl:c.custom?nv(v.li,0):t.intl,
+      convN:nv(v.a,t.convN),convI:nv(v.b,t.convI),cpl:nv(v.c,t.cpl)};});
+  const tkn=nv(s.tkn,e.tkn||0),tki=nv(s.tki,e.tki||0),tgt=nv(s.tgt,2000000);
+  const cap=nv(s.ag,CAPDEF.ag)*nv(s.days,CAPDEF.days)*nv(s.cpd,CAPDEF.cpd);
+  const S=[];
+  tiers.forEach(t=>{S.push({k:t.k,leads:t.nat,conv:t.convN,cpl:t.cpl,ticket:tkn});
+    S.push({k:t.k,leads:t.intl,conv:t.convI,cpl:t.cpl,ticket:tki});});
+  S.forEach(x=>{x.enrol=x.leads*x.conv/100;x.rev=x.enrol*x.ticket;x.calls=x.leads*x.cpl;x.rpc=x.calls?x.rev/x.calls:0;});
+  let left=cap;
+  S.slice().sort((a,b)=>b.rpc-a.rpc||b.leads-a.leads).forEach(x=>{
+    const take=Math.max(0,Math.min(x.calls,left));x.frac=x.calls?take/x.calls:0;left-=take;});
+  const perTier={};let pe=0,pr=0;
+  S.forEach(x=>{perTier[x.k]=(perTier[x.k]||0)+x.calls*x.frac;pe+=x.enrol*x.frac;pr+=x.rev*x.frac;});
+  return {tiers:perTier,enrol:pe,rev:pr,tgt:tgt};
+}
+function tgFor(cr){
+  const d=PLANDATA&&PLANDATA.creators[cr]?planDefaults(cr,PLANDATA.creators[cr],(PREFS.all||{})[cr]):{tiers:{},enrol:0,rev:0,tgt:0};
+  const saved=(TG[TR.ym]||{})[cr]||{};
+  const t={tiers:{},enrol:saved.enrol!==undefined?saved.enrol:Math.round(d.enrol),
+    rev:saved.rev!==undefined?saved.rev:Math.round(d.tgt||d.rev)};
+  TIERS.forEach(x=>{const k=x[0];
+    t.tiers[k]=saved.tiers&&saved.tiers[k]!==undefined?saved.tiers[k]:Math.round(d.tiers[k]||0);});
+  return t;
+}
+function pace(done,target){
+  if(!target)return '<span class="mut">—</span>';
+  const p=done/target,exp=FRAC||0.01,cls=p>=exp?'good':(p>=exp*0.6?'amb':'bad');
+  return '<span class="'+cls+'">'+Math.round(100*p)+'%</span><span class="pb"><i style="width:'+Math.min(100,100*p)+'%;background:'+(p>=exp?'#15803d':(p>=exp*0.6?'#d97706':'#b91c1c'))+'"></i></span>';
+}
+function segTxt(o,f){const n=(o.N||{})[f]||0,i=(o.I||{})[f]||0;return fmt(n+i)+(i?' <span class="mut">('+fmt(i)+' intl)</span>':'');}
+function draw(){
+  document.getElementById('mon').textContent=new Date(TR.ym+'-15').toLocaleString('en-IN',{month:'long',year:'numeric'});
+  document.getElementById('asof').textContent='Baseline frozen '+new Date(TR.baselineAt).toLocaleString()+' · day '+TR.day+' of '+TR.dim+' ('+Math.round(100*TR.frac)+'% of month) · data as of '+(TR.loadedAt?new Date(TR.loadedAt).toLocaleString():'');
+  FRAC=TR.frac;
+  const order=(PLANDATA&&PLANDATA.order)||Object.keys(TR.creators);
+  let html='';
+  order.forEach(cr=>{
+    const d=TR.creators[cr];if(!d)return;
+    const tg=tgFor(cr);
+    const T={l0:0,calls:0,touch:0,moved:0,won:0,tgt:0};
+    let rows='';
+    TIERS.forEach(x=>{
+      const k=x[0],o=d.tiers[k]||{};
+      const l0=((o.N||{}).leads0||0)+((o.I||{}).leads0||0);
+      const calls=((o.N||{}).calls||0)+((o.I||{}).calls||0);
+      const touch=((o.N||{}).touched||0)+((o.I||{}).touched||0);
+      const moved=((o.N||{}).moved||0)+((o.I||{}).moved||0);
+      const won=((o.N||{}).won||0)+((o.I||{}).won||0);
+      const t0=tg.tiers[k]||0;
+      T.l0+=l0;T.calls+=calls;T.touch+=touch;T.moved+=moved;T.won+=won;T.tgt+=t0;
+      rows+='<tr><td>'+k+' · '+x[1]+'</td><td>'+segTxt(o,'leads0')+'</td>'+
+        '<td><input class="mini tgt" data-cr="'+esc(cr)+'" data-k="'+k+'" type="number" step="10" value="'+t0+'"></td>'+
+        '<td>'+segTxt(o,'calls')+'</td><td>'+pace(calls,t0)+'</td>'+
+        '<td>'+fmt(touch)+(l0?' <span class="mut">('+Math.round(100*touch/l0)+'%)</span>':'')+'</td>'+
+        '<td>'+fmt(moved)+(won?' <span class="good">+'+won+' won</span>':'')+'</td></tr>';
+    });
+    rows+='<tr><td class="mut">New leads since baseline</td><td>'+fmt(d.newLeads)+'</td><td></td><td>'+fmt(d.newCalls)+'</td><td colspan="3" class="mut">worked outside the baseline plan</td></tr>';
+    rows+='<tr class="tot"><td>TOTAL</td><td>'+fmt(T.l0)+'</td><td>'+fmt(T.tgt)+'</td><td>'+fmt(T.calls+d.newCalls)+'</td><td>'+pace(T.calls+d.newCalls,T.tgt)+'</td><td>'+fmt(T.touch)+'</td><td>'+fmt(T.moved)+(T.won?' <span class="good">+'+T.won+' won</span>':'')+'</td></tr>';
+    html+='<div class="card"><div class="chead"><h2>'+esc(cr)+'</h2><span class="m">'+fmt(T.l0)+' baseline leads</span></div>'+
+      '<div class="kpis">'+
+      '<div class="kpi"><div class="v">'+fmt(d.actual.enrol)+' <span class="mut" style="font-size:12px">/ <input class="mini etgt" data-cr="'+esc(cr)+'" type="number" step="1" value="'+tg.enrol+'"></span></div><div class="k">Enrolments vs target</div></div>'+
+      '<div class="kpi"><div class="v">'+pace(d.actual.enrol,tg.enrol)+'</div><div class="k">Enrolment pace</div></div>'+
+      '<div class="kpi"><div class="v">'+inr(d.actual.rev)+' <span class="mut" style="font-size:12px">/ <input class="mini rtgt" data-cr="'+esc(cr)+'" type="number" step="50000" value="'+tg.rev+'" style="width:110px"></span></div><div class="k">Revenue vs target (₹)</div></div>'+
+      '<div class="kpi"><div class="v">'+pace(d.actual.rev,tg.rev)+'</div><div class="k">Revenue pace</div></div>'+
+      '</div><div class="scroll"><table><thead><tr><th>Tier</th><th>Baseline leads</th><th>Target calls</th><th>Calls done</th><th>Pace</th><th>Leads touched</th><th>Moved stage</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  });
+  document.getElementById('body').innerHTML=html;
+  document.getElementById('state').style.display='none';
+  document.getElementById('foot').style.display='block';
+}
+function collectTargets(){
+  const ym=TR.ym;if(!TG[ym])TG[ym]={};
+  document.querySelectorAll('input.tgt').forEach(i=>{
+    const cr=i.dataset.cr;if(!TG[ym][cr])TG[ym][cr]={tiers:{}};if(!TG[ym][cr].tiers)TG[ym][cr].tiers={};
+    TG[ym][cr].tiers[i.dataset.k]=parseFloat(i.value)||0;});
+  document.querySelectorAll('input.etgt').forEach(i=>{
+    const cr=i.dataset.cr;if(!TG[ym][cr])TG[ym][cr]={tiers:{}};
+    TG[ym][cr].enrol=parseFloat(i.value)||0;});
+  document.querySelectorAll('input.rtgt').forEach(i=>{
+    const cr=i.dataset.cr;if(!TG[ym][cr])TG[ym][cr]={tiers:{}};
+    TG[ym][cr].rev=parseFloat(i.value)||0;});
+}
+document.getElementById('saveT').onclick=async function(){
+  collectTargets();
+  const m=document.getElementById('savemsg');
+  try{
+    const r=await fetch('/api/plan-prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:TG})});
+    m.textContent=r.ok?'Targets saved · tracking now runs against them':'Save failed ('+r.status+')';
+  }catch(e){m.textContent='Save failed: '+e.message;}
+  draw();
+};
+document.addEventListener('change',e=>{
+  if(e.target.classList&&(e.target.classList.contains('tgt')||e.target.classList.contains('etgt')||e.target.classList.contains('rtgt'))){
+    collectTargets();draw();
+    document.getElementById('savemsg').textContent='Edited — hit Save targets to keep these.';
+  }
+});
+(async function(){
+  try{
+    const r=await fetch('/api/plan-tracking');
+    if(r.status===403){document.getElementById('state').textContent='Not authorised.';return;}
+    if(!r.ok){const j=await r.json().catch(()=>({}));document.getElementById('state').textContent=j.error||'Tracking data not ready yet.';return;}
+    TR=await r.json();
+  }catch(e){document.getElementById('state').textContent='Could not load tracking data.';return;}
+  try{const r=await fetch('/api/creator-plan');if(r.ok)PLANDATA=await r.json();}catch(e){}
+  try{const r=await fetch('/api/plan-prefs');if(r.ok){PREFS=await r.json()||{};TG=PREFS.targets||{};}}catch(e){}
+  draw();
+})();
+</script>
+</body>
+</html>

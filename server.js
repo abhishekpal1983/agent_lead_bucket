@@ -2775,6 +2775,22 @@ async function syncPlan(force){
       }
     }
     if (needFull) PLAN_STATE.lastFull = t0;
+    // month baseline: freeze per-contact tier + call counts on the first sync of each month
+    const bym = new Date().toISOString().slice(0, 7);
+    if (!PLAN_STATE.baseline || PLAN_STATE.baseline.ym !== bym) {
+      const b = { ym: bym, at: new Date().toISOString(), creators: {} };
+      Object.keys(PLAN_STATE.creators).forEach(function(cr){
+        const src = PLAN_STATE.creators[cr].c, m = {};
+        Object.keys(src).forEach(function(id){
+          const r = src[id]; // [st, cs, iv, spc, tot]
+          const k = r[0] === "deal_won" ? "W" : (planTierOf(r[0], r[1]) || "?");
+          m[id] = [k, r[2], r[4] || 0, r[3]];
+        });
+        b.creators[cr] = m;
+      });
+      PLAN_STATE.baseline = b;
+      console.log("Plan tracking baseline frozen for " + bym);
+    }
     PLAN.data = { creators: creators, order: PLAN_CREATORS.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS,
       mode: needFull ? "full" : "delta", lastFull: PLAN_STATE.lastFull ? new Date(PLAN_STATE.lastFull).toISOString() : null };
     PLAN.loadedAt = new Date().toISOString();
@@ -2802,6 +2818,52 @@ app.get("/api/creator-plan", adminOnly, function(req, res){
   if (!PLAN.data) return res.status(503).json({ error: PLAN.error || "plan data is still syncing; the page falls back to its baked snapshot", syncing: PLAN.syncing });
   res.json(Object.assign({ loadedAt: PLAN.loadedAt, syncing: PLAN.syncing }, PLAN.data));
 });
+app.get("/api/plan-tracking", adminOnly, function(req, res){
+  const b = PLAN_STATE.baseline;
+  if (!b) return res.status(503).json({ error: "No month baseline yet. It freezes automatically on the first plan sync of the month." });
+  const now = new Date();
+  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const out = { ym: b.ym, baselineAt: b.at, day: now.getDate(), dim: dim, frac: +(now.getDate() / dim).toFixed(3),
+    loadedAt: PLAN.loadedAt, creators: {} };
+  Object.keys(PLAN_STATE.creators).forEach(function(cr){
+    const cur = PLAN_STATE.creators[cr].c, base = (b.creators || {})[cr] || {};
+    const sp = cr === PLAN_SP_CREATOR;
+    const tiers = {};
+    function cell(k, seg){ if (!tiers[k]) tiers[k] = {}; if (!tiers[k][seg]) tiers[k][seg] = { leads0: 0, calls: 0, touched: 0, moved: 0, won: 0 }; return tiers[k][seg]; }
+    let newLeads = 0, newCalls = 0;
+    Object.keys(base).forEach(function(id){
+      const r = base[id]; // [tierK, iv, tot0, spc]
+      if (sp && r[3] === "S") return; // students stay outside the plan scope
+      const k = r[0];
+      if (k === "W" || k === "?") return;
+      const seg = r[1] === "i" ? "I" : "N";
+      const c2 = cur[id];
+      const totNow = c2 ? (c2[4] || 0) : r[2];
+      const d = Math.max(0, totNow - r[2]);
+      const c3 = cell(k, seg);
+      c3.leads0++; c3.calls += d; if (d > 0) c3.touched++;
+      const kNow = c2 ? (c2[0] === "deal_won" ? "W" : (planTierOf(c2[0], c2[1]) || "?")) : k;
+      if (kNow !== k) { c3.moved++; if (kNow === "W") c3.won++; }
+    });
+    Object.keys(cur).forEach(function(id){
+      if (base[id]) return;
+      const r = cur[id];
+      if (sp && r[3] === "S") return;
+      newLeads++; newCalls += r[4] || 0;
+    });
+    // month-to-date money from the sheet (enrolment = first payment ever per consumer)
+    const seenAll = new Set(); let enrol = 0, rev = 0;
+    SHEET.rows.slice().sort(function(a, c){ return a.date < c.date ? -1 : 1; }).forEach(function(r){
+      if ((r.creator_username || "") !== cr) return;
+      const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+      const key = em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row);
+      const isFirst = !seenAll.has(key); seenAll.add(key);
+      if ((r.date || "").slice(0, 7) === b.ym) { rev += r.price; if (isFirst) enrol++; }
+    });
+    out.creators[cr] = { tiers: tiers, newLeads: newLeads, newCalls: newCalls, actual: { enrol: enrol, rev: rev } };
+  });
+  res.json(out);
+});
 app.get("/api/plan-prefs", adminOnly, function(req, res){
   const email = ((req.session || sessionOf(req) || {}).email || "").toLowerCase();
   res.json(planPrefsAll()[email] || {});
@@ -2809,8 +2871,10 @@ app.get("/api/plan-prefs", adminOnly, function(req, res){
 app.put("/api/plan-prefs", adminOnly, express.json({ limit: "1mb" }), function(req, res){
   const email = ((req.session || sessionOf(req) || {}).email || "").toLowerCase();
   const all = planPrefsAll();
-  all[email] = { all: (req.body && req.body.all) || {}, custom: (req.body && req.body.custom) || {},
-    cur: (req.body && req.body.cur) || "", updatedAt: new Date().toISOString() };
+  const prev = all[email] || {};
+  all[email] = { all: (req.body && req.body.all) || prev.all || {}, custom: (req.body && req.body.custom) || prev.custom || {},
+    cur: (req.body && req.body.cur) || prev.cur || "", targets: (req.body && req.body.targets) || prev.targets || {},
+    updatedAt: new Date().toISOString() };
   let persisted = false;
   try { if (ORG_PERSISTENT) { fs.writeFileSync(PLAN_PREFS_FILE, JSON.stringify(all)); persisted = true; } } catch (e) {}
   res.json({ ok: true, persistent: persisted });
@@ -2835,6 +2899,9 @@ app.get('/creator_plan.html', adminOnly, (req, res) =>
 );
 app.get('/plan_summary.html', adminOnly, (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'plan_summary.html'))
+);
+app.get('/plan_tracking.html', adminOnly, (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'plan_tracking.html'))
 );
 app.use(express.static("public"));
 // A background sync that rejects must never take the web server down with it.
