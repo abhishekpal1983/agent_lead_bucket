@@ -2738,7 +2738,8 @@ async function syncPlan(force){
   try {
     const creators = {};
     let fullCount = 0, deltaCount = 0;
-    for (const cr of PLAN_CREATORS) {
+    const planList = PLAN_CREATORS.concat((PLAN_STATE.extra || []).filter(function(x){ return PLAN_CREATORS.indexOf(x) < 0; }));
+    for (const cr of planList) {
       try {
         let st = PLAN_STATE.creators[cr];
         let doFull = needFull || !st || !st.last || !st.c;
@@ -2791,7 +2792,7 @@ async function syncPlan(force){
       PLAN_STATE.baseline = b;
       console.log("Plan tracking baseline frozen for " + bym);
     }
-    PLAN.data = { creators: creators, order: PLAN_CREATORS.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS,
+    PLAN.data = { creators: creators, order: planList.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS,
       mode: needFull ? "full" : "delta", lastFull: PLAN_STATE.lastFull ? new Date(PLAN_STATE.lastFull).toISOString() : null };
     PLAN.loadedAt = new Date().toISOString();
     PLAN.syncing = false; PLAN.error = null;
@@ -2817,6 +2818,48 @@ function planPrefsAll(){
 app.get("/api/creator-plan", adminOnly, function(req, res){
   if (!PLAN.data) return res.status(503).json({ error: PLAN.error || "plan data is still syncing; the page falls back to its baked snapshot", syncing: PLAN.syncing });
   res.json(Object.assign({ loadedAt: PLAN.loadedAt, syncing: PLAN.syncing }, PLAN.data));
+});
+const PLAN_ADDING = {};
+async function planAddCreator(cr){
+  try {
+    const t0 = Date.now();
+    const rows = [];
+    await fetchPlanRange(cr, Date.parse("2024-01-01"), t0 + 86400000, function(p){ rows.push(p); });
+    const tot = await planCallCounts(rows.map(function(r){ return r.id; }));
+    const cmap = {};
+    rows.forEach(function(p){ cmap[p.id] = [p.contact_engagement_stage || "", num(p.callscurrent_stage), planIvOf(p), planSpcOf(p), tot[p.id] || 0]; });
+    PLAN_STATE.creators[cr] = { c: cmap, last: t0 };
+    if (!PLAN_STATE.extra) PLAN_STATE.extra = [];
+    if (PLAN_STATE.extra.indexOf(cr) < 0 && PLAN_CREATORS.indexOf(cr) < 0) PLAN_STATE.extra.push(cr);
+    if (PLAN_STATE.baseline && !PLAN_STATE.baseline.creators[cr]) {
+      const m = {};
+      Object.keys(cmap).forEach(function(id){ const r = cmap[id]; m[id] = [r[0] === "deal_won" ? "W" : (planTierOf(r[0], r[1]) || "?"), r[2], r[4] || 0, r[3]]; });
+      PLAN_STATE.baseline.creators[cr] = m;
+    }
+    if (PLAN.data) {
+      PLAN.data.creators[cr] = planAggregate(cr, cmap);
+      if (PLAN.data.order.indexOf(cr) < 0) PLAN.data.order.push(cr);
+      PLAN.loadedAt = new Date().toISOString();
+    }
+    try { if (ORG_PERSISTENT) { fs.writeFileSync(PLAN_FILE, JSON.stringify({ data: PLAN.data, loadedAt: PLAN.loadedAt })); fs.writeFileSync(PLAN_STATE_FILE, JSON.stringify(PLAN_STATE)); } } catch (e) {}
+    console.log("plan add " + cr + ": " + rows.length + " contacts synced");
+  } catch (e) { console.error("plan add " + cr + ": " + e.message); }
+}
+app.post("/api/creator-plan/add", adminOnly, express.json(), async function(req, res){
+  const cr = String((req.body && req.body.creator) || "").trim();
+  if (!cr) return res.status(400).json({ error: "creator username required" });
+  if (PLAN.data && PLAN.data.creators[cr]) return res.json({ ok: true, exists: true });
+  if (PLAN_ADDING[cr]) return res.json({ ok: true, queued: true });
+  try {
+    const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "topmate_username", operator: "EQ", value: cr }] }], properties: ["createdate"], limit: 1 }) });
+    const total = probe.total || 0;
+    const payments = SHEET.rows.filter(function(r){ return (r.creator_username || "") === cr; }).length;
+    if (!total && !payments) return res.status(404).json({ error: "No HubSpot contacts or payments found for '" + cr + "'. Check the exact topmate_username spelling." });
+    PLAN_ADDING[cr] = true;
+    planAddCreator(cr).finally(function(){ delete PLAN_ADDING[cr]; });
+    res.json({ ok: true, queued: true, contacts: total, payments: payments });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get("/api/plan-tracking", adminOnly, function(req, res){
   const b = PLAN_STATE.baseline;

@@ -266,14 +266,47 @@ function tabs(){
   g('addbtn').onclick=()=>{g('newform').classList.add('on');g('newname').focus();};
 }
 g('newcancel').onclick=()=>g('newform').classList.remove('on');
-g('newok').onclick=()=>{
-  const nm=g('newname').value.trim();
-  if(!nm) return;
-  if(allCreators()[nm]){alert('That name already exists.');return;}
+function addManual(nm){
   custom[nm]=blankCreator(nm); persistCustom();
   save(); cur=nm; localStorage.setItem('mc_cur',cur);syncPrefs();
   g('newname').value=''; g('newform').classList.remove('on');
   loadCreator(); draw();
+}
+g('newok').onclick=async ()=>{
+  const nm=g('newname').value.trim();
+  if(!nm) return;
+  if(allCreators()[nm]){alert('That name already exists.');return;}
+  setSaveSt('Checking '+nm+' in HubSpot and the payment sheet…','#92600a');
+  let j=null,r=null;
+  try{
+    r=await fetch('/api/creator-plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({creator:nm})});
+    j=await r.json().catch(()=>null);
+  }catch(e){alert('Could not reach the server: '+e.message);setSaveSt('','#68707c');return;}
+  if(r.status===404){
+    if(confirm(((j&&j.error)||'Nothing found for '+nm+'.')+'\n\nAdd it as a manual creator instead? Every number will come from what you type.')) addManual(nm);
+    else setSaveSt('','#68707c');
+    return;
+  }
+  if(!r.ok){alert('Could not add: '+((j&&j.error)||r.status));setSaveSt('','#68707c');return;}
+  g('newname').value=''; g('newform').classList.remove('on');
+  setSaveSt('Syncing '+nm+' from HubSpot — '+fmt(j.contacts||0)+' contacts, '+fmt(j.payments||0)+' payments. This runs in the background and can take a few minutes…','#92600a');
+  const poll=setInterval(async function(){
+    try{
+      const rr=await fetch('/api/creator-plan');
+      if(!rr.ok)return;
+      const d=await rr.json();
+      if(d&&d.creators&&d.creators[nm]){
+        clearInterval(poll);
+        BASEDATA.creators=d.creators;BASEDATA.order=d.order;
+        if(custom[nm]){delete custom[nm];localStorage.setItem('mc_custom',JSON.stringify(custom));}
+        delete store[nm];localStorage.setItem('mc_all',JSON.stringify(store));
+        snapshotBase();
+        cur=nm;localStorage.setItem('mc_cur',cur);syncPrefs();
+        loadCreator();draw();
+        setSaveSt(nm+' synced from HubSpot ✓','#15803d');
+      }
+    }catch(e){}
+  },15000);
 };
 function model(){
   const c=C(),tn=n('tkn'),ti=n('tki'),e=c.econ;
@@ -497,6 +530,9 @@ function resetCreator(){
       }
     }
   }catch(e){}
+  let pruned=false;
+  Object.keys(custom).forEach(function(k){if(BASEDATA.creators[k]){delete custom[k];delete store[k];pruned=true;}});
+  if(pruned){localStorage.setItem('mc_custom',JSON.stringify(custom));localStorage.setItem('mc_all',JSON.stringify(store));}
   if(!allCreators()[cur])cur=BASEDATA.order[0];
   snapshotBase();
   loadCreator();draw();
