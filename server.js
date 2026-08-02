@@ -2833,6 +2833,9 @@ function adminOnly(req, res, next) {
 app.get('/creator_plan.html', adminOnly, (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'creator_plan.html'))
 );
+app.get('/plan_summary.html', adminOnly, (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'plan_summary.html'))
+);
 app.use(express.static("public"));
 // A background sync that rejects must never take the web server down with it.
 // Node 18 exits the process on an unhandled rejection, which is what produced the

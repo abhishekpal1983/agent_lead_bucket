@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Creator plan · summary</title>
+<style>
+:root{color-scheme:light;--mut:#68707c;--line:#e4e7ec;--ink:#191c20;--lead:#1d4ed8;--bad:#b91c1c;--good:#15803d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13.5px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f6f8;color:var(--ink);padding:26px}
+.wrap{max-width:1420px;margin:0 auto}
+h1{font-size:20px;letter-spacing:-.01em}
+.sub{color:var(--mut);font-size:12px;margin:4px 0 16px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.bar a{font-size:12px;color:var(--lead)}
+button{border:1px solid #c9d7f5;background:#e9effc;color:var(--lead);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer}
+button:hover{background:#dbe6fb}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:7px 8px;text-align:right;border-bottom:2px solid var(--ink);white-space:nowrap;background:#fff}
+th:first-child{text-align:left}
+td{padding:7px 8px;text-align:right;border-bottom:1px solid #eef0f3;white-space:nowrap}
+td:first-child{text-align:left;font-weight:600}
+tr.tot td{border-top:2px solid var(--ink);font-weight:700;background:#fafbfc}
+.bad{color:var(--bad);font-weight:700}.good{color:var(--good);font-weight:700}.mut{color:var(--mut)}
+.note{color:var(--mut);font-size:11.5px;margin-top:12px;max-width:1000px;line-height:1.55}
+#state{padding:40px;text-align:center;color:var(--mut)}
+@media print{
+  body{background:#fff;padding:0}
+  .bar button,.bar a{display:none}
+  .card{border:none;box-shadow:none;padding:0}
+  @page{size:A4 landscape;margin:12mm}
+  th{border-bottom-color:#000}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Creator plan — all creators</h1>
+<div class="sub" id="asof">Loading…</div>
+<div class="bar">
+  <button id="csv">Download CSV</button>
+  <button id="pdf">Save as PDF</button>
+  <a href="/creator_plan.html">← open the full planner</a>
+</div>
+<div class="card">
+  <div id="state">Running the plan for every creator…</div>
+  <div class="scroll" style="display:none" id="tw"><table id="t"></table></div>
+  <div class="note" id="foot" style="display:none">
+    Each row runs the same model as the planner, with your saved assumptions for that creator (team size, tickets, targets, tier conversions); creators you never configured use the defaults (6 agents × 22 days × 60 calls, measured tickets, ₹20L target).
+    One call budget per creator, spent across national and international tiers by yield. Enrolments are fresh enrolments only (first payment per consumer); tickets include the balance instalments those consumers go on to pay, so revenue reads as expected total collection.
+    Save as PDF uses your browser's print dialog — choose "Save as PDF" as the destination.
+  </div>
+</div>
+</div>
+<script>
+function fmt(n){return Math.round(n||0).toLocaleString('en-IN');}
+function inr(n){n=Math.round(n||0);return n>=1e7?'₹'+(n/1e7).toFixed(2)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(1)+'L':'₹'+n.toLocaleString('en-IN');}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+const CAPDEF={ag:6,days:22,cpd:60,fcp:3};
+let ROWS=[],ASOF='';
+
+function planCreator(key,c,s){
+  s=s||{};
+  const nv=(x,d)=>{const f=parseFloat(x);return isNaN(f)?d:f;};
+  const e=c.econ||{};
+  const tiers=(c.tiers||[]).map(t=>{
+    const v=s.t&&s.t[t.k]||{};
+    const nat=c.custom?nv(v.ln,0):t.nat, intl=c.custom?nv(v.li,0):t.intl;
+    return {k:t.k,nat:nat,intl:intl,convN:nv(v.a,t.convN),convI:nv(v.b,t.convI),cpl:nv(v.c,t.cpl)};
+  });
+  const tkn=nv(s.tkn,e.tkn||0), tki=nv(s.tki,e.tki||0), tgt=nv(s.tgt,2000000);
+  const ag=nv(s.ag,CAPDEF.ag), days=nv(s.days,CAPDEF.days), cpd=nv(s.cpd,CAPDEF.cpd), fcp=nv(s.fcp,CAPDEF.fcp);
+  const fn=nv(s.fn,(e.has&&e.nat_leads?100*e.enat/e.nat_leads:0))/100;
+  const fi=nv(s.fi,(e.has&&e.intl_leads?100*e.eintl/e.intl_leads:0))/100;
+  const nat=c.custom?tiers.reduce((a,t)=>a+t.nat,0):c.nat, intl=c.custom?tiers.reduce((a,t)=>a+t.intl,0):c.intl;
+  const mx=nv(s.fmx,(nat+intl)?100*nat/(nat+intl):85)/100;
+  const S=[];
+  tiers.forEach(t=>{
+    S.push({leads:t.nat,conv:t.convN,cpl:t.cpl,ticket:tkn});
+    S.push({leads:t.intl,conv:t.convI,cpl:t.cpl,ticket:tki});
+  });
+  S.forEach(x=>{x.enrol=x.leads*x.conv/100;x.rev=x.enrol*x.ticket;x.calls=x.leads*x.cpl;x.rpc=x.calls?x.rev/x.calls:0;});
+  const R=S.slice().sort((a,b)=>b.rpc-a.rpc||b.leads-a.leads);
+  const cap=ag*days*cpd; let left=cap;
+  R.forEach(x=>{const take=Math.max(0,Math.min(x.calls,left));x.frac=x.calls?take/x.calls:0;left-=take;});
+  const P=S.reduce((a,x)=>({l:a.l+x.leads*x.frac,c:a.c+x.calls*x.frac,e:a.e+x.enrol*x.frac,r:a.r+x.rev*x.frac}),{l:0,c:0,e:0,r:0});
+  const F=S.reduce((a,x)=>({l:a.l+x.leads,c:a.c+x.calls,r:a.r+x.rev}),{l:0,c:0,r:0});
+  const gap=Math.max(0,tgt-P.r);
+  const per=mx*fn*tkn+(1-mx)*fi*tki;
+  const fresh=per>0?gap/per:0, fcalls=fresh*fcp;
+  return {key:key,custom:!!c.custom,pool:c.pool||0,act:c.actionable||(nat+intl),nat:nat,intl:intl,
+    bn:e.bn!==undefined?e.bn:null,bi:e.bi!==undefined?e.bi:null,
+    ag:ag,days:days,cpd:cpd,cap:cap,need:F.c,reach:P.l,enrol:P.e,rev:P.r,backlogRev:F.r,
+    tgt:tgt,gap:gap,surplus:Math.max(0,P.r-tgt),fresh:fresh,fcalls:fcalls};
+}
+function draw(){
+  const t=document.getElementById('t');
+  let h='<thead><tr><th>Creator</th><th>Actionable</th><th>Nat</th><th>Intl</th><th>L→E %</th>'+
+    '<th>Team</th><th>Capacity calls</th><th>Backlog needs</th><th>Leads reached</th>'+
+    '<th>Proj. enrolments</th><th>Proj. revenue</th><th>Target</th><th>Gap</th><th>Fresh leads to buy</th></tr></thead><tbody>';
+  ROWS.forEach(r=>{
+    h+='<tr><td>'+esc(r.key)+(r.custom?' <span class="mut">(yours)</span>':'')+'</td>'+
+      '<td>'+fmt(r.act)+'</td><td>'+fmt(r.nat)+'</td><td>'+fmt(r.intl)+'</td>'+
+      '<td class="mut">'+(r.bn!==null&&r.bn!==undefined?r.bn+' / '+(r.bi===null?'—':r.bi):'—')+'</td>'+
+      '<td class="mut">'+r.ag+'×'+r.days+'×'+r.cpd+'</td>'+
+      '<td>'+fmt(r.cap)+'</td><td>'+fmt(r.need)+'</td><td>'+fmt(r.reach)+'</td>'+
+      '<td>'+fmt(r.enrol)+'</td><td>'+inr(r.rev)+'</td><td>'+inr(r.tgt)+'</td>'+
+      '<td class="'+(r.gap>0?'bad':'good')+'">'+(r.gap>0?inr(r.gap):(r.surplus?'+'+inr(r.surplus):'covered'))+'</td>'+
+      '<td>'+(r.gap>0&&r.fresh?fmt(r.fresh):'—')+'</td></tr>';
+  });
+  const T=ROWS.reduce((a,r)=>({act:a.act+r.act,nat:a.nat+r.nat,intl:a.intl+r.intl,cap:a.cap+r.cap,need:a.need+r.need,
+    reach:a.reach+r.reach,enrol:a.enrol+r.enrol,rev:a.rev+r.rev,tgt:a.tgt+r.tgt,gap:a.gap+r.gap,fresh:a.fresh+(r.gap>0?r.fresh:0)}),
+    {act:0,nat:0,intl:0,cap:0,need:0,reach:0,enrol:0,rev:0,tgt:0,gap:0,fresh:0});
+  h+='<tr class="tot"><td>TOTAL</td><td>'+fmt(T.act)+'</td><td>'+fmt(T.nat)+'</td><td>'+fmt(T.intl)+'</td><td></td><td></td>'+
+    '<td>'+fmt(T.cap)+'</td><td>'+fmt(T.need)+'</td><td>'+fmt(T.reach)+'</td>'+
+    '<td>'+fmt(T.enrol)+'</td><td>'+inr(T.rev)+'</td><td>'+inr(T.tgt)+'</td>'+
+    '<td class="'+(T.gap>0?'bad':'good')+'">'+(T.gap>0?inr(T.gap):'covered')+'</td><td>'+fmt(T.fresh)+'</td></tr>';
+  t.innerHTML=h+'</tbody>';
+  document.getElementById('state').style.display='none';
+  document.getElementById('tw').style.display='block';
+  document.getElementById('foot').style.display='block';
+}
+function csv(){
+  const head=['creator','actionable_leads','national','international','measured_l2e_nat_pct','measured_l2e_intl_pct',
+    'agents','working_days','calls_per_agent_day','capacity_calls','backlog_calls_needed','leads_reached',
+    'projected_enrolments','projected_revenue_inr','target_inr','gap_inr','fresh_leads_to_buy','extra_calls_for_fresh'];
+  const lines=[head.join(',')];
+  ROWS.forEach(r=>{
+    lines.push([JSON.stringify(r.key),Math.round(r.act),Math.round(r.nat),Math.round(r.intl),
+      r.bn===null?'':r.bn,r.bi===null?'':r.bi,
+      r.ag,r.days,r.cpd,Math.round(r.cap),Math.round(r.need),Math.round(r.reach),
+      Math.round(r.enrol),Math.round(r.rev),Math.round(r.tgt),Math.round(r.gap),
+      r.gap>0?Math.round(r.fresh):0,r.gap>0?Math.round(r.fcalls):0].join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='creator_plan_summary_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+(async function(){
+  let data=null,prefs={};
+  try{
+    const r=await fetch('/api/creator-plan');
+    if(r.status===403){document.getElementById('state').textContent='Not authorised for the creator plan.';return;}
+    if(r.ok)data=await r.json();
+  }catch(e){}
+  if(!data||!data.creators){document.getElementById('state').textContent='Plan data is still syncing on the server — try again in a few minutes.';return;}
+  try{const r=await fetch('/api/plan-prefs');if(r.ok)prefs=await r.json()||{};}catch(e){}
+  const store=prefs.all||{},custom=prefs.custom||{};
+  ROWS=data.order.map(k=>planCreator(k,data.creators[k],store[k]));
+  Object.keys(custom).forEach(k=>{if(!data.creators[k])ROWS.push(planCreator(k,custom[k],store[k]));});
+  ASOF=data.loadedAt?new Date(data.loadedAt).toLocaleString():'';
+  document.getElementById('asof').textContent='Live data synced '+ASOF+(data.syncing?' · re-syncing now':'')+' · assumptions from your saved planner settings';
+  draw();
+})();
+document.getElementById('csv').onclick=csv;
+document.getElementById('pdf').onclick=function(){window.print();};
+</script>
+</body>
+</html>
