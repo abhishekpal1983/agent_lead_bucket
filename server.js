@@ -2519,6 +2519,229 @@ app.post("/api/vp/benchmark", express.json(), function(req, res){
   res.json({ ok: true, persistent: ORG_PERSISTENT, benchmarks: ORG.benchmarks });
 });
 
+/* ---------- Creator plan: live data sync + per-user prefs ----------
+   Feeds public/creator_plan.html. Rebuilds the page's baked BASEDATA schema from
+   live HubSpot + the payment sheet so the plan stops aging. Scope mirrors the
+   original snapshot: ALL contacts per creator (any owner, any stage, stage-less
+   included), pool excludes students for the sp creator only. Total calls come from
+   the Contact->Calls association (call_attempts is junk); "in current stage" is
+   callscurrent_stage. Tier conversion defaults follow the page's documented rule:
+   ayush tier shape rescaled to each creator's measured HubSpot-matched lead-to-
+   enrolment rate, international clamped to 0.48x national on thin samples. */
+const PLAN_MINUTES = parseInt(process.env.PLAN_MINUTES || "180", 10);
+const PLAN_CREATORS = (process.env.PLAN_CREATORS ||
+  "ayush_singh13,payalineurope,wanderess_priyanka,kartikkapoorconsultation,technomanagers,vijaychandola,manasbichoo,ankita_gulati,simrankhokha")
+  .split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+const PLAN_SP_CREATOR = process.env.PLAN_SP_CREATOR || "ayush_singh13";
+const PLAN_STAGES = ["Fresh","payment_prospect","pricing_pitched","program_pitched","counselled","discovery","rcb_requested_callback","FU_RCB","Follow up","FU_DNP","dnp_did_not_pick","ghosted","ni_not_interested","disqualified","IFC","deal_won"];
+const PLAN_LABELS = {"Fresh":"FRESH (never worked)","rcb_requested_callback":"RCB","discovery":"Discovery","program_pitched":"Program pitched","pricing_pitched":"Pricing pitched","counselled":"Counselled","Follow up":"Follow up","FU_DNP":"FU - DNP","FU_RCB":"FU - RCB","payment_prospect":"Payment prospect","dnp_did_not_pick":"DNP","ghosted":"Ghosted","ni_not_interested":"NI - Not interested","disqualified":"Disqualified","IFC":"IFC (parked)","deal_won":"Deal won"};
+// convN below is the ayush-anchored default at bn=1.87; shape = convN/1.87 is what rescales.
+const PLAN_TIERS = [
+  { k:"A", name:"Payment prospect + pitched, under-called", note:"payment_prospect / pricing / program pitched with 0-1 calls in stage. Nearest to money.", convN:12,  cpl:3 },
+  { k:"B", name:"Payment prospect + pitched, worked",       note:"Same stages, 2+ calls already spent. Needs closing, not dialling.",                     convN:8,   cpl:2 },
+  { k:"C", name:"Counselled / discovery, under-called",     note:"Engaged then stalled, 0-1 calls in stage.",                                             convN:5,   cpl:3 },
+  { k:"D", name:"Counselled / discovery, worked",           note:"2+ calls in stage already.",                                                            convN:3,   cpl:2 },
+  { k:"E", name:"Callback requested, never called back",    note:"RCB or FU-RCB, zero calls in stage. They asked. Nobody dialled.",                       convN:3,   cpl:2 },
+  { k:"F", name:"Callback requested, called",               note:"RCB / FU-RCB with 1+ calls in stage.",                                                  convN:1.5, cpl:2 },
+  { k:"G", name:"Follow-up queue",                          note:"Follow up and FU-DNP stages.",                                                          convN:3,   cpl:3 },
+  { k:"H", name:"Fresh, never touched",                     note:"No stage, no calls. Raw inventory.",                                                    convN:1.5, cpl:3 },
+  { k:"I", name:"Soft churn, never actually reached",       note:"DNP or Ghosted on 0-2 calls in stage.",                                                 convN:0.8, cpl:3 },
+  { k:"J", name:"Worked churn",                             note:"DNP or Ghosted with 3+ calls in stage.",                                                convN:0.3, cpl:2 },
+  { k:"K", name:"Parked (IFC)",                             note:"Interested in future. Timing play.",                                                    convN:2,   cpl:2 },
+  { k:"L", name:"NI / Disqualified",                        note:"Said no or failed qualification.",                                                      convN:0.15,cpl:1 }
+];
+const PLAN_BN0 = 1.87; // ayush measured baseline the convN anchors were written at
+const PLAN_FILE = path.join(DATA_DIR, "plan_data.json");
+const PLAN_PREFS_FILE = path.join(DATA_DIR, "plan_prefs.json");
+let PLAN = { data: null, loadedAt: null, syncing: false, error: null };
+try { if (fs.existsSync(PLAN_FILE)) { const j = JSON.parse(fs.readFileSync(PLAN_FILE, "utf8")); PLAN.data = j.data; PLAN.loadedAt = j.loadedAt; } } catch (e) { console.error("plan restore: " + e.message); }
+
+function planTierOf(st, cs){
+  if (!st) return "H";
+  if (st === "payment_prospect" || st === "pricing_pitched" || st === "program_pitched") return cs <= 1 ? "A" : "B";
+  if (st === "counselled" || st === "discovery") return cs <= 1 ? "C" : "D";
+  if (st === "rcb_requested_callback" || st === "FU_RCB") return cs === 0 ? "E" : "F";
+  if (st === "Follow up" || st === "FU_DNP") return "G";
+  if (st === "dnp_did_not_pick" || st === "ghosted") return cs <= 2 ? "I" : "J";
+  if (st === "IFC") return "K";
+  if (st === "ni_not_interested" || st === "disqualified") return "L";
+  return null; // deal_won and anything unmapped stay out of tiers
+}
+async function fetchPlanRange(creator, from, to, sink, depth){
+  const filters = [
+    { propertyName: "topmate_username", operator: "EQ", value: creator },
+    { propertyName: "createdate", operator: "GTE", value: String(from) },
+    { propertyName: "createdate", operator: "LT", value: String(to) }
+  ];
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (total === 0) return;
+  if (total > 9500 && (to - from) > 86400000 && (depth || 0) < 20) {
+    const mid = Math.floor((from + to) / 2);
+    await fetchPlanRange(creator, from, mid, sink, (depth || 0) + 1);
+    await fetchPlanRange(creator, mid, to, sink, (depth || 0) + 1);
+    return;
+  }
+  let after;
+  do {
+    const body = { filterGroups: [{ filters }],
+      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number", "tm_student_or_professional"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+  } while (after);
+}
+async function planCallCounts(ids){
+  // total calls ever, from the Contact->Calls association (v4 batch)
+  const map = {};
+  if (String(process.env.PLAN_ASSOC || "on") === "off") return map;
+  for (let i = 0; i < ids.length; i += 100) {
+    const inputs = ids.slice(i, i + 100).map(function(id){ return { id: id }; });
+    try {
+      const j = await hs("/crm/v4/associations/contacts/calls/batch/read", { method: "POST", body: JSON.stringify({ inputs }) });
+      (j.results || []).forEach(function(r){ map[String(r.from && r.from.id)] = (r.to || []).length; });
+    } catch (e) { if (i === 0) console.error("plan assoc: " + e.message); }
+    await sleep(120);
+  }
+  return map;
+}
+function planEcon(creator){
+  const rows = SHEET.rows.filter(function(r){ return (r.creator_username || "") === creator; });
+  const cons = new Map();
+  rows.slice().sort(function(a, b){ return a.date < b.date ? -1 : 1; }).forEach(function(r){
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const key = em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row);
+    if (!cons.has(key)) cons.set(key, { em: em, ph: ph, intl: sheetIntl(r), first: (r.date || "").slice(0, 7), paid: 0 });
+    cons.get(key).paid += r.price;
+  });
+  const months = {};
+  let enat = 0, eintl = 0, revN = 0, revI = 0, mNat = 0, mIntl = 0;
+  cons.forEach(function(c){
+    if (c.first) months[c.first] = (months[c.first] || 0) + 1;
+    const matched = (c.em && COHORT.emails.has(c.em)) || (c.ph && COHORT.phones.has(c.ph));
+    if (c.intl) { eintl++; revI += c.paid; if (matched) mIntl++; }
+    else { enat++; revN += c.paid; if (matched) mNat++; }
+  });
+  const sortedMonths = {};
+  Object.keys(months).sort().forEach(function(m){ sortedMonths[m] = months[m]; });
+  return { enrol: cons.size, rev: rows.reduce(function(t, r){ return t + r.price; }, 0), payments: rows.length,
+    enat: enat, eintl: eintl,
+    revN: revN, revI: revI, mNat: mNat, mIntl: mIntl, months: sortedMonths, has: rows.length > 0 };
+}
+async function syncPlan(){
+  if (!TOKEN || PLAN.syncing) return;
+  if (!SHEET.rows.length || !COHORT.emails.size) { setTimeout(syncPlan, 5 * 60 * 1000); return; }
+  PLAN.syncing = true;
+  try {
+    const creators = {};
+    const now = Date.now();
+    for (const cr of PLAN_CREATORS) {
+      const rows = [];
+      try { await fetchPlanRange(cr, Date.parse("2024-01-01"), now + 86400000, function(p){ rows.push(p); }); }
+      catch (e) { console.error("plan " + cr + ": " + e.message); continue; }
+      const tot = await planCallCounts(rows.map(function(r){ return r.id; }));
+      const sp = cr === PLAN_SP_CREATOR;
+      const inPool = function(p){ return !sp || classifySP(p.tm_student_or_professional) !== "S"; };
+      const intlState = function(p){ const v = String(p.international_number || "").toLowerCase(); return v === "true" || v === "yes" ? "i" : (v === "false" || v === "no" ? "n" : "u"); };
+      const stAgg = {}, tierAgg = {};
+      PLAN_STAGES.forEach(function(s){ stAgg[s] = { ln: 0, li: 0, tn: 0, ti: 0, vals: [], pro: 0, oth: 0, nul: 0 }; });
+      PLAN_TIERS.forEach(function(t){ tierAgg[t.k] = { leads: 0, nat: 0, intl: 0, callsdone: 0 }; });
+      let pool = 0, won = 0, natC = 0, intlC = 0, callsNat = 0, callsIntl = 0, callsCS = 0;
+      rows.forEach(function(p){
+        const st = p.contact_engagement_stage || "";
+        const stKey = st || "Fresh";
+        const cs = num(p.callscurrent_stage);
+        const tc = tot[p.id] || 0;
+        const iv = intlState(p);
+        const a = stAgg[stKey];
+        if (a) {
+          a.vals.push(cs); // cs distribution + segment cols cover ALL leads in the stage
+          if (sp) { const c2 = classifySP(p.tm_student_or_professional); if (c2 === "P") a.pro++; else if (c2 === "?" && !(p.tm_student_or_professional || "").trim()) a.nul++; else a.oth++; }
+        }
+        if (!inPool(p)) return;
+        pool++;
+        if (iv === "i") intlC++; else if (iv === "n") natC++;
+        if (iv === "i") { callsIntl += tc; } else { callsNat += tc; }
+        callsCS += cs;
+        if (a) { if (iv === "i") { a.li++; a.ti += tc; } else { a.ln++; a.tn += tc; } }
+        if (stKey === "deal_won") { won++; return; }
+        const tk = planTierOf(st, cs);
+        if (tk && tierAgg[tk]) { const t = tierAgg[tk]; t.leads++; if (iv === "i") t.intl++; else t.nat++; t.callsdone += cs; }
+      });
+      const econ = planEcon(cr);
+      const bnRaw = natC ? +(100 * econ.mNat / natC).toFixed(2) : null;
+      const thin = intlC < 200 || econ.eintl < 5;
+      const biRaw = thin ? (bnRaw !== null ? +(0.48 * bnRaw).toFixed(2) : null)
+                         : (intlC ? +(100 * econ.mIntl / intlC).toFixed(2) : null);
+      const bnEff = bnRaw || 0.5; // conservative default when nothing measured yet
+      const biEff = biRaw || +(0.48 * bnEff).toFixed(2);
+      creators[cr] = {
+        stages: PLAN_STAGES.map(function(s){
+          const a = stAgg[s];
+          const vals = a.vals.slice().sort(function(x, y){ return x - y; });
+          const n = vals.length, sum = vals.reduce(function(t, v){ return t + v; }, 0);
+          const cs = { n: n, sum: sum, mean: n ? +(sum / n).toFixed(1) : 0,
+            median: n ? vals[Math.floor((n - 1) / 2)] : 0,
+            p90: n ? vals[Math.min(n - 1, Math.floor(0.9 * n))] : 0,
+            b0: vals.filter(function(v){ return v === 0; }).length,
+            b12: vals.filter(function(v){ return v >= 1 && v <= 2; }).length,
+            b35: vals.filter(function(v){ return v >= 3 && v <= 5; }).length,
+            b6: vals.filter(function(v){ return v >= 6; }).length };
+          const row = { stage: s, label: PLAN_LABELS[s] || s, ln: a.ln, li: a.li, tn: a.tn, ti: a.ti, cs: cs, total: a.ln + a.li };
+          if (sp) { row.pro = a.pro; row.oth = a.oth; row.nul = a.nul; }
+          return row;
+        }),
+        tiers: PLAN_TIERS.map(function(t){
+          const g = tierAgg[t.k], shape = t.convN / PLAN_BN0;
+          return { k: t.k, name: t.name, note: t.note, leads: g.leads, nat: g.nat, intl: g.intl,
+            callsdone: g.callsdone, convN: +(shape * bnEff).toFixed(2), convI: +(shape * biEff).toFixed(2), cpl: t.cpl };
+        }),
+        econ: { has: econ.has, enrol: econ.enrol, rev: econ.rev, payments: econ.payments, enat: econ.enat, eintl: econ.eintl,
+          tkn: econ.enat ? Math.round(econ.revN / econ.enat) : null, tki: econ.eintl ? Math.round(econ.revI / econ.eintl) : null,
+          bn: bnRaw, bi: biRaw, months: econ.months, thin_i: thin, intl_leads: intlC, nat_leads: natC },
+        poolnote: sp ? "non-student leads only" : "all leads",
+        pool: pool, actionable: pool - won, won: won, nat: natC, intl: intlC,
+        calls: { nat: callsNat, intl: callsIntl, cs: callsCS }, sp: sp
+      };
+      console.log("plan " + cr + ": " + rows.length + " contacts, pool " + pool);
+    }
+    PLAN.data = { creators: creators, order: PLAN_CREATORS.filter(function(c){ return creators[c]; }), stages: PLAN_STAGES, labels: PLAN_LABELS };
+    PLAN.loadedAt = new Date().toISOString();
+    PLAN.syncing = false; PLAN.error = null;
+    try { if (ORG_PERSISTENT) fs.writeFileSync(PLAN_FILE, JSON.stringify({ data: PLAN.data, loadedAt: PLAN.loadedAt })); } catch (e) { console.error("plan save: " + e.message); }
+    console.log("Plan sync complete: " + Object.keys(creators).length + " creators");
+  } catch (e) {
+    PLAN.syncing = false; PLAN.error = e.message;
+    console.error("Plan sync failed: " + e.message);
+  }
+}
+setTimeout(syncPlan, 4 * 60 * 1000);
+setInterval(syncPlan, PLAN_MINUTES * 60 * 1000);
+
+function planPrefsAll(){
+  try { if (fs.existsSync(PLAN_PREFS_FILE)) return JSON.parse(fs.readFileSync(PLAN_PREFS_FILE, "utf8")); } catch (e) {}
+  return {};
+}
+app.get("/api/creator-plan", adminOnly, function(req, res){
+  if (!PLAN.data) return res.status(503).json({ error: PLAN.error || "plan data is still syncing; the page falls back to its baked snapshot", syncing: PLAN.syncing });
+  res.json(Object.assign({ loadedAt: PLAN.loadedAt, syncing: PLAN.syncing }, PLAN.data));
+});
+app.get("/api/plan-prefs", adminOnly, function(req, res){
+  const email = ((req.session || sessionOf(req) || {}).email || "").toLowerCase();
+  res.json(planPrefsAll()[email] || {});
+});
+app.put("/api/plan-prefs", adminOnly, express.json({ limit: "1mb" }), function(req, res){
+  const email = ((req.session || sessionOf(req) || {}).email || "").toLowerCase();
+  const all = planPrefsAll();
+  all[email] = { all: (req.body && req.body.all) || {}, custom: (req.body && req.body.custom) || {},
+    cur: (req.body && req.body.cur) || "", updatedAt: new Date().toISOString() };
+  let persisted = false;
+  try { if (ORG_PERSISTENT) { fs.writeFileSync(PLAN_PREFS_FILE, JSON.stringify(all)); persisted = true; } } catch (e) {}
+  res.json({ ok: true, persistent: persisted });
+});
+
 /* ---------- creator_plan.html: admin-only page ----------
    Allowlist comes from ADMIN_EMAILS (comma separated, set in Railway). The session
    email lives at req.session.email (set by authGate via the signed cn_session
