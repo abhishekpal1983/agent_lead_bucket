@@ -1794,25 +1794,33 @@ function callnowPool(){
   return rows;
 }
 
-// Call Now scoping. VPs see everyone. A manager sees only the agents on the teams
-// they manage. An agent is already pinned to their own owner id by the auth gate.
+// Call Now scoping. VPs see everyone. A manager sees their team's agents PLUS every
+// lead belonging to a creator mapped to their team, whoever holds it: another agent,
+// a deactivated owner, or nobody at all. Those are their leads to chase regardless of
+// who is sitting on them. An agent is pinned to their own owner id by the auth gate.
 // Returns null for "no restriction".
-function scopeAgentsFor(req){
+function scopeFor(req){
   if (typeof AUTH_ON === "undefined" || !AUTH_ON) return null;
   const s = req.session || (typeof sessionOf === "function" ? sessionOf(req) : null);
   if (!s) return null;
   if (typeof isVP === "function" && isVP(req)) return null;
-  if (s.role === "agent") return s.ownerId ? [String(s.ownerId)] : [];
+  if (s.role === "agent") return { agents: s.ownerId ? [String(s.ownerId)] : [], creators: [] };
   const em = String(s.email || "").toLowerCase();
-  const ids = {};
+  const ids = {}, crs = {};
   let owns = false;
   ((typeof ORG !== "undefined" && ORG.teams) || []).forEach(function(t){
     if (String(t.managerEmail || "").toLowerCase() !== em) return;
     owns = true;
     (t.agentIds || []).forEach(function(id){ ids[String(id)] = 1; });
+    (t.creators || []).forEach(function(c){ crs[c] = 1; });
   });
   // A manager email that matches no team keeps full visibility rather than seeing nothing.
-  return owns ? Object.keys(ids) : null;
+  return owns ? { agents: Object.keys(ids), creators: Object.keys(crs) } : null;
+}
+function inScope(sc, c){
+  if (!sc) return true;
+  if (sc.agents.indexOf(String(c.hubspot_owner_id || "")) >= 0) return true;
+  return sc.creators.indexOf(c.topmate_username || "") >= 0;
 }
 
 function cnStage(c){ return c.contact_engagement_stage || "__fresh"; }
@@ -1919,11 +1927,11 @@ function cnFilter(q){
   const stages = String(q.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
   const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
   const ostate = q.ostate || "";
-  const allow = Array.isArray(q.__allow) ? q.__allow : null;
+  const allow = q.__scope || null;
   // Default scope is the tracked creator list: those are the buckets the floor actually works.
   const scoped = String(q.scope || "tracked") !== "all";
   return callnowPool().filter(function(c){
-    if (allow && allow.indexOf(String(c.hubspot_owner_id || "")) < 0) return false;
+    if (allow && !inScope(allow, c)) return false;
     if (scoped && PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return false;
     if (creator && (c.topmate_username || "") !== creator) return false;
     if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
@@ -1943,8 +1951,8 @@ function cnFilter(q){
 }
 
 app.get("/api/callnow", (req, res) => {
-  const allow = scopeAgentsFor(req);
-  if (allow) req.query.__allow = allow;
+  const allow = scopeFor(req);
+  if (allow) req.query.__scope = allow;
   const rows = cnFilter(req.query);
   const order = (String(req.query.stages || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean));
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
@@ -2028,11 +2036,11 @@ app.get("/api/callnow", (req, res) => {
     return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
   });
   const scoped = String(req.query.scope || "tracked") !== "all";
-  const allowOpts = Array.isArray(req.query.__allow) ? req.query.__allow : null;
+  const allowOpts = req.query.__scope || null;
   const allCreators = {}, scopedCreators = {}, allAgents = {};
   let unassignedPool = 0;
   callnowPool().forEach(function(c){
-    if (allowOpts && allowOpts.indexOf(String(c.hubspot_owner_id || "")) < 0) return;
+    if (allowOpts && !inScope(allowOpts, c)) return;
     const u = c.topmate_username;
     if (u) {
       allCreators[u] = (allCreators[u] || 0) + 1;
@@ -2061,7 +2069,7 @@ app.get("/api/callnow", (req, res) => {
     }).sort(function(a, b){ return b.n - a.n; })
       .concat(unassignedPool ? [{ id: "none", name: "(unassigned)", email: "", active: false, n: unassignedPool }] : []),
     scope: scoped ? "tracked" : "all",
-    agentScope: allowOpts ? allowOpts.length : null,
+    agentScope: allowOpts ? { agents: allowOpts.agents.length, creators: allowOpts.creators.length } : null,
     creatorOptions: Object.entries(scoped ? scopedCreators : allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
       .sort(function(a, b){ return b.n - a.n; }).slice(0, 400),
     allCreatorOptions: Object.entries(allCreators).map(function(e){ return { u: e[0], n: e[1] }; })
@@ -2076,8 +2084,8 @@ app.get("/api/callnow", (req, res) => {
 app.post("/api/callnow/refresh-owner/:id", async (req, res) => {
   const id = String(req.params.id || "");
   if (!id || !CACHE.owners[id]) return res.status(400).json({ error: "unknown owner id" });
-  const allowR = scopeAgentsFor(req);
-  if (allowR && allowR.indexOf(id) < 0) return res.status(403).json({ error: "that agent is not on your team" });
+  const allowR = scopeFor(req);
+  if (allowR && allowR.agents.indexOf(id) < 0) return res.status(403).json({ error: "that agent is not on your team" });
   const last = OWNER_REFRESH[id] ? Date.parse(OWNER_REFRESH[id]) : 0;
   if (Date.now() - last < 20000) return res.json({ ok: true, skipped: "cooldown", at: OWNER_REFRESH[id] });
   try {
@@ -2137,8 +2145,8 @@ app.post("/api/callnow/drop-creator", (req, res) => {
 app.get("/api/callnow/leads", (req, res) => {
   const seg = String(req.query.seg || "any");
   const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
-  const allowL = scopeAgentsFor(req);
-  if (allowL) req.query.__allow = allowL;
+  const allowL = scopeFor(req);
+  if (allowL) req.query.__scope = allowL;
   let rows = cnFilter(req.query);
   if (req.query.stage) rows = rows.filter(function(r){ return r.stage === req.query.stage; });
   const nowSeg = Date.now();
