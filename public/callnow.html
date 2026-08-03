@@ -42,11 +42,11 @@ select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px 
 .mgroup .mrow{margin-top:auto}
 .mgroup.alert{border-top-color:#FF7A59;background:#FEF8F6;border-color:#F0C0B2}
 .mgroup h4{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#3F5163;font-weight:600;margin-bottom:9px}
-.mrow{display:flex;gap:14px;flex-wrap:wrap;row-gap:9px}
+.mrow{display:flex;gap:18px;flex-wrap:wrap;row-gap:10px}
 .mitem{cursor:pointer;min-width:54px;border-radius:7px;padding:2px 6px;margin:-2px -6px}
 .mitem:hover{background:#EDF4F8}
-.mitem .v{font-size:21px;font-weight:600;letter-spacing:-.01em;color:#0A2540;line-height:1.15}
-.mitem .l{font-size:12px;color:#566575;margin-top:1px}
+.mitem .v{font-size:24px;font-weight:600;letter-spacing:-.02em;color:#0A2540;line-height:1.15}
+.mitem .l{font-size:12px;color:#566575;margin-top:2px}
 .mitem.z .v{color:#B7C2CD}
 .mitem.r .v{color:#8C2D12}.mitem.c .v{color:#0A5346}.mitem.a .v{color:#7A4A08}
 .prog{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
@@ -67,10 +67,12 @@ select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px 
 .sec.hero{padding:15px 17px;border-top:3px solid #0091AE}
 .sec.mini{padding:12px 14px}
 .sec.mini .sub{font-size:12px;margin-bottom:9px}
-.sec.mini table{font-size:13.5px;table-layout:fixed;width:100%}
-.sec.mini td{padding:8px 8px;overflow:hidden;text-overflow:ellipsis}
-.sec.mini th{padding:8px 8px;white-space:normal;line-height:1.25;vertical-align:bottom}
-.sec.mini th:first-child,.sec.mini td:first-child{width:186px}
+.sec.mini table{font-size:13.5px;table-layout:fixed;width:100%;max-width:1150px}
+.sec.mini td{padding:8px 10px;overflow:hidden;text-overflow:ellipsis}
+.sec.mini th{padding:8px 10px;white-space:normal;line-height:1.25;vertical-align:bottom;text-align:left}
+.sec.mini th.n,.sec.mini td.n,.sec.mini td.cell{text-align:left}
+.sec.mini th:first-child,.sec.mini td:first-child{width:180px}
+.sec.mini .tw{width:auto;display:inline-block;max-width:100%}
 .sec.mini tbody tr:nth-child(odd) td{background:#FAFCFD}
 .sec.mini tbody tr:nth-child(odd) td:first-child{background:#FAFCFD}
 .sec.mini tbody tr:hover td{background:#EDF4F8}
@@ -90,7 +92,7 @@ tr.alert td:first-child{border-left-color:#FF7A59}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 td.cell{text-align:right;cursor:pointer;font-variant-numeric:tabular-nums}
 td.cell:hover{box-shadow:inset 0 0 0 2px #0091AE}
-td.cell.sel{background:#0A2540;color:#fff;font-weight:600}
+td.cell.sel,.sec.mini tbody tr td.cell.sel,.sec.mini tbody tr:nth-child(odd) td.cell.sel,.sec.mini tbody tr:hover td.cell.sel{background:#0A2540 !important;color:#fff;font-weight:600}
 td.cell.sel *{color:#fff !important}
 td.z{color:#B7C2CD}
 .cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}.mut{color:#6B7A8A}
