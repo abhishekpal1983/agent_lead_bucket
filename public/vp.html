@@ -352,8 +352,15 @@ function drawCreatorRoster(){
   var q = (FIND["roster|c"] || "").toLowerCase();
   var h = "<div class='sec'><h2>Creators <span class='pill g'>" + main.length + " in the main list</span></h2>" +
     "<div class='sub'>Only creators in the main list can be assigned to a team. Adding one also pulls that creator's fresh leads from HubSpot, which takes a few seconds.</div>";
-  h += "<input id='rq' placeholder='search creators...' value='" + esc(q) + "' style='width:280px;margin-bottom:9px'" +
-    " oninput=\"FIND['roster|c']=this.value;applyRoster()\">";
+  h += "<div style='display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:10px'>" +
+    "<input id='rq' placeholder='search creators...' value='" + esc(q) + "' style='width:250px'" +
+    " oninput=\"FIND['roster|c']=this.value;applyRoster()\">" +
+    "<span class='mut' style='font-size:12.5px'>|</span>" +
+    "<input id='newc' placeholder='add by exact topmate_username' style='width:270px'" +
+    " onkeydown=\"if(event.key==='Enter'){addCreatorByName()}\">" +
+    "<button class='btn p' onclick='addCreatorByName()'>Add</button>" +
+    "</div>" +
+    "<div class='sub' style='margin-top:-4px'>A creator only appears in the list once some of their leads have synced. If one is missing, add it by name here.</div>";
   h += "<div class='tw' style='max-height:460px'><table><thead><tr><th>Creator</th><th class='n'>Leads in pool</th><th>Status</th><th></th></tr></thead><tbody id='rbody'>";
   all.forEach(function(c){
     var on = main.indexOf(c.u) >= 0;
@@ -372,6 +379,23 @@ function applyRoster(){
   for (var i = 0; i < rows.length; i++) {
     rows[i].style.display = (!q || (rows[i].getAttribute("data-l") || "").indexOf(q) >= 0) ? "" : "none";
   }
+}
+function addCreatorByName(){
+  var el = document.getElementById("newc");
+  var u = (el.value || "").trim();
+  if (!u) return;
+  el.disabled = true;
+  var prev = el.placeholder;
+  el.placeholder = "syncing " + u + "...";
+  fetch("/api/callnow/sync-creator?creator=" + encodeURIComponent(u), { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      el.disabled = false; el.placeholder = prev;
+      if (j && j.error) { alert(j.error); return; }
+      el.value = "";
+      load(J.month);
+    })
+    .catch(function(e){ el.disabled = false; el.placeholder = prev; alert(e.message); });
 }
 function toggleMain(u, isOn, btn){
   btn.disabled = true;
