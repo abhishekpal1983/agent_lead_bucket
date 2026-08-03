@@ -66,9 +66,14 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .mlink:hover{color:#0091AE;border-bottom-color:#0091AE}
 .tin{width:112px;padding:4px 8px;font-size:13px;text-align:right;border:1px solid #DCE4EC;border-radius:5px;font-variant-numeric:tabular-nums}
 .tin.saved{border-color:#0A5346;background:#F1FAF7}
-.exc{display:flex;gap:9px;align-items:baseline;padding:8px 0;border-top:1px solid #EFF3F7;font-size:13.5px;color:#37475A;line-height:1.55}
+.exc{display:flex;gap:8px;align-items:baseline;padding:7px 0;border-top:1px solid #EFF3F7;font-size:13px;color:#37475A;line-height:1.5}
 .exc:first-of-type{border-top:none}
 .exc b.who{color:#0A2540;font-weight:600}
+.excgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:11px}
+.exccard{border:1px solid #DCE4EC;border-radius:9px;padding:10px 12px;background:#fff}
+.exccard.bad{border-color:#F0C0B2;background:#FEF8F6}
+.exccard h5{font-size:13.5px;font-weight:600;color:#0A2540;display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.exccard .ok{font-size:12.5px;color:#0A5346;padding:5px 0}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .pane{border:1px solid #DCE4EC;border-radius:7px;height:200px;overflow:auto;background:#fff}
 .ph{position:sticky;top:0;background:#F4F7FA;border-bottom:1px solid #DCE4EC;padding:5px 10px;font-size:10.5px;font-weight:600;color:#4A5A6A;letter-spacing:.05em;text-transform:uppercase}
@@ -266,13 +271,29 @@ function drawExceptions(){
   var x = J.exceptions || [];
   if (!x.length) return "<div class='sec'><h2>Needs a call-out today</h2><div class='sub cg'>Nothing flagged. Targets set, pace on track, follow-ups worked.</div></div>";
   var bad = x.filter(function(e){ return e.level === "bad"; }).length;
-  var h = "<div class='sec'><h2>Needs a call-out today " + (bad ? "<span class='pill r'>" + bad + " urgent</span>" : "") + "</h2>" +
-    "<div class='sub' style='margin-bottom:6px'>Generated from this month's numbers, ordered by severity.</div>";
+  // Grouped per team so a manager conversation is one column, not a scan of one list.
+  var groups = {}, order = [];
+  J.teams.forEach(function(t){ groups[t.name] = []; order.push(t.name); });
   x.forEach(function(e){
-    h += "<div class='exc'><span class='pill " + (e.level === "bad" ? "r" : "a") + "'>" + esc(e.kind) + "</span>" +
-      "<span>" + (e.team ? "<b class='who'>" + esc(e.team) + "</b> · " : "") + esc(e.text) + "</span></div>";
+    var k = e.team || "Company wide";
+    if (!(k in groups)) { groups[k] = []; order.push(k); }
+    groups[k].push(e);
   });
-  return h + "</div>";
+  var h = "<div class='sec'><h2>Needs a call-out today " + (bad ? "<span class='pill r'>" + bad + " urgent</span>" : "") + "</h2>" +
+    "<div class='sub' style='margin-bottom:9px'>Grouped by team, ordered by severity within each.</div><div class='excgrid'>";
+  order.forEach(function(k){
+    var items = (groups[k] || []).sort(function(a, b){ return (a.level === "bad" ? 0 : 1) - (b.level === "bad" ? 0 : 1); });
+    var anyBad = items.some(function(e){ return e.level === "bad"; });
+    h += "<div class='exccard" + (anyBad ? " bad" : "") + "'><h5>" + esc(k) +
+      (items.length ? "<span class='pill " + (anyBad ? "r" : "a") + "'>" + items.length + "</span>" : "") + "</h5>";
+    if (!items.length) h += "<div class='ok'>Nothing flagged.</div>";
+    items.forEach(function(e){
+      h += "<div class='exc'><span class='pill " + (e.level === "bad" ? "r" : "a") + "'>" + esc(e.kind) + "</span>" +
+        "<span>" + esc(e.text) + "</span></div>";
+    });
+    h += "</div>";
+  });
+  return h + "</div></div>";
 }
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
