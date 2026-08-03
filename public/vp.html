@@ -50,7 +50,7 @@ tr.sub2 td{background:#F5F8FB;font-size:11.5px}
 .track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin:7px 0 5px;display:flex}
 .track i{display:block;height:6px}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.pane{border:1px solid #E3E8EE;border-radius:6px;height:158px;overflow:auto;background:#fff}
+.pane{border:1px solid #E3E8EE;border-radius:6px;height:186px;overflow:auto;background:#fff}
 .ph{position:sticky;top:0;background:#F7FAFC;border-bottom:1px solid #E3E8EE;padding:4px 9px;font-size:9.5px;font-weight:600;color:#8B99A8;letter-spacing:.05em;text-transform:uppercase}
 .it{padding:4px 9px;font-size:12px;cursor:pointer;display:flex;gap:6px;align-items:center;border-bottom:1px solid #F7FAFC}
 .it:hover{background:#F0F7FB}
@@ -113,9 +113,12 @@ function draw(){
   var h = "";
   if (!J.persistent) h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, so teams and targets vanish on the next deploy. In Railway add a Volume mounted at <b>/data</b>.</div>";
   if (!J.isVP) h += "<div class='warn'>Read only. Editing is limited to the emails in VP_EMAILS.</div>";
-  h += drawStrip() + drawExceptions() + drawTeams() + drawDrift() + drawAdmin();
+  h += drawStrip() + drawExceptions() + drawTeams() + (J.isVP ? drawDrift() + drawAdmin() : "");
   document.getElementById("app").innerHTML = h;
+  var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
+    (behind ? "<span class='pill r' style='margin-left:8px;padding:3px 9px'>" + behind + " behind pace</span>" : "") +
+    (J.scope === "own" ? "<span class='pill a' style='margin-left:8px;padding:3px 9px'>your team</span>" : "") +
     "<span style='font-size:11px;color:#697386;margin-left:8px'>day " + J.dayOfMonth + " of " + J.daysInMonth + "</span>";
 }
 function monthOpts(){
@@ -133,22 +136,29 @@ function monthOpts(){
   return out;
 }
 function drawStrip(){
-  var t = 0, a = 0, e = 0, due = 0, done = 0, missed = 0;
-  J.teams.forEach(function(x){ t += x.target; a += x.revenue; e += x.enrolments; due += x.due; done += x.done; missed += x.missed; });
+  var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0;
+  J.teams.forEach(function(x){
+    t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
+    co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
+  });
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
   var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
   var gap = Math.round(a - pace);
-  return "<div class='strip'><div style='flex:1.6'>" +
+  var c2e = co ? Math.round(1000 * e / co) / 10 : null;
+  var h = "<div class='strip'><div style='flex:1.7'>" +
     "<div class='v'>" + inr(a) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + inr(t) + "</span></div>" +
-    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#0091AE'></i></div>" +
+    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#0091AE'></i>" +
+      (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FF7A59'></i>" : "") + "</div>" +
     "<div class='l'>" + att + "% attained · " + el + "% of month elapsed · " +
-    (gap >= 0 ? "<span class='cg'>" + inr(gap) + " ahead</span>" : "<span class='cr'>" + inr(-gap) + " behind</span>") + "</div></div>" +
-    "<div><div class='v'>" + fmt(e) + "</div><div class='l'>Enrolments</div></div>" +
+    (gap >= 0 ? "<span class='cg'>" + inr(gap) + " ahead</span>" : "<span class='cr'>" + inr(-gap) + " behind pace</span>") + "</div></div>" +
+    "<div><div class='v'>" + fmt(e) + (te ? " <span style='font-size:12px;color:#697386;font-weight:400'>/ " + fmt(te) + "</span>" : "") + "</div><div class='l'>Enrolments</div></div>" +
+    "<div><div class='v'>" + fmt(co) + "</div><div class='l'>Counsellings</div></div>" +
+    "<div><div class='v'>" + (c2e === null ? "–" : c2e + "%") + "</div><div class='l'>C2E</div></div>" +
     "<div><div class='v'>" + fmt(done) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + fmt(due) + "</span></div><div class='l'>Due calls made today</div></div>" +
-    "<div><div class='v " + (missed ? "cr" : "") + "'>" + fmt(missed) + "</div><div class='l'>Missed today</div></div>" +
-    "<div><div class='v " + (J.drift.length ? "cr" : "") + "'>" + fmt(J.drift.length) + "</div><div class='l'>Agents unmapped</div></div>" +
-    "</div>";
+    "<div><div class='v " + (missed ? "cr" : "") + "'>" + fmt(missed) + "</div><div class='l'>Missed today</div></div>";
+  if (J.scope !== "own") h += "<div><div class='v " + (J.drift.length ? "cr" : "") + "'>" + fmt(J.drift.length) + "</div><div class='l'>Agents unmapped</div></div>";
+  return h + "</div>";
 }
 function drawExceptions(){
   var x = J.exceptions || [];
@@ -165,7 +175,7 @@ function drawExceptions(){
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
-  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target</th><th class='n'>Actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Queue</th><th class='n'>Due today</th><th class='n'>Called</th><th class='n'>Missed</th><th class='n'>Overdue</th><th class='n'>Never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target</th><th class='n'>Actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Due today</th><th class='n'>Called</th><th class='n'>Missed</th><th class='n'>Overdue</th><th class='n'>Never called</th></tr></thead><tbody>";
   J.teams.forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
     var open = !!OPEN[t.id];
@@ -181,7 +191,10 @@ function drawTeams(){
         })() + "</td>" +
       "<td class='n'><b>" + inr(t.revenue) + "</b>" + (t.attainment !== null ? "<div class='mut' style='font-size:11px'>" + t.attainment + "%</div>" : "") + "</td>" +
       "<td class='n'>" + (t.target ? p : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(t.enrolments) + "</td><td class='n'>" + fmt(t.queue) + "</td><td class='n'>" + fmt(t.due) + "</td>" +
+      "<td class='n'>" + fmt(t.enrolments) + "</td>" +
+      "<td class='n'>" + fmt(t.counsellings || 0) + "</td>" +
+      "<td class='n'>" + (t.counsellings ? (Math.round(1000 * t.enrolments / t.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
+      "<td class='n'>" + fmt(t.queue) + "</td><td class='n'>" + fmt(t.due) + "</td>" +
       "<td class='n cg'>" + fmt(t.done) + "</td>" +
       "<td class='n'>" + (t.missed ? "<span class='pill r'>" + fmt(t.missed) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n " + (t.overdue ? "cr" : "mut") + "'>" + fmt(t.overdue) + "</td>" +
@@ -210,7 +223,7 @@ function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
 function creatorRows(t){
   var h = "";
   if (!t.creatorRows.length) {
-    return "<tr class='sub'><td colspan='11' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
+    return "<tr class='sub'><td colspan='13' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
   }
   t.creatorRows.forEach(function(c){
     var k = t.id + "||" + c.u, open = !!OPENC[k];
@@ -223,18 +236,24 @@ function creatorRows(t){
         : (c.target ? inr(c.target) : "<span class='mut'>not set</span>")) + "</td>" +
       "<td class='n'>" + inr(c.revenue) + "</td>" +
       "<td class='n'>" + (gap === null ? "<span class='mut'>–</span>" : (gap >= 0 ? "<span class='pill g'>+" + inr(gap) + "</span>" : "<span class='pill r'>" + inr(-gap) + "</span>")) + "</td>" +
-      "<td class='n'>" + fmt(c.enrolments) + "</td><td class='n'>" + fmt(c.queue) + "</td><td class='n'>" + fmt(c.due) + "</td>" +
+      "<td class='n'>" + fmt(c.enrolments) + "</td>" +
+      "<td class='n'>" + fmt(c.counsellings || 0) + "</td>" +
+      "<td class='n'>" + (c.counsellings ? (Math.round(1000 * c.enrolments / c.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
+      "<td class='n'>" + fmt(c.queue) + "</td><td class='n'>" + fmt(c.due) + "</td>" +
       "<td class='n cg'>" + fmt(c.done) + "</td>" +
       "<td class='n " + (c.missed ? "cr" : "mut") + "'>" + fmt(c.missed) + "</td>" +
       "<td class='n " + (c.overdue ? "cr" : "mut") + "'>" + fmt(c.overdue) + "</td>" +
       "<td class='n " + (c.uncalled ? "cr" : "mut") + "'>" + fmt(c.uncalled) + "</td></tr>";
     if (open) {
-      if (!c.agents.length) h += "<tr class='sub2'><td colspan='11' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
+      if (!c.agents.length) h += "<tr class='sub2'><td colspan='13' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
       c.agents.forEach(function(a){
         h += "<tr class='sub2'><td style='padding-left:48px'>" + esc(a.name) +
           (a.active ? "" : " <span class='pill a'>inactive</span>") + "</td>" +
           "<td class='n mut'>–</td><td class='n'>" + inr(a.revenue) + "</td><td class='n mut'>–</td>" +
-          "<td class='n'>" + fmt(a.enrolments) + "</td><td class='n'>" + fmt(a.queue) + "</td><td class='n'>" + fmt(a.due) + "</td>" +
+          "<td class='n'>" + fmt(a.enrolments) + "</td>" +
+          "<td class='n'>" + fmt(a.counsellings || 0) + "</td>" +
+          "<td class='n'>" + (a.counsellings ? (Math.round(1000 * a.enrolments / a.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
+          "<td class='n'>" + fmt(a.queue) + "</td><td class='n'>" + fmt(a.due) + "</td>" +
           "<td class='n cg'>" + fmt(a.done) + "</td>" +
           "<td class='n " + (a.missed ? "cr" : "mut") + "'>" + fmt(a.missed) + "</td>" +
           "<td class='n " + (a.overdue ? "cr" : "mut") + "'>" + fmt(a.overdue) + "</td>" +
@@ -305,8 +324,21 @@ function toggleItem(k, kind, val){
   var el = document.getElementById("card_" + k);
   if (el) el.innerHTML = cardInner(TEAMS_BY_KEY[k]);
 }
-function pane(title, items, k, kind, side){
+var FIND = {};
+function setFind(k, kind, v){
+  FIND[k + "|" + kind] = v;
+  var el = document.getElementById("card_" + k);
+  if (el) { el.innerHTML = cardInner(TEAMS_BY_KEY[k]); var f = document.getElementById("f_" + k + "_" + kind); if (f) { f.focus(); f.value = v; } }
+}
+function pane(title, items, k, kind, side, searchable){
   var h = "<div class='pane'><div class='ph'>" + title + "</div>";
+  if (searchable) {
+    var q = FIND[k + "|" + kind] || "";
+    h += "<div style='padding:5px 7px;position:sticky;top:22px;background:#fff;border-bottom:1px solid #F0F3F7'>" +
+      "<input id='f_" + k + "_" + kind + "' placeholder='search...' value='" + esc(q) + "' style='width:100%;padding:3px 7px;font-size:11.5px'" +
+      " oninput=\"setFind('" + k + "','" + kind + "', this.value)\"></div>";
+    if (q) items = items.filter(function(it){ return it.label.toLowerCase().indexOf(q.toLowerCase()) >= 0; });
+  }
   if (!items.length) h += "<div class='none'>" + (side === "in" ? "nothing assigned yet" : "nothing left") + "</div>";
   items.forEach(function(it){
     if (it.off) {
@@ -335,7 +367,7 @@ function cardInner(t){
     outA.push({ v: o.id, label: o.name, off: taken });
   });
   h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin-bottom:4px'>AGENTS · " + inA.length + " assigned</div>";
-  h += "<div class='split'>" + pane("Available", outA, k, "agents", "out") + pane("In this team", inA, k, "agents", "in") + "</div>";
+  h += "<div class='split'>" + pane("Available", outA, k, "agents", "out", true) + pane("In this team", inA, k, "agents", "in") + "</div>";
 
   var inC = [], outC = [];
   (J.creators || []).forEach(function(c){
@@ -345,7 +377,7 @@ function cardInner(t){
     outC.push({ v: c.u, label: label, off: taken });
   });
   h += "<div style='font-size:10.5px;color:#8B99A8;font-weight:600;margin:10px 0 4px'>CREATORS · " + inC.length + " assigned</div>";
-  h += "<div class='split'>" + pane("Available", outC, k, "creators", "out") + pane("In this team", inC, k, "creators", "in") + "</div>";
+  h += "<div class='split'>" + pane("Available", outC, k, "creators", "out", true) + pane("In this team", inC, k, "creators", "in") + "</div>";
 
   h += "<div style='display:flex;gap:8px;margin-top:10px;align-items:center'>" +
     "<span style='font-size:10.5px;color:#8B99A8;font-weight:600'>TARGET ₹</span>" +

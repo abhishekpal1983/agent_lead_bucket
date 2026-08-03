@@ -2345,8 +2345,8 @@ function orgDrift(){
     const o = CACHE.owners[id];
     if (mapped[id]) return;
     const n = counts[id] || 0;
-    if (!n && o.active === false) return;
-    out.push({ id: id, name: o.name, email: o.email, active: o.active !== false, leads: n });
+    if (o.active === false) return;
+    out.push({ id: id, name: o.name, email: o.email, active: true, leads: n });
   });
   return out.sort(function(a, b){ return b.leads - a.leads; });
 }
@@ -2369,7 +2369,7 @@ function vpAggregate(month){
     if (!agg[tid][creator]) agg[tid][creator] = {};
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
       revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
-      churned: 0, worked: 0
+      churned: 0, worked: 0, counsellings: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2390,6 +2390,8 @@ function vpAggregate(month){
     if (!tid) return;
     const r = cnRow(c), sg = cnSegs(r);
     const o = cell(tid, r.creator || "(no creator)", aid);
+    // first-counselled month, attributed to the lead's current owner, same rule as elsewhere
+    if (ymOf(COUNSEL.byId[c.id]) === month) o.counsellings++;
     if (CHURN.indexOf(r.stage) >= 0) { o.churned++; o.worked++; }
     else if (r.stage !== "__fresh") o.worked++;
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
@@ -2402,7 +2404,7 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 function vpExceptions(teams, drift, dom, dim){
@@ -2447,7 +2449,12 @@ app.get("/api/vp", function(req, res){
   const dim = new Date(Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), 0).getDate();
   const dom = Number(p.date.slice(8, 10));
   const agg = vpAggregate(month);
-  const teams = (ORG.teams || []).map(function(team){
+  const me = String(whoami(req) || "").toLowerCase();
+  const vp = isVP(req);
+  const visible = (ORG.teams || []).filter(function(t){
+    return vp || !me || String(t.managerEmail || "").toLowerCase() === me;
+  });
+  const teams = visible.map(function(team){
     const byCreator = agg[team.id] || {};
     const totals = zero();
     const mappedOnly = (team.creators || []);
@@ -2489,8 +2496,9 @@ app.get("/api/vp", function(req, res){
   res.json({
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
-    teams: teams, drift: orgDrift(),
-    exceptions: vpExceptions(teams, orgDrift(), dom, dim),
+    teams: teams, drift: vp ? orgDrift() : [],
+    scope: vp ? "all" : "own",
+    exceptions: vpExceptions(teams, vp ? orgDrift() : [], dom, dim),
     creators: (creatorsAll() || []),
     targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
     log: (ORG.log || []).slice(-30).reverse()
