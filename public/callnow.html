@@ -455,7 +455,7 @@ function drawCards(){
   h += "<div class='mgroups'>";
   h += "<div class='mgroup'><h4>Why they qualify</h4><div class='mrow'>" +
        mi(t.form, "Form", "form") + mi(t.score, "Score &ge;" + J.scoreMin, "score") +
-       mi(t.intl, "Intl", "intl") + "</div></div>";
+       mi(t.uncalled, "Fresh / never called", "uncalled") + "</div></div>";
   var bwork = Math.max(0, (t.touched || 0) - (t.done || 0));
   var dw = t.due ? Math.round(100 * t.done / t.due) : 0;
   var mw = t.due ? 100 - dw : 0;
@@ -471,7 +471,7 @@ function drawCards(){
        mi(t.touched, "Calls made", "touched") + "</div></div>";
   h += "<div class='mgroup'><h4>Backlog</h4><div class='mrow'>" +
        mi(t.needs, "Needs owner", "needs", "r") + mi(t.overdue, "FU overdue", "fu_overdue", "a") +
-       mi(t.nofu, "No FU", "fu_none", "a") + mi(t.uncalled, "Never called", "uncalled", "r") + "</div></div>";
+       mi(t.nofu, "No FU", "fu_none", "a") + mi(t.intl, "International", "intl") + "</div></div>";
   h += "</div></div>";
   return h;
 }
