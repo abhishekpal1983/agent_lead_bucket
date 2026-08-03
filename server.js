@@ -1711,46 +1711,42 @@ const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","in
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
 let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
 
+// Paged by hs_object_id cursor rather than HubSpot's `after` token. The token walk
+// dies at 10,000 results with a 400, and date-window splitting cannot rescue a bulk
+// import that lands thousands of contacts inside the same day. Filtering on
+// hs_object_id GT lastSeen starts each query fresh, so there is no ceiling.
+const PFRESH_MAX = parseInt(process.env.PFRESH_MAX || "60000", 10);
 async function fetchFreshForCreator(creator, from, to, sink){
-  const filters = [
+  const base = [
     { propertyName: "contact_engagement_stage", operator: "NOT_HAS_PROPERTY" },
     { propertyName: "topmate_username", operator: "EQ", value: creator }
   ];
-  if (from) filters.push({ propertyName: "createdate", operator: "GTE", value: String(from) });
-  if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
-  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+    filterGroups: [{ filters: base }], properties: ["createdate"], limit: 1 })});
   const total = probe.total || 0;
-  if (total === 0) return { fetched: 0, total: 0, truncated: false };
-  if (total > 9500 && from && to && (to - from) > 86400000) {
-    const mid = Math.floor((from + to) / 2);
-    const a = await fetchFreshForCreator(creator, from, mid, sink);
-    const b = await fetchFreshForCreator(creator, mid, to, sink);
-    return { fetched: (a ? a.fetched : 0) + (b ? b.fetched : 0), total: total,
-      truncated: !!((a && a.truncated) || (b && b.truncated)) };
-  }
-  // HubSpot hard-stops search paging at 10,000 results and answers 400 beyond it.
-  // A single day can exceed that after a bulk import, and at one day the window can no
-  // longer be split, so cap the walk and report the shortfall rather than throwing.
-  let after, got = 0;
-  do {
-    const body = { filterGroups: [{ filters }], properties: PFRESH_PROPS,
-      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
+  if (!total) return { fetched: 0, total: 0, truncated: false };
+
+  let lastId = "0", got = 0, guard = 0;
+  while (got < PFRESH_MAX && guard < 1200) {
+    guard++;
+    const filters = base.concat([{ propertyName: "hs_object_id", operator: "GT", value: String(lastId) }]);
     let j;
     try {
-      j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+      j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters }], properties: PFRESH_PROPS,
+        sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
     } catch (e) {
-      console.error("fresh page failed for " + creator + " (" + got + " of " + total + " fetched): " + e.message);
+      console.error("fresh page failed for " + creator + " at id " + lastId + " (" + got + "/" + total + "): " + e.message);
       return { fetched: got, total: total, truncated: true };
     }
-    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); got++; });
-    after = j.paging && j.paging.next && j.paging.next.after;
-    if (got >= 9500) {
-      console.error("fresh window capped for " + creator + ": " + total + " leads in a window that cannot be split further");
-      return { fetched: got, total: total, truncated: true };
-    }
+    const rows = j.results || [];
+    if (!rows.length) break;
+    rows.forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); got++; });
+    lastId = rows[rows.length - 1].id;
+    if (rows.length < 100) break;
     await sleep(130);
-  } while (after);
-  return { fetched: got, total: total, truncated: false };
+  }
+  return { fetched: got, total: total, truncated: got < total };
 }
 
 async function syncPriorityFresh(){
