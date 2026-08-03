@@ -137,8 +137,8 @@ function go(v){ VIEW = v; localStorage.setItem("vp_view", v); draw(); }
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)]];
   if (J.isVP) {
-    items.push(["mapping", "Mapping", String(J.drift.length)]);
     items.push(["admin", "Teams and targets", ""]);
+    items.push(["mapping", "Mapping", String(J.drift.length)]);
   }
   var h = "";
   items.forEach(function(it){
@@ -232,36 +232,43 @@ function drawExceptions(){
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
-  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target</th><th class='n'>Actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Due today</th><th class='n'>Called</th><th class='n'>Missed</th><th class='n'>Overdue</th><th class='n'>Never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th></tr></thead><tbody>";
   J.teams.forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
     var open = !!OPEN[t.id];
     h += "<tr class='clik' onclick=\"tog('" + t.id + "')\"><td><span class='car'>" + (open ? "▾" : "▸") + "</span><b>" + esc(t.name || "(unnamed)") + "</b>" +
       "<div class='mut' style='font-size:12px;padding-left:12px'>" + esc(t.managerEmail || "no manager email") + " · " +
       t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
-      "<td class='n'>" + (t.target ? inr(t.target) : "<span class='mut'>not set</span>") +
-        (function(){
-          var sum = (t.creatorRows || []).reduce(function(a, c){ return a + (c.target || 0); }, 0);
-          if (!sum) return "";
-          var cls = (t.target && Math.abs(sum - t.target) > 1) ? "cr" : "mut";
-          return "<div class='" + cls + "' style='font-size:11px' title='Sum of creator targets in this team'>creators " + inr(sum) + "</div>";
-        })() + "</td>" +
-      "<td class='n'><b>" + inr(t.revenue) + "</b>" + (t.attainment !== null ? "<div class='mut' style='font-size:12px'>" + t.attainment + "%</div>" : "") + "</td>" +
+      moneyCell(t.revenue, t.target, t.attainment, t.creatorRows) +
       "<td class='n'>" + (t.target ? p : "<span class='mut'>–</span>") + "</td>" +
       "<td class='n'>" + fmt(t.enrolments) + "</td>" +
       "<td class='n'>" + fmt(t.counsellings || 0) + "</td>" +
       "<td class='n'>" + (t.counsellings ? (Math.round(1000 * t.enrolments / t.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(t.queue) + "</td><td class='n'>" + fmt(t.due) + "</td>" +
-      "<td class='n cg'>" + fmt(t.done) + "</td>" +
-      "<td class='n'>" + (t.missed ? "<span class='pill r'>" + fmt(t.missed) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
-      "<td class='n " + (t.overdue ? "cr" : "mut") + "'>" + fmt(t.overdue) + "</td>" +
-      "<td class='n " + (t.uncalled ? "cr" : "mut") + "'>" + fmt(t.uncalled) + "</td></tr>";
+      "<td class='n'>" + fmt(t.queue) + "</td>" + todayCell(t) + backlogCell(t) + "</tr>";
     if (open) h += creatorRows(t);
   });
   h += "</tbody></table></div></div>";
   return h;
 }
 function tog(id){ OPEN[id] = !OPEN[id]; draw(); }
+function moneyCell(actual, target, att, creatorRows){
+  var sub = "";
+  if (creatorRows) {
+    var sum = creatorRows.reduce(function(a, c){ return a + (c.target || 0); }, 0);
+    if (sum && target && Math.abs(sum - target) > 1) sub = "<div class='cr' style='font-size:12px' title='Sum of creator targets'>creators " + inr(sum) + "</div>";
+  }
+  return "<td class='n'><b>" + inr(actual) + "</b>" +
+    "<div class='mut' style='font-size:12px'>of " + (target ? inr(target) : "no target") +
+    (att !== null && att !== undefined ? " · " + att + "%" : "") + "</div>" + sub + "</td>";
+}
+function todayCell(x){
+  return "<td class='n'>" + (x.due ? "<b class='cg'>" + fmt(x.done) + "</b> <span class='mut'>of " + fmt(x.due) + "</span>" : "<span class='mut'>0 due</span>") +
+    (x.missed ? "<div><span class='pill r'>" + fmt(x.missed) + " missed</span></div>" : "") + "</td>";
+}
+function backlogCell(x){
+  return "<td class='n'>" + (x.overdue ? "<span class='cr'>" + fmt(x.overdue) + " overdue</span>" : "<span class='mut'>0 overdue</span>") +
+    "<div class='" + (x.uncalled ? "ca" : "mut") + "' style='font-size:12px'>" + fmt(x.uncalled) + " never called</div></td>";
+}
 function saveCreatorTarget(u, el){
   var v = el.value === "" ? 0 : Number(el.value);
   var cur = 0;
@@ -280,41 +287,32 @@ function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
 function creatorRows(t){
   var h = "";
   if (!t.creatorRows.length) {
-    return "<tr class='sub'><td colspan='13' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
+    return "<tr class='sub'><td colspan='9' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
   }
   t.creatorRows.forEach(function(c){
     var k = t.id + "||" + c.u, open = !!OPENC[k];
     var gap = c.target ? Math.round(c.revenue - c.target * (J.dayOfMonth / J.daysInMonth)) : null;
     h += "<tr class='sub clik' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
       "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) + "</td>" +
-      "<td class='n' onclick='event.stopPropagation()'>" + (J.isVP
-        ? "<input class='tin' id='ct_" + esc(c.u) + "' type='number' placeholder='not set' value='" + (c.target || "") + "'" +
+      "<td class='n' onclick='event.stopPropagation()'><b>" + inr(c.revenue) + "</b><div>" + (J.isVP
+        ? "<input class='tin' id='ct_" + esc(c.u) + "' type='number' placeholder='no target' value='" + (c.target || "") + "'" +
           " onkeydown=\"if(event.key==='Enter'){this.blur()}\" onblur=\"saveCreatorTarget('" + esc(c.u).replace(/'/g, "\\'") + "', this)\">"
-        : (c.target ? inr(c.target) : "<span class='mut'>not set</span>")) + "</td>" +
-      "<td class='n'>" + inr(c.revenue) + "</td>" +
+        : "<span class='mut' style='font-size:12px'>of " + (c.target ? inr(c.target) : "no target") + "</span>") + "</div></td>" +
       "<td class='n'>" + (gap === null ? "<span class='mut'>–</span>" : (gap >= 0 ? "<span class='pill g'>+" + inr(gap) + "</span>" : "<span class='pill r'>" + inr(-gap) + "</span>")) + "</td>" +
       "<td class='n'>" + fmt(c.enrolments) + "</td>" +
       "<td class='n'>" + fmt(c.counsellings || 0) + "</td>" +
       "<td class='n'>" + (c.counsellings ? (Math.round(1000 * c.enrolments / c.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(c.queue) + "</td><td class='n'>" + fmt(c.due) + "</td>" +
-      "<td class='n cg'>" + fmt(c.done) + "</td>" +
-      "<td class='n " + (c.missed ? "cr" : "mut") + "'>" + fmt(c.missed) + "</td>" +
-      "<td class='n " + (c.overdue ? "cr" : "mut") + "'>" + fmt(c.overdue) + "</td>" +
-      "<td class='n " + (c.uncalled ? "cr" : "mut") + "'>" + fmt(c.uncalled) + "</td></tr>";
+      "<td class='n'>" + fmt(c.queue) + "</td>" + todayCell(c) + backlogCell(c) + "</tr>";
     if (open) {
-      if (!c.agents.length) h += "<tr class='sub2'><td colspan='13' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
+      if (!c.agents.length) h += "<tr class='sub2'><td colspan='9' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
       c.agents.forEach(function(a){
         h += "<tr class='sub2'><td style='padding-left:48px'>" + esc(a.name) +
           (a.active ? "" : " <span class='pill a'>inactive</span>") + "</td>" +
-          "<td class='n mut'>–</td><td class='n'>" + inr(a.revenue) + "</td><td class='n mut'>–</td>" +
+          "<td class='n'>" + inr(a.revenue) + "</td><td class='n mut'>–</td>" +
           "<td class='n'>" + fmt(a.enrolments) + "</td>" +
           "<td class='n'>" + fmt(a.counsellings || 0) + "</td>" +
           "<td class='n'>" + (a.counsellings ? (Math.round(1000 * a.enrolments / a.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-          "<td class='n'>" + fmt(a.queue) + "</td><td class='n'>" + fmt(a.due) + "</td>" +
-          "<td class='n cg'>" + fmt(a.done) + "</td>" +
-          "<td class='n " + (a.missed ? "cr" : "mut") + "'>" + fmt(a.missed) + "</td>" +
-          "<td class='n " + (a.overdue ? "cr" : "mut") + "'>" + fmt(a.overdue) + "</td>" +
-          "<td class='n " + (a.uncalled ? "cr" : "mut") + "'>" + fmt(a.uncalled) + "</td></tr>";
+          "<td class='n'>" + fmt(a.queue) + "</td>" + todayCell(a) + backlogCell(a) + "</tr>";
       });
     }
   });
