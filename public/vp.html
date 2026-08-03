@@ -363,9 +363,31 @@ function drawCallNow(){
     tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue", cov(ovT, ov)) +
     tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
     "</div>";
-  h += "<div class='tw'><table class='rt'><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
-  J.teams.slice().sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
-    h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b></td>" +
+  // A manager has one team, so a single team row tells them nothing. Break it down by
+  // agent instead, summed across the creators in their team.
+  var byAgent = J.scope === "own" || J.teams.length === 1;
+  var rows;
+  if (byAgent) {
+    var m = {};
+    J.teams.forEach(function(t){
+      (t.creatorRows || []).forEach(function(c){
+        (c.agents || []).forEach(function(a){
+          if (!m[a.id]) m[a.id] = { id: a.id, name: a.name, active: a.active, queue: 0, form: 0, score: 0,
+            intl: 0, needs: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0 };
+          ["queue","form","score","intl","needs","due","done","missed","overdue","uncalled"].forEach(function(k){
+            m[a.id][k] += (a[k] || 0);
+          });
+        });
+      });
+    });
+    rows = Object.values(m);
+  } else {
+    rows = J.teams.slice();
+  }
+  h += "<div class='tw'><table class='rt'><thead><tr><th>" + (byAgent ? "Agent" : "Team") + "</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
+  rows.sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
+    h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b>" +
+      (x.active === false ? " <span class='pill a'>inactive</span>" : "") + "</td>" +
       "<td class='n'><b>" + fmt(x.queue) + "</b>" + qbar(x) + "</td>" +
       "<td class='n'>" + fmt(x.form || 0) + "</td><td class='n'>" + fmt(x.score || 0) + "</td><td class='n'>" + fmt(x.intl || 0) + "</td>" +
       "<td class='n'>" + ((x.needs || 0) ? "<span class='pill r'>" + fmt(x.needs) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
@@ -373,8 +395,9 @@ function drawCallNow(){
       (x.missed ? " <span class='pill r'>" + fmt(x.missed) + " missed</span>" : "") + "</td>" +
       "<td class='n " + (x.overdue ? "cr" : "mut") + "'>" + fmt(x.overdue) + "</td>" +
       "<td class='n " + (x.uncalled ? "ca" : "mut") + "'>" + fmt(x.uncalled) + "</td>" +
-      "<td><a class='mlink' href='/callnow.html' title='Open Call Now'>open</a></td></tr>";
+      "<td><a class='mlink' href='/callnow.html" + (byAgent && x.id ? "?id=" + esc(x.id) : "") + "' title='Open Call Now'>open</a></td></tr>";
   });
+  if (!rows.length) h += "<tr><td colspan='10' class='mut'>No agents with a priority queue yet.</td></tr>";
   h += "</tbody></table></div></div>";
   return h;
 }
