@@ -2445,7 +2445,8 @@ function vpAggregate(month){
     if (!agg[tid][creator]) agg[tid][creator] = {};
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
       revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
-      churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0
+      churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0,
+      form: 0, score: 0, intl: 0, needs: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2476,6 +2477,10 @@ function vpAggregate(month){
     else if (r.stage !== "__fresh") o.worked++;
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     o.queue++;
+    if (sg.form) o.form++;
+    if (sg.score) o.score++;
+    if (sg.intl) o.intl++;
+    if (r.needsOwner) o.needs++;
     const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
     if (ct) o.touched++;
     if (dt) { o.due++; if (ct) o.done++; else o.missed++; }
@@ -2484,7 +2489,7 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 // Revenue booked in the last 7 days against the 7 before, for the teams in scope.

@@ -190,7 +190,7 @@ function draw(){
   if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
-  else h += drawStrip() + drawExceptions();
+  else h += drawStrip() + drawExceptions() + drawCallNow();
   document.getElementById("app").innerHTML = h;
   drawNav();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
@@ -294,6 +294,40 @@ function drawExceptions(){
     h += "</div>";
   });
   return h + "</div></div>";
+}
+function drawCallNow(){
+  var t = 0, f = 0, sc = 0, il = 0, nd = 0, due = 0, done = 0, missed = 0, ov = 0, unc = 0;
+  J.teams.forEach(function(x){
+    t += x.queue; f += (x.form || 0); sc += (x.score || 0); il += (x.intl || 0); nd += (x.needs || 0);
+    due += x.due; done += x.done; missed += x.missed; ov += x.overdue; unc += x.uncalled;
+  });
+  var h = "<div class='sec'><h2>Call Now queue " +
+    "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a></h2>" +
+    "<div class='sub'>What the floor is actually working today, so you can act from here rather than opening the call tool.</div>";
+  h += "<div class='tiles' style='margin-bottom:12px'>" +
+    tile("grey", fmt(t), "Must call") +
+    tile("blue", fmt(f), "Waitlist form") +
+    tile("blue", fmt(sc), "Score &ge; 6") +
+    tile("blue", fmt(il), "International") +
+    tile(nd ? "red" : "grey", fmt(nd), "Needs owner") +
+    tile(missed ? "red" : "teal", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made") +
+    tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue") +
+    tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
+    "</div>";
+  h += "<div class='tw'><table><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
+  J.teams.slice().sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
+    h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b></td>" +
+      "<td class='n'><b>" + fmt(x.queue) + "</b></td>" +
+      "<td class='n'>" + fmt(x.form || 0) + "</td><td class='n'>" + fmt(x.score || 0) + "</td><td class='n'>" + fmt(x.intl || 0) + "</td>" +
+      "<td class='n'>" + ((x.needs || 0) ? "<span class='pill r'>" + fmt(x.needs) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
+      "<td class='n'>" + (x.due ? "<b class='cg'>" + fmt(x.done) + "</b> <span class='mut'>of " + fmt(x.due) + "</span>" : "<span class='mut'>0 due</span>") +
+      (x.missed ? " <span class='pill r'>" + fmt(x.missed) + " missed</span>" : "") + "</td>" +
+      "<td class='n " + (x.overdue ? "cr" : "mut") + "'>" + fmt(x.overdue) + "</td>" +
+      "<td class='n " + (x.uncalled ? "ca" : "mut") + "'>" + fmt(x.uncalled) + "</td>" +
+      "<td><a class='mlink' href='/callnow.html' title='Open Call Now'>open</a></td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
 }
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
