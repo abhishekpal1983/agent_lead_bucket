@@ -68,11 +68,12 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .mlink:hover{color:#0091AE;border-bottom-color:#0091AE}
 .tin{width:112px;padding:4px 8px;font-size:13px;text-align:right;border:1px solid #DCE4EC;border-radius:5px;font-variant-numeric:tabular-nums}
 .tin.saved{border-color:#0A5346;background:#F1FAF7}
-.exc{display:flex;gap:8px;align-items:baseline;padding:7px 0;border-top:1px solid #EFF3F7;font-size:13px;color:#37475A;line-height:1.5}
+.exc{display:block;padding:7px 0;border-top:1px solid #EFF3F7;font-size:12.5px;color:#37475A;line-height:1.5}
+.exc .pill{margin-bottom:3px}
 .exc:first-of-type{border-top:none}
 .exc b.who{color:#0A2540;font-weight:600}
-.excgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:11px}
-.exccard{border:1px solid #DCE4EC;border-radius:9px;padding:10px 12px;background:#fff}
+.excgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:10px;align-items:stretch}
+.exccard{border:1px solid #DCE4EC;border-radius:9px;padding:11px 13px;background:#fff;min-height:186px;display:flex;flex-direction:column}
 .exccard.bad{border-color:#F0C0B2;background:#FEF8F6}
 .exccard h5{font-size:13.5px;font-weight:600;color:#0A2540;display:flex;align-items:center;gap:7px;margin-bottom:2px}
 .exccard .ok{font-size:12.5px;color:#0A5346;padding:5px 0}
@@ -229,13 +230,14 @@ function tile(cls, v, l){
 }
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
-  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0;
+  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0;
   J.teams.forEach(function(x){
     t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
     co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
     over += x.overdue; unc += x.uncalled;
     act += (x.activeAgents || 0); tot += (x.agents || []).length;
     created += (x.created || 0); cohC += (x.cohortCounselled || 0); risk += (x.risk || 0);
+    ctoday += (x.counsToday || 0); ctarget += (x.targetCounsellings || 0);
   });
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
@@ -269,14 +271,17 @@ function drawStrip(){
 
   h += tile(act < tot / 2 ? "red" : "teal", fmt(act) + " <span style='font-size:14px;font-weight:400'>of " + fmt(tot) + "</span>", "Agents who called today");
   h += tile(risk ? "red" : "grey", inr(Math.round(risk * ticket)), "Revenue at risk · " + fmt(risk) + " prospects");
-  h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C this month");
+  h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C, leads created this month");
   h += tile("blue", fmt(created), "New leads this month");
-  h += tile(wk.delta === null ? "grey" : (wk.delta >= 0 ? "teal" : "red"),
-    inr(wk.current) + (wk.delta === null ? "" : " <span style='font-size:14px;font-weight:400'>" + (wk.delta >= 0 ? "+" : "") + wk.delta + "%</span>"),
-    "Last 7 days vs previous " + inr(wk.previous));
-  h += tile(proj >= t ? "teal" : "amber", inr(proj), "Projected month end");
-  if (J.scope !== "own") h += tile(J.drift.length ? "red" : "grey", fmt(J.drift.length), "Agents unmapped");
-  return h + "</div>";
+  h += tile(ctoday ? "teal" : "grey", fmt(ctoday), "Counsellings today");
+  h += tile(ctarget && co >= ctarget * (J.dayOfMonth / J.daysInMonth) ? "teal" : (ctarget ? "amber" : "grey"),
+    fmt(co) + (ctarget ? " <span style='font-size:14px;font-weight:400'>of " + fmt(ctarget) + "</span>" : ""),
+    ctarget ? "Counsellings, " + Math.round(100 * co / ctarget) + "% of target" : "Counsellings this month");
+  return h + "</div>" +
+    "<div style='font-size:12px;color:#6B7A8A;margin:-4px 0 12px;line-height:1.55'>" +
+    "<b>C2E</b> is enrolments divided by counsellings this month, across all leads, not only fresh ones. " +
+    "<b>L2C</b> is a cohort measure: of the leads created this month, the share that has reached a counselling stage so far, " +
+    "so it reads low early in the month.</div>";
 }
 function drawExceptions(){
   var x = J.exceptions || [];
@@ -306,6 +311,15 @@ function drawExceptions(){
   });
   return h + "</div></div>";
 }
+function qbar(x){
+  var due = x.due || 0, done = x.done || 0;
+  var pct = due ? Math.round(100 * done / due) : 0;
+  if (!due) return "<div class='mut' style='font-size:11.5px'>nothing due today</div>";
+  return "<div style='height:5px;border-radius:3px;background:#E7EEF4;overflow:hidden;display:flex;margin-top:4px'>" +
+    "<i style='display:block;height:5px;width:" + pct + "%;background:#0091AE'></i>" +
+    "<i style='display:block;height:5px;width:" + (100 - pct) + "%;background:#FF7A59'></i></div>" +
+    "<div class='mut' style='font-size:11.5px;margin-top:2px'>" + pct + "% of today done</div>";
+}
 function drawCallNow(){
   var t = 0, f = 0, sc = 0, il = 0, nd = 0, due = 0, done = 0, missed = 0, ov = 0, unc = 0;
   J.teams.forEach(function(x){
@@ -328,7 +342,7 @@ function drawCallNow(){
   h += "<div class='tw'><table><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
   J.teams.slice().sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
     h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b></td>" +
-      "<td class='n'><b>" + fmt(x.queue) + "</b></td>" +
+      "<td class='n'><b>" + fmt(x.queue) + "</b>" + qbar(x) + "</td>" +
       "<td class='n'>" + fmt(x.form || 0) + "</td><td class='n'>" + fmt(x.score || 0) + "</td><td class='n'>" + fmt(x.intl || 0) + "</td>" +
       "<td class='n'>" + ((x.needs || 0) ? "<span class='pill r'>" + fmt(x.needs) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n'>" + (x.due ? "<b class='cg'>" + fmt(x.done) + "</b> <span class='mut'>of " + fmt(x.due) + "</span>" : "<span class='mut'>0 due</span>") +

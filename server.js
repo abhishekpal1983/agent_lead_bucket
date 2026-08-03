@@ -2452,7 +2452,7 @@ function vpAggregate(month){
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
       revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
       churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0,
-      form: 0, score: 0, intl: 0, needs: 0
+      form: 0, score: 0, intl: 0, needs: 0, counsToday: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2474,7 +2474,9 @@ function vpAggregate(month){
     const r = cnRow(c), sg = cnSegs(r);
     const o = cell(tid, r.creator || "(no creator)", aid);
     // first-counselled month, attributed to the lead's current owner, same rule as elsewhere
-    if (ymOf(COUNSEL.byId[c.id]) === month) o.counsellings++;
+    const cts = COUNSEL.byId[c.id];
+    if (ymOf(cts) === month) o.counsellings++;
+    if (cts && ts(cts) >= day.start && ts(cts) < day.end) o.counsToday++;
     // L2C cohort: leads created this month, and how many of them ever reached counselling
     if (ymOf(c.createdate) === month) { o.created++; if (COUNSEL.byId[c.id]) o.cohortCounselled++; }
     // revenue at risk: a payment prospect whose follow-up has already lapsed
@@ -2495,7 +2497,7 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0, counsToday: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 // Revenue booked in the last 7 days against the 7 before, for the teams in scope.
