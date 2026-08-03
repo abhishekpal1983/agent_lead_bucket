@@ -2568,6 +2568,20 @@ function vpExceptions(teams, drift, dom, dim){
     if (t.uncalled > 500) {
       add("warn", "Idle", t.name, t.uncalled.toLocaleString("en-IN") + " priority leads have never been called.");
     }
+    // per-agent call-outs, so a manager sees the person rather than the team average
+    (t.agentRows || []).forEach(function(a){
+      if (a.due >= 3 && a.done === 0) {
+        add("bad", "Effort", t.name, a.name + " has made none of " + a.due + " due calls today.");
+      } else if (a.missed >= 3) {
+        add("warn", "Missed", t.name, a.name + " made " + a.done + " of " + a.due + " due calls, " + a.missed + " outstanding.");
+      }
+      if (a.queue >= 50 && a.touched === 0) {
+        add("warn", "Idle", t.name, a.name + " has made no calls today with " + a.queue.toLocaleString("en-IN") + " in the queue.");
+      }
+      if (a.needs >= 5) {
+        add("warn", "Mapping", t.name, a.needs + " of " + a.name + "'s priority leads have no owner or a deactivated one.");
+      }
+    });
     const sum = (t.creatorRows || []).reduce(function(a, c){ return a + (c.target || 0); }, 0);
     if (t.target && sum && Math.abs(sum - t.target) > 1) {
       add("warn", "Targets", t.name, "Creator targets add up to " + Math.round(sum).toLocaleString("en-IN") +
@@ -2626,6 +2640,19 @@ app.get("/api/vp", function(req, res){
         creatorRows.push(Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: [] }, zero()));
       }
     });
+    // one row per agent, summed across the creators in this team
+    const am = {};
+    creatorRows.forEach(function(c){
+      (c.agents || []).forEach(function(a){
+        if (!am[a.id]) am[a.id] = { id: a.id, name: a.name, active: a.active, revenue: 0, enrolments: 0,
+          queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, needs: 0,
+          form: 0, score: 0, intl: 0, counsellings: 0 };
+        ["revenue","enrolments","queue","due","done","missed","overdue","uncalled","touched","needs","form","score","intl","counsellings"]
+          .forEach(function(k){ am[a.id][k] += (a[k] || 0); });
+      });
+    });
+    const agentRows = Object.values(am).sort(function(x, y){ return y.queue - x.queue; });
+
     const tg = t.teams[team.id] || {};
     const target = num(tg.revenue);
     const paceTarget = target * (dom / dim);
@@ -2637,7 +2664,7 @@ app.get("/api/vp", function(req, res){
         const o = CACHE.owners[id] || {};
         return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
       }),
-      creatorRows: creatorRows,
+      creatorRows: creatorRows, agentRows: agentRows,
       activeAgents: Object.keys(agentTouched).length,
       target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
       paceTarget: Math.round(paceTarget),
