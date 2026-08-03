@@ -3051,7 +3051,22 @@ const runChain = guard("boot chain", function(){
   return syncForms().then(syncUnowned).then(syncPriorityFresh);
 });
 
-app.listen(PORT, () => {
+// Railway sends SIGTERM on every redeploy. Exiting cleanly turns what it otherwise
+// reports as a crash into a normal shutdown. Requires the start command to be
+// "node server.js", not "npm start", or npm swallows the signal as PID 1.
+function shutdown(sig){
+  console.log(sig + " received, shutting down cleanly");
+  try { if (typeof ORG !== "undefined" && ORG_PERSISTENT) orgSave("shutdown", sig, "system"); } catch (e) {}
+  const t = setTimeout(function(){ process.exit(0); }, 8000);
+  if (t.unref) t.unref();
+  if (SERVER) SERVER.close(function(){ process.exit(0); });
+  else process.exit(0);
+}
+process.on("SIGTERM", function(){ shutdown("SIGTERM"); });
+process.on("SIGINT", function(){ shutdown("SIGINT"); });
+
+let SERVER = null;
+SERVER = app.listen(PORT, () => {
   console.log("Listening on " + PORT);
   guard("sync", function(){ return sync().then(() => syncCounsel()); })();
   guard("sheet", function(){ return syncSheet().then(() => syncCohorts()); })();
