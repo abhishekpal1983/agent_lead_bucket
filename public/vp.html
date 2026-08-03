@@ -9,10 +9,18 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F6F9FC;color:#0A2540;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .hdr{background:#fff;border-bottom:1px solid #E3E8EE;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hdr h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
-.wrap{max-width:1500px;margin:0 auto;padding:16px 22px 60px}
-.sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;padding:14px 16px}
-.sec h2{font-size:14px;font-weight:600;margin-bottom:2px}
-.sec .sub{font-size:12px;color:#697386;margin-bottom:11px}
+.wrap{max-width:1560px;margin:0 auto;padding:14px 20px 60px}
+.sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:12px;padding:12px 15px}
+.row2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:start}
+@media(max-width:1100px){.row2{grid-template-columns:1fr}}
+.row2 .sec{margin-bottom:0;height:100%}
+.strip.tall{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.strip.tall>div{border-right:1px solid #F0F3F7;border-bottom:1px solid #F0F3F7}
+.strip.tall>div:nth-child(3n){border-right:none}
+.strip.tall>div:nth-last-child(-n+3){border-bottom:none}
+.strip.tall>div:first-child{grid-column:1 / -1;border-right:none}
+.sec h2{font-size:13.5px;font-weight:600;margin-bottom:2px}
+.sec .sub{font-size:11.5px;color:#697386;margin-bottom:9px}
 select,input{border:1px solid #E3E8EE;border-radius:6px;padding:6px 9px;font-size:12.5px;background:#fff;font-family:inherit;color:#0A2540}
 input:focus,select:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #E4F4F8}
 .btn{border:1px solid #E3E8EE;background:#fff;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#425B76}
@@ -37,14 +45,15 @@ tr.sub2 td{background:#F5F8FB;font-size:11.5px}
 .tin.saved{border-color:#15613F;background:#F3FAF6}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block}
 .pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
-.exc{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-top:1px solid #F0F3F7;font-size:12.5px;color:#425B76;line-height:1.6}
+.exc{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid #F0F3F7;font-size:12px;color:#425B76;line-height:1.5}
 .exc:first-of-type{border-top:none}
 .exc b.who{color:#0A2540;font-weight:600}
 .warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
 .warn.bad{background:#FADFDA;border-color:#F0B5AA;color:#99301C}
 .strip{display:flex;background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;overflow:hidden}
-.strip>div{flex:1;padding:11px 15px;border-right:1px solid #F0F3F7}
+.strip>div{flex:1;padding:10px 14px;border-right:1px solid #F0F3F7}
 .strip>div:last-child{border-right:none}
+.strip.tall>div{padding:9px 14px}
 .strip .v{font-size:18px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .strip .l{font-size:11px;color:#697386}
 .track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin:7px 0 5px;display:flex}
@@ -113,7 +122,11 @@ function draw(){
   var h = "";
   if (!J.persistent) h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, so teams and targets vanish on the next deploy. In Railway add a Volume mounted at <b>/data</b>.</div>";
   if (!J.isVP) h += "<div class='warn'>Read only. Editing is limited to the emails in VP_EMAILS.</div>";
-  h += drawStrip() + drawExceptions() + drawTeams() + (J.isVP ? drawDrift() + drawAdmin() : "");
+  // The strip and the exceptions feed are both narrow content that was eating full
+  // width. The manager table has 13 columns and genuinely needs the room, so it stays
+  // full width below them.
+  h += "<div class='row2'>" + drawStrip() + drawExceptions() + "</div>" +
+    drawTeams() + (J.isVP ? drawDrift() + drawAdmin() : "");
   document.getElementById("app").innerHTML = h;
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
@@ -146,7 +159,7 @@ function drawStrip(){
   var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
   var gap = Math.round(a - pace);
   var c2e = co ? Math.round(1000 * e / co) / 10 : null;
-  var h = "<div class='strip'><div style='flex:1.7'>" +
+  var h = "<div class='strip tall'><div>" +
     "<div class='v'>" + inr(a) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + inr(t) + "</span></div>" +
     "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#0091AE'></i>" +
       (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FF7A59'></i>" : "") + "</div>" +
@@ -165,7 +178,7 @@ function drawExceptions(){
   if (!x.length) return "<div class='sec'><h2>Needs a call-out today</h2><div class='sub cg'>Nothing flagged. Targets set, pace on track, follow-ups worked.</div></div>";
   var bad = x.filter(function(e){ return e.level === "bad"; }).length;
   var h = "<div class='sec'><h2>Needs a call-out today " + (bad ? "<span class='pill r'>" + bad + " urgent</span>" : "") + "</h2>" +
-    "<div class='sub'>Generated from this month's numbers. Ordered by severity.</div>";
+    "<div class='sub' style='margin-bottom:6px'>Generated from this month's numbers, ordered by severity.</div>";
   x.forEach(function(e){
     h += "<div class='exc'><span class='pill " + (e.level === "bad" ? "r" : "a") + "'>" + esc(e.kind) + "</span>" +
       "<span>" + (e.team ? "<b class='who'>" + esc(e.team) + "</b> · " : "") + esc(e.text) + "</span></div>";
