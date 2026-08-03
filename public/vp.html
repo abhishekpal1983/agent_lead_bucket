@@ -171,7 +171,7 @@ function draw(){
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn' style='margin-left:auto'>All teams</a>" : "") + "</div>";
   if (VIEW === "managers") h += drawTeams();
-  else if (VIEW === "mapping" && J.isVP) h += drawDrift();
+  else if (VIEW === "mapping" && J.isVP) h += drawCreatorRoster() + drawDrift();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
   else h += drawStrip() + drawExceptions();
   document.getElementById("app").innerHTML = h;
@@ -347,6 +347,44 @@ function creatorRows(t){
   });
   return h;
 }
+function drawCreatorRoster(){
+  var all = J.creators || [], main = J.mainCreators || [];
+  var q = (FIND["roster|c"] || "").toLowerCase();
+  var h = "<div class='sec'><h2>Creators <span class='pill g'>" + main.length + " in the main list</span></h2>" +
+    "<div class='sub'>Only creators in the main list can be assigned to a team. Adding one also pulls that creator's fresh leads from HubSpot, which takes a few seconds.</div>";
+  h += "<input id='rq' placeholder='search creators...' value='" + esc(q) + "' style='width:280px;margin-bottom:9px'" +
+    " oninput=\"FIND['roster|c']=this.value;applyRoster()\">";
+  h += "<div class='tw' style='max-height:460px'><table><thead><tr><th>Creator</th><th class='n'>Leads in pool</th><th>Status</th><th></th></tr></thead><tbody id='rbody'>";
+  all.forEach(function(c){
+    var on = main.indexOf(c.u) >= 0;
+    h += "<tr data-l='" + esc(c.u.toLowerCase()) + "'><td><b>" + esc(c.u) + "</b></td>" +
+      "<td class='n'>" + fmt(c.n) + "</td>" +
+      "<td>" + (on ? "<span class='pill g'>in main list</span>" : "<span class='mut'>not tracked</span>") + "</td>" +
+      "<td><button class='btn " + (on ? "d" : "p") + "' onclick=\"toggleMain('" + esc(c.u).replace(/'/g, "\\'") + "', " + (on ? "1" : "0") + ", this)\">" +
+      (on ? "Remove" : "Add to main list") + "</button></td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
+}
+function applyRoster(){
+  var q = (FIND["roster|c"] || "").toLowerCase();
+  var rows = document.querySelectorAll("#rbody tr");
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = (!q || (rows[i].getAttribute("data-l") || "").indexOf(q) >= 0) ? "" : "none";
+  }
+}
+function toggleMain(u, isOn, btn){
+  btn.disabled = true;
+  btn.textContent = isOn ? "Removing..." : "Syncing...";
+  var url = isOn ? "/api/callnow/drop-creator?creator=" : "/api/callnow/sync-creator?creator=";
+  fetch(url + encodeURIComponent(u), { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j && j.error) { alert(j.error); btn.disabled = false; btn.textContent = isOn ? "Remove" : "Add to main list"; return; }
+      load(J.month);
+    })
+    .catch(function(e){ alert(e.message); btn.disabled = false; });
+}
 function drawDrift(){
   if (!J.drift.length) return "<div class='sec'><h2>Mapping</h2><div class='sub cg'>Every lead-owning agent belongs to a team.</div></div>";
   var h = "<div class='sec'><h2>Unmapped agents <span class='pill r'>" + J.drift.length + "</span></h2>" +
@@ -483,11 +521,18 @@ function cardInner(t){
   h += "<div class='split'>" + pane("Available", outA, k, "agents", "out", true) + pane("In this team", inA, k, "agents", "in") + "</div>";
 
   var inC = [], outC = [];
-  (J.creators || []).forEach(function(c){
-    var label = c.u + "  " + fmt(c.n);
-    if (sel.creators.indexOf(c.u) >= 0) { inC.push({ v: c.u, label: label }); return; }
-    var taken = creatorTeam(c.u, t.id);
-    outC.push({ v: c.u, label: label, off: taken });
+  var counts = {};
+  (J.creators || []).forEach(function(c){ counts[c.u] = c.n; });
+  (J.mainCreators || []).forEach(function(u){
+    var label = u + "  " + fmt(counts[u] || 0);
+    if (sel.creators.indexOf(u) >= 0) { inC.push({ v: u, label: label }); return; }
+    var taken = creatorTeam(u, t.id);
+    outC.push({ v: u, label: label, off: taken });
+  });
+  // A creator already assigned to this team but since removed from the main list
+  // must stay visible, otherwise it silently disappears from the team.
+  sel.creators.forEach(function(u){
+    if ((J.mainCreators || []).indexOf(u) < 0) inC.push({ v: u, label: u + "  (not in main list)" });
   });
   h += "<div style='font-size:11.5px;color:#4A5A6A;font-weight:600;margin:10px 0 4px'>CREATORS · " + inC.length + " assigned</div>";
   h += "<div class='split'>" + pane("Available", outC, k, "creators", "out", true) + pane("In this team", inC, k, "creators", "in") + "</div>";

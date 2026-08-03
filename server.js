@@ -2547,16 +2547,21 @@ app.get("/api/vp", function(req, res){
     scope: vp ? "all" : "own",
     exceptions: vpExceptions(teams, vp ? orgDrift() : [], dom, dim),
     creators: (creatorsAll() || []),
+    mainCreators: PFRESH_LIST.slice(),
     targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
     log: (ORG.log || []).slice(-30).reverse()
   });
 });
 
+// Every creator we know about: from the lead pool and from the payment sheet, so a
+// creator who has revenue but no synced leads still shows up.
 function creatorsAll(){
   const m = {};
   callnowPool().forEach(function(c){ const u = c.topmate_username; if (u) m[u] = (m[u] || 0) + 1; });
-  return Object.entries(m).map(function(e){ return { u: e[0], n: e[1] }; })
-    .sort(function(a, b){ return b.n - a.n; }).slice(0, 400);
+  (SHEET.rows || []).forEach(function(r){ const u = r.creator_username; if (u && !(u in m)) m[u] = 0; });
+  return Object.entries(m).map(function(e){ return { u: e[0], n: e[1], main: PFRESH_LIST.indexOf(e[0]) >= 0 }; })
+    .sort(function(a, b){ return (b.main ? 1 : 0) - (a.main ? 1 : 0) || b.n - a.n || (a.u < b.u ? -1 : 1); })
+    .slice(0, 600);
 }
 
 app.post("/api/vp/team", express.json(), function(req, res){
