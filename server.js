@@ -119,19 +119,28 @@ async function hs(path, opts, attempt){
   return res.json();
 }
 
+// A HubSpot user who never filled in a name would otherwise render as "Owner 166827115".
+// Their email is far more useful than the internal id.
+function ownerLabel(o){
+  const n = ((o.firstName || "") + " " + (o.lastName || "")).trim();
+  if (n) return n;
+  const e = String(o.email || "").trim();
+  if (e) return e.split("@")[0];
+  return "Owner " + o.id;
+}
 async function fetchOwners(){
   const map = {};
   let after;
   do {
     const j = await hs("/crm/v3/owners?limit=100&archived=false" + (after ? "&after=" + after : ""));
-    (j.results || []).forEach(o => { map[String(o.id)] = { name: ((o.firstName||"")+" "+(o.lastName||"")).trim() || ("Owner "+o.id), email: o.email || "", active: !o.archived }; });
+    (j.results || []).forEach(o => { map[String(o.id)] = { name: ownerLabel(o), email: o.email || "", active: !o.archived }; });
     after = j.paging && j.paging.next && j.paging.next.after;
   } while (after);
   // archived owners too, so deactivated agents get names
   after = undefined;
   do {
     const j = await hs("/crm/v3/owners?limit=100&archived=true" + (after ? "&after=" + after : ""));
-    (j.results || []).forEach(o => { if (!map[String(o.id)]) map[String(o.id)] = { name: ((o.firstName||"")+" "+(o.lastName||"")).trim() || ("Owner "+o.id), email: o.email || "", active: false }; });
+    (j.results || []).forEach(o => { if (!map[String(o.id)]) map[String(o.id)] = { name: ownerLabel(o), email: o.email || "", active: false }; });
     after = j.paging && j.paging.next && j.paging.next.after;
   } while (after);
   return map;
@@ -2477,6 +2486,8 @@ app.get("/api/vp", function(req, res){
   const visible = (ORG.teams || []).filter(function(t){
     return vp || !me || String(t.managerEmail || "").toLowerCase() === me;
   });
+  const orderOf = {};
+  (ORG.teams || []).forEach(function(t, i){ orderOf[t.id] = i; });
   const teams = visible.map(function(team){
     const byCreator = agg[team.id] || {};
     const totals = zero();
@@ -2505,7 +2516,8 @@ app.get("/api/vp", function(req, res){
     const target = num(tg.revenue);
     const paceTarget = target * (dom / dim);
     return Object.assign({
-      id: team.id, name: team.name, managerEmail: team.managerEmail || "",
+      id: team.id, order: orderOf[team.id] || 0,
+      name: team.name, managerEmail: team.managerEmail || "",
       agentIds: team.agentIds || [], creators: team.creators || [],
       agents: (team.agentIds || []).map(function(id){
         const o = CACHE.owners[id] || {};
@@ -2528,6 +2540,7 @@ app.get("/api/vp", function(req, res){
   });
   res.json({
     week: weekTrend(Object.keys(scopedEmails).length ? scopedEmails : null),
+    leadsLoadedAt: CACHE.loadedAt, leadsSyncing: CACHE.syncing, leadsCount: CACHE.contacts.length,
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: vp ? orgDrift() : [],

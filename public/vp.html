@@ -375,7 +375,9 @@ function assign(agentId, teamId){
 function drawAdmin(){
   var h = "<div class='sec'><h2>Teams and targets</h2><div class='sub'>A team is one manager. Agents map to exactly one team; creators can belong to one team each.</div>";
   h += "<div class='adminwrap'><div class='grid'>";
-  J.teams.forEach(function(t){ h += teamCard(t); });
+  // Stable creation order here. The Managers table sorts by revenue, but a card that
+  // jumps position the moment you save is unusable.
+  J.teams.slice().sort(function(a, b){ return (a.order || 0) - (b.order || 0); }).forEach(function(t){ h += teamCard(t); });
   h += teamCard({ id: "", name: "", managerEmail: "", agentIds: [], creators: [] });
   h += "</div></div></div>";
   return h;
@@ -440,7 +442,15 @@ function pane(title, items, k, kind, side, searchable){
       "<input id='f_" + k + "_" + kind + "' placeholder='search...' value='" + esc(q) + "' style='width:100%;padding:4px 8px;font-size:12.5px'" +
       " oninput=\"setFind('" + k + "','" + kind + "', this.value)\"></div>";
   }
-  if (!items.length) h += "<div class='none'>" + (side === "in" ? "nothing assigned yet" : "nothing left") + "</div>";
+  if (!items.length) {
+    var why = side === "in" ? "nothing assigned yet"
+      : (kind === "creators" && !(J.creators || []).length
+          ? (J.leadsSyncing || !J.leadsLoadedAt
+              ? "creator list is still loading, the lead sync is running"
+              : "no creators found in the lead data yet")
+          : "nothing left");
+    h += "<div class='none'>" + why + "</div>";
+  }
   items.forEach(function(it){
     var dl = " data-l=\"" + esc(it.label.toLowerCase()) + "\"";
     if (it.off) {
