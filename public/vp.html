@@ -308,7 +308,8 @@ function drawExceptions(){
     groups[k].push(e);
   });
   var h = "<div class='sec'><h2>Needs a call-out today " + (bad ? "<span class='pill r'>" + bad + " urgent</span>" : "") + "</h2>" +
-    "<div class='sub' style='margin-bottom:9px'>Grouped by team, ordered by severity within each.</div><div class='excgrid'>";
+    "<div class='sub' style='margin-bottom:9px'>Live, recomputed on every refresh. Effort and idle flags start after " +
+    (J.calloutHour || 12) + ":00 IST, so the morning is not full of false alarms. Ordered by severity within each team.</div><div class='excgrid'>";
   order.forEach(function(k){
     var items = (groups[k] || []).sort(function(a, b){ return (a.level === "bad" ? 0 : 1) - (b.level === "bad" ? 0 : 1); });
     var anyBad = items.some(function(e){ return e.level === "bad"; });
@@ -779,6 +780,8 @@ function delTeam(id){
   post("/api/vp/team/delete", { id: id }).then(function(){ load(J.month); });
 }
 load();
+// Live page: the call-outs are only as current as the last fetch.
+setInterval(function(){ if (!document.hidden) load(J ? J.month : null); }, 10 * 60 * 1000);
 </script>
 </body>
 </html>

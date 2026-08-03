@@ -2548,8 +2548,11 @@ function unattributed(month){
       .sort(function(a, b){ return b.revenue - a.revenue; }).slice(0, 12) };
 }
 
+const CALLOUT_HOUR = parseInt(process.env.CALLOUT_HOUR || "12", 10);
 function vpExceptions(teams, drift, dom, dim){
   const out = [];
+  const nowHM = istParts(new Date()).hm;
+  const afterHour = Number(String(nowHM).slice(0, 2)) >= CALLOUT_HOUR;
   const add = function(level, kind, team, text){ out.push({ level: level, kind: kind, team: team || "", text: text }); };
   teams.forEach(function(t){
     if (!t.target) { add("warn", "Target", t.name, "No revenue target set for this month."); }
@@ -2557,9 +2560,9 @@ function vpExceptions(teams, drift, dom, dim){
       add("bad", "Pace", t.name, "Behind pace by " + Math.round(-t.gap).toLocaleString("en-IN") +
         " rupees, " + (t.attainment || 0) + "% attained on day " + dom + " of " + dim + ".");
     }
-    if (t.due >= 10 && t.done / t.due < 0.5) {
+    if (afterHour && t.due >= 10 && t.done / t.due < 0.5) {
       add("bad", "Effort", t.name, t.done + " of " + t.due + " due calls made today, " + t.missed + " still outstanding.");
-    } else if (t.missed > 0) {
+    } else if (afterHour && t.missed > 0) {
       add("warn", "Missed", t.name, t.missed + " follow-ups due today have not been called.");
     }
     if (t.worked >= 50 && t.churned / t.worked > 0.6) {
@@ -2568,15 +2571,18 @@ function vpExceptions(teams, drift, dom, dim){
     if (t.uncalled > 500) {
       add("warn", "Idle", t.name, t.uncalled.toLocaleString("en-IN") + " priority leads have never been called.");
     }
-    // per-agent call-outs, so a manager sees the person rather than the team average
+    // Effort and idle flags are meaningless at 9am, when nobody has called anyone yet.
+    // They only start firing after CALLOUT_HOUR so the card is not noise all morning.
     (t.agentRows || []).forEach(function(a){
-      if (a.due >= 3 && a.done === 0) {
-        add("bad", "Effort", t.name, a.name + " has made none of " + a.due + " due calls today.");
-      } else if (a.missed >= 3) {
-        add("warn", "Missed", t.name, a.name + " made " + a.done + " of " + a.due + " due calls, " + a.missed + " outstanding.");
-      }
-      if (a.queue >= 50 && a.touched === 0) {
-        add("warn", "Idle", t.name, a.name + " has made no calls today with " + a.queue.toLocaleString("en-IN") + " in the queue.");
+      if (afterHour) {
+        if (a.due >= 3 && a.done === 0) {
+          add("bad", "Effort", t.name, a.name + " has made none of " + a.due + " due calls today.");
+        } else if (a.missed >= 3) {
+          add("warn", "Missed", t.name, a.name + " made " + a.done + " of " + a.due + " due calls, " + a.missed + " outstanding.");
+        }
+        if (a.queue >= 50 && a.touched === 0) {
+          add("warn", "Idle", t.name, a.name + " has made no calls today with " + a.queue.toLocaleString("en-IN") + " in the queue.");
+        }
       }
       if (a.needs >= 5) {
         add("warn", "Mapping", t.name, a.needs + " of " + a.name + "'s priority leads have no owner or a deactivated one.");
@@ -2687,6 +2693,7 @@ app.get("/api/vp", function(req, res){
     teams: teams, drift: vp ? orgDrift() : [],
     scope: vp ? "all" : "own",
     unattributed: vp ? unattributed(month) : null,
+    calloutHour: CALLOUT_HOUR,
     exceptions: vpExceptions(teams, vp ? orgDrift() : [], dom, dim, vp ? unattributed(month) : null),
     creators: (creatorsAll() || []),
     mainCreators: PFRESH_LIST.slice(),
