@@ -659,7 +659,10 @@ app.get("/api/health", function(req, res){
   });
   const missing = REQUIRED_ROUTES.filter(function(r){ return have.indexOf(r) < 0; });
   if (missing.length) return res.status(500).json({ ok: false, missing: missing });
-  res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()) });
+  res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()),
+    orgPersistent: typeof ORG_PERSISTENT === "undefined" ? null : ORG_PERSISTENT,
+    orgTeams: (typeof ORG === "undefined" || !ORG.teams) ? 0 : ORG.teams.length,
+    dataDir: typeof DATA_DIR === "undefined" ? null : DATA_DIR });
 });
 
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
