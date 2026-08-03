@@ -404,6 +404,8 @@ function addCreatorByName(){
     .then(function(j){
       el.disabled = false; el.placeholder = prev;
       if (j && j.error) { alert(j.error); return; }
+      if (j && j.truncated) alert("Added " + u + ", but only " + j.added + " of " + j.hubspotTotal +
+        " leads could be pulled. HubSpot stops paging at 10,000 per query and this creator has more than that in a single day.");
       el.value = "";
       load(J.month);
     })

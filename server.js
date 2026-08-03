@@ -294,7 +294,7 @@ async function fetchCohortRange(creator, from, to, sink){
   if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
   const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
   const total = probe.total || 0;
-  if (total === 0) return;
+  if (total === 0) return { fetched: 0, total: 0, truncated: false };
   if (total > 9500 && from && to && (to - from) > 86400000) {
     const mid = Math.floor((from + to) / 2);
     await fetchCohortRange(creator, from, mid, sink);
@@ -358,7 +358,7 @@ async function fetchCallsRange(fromMs, toMs, sink, depth){
   ];
   const probe = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["hs_timestamp"], limit: 1 }) });
   const total = probe.total || 0;
-  if (total === 0) return;
+  if (total === 0) return { fetched: 0, total: 0, truncated: false };
   if (total > 9500 && (toMs - fromMs) > 3600000 && (depth || 0) < 12) {
     const mid = Math.floor((fromMs + toMs) / 2);
     await fetchCallsRange(fromMs, mid, sink, (depth || 0) + 1);
@@ -539,7 +539,7 @@ async function fetchBackupRange(from, to, sink){
   if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
   const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters: filters }], properties: ["createdate"], limit: 1 }) });
   const total = probe.total || 0;
-  if (total === 0) return;
+  if (total === 0) return { fetched: 0, total: 0, truncated: false };
   if (total > 9500 && from && to && (to - from) > 86400000) {
     const mid = Math.floor((from + to) / 2);
     await fetchBackupRange(from, mid, sink);
@@ -1720,22 +1720,37 @@ async function fetchFreshForCreator(creator, from, to, sink){
   if (to) filters.push({ propertyName: "createdate", operator: "LT", value: String(to) });
   const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
   const total = probe.total || 0;
-  if (total === 0) return;
+  if (total === 0) return { fetched: 0, total: 0, truncated: false };
   if (total > 9500 && from && to && (to - from) > 86400000) {
     const mid = Math.floor((from + to) / 2);
-    await fetchFreshForCreator(creator, from, mid, sink);
-    await fetchFreshForCreator(creator, mid, to, sink);
-    return;
+    const a = await fetchFreshForCreator(creator, from, mid, sink);
+    const b = await fetchFreshForCreator(creator, mid, to, sink);
+    return { fetched: (a ? a.fetched : 0) + (b ? b.fetched : 0), total: total,
+      truncated: !!((a && a.truncated) || (b && b.truncated)) };
   }
-  let after;
+  // HubSpot hard-stops search paging at 10,000 results and answers 400 beyond it.
+  // A single day can exceed that after a bulk import, and at one day the window can no
+  // longer be split, so cap the walk and report the shortfall rather than throwing.
+  let after, got = 0;
   do {
     const body = { filterGroups: [{ filters }], properties: PFRESH_PROPS,
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after: after };
-    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
-    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    let j;
+    try {
+      j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
+    } catch (e) {
+      console.error("fresh page failed for " + creator + " (" + got + " of " + total + " fetched): " + e.message);
+      return { fetched: got, total: total, truncated: true };
+    }
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); got++; });
     after = j.paging && j.paging.next && j.paging.next.after;
+    if (got >= 9500) {
+      console.error("fresh window capped for " + creator + ": " + total + " leads in a window that cannot be split further");
+      return { fetched: got, total: total, truncated: true };
+    }
     await sleep(130);
   } while (after);
+  return { fetched: got, total: total, truncated: false };
 }
 
 async function syncPriorityFresh(){
@@ -2057,7 +2072,7 @@ app.post("/api/callnow/sync-creator", async (req, res) => {
     const seen = {};
     PFRESH.rows.forEach(function(r){ seen[r.id] = 1; });
     const added = [];
-    await fetchFreshForCreator(creator, from, to, function(r){ if (!seen[r.id]) { seen[r.id] = 1; added.push(r); } });
+    const stat = await fetchFreshForCreator(creator, from, to, function(r){ if (!seen[r.id]) { seen[r.id] = 1; added.push(r); } });
     PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; }).concat(added);
     PFRESH.byCreator[creator] = added.length;
     if (!added.length) {
@@ -2076,7 +2091,8 @@ app.post("/api/callnow/sync-creator", async (req, res) => {
     if (PFRESH_LIST.indexOf(creator) < 0) PFRESH_LIST.push(creator);
     POOL_REV++;
     PFRESH.syncing = false;
-    res.json({ ok: true, creator: creator, added: added.length, total: PFRESH.rows.length, creators: PFRESH_LIST });
+    res.json({ ok: true, creator: creator, added: added.length, total: PFRESH.rows.length, creators: PFRESH_LIST,
+      truncated: !!(stat && stat.truncated), hubspotTotal: stat ? stat.total : null });
   } catch (e) {
     PFRESH.syncing = false;
     res.status(500).json({ error: e.message });
@@ -2695,7 +2711,7 @@ async function fetchPlanRange(creator, from, to, sink, depth){
   ];
   const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
   const total = probe.total || 0;
-  if (total === 0) return;
+  if (total === 0) return { fetched: 0, total: 0, truncated: false };
   if (total > 9500 && (to - from) > 86400000 && (depth || 0) < 20) {
     const mid = Math.floor((from + to) / 2);
     await fetchPlanRange(creator, from, mid, sink, (depth || 0) + 1);
