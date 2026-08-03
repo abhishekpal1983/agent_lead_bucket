@@ -183,7 +183,7 @@ function draw(){
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn' style='margin-left:auto'>All teams</a>" : "") + "</div>";
   if (VIEW === "managers") h += drawTeams();
-  else if (VIEW === "mapping" && J.isVP) h += drawCreatorRoster() + drawDrift();
+  else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
   else h += drawStrip() + drawExceptions();
   document.getElementById("app").innerHTML = h;
@@ -231,7 +231,13 @@ function drawStrip(){
     "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#38BDF8'></i>" +
       (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FB923C'></i>" : "") + "</div>" +
     "<div class='l'>" + att + "% attained · " + el + "% of month elapsed · " +
-    (gap >= 0 ? "<span style='color:#6EE7B7'>" + inr(gap) + " ahead</span>" : "<span style='color:#FDBA74'>" + inr(-gap) + " behind pace</span>") + "</div></div>";
+    (gap >= 0 ? "<span style='color:#6EE7B7'>" + inr(gap) + " ahead</span>" : "<span style='color:#FDBA74'>" + inr(-gap) + " behind pace</span>") +
+    (J.unattributed && J.unattributed.missing > 0
+      ? "<div style='margin-top:5px;color:#FDBA74'>Sheet total for the month is " + inr(J.unattributed.all) +
+        ". " + inr(J.unattributed.missing) + " across " + fmt(J.unattributed.rows) +
+        " payments is not counted here, the agent who booked it is not mapped to a team." +
+        " <a href='#' onclick=\"go('mapping');return false\" style='color:#93C5FD'>Fix mapping</a></div>"
+      : "") + "</div></div>";
   h += tile("blue", fmt(e) + (te ? " <span style='font-size:14px;font-weight:400'>/ " + fmt(te) + "</span>" : ""), "Enrolments");
   h += tile("blue", fmt(co), "Counsellings");
   h += tile("teal", c2e === null ? "–" : c2e + "%", "C2E");
@@ -357,6 +363,18 @@ function creatorRows(t){
       });
     }
   });
+  return h;
+}
+function drawUnattributed(){
+  var u = J.unattributed;
+  if (!u || !u.missing) return "";
+  var h = "<div class='sec'><h2>Revenue not counted <span class='pill r'>" + inr(u.missing) + "</span></h2>" +
+    "<div class='sub'>These payments are in the sheet for " + esc(J.month) + " but the agent who booked them belongs to no team, so they are missing from every number on this dashboard. Map the agent below and the revenue appears.</div>";
+  h += "<div class='tw'><table><thead><tr><th>Booked by</th><th class='n'>Revenue</th></tr></thead><tbody>";
+  u.top.forEach(function(x){
+    h += "<tr><td>" + esc(x.who) + "</td><td class='n'><b>" + inr(x.revenue) + "</b></td></tr>";
+  });
+  h += "</tbody></table></div></div>";
   return h;
 }
 function drawCreatorRoster(){

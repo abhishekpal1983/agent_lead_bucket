@@ -2463,6 +2463,33 @@ function weekTrend(teamAgentEmails){
     delta: prev ? Math.round(1000 * (cur - prev) / prev) / 10 : null };
 }
 
+// Revenue in the sheet that no mapped agent owns. Without this the hero tile looks
+// like company revenue when it is only the mapped share, and the gap is invisible.
+function unattributed(month){
+  const mapped = {};
+  (ORG.teams || []).forEach(function(t){
+    (t.agentIds || []).forEach(function(id){
+      const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+      if (e) mapped[e] = 1;
+    });
+  });
+  let all = 0, miss = 0, rows = 0;
+  const by = {};
+  (SHEET.rows || []).forEach(function(r){
+    if (ymOf(r.date) !== month) return;
+    const v = num(r.price_inr);
+    all += v;
+    const oe = String(r.owner_email || "").trim().toLowerCase();
+    if (mapped[oe]) return;
+    miss += v; rows++;
+    const key = oe || ("(no owner email) " + (r.sales_rep || ""));
+    by[key] = (by[key] || 0) + v;
+  });
+  return { all: Math.round(all), missing: Math.round(miss), rows: rows,
+    top: Object.entries(by).map(function(e){ return { who: e[0], revenue: Math.round(e[1]) }; })
+      .sort(function(a, b){ return b.revenue - a.revenue; }).slice(0, 12) };
+}
+
 function vpExceptions(teams, drift, dom, dim){
   const out = [];
   const add = function(level, kind, team, text){ out.push({ level: level, kind: kind, team: team || "", text: text }); };
@@ -2489,6 +2516,11 @@ function vpExceptions(teams, drift, dom, dim){
         " against a team target of " + Math.round(t.target).toLocaleString("en-IN") + ".");
     }
   });
+  if (arguments.length > 4 && arguments[4] && arguments[4].missing > 0) {
+    const u = arguments[4];
+    add("bad", "Revenue", "", Math.round(u.missing).toLocaleString("en-IN") + " rupees across " + u.rows +
+      " payments is not counted above, because the agent who booked it is not mapped to any team.");
+  }
   const dLeads = (drift || []).reduce(function(a, d){ return a + d.leads; }, 0);
   if (dLeads > 0) {
     add("bad", "Mapping", "", (drift.length) + " agents holding " + dLeads.toLocaleString("en-IN") +
@@ -2569,7 +2601,8 @@ app.get("/api/vp", function(req, res){
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: vp ? orgDrift() : [],
     scope: vp ? "all" : "own",
-    exceptions: vpExceptions(teams, vp ? orgDrift() : [], dom, dim),
+    unattributed: vp ? unattributed(month) : null,
+    exceptions: vpExceptions(teams, vp ? orgDrift() : [], dom, dim, vp ? unattributed(month) : null),
     creators: (creatorsAll() || []),
     mainCreators: PFRESH_LIST.slice(),
     targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
