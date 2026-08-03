@@ -50,7 +50,7 @@ table{border-collapse:separate;border-spacing:0;font-size:13.5px;width:100%}
 th{background:#F4F7FA;padding:9px 11px;text-align:left;font-size:11.5px;font-weight:600;color:#4A5A6A;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #DCE4EC}
 td{padding:10px 11px;border-bottom:1px solid #EFF3F7;white-space:nowrap;vertical-align:top}
 tr:last-child td{border-bottom:none}
-td.n{text-align:right;font-variant-numeric:tabular-nums}
+td.n,th.n{text-align:left;font-variant-numeric:tabular-nums}
 .tw{border:1px solid #DCE4EC;border-radius:8px;overflow:auto}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
 .pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block}
@@ -62,6 +62,8 @@ tr.clik:hover td{background:#F4F7FA}
 tr.sub td{background:#FAFCFE;font-size:13px}
 tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .car{display:inline-block;width:13px;color:#6B7A8A;font-weight:600}
+.mlink{color:#0A2540;font-weight:600;text-decoration:none;border-bottom:1px dashed #9DB2C6}
+.mlink:hover{color:#0091AE;border-bottom-color:#0091AE}
 .tin{width:112px;padding:4px 8px;font-size:13px;text-align:right;border:1px solid #DCE4EC;border-radius:5px;font-variant-numeric:tabular-nums}
 .tin.saved{border-color:#0A5346;background:#F1FAF7}
 .exc{display:flex;gap:9px;align-items:baseline;padding:8px 0;border-top:1px solid #EFF3F7;font-size:13.5px;color:#37475A;line-height:1.55}
@@ -78,6 +80,8 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .it.off:hover{background:#fff}
 .it.on{background:#F4F7FA}
 .pane .none{padding:9px 10px;font-size:12.5px;color:#A8B4C0}
+.adminwrap{background:#E7EEF5;border:1px solid #D3DEE9;border-radius:10px;padding:13px}
+.teamcard{background:#fff;border:1px solid #D3DEE9;border-radius:9px;padding:13px 14px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:1050px){.grid{grid-template-columns:1fr}}
 #loading{padding:60px;text-align:center;color:#566575}
@@ -101,6 +105,7 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 </div>
 <script>
 var J = null, EDIT = null, OPEN = {}, OPENC = {}, VIEW = localStorage.getItem("vp_view") || "overview";
+var ONLY = new URLSearchParams(location.search).get("team") || "";
 function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
 function inr(v){ v = Math.round(v||0); return v>=1e7 ? "₹"+(v/1e7).toFixed(2)+"Cr" : v>=1e5 ? "₹"+(v/1e5).toFixed(1)+"L" : "₹"+fmt(v); }
@@ -159,7 +164,12 @@ function draw(){
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
   var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets" }[VIEW] || "Overview";
-  h += "<div class='top'><h2>" + title + "</h2><span id='mon'></span></div>";
+  if (ONLY) {
+    var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
+    title += " · " + (only ? (only.name || "team") : "team");
+  }
+  h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
+    (ONLY ? "<a href='/vp.html' class='btn' style='margin-left:auto'>All teams</a>" : "") + "</div>";
   if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawDrift();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
@@ -250,10 +260,12 @@ function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
   h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th></tr></thead><tbody>";
-  J.teams.forEach(function(t){
+  J.teams.filter(function(t){ return !ONLY || t.id === ONLY; }).forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
     var open = !!OPEN[t.id];
-    h += "<tr class='clik' onclick=\"tog('" + t.id + "')\"><td><span class='car'>" + (open ? "▾" : "▸") + "</span><b>" + esc(t.name || "(unnamed)") + "</b>" +
+    h += "<tr class='clik' onclick=\"tog('" + t.id + "')\"><td><span class='car'>" + (open ? "▾" : "▸") + "</span>" +
+      "<a class='mlink' href='/vp.html?team=" + esc(t.id) + "' onclick='event.stopPropagation()' title='Open this manager view. Share this link with them.'>" +
+      esc(t.name || "(unnamed)") + "</a>" +
       "<div class='mut' style='font-size:12px;padding-left:12px'>" + esc(t.managerEmail || "no manager email") + " · " +
       t.agents.length + " agents · " + t.creators.length + " creators</div></td>" +
       moneyCell(t.revenue, t.target, t.attainment, t.creatorRows) +
@@ -362,10 +374,10 @@ function assign(agentId, teamId){
 }
 function drawAdmin(){
   var h = "<div class='sec'><h2>Teams and targets</h2><div class='sub'>A team is one manager. Agents map to exactly one team; creators can belong to one team each.</div>";
-  h += "<div class='grid'>";
+  h += "<div class='adminwrap'><div class='grid'>";
   J.teams.forEach(function(t){ h += teamCard(t); });
   h += teamCard({ id: "", name: "", managerEmail: "", agentIds: [], creators: [] });
-  h += "</div></div>";
+  h += "</div></div></div>";
   return h;
 }
 var SEL = {}, TEAMS_BY_KEY = {};
@@ -443,7 +455,7 @@ function pane(title, items, k, kind, side, searchable){
 }
 function teamCard(t){
   ensureSel(t);
-  return "<div id='card_" + cardKey(t) + "' style='border:1px solid #E3E8EE;border-radius:8px;padding:12px 13px'>" + cardInner(t) + "</div>";
+  return "<div class='teamcard' id='card_" + cardKey(t) + "'>" + cardInner(t) + "</div>";
 }
 function cardInner(t){
   var k = cardKey(t), sel = SEL[k], isNew = !t.id;
