@@ -335,32 +335,52 @@ function toggleItem(k, kind, val){
   var arr = SEL[k][kind], i = arr.indexOf(val);
   if (i >= 0) arr.splice(i, 1); else arr.push(val);
   var el = document.getElementById("card_" + k);
-  if (el) el.innerHTML = cardInner(TEAMS_BY_KEY[k]);
+  if (el) {
+    el.innerHTML = cardInner(TEAMS_BY_KEY[k]);
+    applyFind(k, "agents");
+    applyFind(k, "creators");
+  }
 }
 var FIND = {};
+// Filter the rendered list in place. Re-rendering the card on every keystroke lost
+// characters and scrambled their order, because each render replaced the input mid-type.
 function setFind(k, kind, v){
   FIND[k + "|" + kind] = v;
-  var el = document.getElementById("card_" + k);
-  if (el) { el.innerHTML = cardInner(TEAMS_BY_KEY[k]); var f = document.getElementById("f_" + k + "_" + kind); if (f) { f.focus(); f.value = v; } }
+  applyFind(k, kind);
+}
+function applyFind(k, kind){
+  var q = (FIND[k + "|" + kind] || "").toLowerCase();
+  var box = document.getElementById("pane_" + k + "_" + kind);
+  if (!box) return;
+  var items = box.querySelectorAll(".it");
+  var shown = 0;
+  for (var i = 0; i < items.length; i++) {
+    var hit = !q || (items[i].getAttribute("data-l") || "").indexOf(q) >= 0;
+    items[i].style.display = hit ? "" : "none";
+    if (hit) shown++;
+  }
+  var none = document.getElementById("none_" + k + "_" + kind);
+  if (none) none.style.display = shown ? "none" : "";
 }
 function pane(title, items, k, kind, side, searchable){
-  var h = "<div class='pane'><div class='ph'>" + title + "</div>";
+  var h = "<div class='pane' id='pane_" + k + "_" + kind + (side === "in" ? "_in" : "") + "'><div class='ph'>" + title + "</div>";
   if (searchable) {
     var q = FIND[k + "|" + kind] || "";
-    h += "<div style='padding:5px 7px;position:sticky;top:22px;background:#fff;border-bottom:1px solid #F0F3F7'>" +
-      "<input id='f_" + k + "_" + kind + "' placeholder='search...' value='" + esc(q) + "' style='width:100%;padding:3px 7px;font-size:11.5px'" +
+    h += "<div style='padding:5px 7px;position:sticky;top:24px;background:#fff;border-bottom:1px solid #F0F3F7;z-index:2'>" +
+      "<input id='f_" + k + "_" + kind + "' placeholder='search...' value='" + esc(q) + "' style='width:100%;padding:4px 8px;font-size:12.5px'" +
       " oninput=\"setFind('" + k + "','" + kind + "', this.value)\"></div>";
-    if (q) items = items.filter(function(it){ return it.label.toLowerCase().indexOf(q.toLowerCase()) >= 0; });
   }
   if (!items.length) h += "<div class='none'>" + (side === "in" ? "nothing assigned yet" : "nothing left") + "</div>";
   items.forEach(function(it){
+    var dl = " data-l=\"" + esc(it.label.toLowerCase()) + "\"";
     if (it.off) {
-      h += "<div class='it off' title='Already in " + esc(it.off) + "'>" + esc(it.label) + " <span style='font-size:10.5px'>(" + esc(it.off) + ")</span></div>";
+      h += "<div class='it off'" + dl + " title='Already in " + esc(it.off) + "'>" + esc(it.label) + " <span style='font-size:11px'>(" + esc(it.off) + ")</span></div>";
     } else {
-      h += "<div class='it" + (side === "in" ? " on" : "") + "' onclick=\"toggleItem('" + k + "','" + kind + "','" + esc(it.v).replace(/'/g, "\\'") + "')\">" +
+      h += "<div class='it" + (side === "in" ? " on" : "") + "'" + dl + " onclick=\"toggleItem('" + k + "','" + kind + "','" + esc(it.v).replace(/'/g, "\\'") + "')\">" +
         "<span>" + esc(it.label) + "</span><span class='ar' style='margin-left:auto'>" + (side === "in" ? "remove ✕" : "add →") + "</span></div>";
     }
   });
+  if (searchable) h += "<div class='none' id='none_" + k + "_" + kind + "' style='display:none'>no match</div>";
   return h + "</div>";
 }
 function teamCard(t){
