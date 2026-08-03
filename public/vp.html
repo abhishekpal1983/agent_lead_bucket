@@ -191,10 +191,13 @@ function tile(cls, v, l){
 }
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
+  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0;
   J.teams.forEach(function(x){
     t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
     co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
     over += x.overdue; unc += x.uncalled;
+    act += (x.activeAgents || 0); tot += (x.agents || []).length;
+    created += (x.created || 0); cohC += (x.cohortCounselled || 0); risk += (x.risk || 0);
   });
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
@@ -214,6 +217,20 @@ function drawStrip(){
   h += tile(missed ? "red" : "grey", fmt(missed), "Missed today");
   h += tile(over ? "amber" : "grey", fmt(over), "Follow-ups overdue");
   h += tile(unc ? "amber" : "grey", fmt(unc), "Never called");
+
+  var ticket = e ? a / e : 0;
+  var l2c = created ? Math.round(1000 * cohC / created) / 10 : null;
+  var wk = J.week || { current: 0, previous: 0, delta: null };
+  var proj = J.dayOfMonth ? Math.round(a * J.daysInMonth / J.dayOfMonth) : 0;
+
+  h += tile(act < tot / 2 ? "red" : "teal", fmt(act) + " <span style='font-size:14px;font-weight:400'>of " + fmt(tot) + "</span>", "Agents who called today");
+  h += tile(risk ? "red" : "grey", inr(Math.round(risk * ticket)), "Revenue at risk · " + fmt(risk) + " prospects");
+  h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C this month");
+  h += tile("blue", fmt(created), "New leads this month");
+  h += tile(wk.delta === null ? "grey" : (wk.delta >= 0 ? "teal" : "red"),
+    inr(wk.current) + (wk.delta === null ? "" : " <span style='font-size:14px;font-weight:400'>" + (wk.delta >= 0 ? "+" : "") + wk.delta + "%</span>"),
+    "Last 7 days vs previous " + inr(wk.previous));
+  h += tile(proj >= t ? "teal" : "amber", inr(proj), "Projected month end");
   if (J.scope !== "own") h += tile(J.drift.length ? "red" : "grey", fmt(J.drift.length), "Agents unmapped");
   return h + "</div>";
 }

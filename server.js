@@ -2369,7 +2369,7 @@ function vpAggregate(month){
     if (!agg[tid][creator]) agg[tid][creator] = {};
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
       revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
-      churned: 0, worked: 0, counsellings: 0
+      churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2392,6 +2392,10 @@ function vpAggregate(month){
     const o = cell(tid, r.creator || "(no creator)", aid);
     // first-counselled month, attributed to the lead's current owner, same rule as elsewhere
     if (ymOf(COUNSEL.byId[c.id]) === month) o.counsellings++;
+    // L2C cohort: leads created this month, and how many of them ever reached counselling
+    if (ymOf(c.createdate) === month) { o.created++; if (COUNSEL.byId[c.id]) o.cohortCounselled++; }
+    // revenue at risk: a payment prospect whose follow-up has already lapsed
+    if (r.stage === "payment_prospect" && r.fu && r.fu < now) o.risk++;
     if (CHURN.indexOf(r.stage) >= 0) { o.churned++; o.worked++; }
     else if (r.stage !== "__fresh") o.worked++;
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
@@ -2404,8 +2408,24 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
+
+// Revenue booked in the last 7 days against the 7 before, for the teams in scope.
+function weekTrend(teamAgentEmails){
+  const now = Date.now(), d7 = now - 7 * 86400000, d14 = now - 14 * 86400000;
+  let cur = 0, prev = 0;
+  (SHEET.rows || []).forEach(function(r){
+    const oe = String(r.owner_email || "").toLowerCase();
+    if (teamAgentEmails && !teamAgentEmails[oe]) return;
+    const t = ts(r.date);
+    if (!t) return;
+    if (t >= d7 && t <= now) cur += num(r.price_inr);
+    else if (t >= d14 && t < d7) prev += num(r.price_inr);
+  });
+  return { current: Math.round(cur), previous: Math.round(prev),
+    delta: prev ? Math.round(1000 * (cur - prev) / prev) / 10 : null };
+}
 
 function vpExceptions(teams, drift, dom, dim){
   const out = [];
@@ -2457,12 +2477,14 @@ app.get("/api/vp", function(req, res){
   const teams = visible.map(function(team){
     const byCreator = agg[team.id] || {};
     const totals = zero();
+    const agentTouched = {};
     const mappedOnly = (team.creators || []);
     const creatorRows = Object.keys(byCreator).filter(function(cu){ return mappedOnly.indexOf(cu) >= 0; }).map(function(cu){
       const perAgent = byCreator[cu];
       const ctot = zero();
       const agents = Object.keys(perAgent).map(function(aid){
         const o = CACHE.owners[aid] || {};
+        if (perAgent[aid].touched > 0) agentTouched[aid] = 1;
         addInto(ctot, perAgent[aid]);
         return Object.assign({ id: aid, name: o.name || ("Owner " + aid), email: o.email || "", active: o.active !== false }, perAgent[aid]);
       }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
@@ -2487,13 +2509,22 @@ app.get("/api/vp", function(req, res){
         return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
       }),
       creatorRows: creatorRows,
+      activeAgents: Object.keys(agentTouched).length,
       target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
       paceTarget: Math.round(paceTarget),
       gap: Math.round(totals.revenue - paceTarget),
       attainment: target ? Math.round(1000 * totals.revenue / target) / 10 : null
     }, totals);
   }).sort(function(x, y){ return y.revenue - x.revenue; });
+  const scopedEmails = {};
+  teams.forEach(function(t){
+    (t.agentIds || []).forEach(function(id){
+      const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+      if (e) scopedEmails[e] = 1;
+    });
+  });
   res.json({
+    week: weekTrend(Object.keys(scopedEmails).length ? scopedEmails : null),
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: vp ? orgDrift() : [],
