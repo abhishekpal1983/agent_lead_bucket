@@ -2368,7 +2368,8 @@ function vpAggregate(month){
     if (!agg[tid]) agg[tid] = {};
     if (!agg[tid][creator]) agg[tid][creator] = {};
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
-      revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0
+      revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
+      churned: 0, worked: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2388,8 +2389,10 @@ function vpAggregate(month){
     const tid = teamOf[aid];
     if (!tid) return;
     const r = cnRow(c), sg = cnSegs(r);
-    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     const o = cell(tid, r.creator || "(no creator)", aid);
+    if (CHURN.indexOf(r.stage) >= 0) { o.churned++; o.worked++; }
+    else if (r.stage !== "__fresh") o.worked++;
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     o.queue++;
     const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
     if (ct) o.touched++;
@@ -2399,8 +2402,43 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
+
+function vpExceptions(teams, drift, dom, dim){
+  const out = [];
+  const add = function(level, kind, team, text){ out.push({ level: level, kind: kind, team: team || "", text: text }); };
+  teams.forEach(function(t){
+    if (!t.target) { add("warn", "Target", t.name, "No revenue target set for this month."); }
+    else if (t.gap < 0 && Math.abs(t.gap) > t.target * 0.05) {
+      add("bad", "Pace", t.name, "Behind pace by " + Math.round(-t.gap).toLocaleString("en-IN") +
+        " rupees, " + (t.attainment || 0) + "% attained on day " + dom + " of " + dim + ".");
+    }
+    if (t.due >= 10 && t.done / t.due < 0.5) {
+      add("bad", "Effort", t.name, t.done + " of " + t.due + " due calls made today, " + t.missed + " still outstanding.");
+    } else if (t.missed > 0) {
+      add("warn", "Missed", t.name, t.missed + " follow-ups due today have not been called.");
+    }
+    if (t.worked >= 50 && t.churned / t.worked > 0.6) {
+      add("bad", "Quality", t.name, Math.round(100 * t.churned / t.worked) + "% of worked leads are disqualified, not interested or ghosted.");
+    }
+    if (t.uncalled > 500) {
+      add("warn", "Idle", t.name, t.uncalled.toLocaleString("en-IN") + " priority leads have never been called.");
+    }
+    const sum = (t.creatorRows || []).reduce(function(a, c){ return a + (c.target || 0); }, 0);
+    if (t.target && sum && Math.abs(sum - t.target) > 1) {
+      add("warn", "Targets", t.name, "Creator targets add up to " + Math.round(sum).toLocaleString("en-IN") +
+        " against a team target of " + Math.round(t.target).toLocaleString("en-IN") + ".");
+    }
+  });
+  const dLeads = (drift || []).reduce(function(a, d){ return a + d.leads; }, 0);
+  if (dLeads > 0) {
+    add("bad", "Mapping", "", (drift.length) + " agents holding " + dLeads.toLocaleString("en-IN") +
+      " leads belong to no team, so none of it appears above.");
+  }
+  const order = { bad: 0, warn: 1 };
+  return out.sort(function(a, b){ return order[a.level] - order[b.level]; });
+}
 
 app.get("/api/vp", function(req, res){
   const month = String(req.query.month || curMonth());
@@ -2412,7 +2450,8 @@ app.get("/api/vp", function(req, res){
   const teams = (ORG.teams || []).map(function(team){
     const byCreator = agg[team.id] || {};
     const totals = zero();
-    const creatorRows = Object.keys(byCreator).map(function(cu){
+    const mappedOnly = (team.creators || []);
+    const creatorRows = Object.keys(byCreator).filter(function(cu){ return mappedOnly.indexOf(cu) >= 0; }).map(function(cu){
       const perAgent = byCreator[cu];
       const ctot = zero();
       const agents = Object.keys(perAgent).map(function(aid){
@@ -2422,7 +2461,7 @@ app.get("/api/vp", function(req, res){
       }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
       addInto(totals, ctot);
       const ct = (t.creators || {})[cu] || {};
-      return Object.assign({ u: cu, target: num(ct.revenue), mapped: (team.creators || []).indexOf(cu) >= 0, agents: agents }, ctot);
+      return Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: agents }, ctot);
     }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
     (team.creators || []).forEach(function(cu){
       if (!byCreator[cu]) {
@@ -2451,6 +2490,7 @@ app.get("/api/vp", function(req, res){
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: orgDrift(),
+    exceptions: vpExceptions(teams, orgDrift(), dom, dim),
     creators: (creatorsAll() || []),
     targets: t, benchmarks: ORG.benchmarks || { creators: {}, company: {} },
     log: (ORG.log || []).slice(-30).reverse()

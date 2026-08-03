@@ -37,6 +37,9 @@ tr.sub2 td{background:#F5F8FB;font-size:11.5px}
 .tin.saved{border-color:#15613F;background:#F3FAF6}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:4px;display:inline-block}
 .pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
+.exc{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-top:1px solid #F0F3F7;font-size:12.5px;color:#425B76;line-height:1.6}
+.exc:first-of-type{border-top:none}
+.exc b.who{color:#0A2540;font-weight:600}
 .warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
 .warn.bad{background:#FADFDA;border-color:#F0B5AA;color:#99301C}
 .strip{display:flex;background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;overflow:hidden}
@@ -110,7 +113,7 @@ function draw(){
   var h = "";
   if (!J.persistent) h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, so teams and targets vanish on the next deploy. In Railway add a Volume mounted at <b>/data</b>.</div>";
   if (!J.isVP) h += "<div class='warn'>Read only. Editing is limited to the emails in VP_EMAILS.</div>";
-  h += drawStrip() + drawTeams() + drawDrift() + drawAdmin();
+  h += drawStrip() + drawExceptions() + drawTeams() + drawDrift() + drawAdmin();
   document.getElementById("app").innerHTML = h;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
     "<span style='font-size:11px;color:#697386;margin-left:8px'>day " + J.dayOfMonth + " of " + J.daysInMonth + "</span>";
@@ -146,6 +149,18 @@ function drawStrip(){
     "<div><div class='v " + (missed ? "cr" : "") + "'>" + fmt(missed) + "</div><div class='l'>Missed today</div></div>" +
     "<div><div class='v " + (J.drift.length ? "cr" : "") + "'>" + fmt(J.drift.length) + "</div><div class='l'>Agents unmapped</div></div>" +
     "</div>";
+}
+function drawExceptions(){
+  var x = J.exceptions || [];
+  if (!x.length) return "<div class='sec'><h2>Needs a call-out today</h2><div class='sub cg'>Nothing flagged. Targets set, pace on track, follow-ups worked.</div></div>";
+  var bad = x.filter(function(e){ return e.level === "bad"; }).length;
+  var h = "<div class='sec'><h2>Needs a call-out today " + (bad ? "<span class='pill r'>" + bad + " urgent</span>" : "") + "</h2>" +
+    "<div class='sub'>Generated from this month's numbers. Ordered by severity.</div>";
+  x.forEach(function(e){
+    h += "<div class='exc'><span class='pill " + (e.level === "bad" ? "r" : "a") + "'>" + esc(e.kind) + "</span>" +
+      "<span>" + (e.team ? "<b class='who'>" + esc(e.team) + "</b> · " : "") + esc(e.text) + "</span></div>";
+  });
+  return h + "</div>";
 }
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
@@ -195,14 +210,13 @@ function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
 function creatorRows(t){
   var h = "";
   if (!t.creatorRows.length) {
-    return "<tr class='sub'><td colspan='11' class='mut'>No revenue or queue for this team yet.</td></tr>";
+    return "<tr class='sub'><td colspan='11' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
   }
   t.creatorRows.forEach(function(c){
     var k = t.id + "||" + c.u, open = !!OPENC[k];
     var gap = c.target ? Math.round(c.revenue - c.target * (J.dayOfMonth / J.daysInMonth)) : null;
     h += "<tr class='sub clik' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
-      "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) +
-      (c.mapped ? "" : " <span class='pill a' title='This creator is not mapped to the team, revenue arrived through an agent'>unmapped</span>") + "</td>" +
+      "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) + "</td>" +
       "<td class='n' onclick='event.stopPropagation()'>" + (J.isVP
         ? "<input class='tin' id='ct_" + esc(c.u) + "' type='number' placeholder='not set' value='" + (c.target || "") + "'" +
           " onkeydown=\"if(event.key==='Enter'){this.blur()}\" onblur=\"saveCreatorTarget('" + esc(c.u).replace(/'/g, "\\'") + "', this)\">"
