@@ -2258,7 +2258,13 @@ function sessionOf(req){
   if (!p) return null;
   const em = String(p.email).toLowerCase();
   const vps = (process.env.VP_EMAILS || "").split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
-  const role = (MANAGER_EMAILS.indexOf(em) >= 0 || vps.indexOf(em) >= 0) ? "manager" : "agent";
+  // Anyone set as the manager of a team gets manager access automatically. Without this
+  // you would have to add every manager to MANAGER_EMAILS as well, and a missed entry
+  // silently demotes them to agent and locks them out of their own dashboard.
+  const leadsTeam = ((typeof ORG !== "undefined" && ORG.teams) || []).some(function(t){
+    return String(t.managerEmail || "").toLowerCase() === em;
+  });
+  const role = (MANAGER_EMAILS.indexOf(em) >= 0 || vps.indexOf(em) >= 0 || leadsTeam) ? "manager" : "agent";
   return { email: p.email, name: p.name || p.email, role: role, ownerId: role === "agent" ? ownerIdForEmail(p.email) : "" };
 }
 
