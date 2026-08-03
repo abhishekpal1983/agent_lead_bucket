@@ -6,86 +6,101 @@
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F6F9FC;color:#0A2540;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-.hdr{background:#fff;border-bottom:1px solid #E3E8EE;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.hdr h1{font-size:17px;font-weight:600;letter-spacing:-.01em}
-.wrap{max-width:1560px;margin:0 auto;padding:14px 20px 60px}
-.sec{background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:12px;padding:12px 15px}
-.row2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:start}
-@media(max-width:1100px){.row2{grid-template-columns:1fr}}
-.row2 .sec{margin-bottom:0;height:100%}
-.strip.tall{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
-.strip.tall>div{border-right:1px solid #F0F3F7;border-bottom:1px solid #F0F3F7}
-.strip.tall>div:nth-child(3n){border-right:none}
-.strip.tall>div:nth-last-child(-n+3){border-bottom:none}
-.strip.tall>div:first-child{grid-column:1 / -1;border-right:none}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F7FA;color:#0A2540;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
+@media(max-width:900px){.shell{grid-template-columns:1fr}}
+.nav{background:#0A2540;padding:16px 12px;display:flex;flex-direction:column;gap:3px}
+.nav h1{font-size:16px;font-weight:600;color:#fff;letter-spacing:-.01em;padding:0 8px 4px}
+.nav .who{font-size:11.5px;color:#7C93AD;padding:0 8px 14px;line-height:1.5}
+.nav a,.nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:#A9BED2;font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 10px;border-radius:6px;cursor:pointer;text-decoration:none}
+.nav button:hover{background:#12304F;color:#fff}
+.nav button.on{background:#0091AE;color:#fff}
+.nav .cnt{margin-left:auto;font-size:11.5px;font-weight:600;background:#12304F;color:#9FB6CC;padding:1px 7px;border-radius:10px}
+.nav button.on .cnt{background:#0B7A90;color:#fff}
+.nav .cnt.bad{background:#C2410C;color:#fff}
+.nav .foot{margin-top:auto;padding:10px 8px 0;border-top:1px solid #12304F}
+.nav .foot a{color:#7C93AD;font-size:12px;padding:5px 2px}
+.main{padding:18px 22px 50px;max-width:1400px}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.top h2{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.sec{background:#fff;border:1px solid #DCE4EC;border-radius:10px;margin-bottom:14px;padding:14px 16px}
 .sec h2{font-size:15px;font-weight:600;margin-bottom:3px;color:#0A2540}
-.sec .sub{font-size:12.5px;color:#566575;margin-bottom:9px}
-select,input{border:1px solid #E3E8EE;border-radius:6px;padding:6px 9px;font-size:13px;background:#fff;font-family:inherit;color:#0A2540}
-input:focus,select:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #E4F4F8}
-.btn{border:1px solid #E3E8EE;background:#fff;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#425B76}
-.btn:hover{background:#F7FAFC}
-.btn.p{background:#FF7A59;color:#fff;border-color:#FF7A59}
-.btn.d{color:#99301C;border-color:#F8C6B4}
+.sec .sub{font-size:12.5px;color:#566575;margin-bottom:10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;margin-bottom:14px}
+.tile{border-radius:10px;padding:12px 14px}
+.tile .v{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .l{font-size:12px;margin-top:1px}
+.tile.hero{grid-column:1 / -1;background:#0A2540}
+.tile.hero .v{color:#fff;font-size:26px}
+.tile.hero .l{color:#93A7BC}
+.tile.blue{background:#DCEDF6}.tile.blue .v{color:#0B4A66}.tile.blue .l{color:#3D6C86}
+.tile.teal{background:#DDEFEA}.tile.teal .v{color:#0A5346}.tile.teal .l{color:#3B7568}
+.tile.amber{background:#FAEBD7}.tile.amber .v{color:#7A4A08}.tile.amber .l{color:#98663A}
+.tile.red{background:#FBE2D8}.tile.red .v{color:#8C2D12}.tile.red .l{color:#A9573A}
+.tile.grey{background:#EAEFF4}.tile.grey .v{color:#2C4054}.tile.grey .l{color:#5A6B7D}
+.track{height:7px;border-radius:4px;background:#1E3A57;overflow:hidden;margin:9px 0 7px;display:flex}
+.track i{display:block;height:7px}
+select,input{border:1px solid #DCE4EC;border-radius:6px;padding:6px 10px;font-size:13px;background:#fff;font-family:inherit;color:#0A2540}
+input:focus,select:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #DCEDF6}
+.btn{border:1px solid #DCE4EC;background:#fff;border-radius:6px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;color:#37475A}
+.btn:hover{background:#F4F7FA}
+.btn.p{background:#0091AE;color:#fff;border-color:#0091AE}
+.btn.d{color:#8C2D12;border-color:#F0C0B2}
 table{border-collapse:separate;border-spacing:0;font-size:13.5px;width:100%}
-th{background:#F7FAFC;padding:9px 11px;text-align:left;font-size:11.5px;font-weight:600;color:#4A5A6A;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #E3E8EE}
-td{padding:9px 11px;border-bottom:1px solid #F0F3F7;white-space:nowrap;vertical-align:top}
+th{background:#F4F7FA;padding:9px 11px;text-align:left;font-size:11.5px;font-weight:600;color:#4A5A6A;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #DCE4EC}
+td{padding:10px 11px;border-bottom:1px solid #EFF3F7;white-space:nowrap;vertical-align:top}
 tr:last-child td{border-bottom:none}
 td.n{text-align:right;font-variant-numeric:tabular-nums}
-.tw{border:1px solid #E3E8EE;border-radius:8px;overflow:auto}
-.mut{color:#6B7A8A}
+.tw{border:1px solid #DCE4EC;border-radius:8px;overflow:auto}
+.mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
+.pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block}
+.pill.g{background:#DDEFEA;color:#0A5346}.pill.r{background:#FBE2D8;color:#8C2D12}.pill.a{background:#FAEBD7;color:#7A4A08}
+.warn{background:#FAEBD7;color:#7A4A08;border:1px solid #EFD3AE;border-radius:8px;padding:10px 13px;font-size:13px;margin-bottom:12px}
+.warn.bad{background:#FBE2D8;border-color:#F0C0B2;color:#8C2D12}
 tr.clik{cursor:pointer}
-tr.clik:hover td{background:#F7FAFC}
-tr.sub td{background:#FBFCFD;font-size:13px}
-tr.sub2 td{background:#F5F8FB;font-size:12.5px}
-.tw2{border:1px solid #E3E8EE;border-radius:6px;overflow:hidden;margin:2px 0 6px}
-.car{display:inline-block;width:12px;color:#8B99A8;font-weight:600}
-.tin{width:104px;padding:3px 7px;font-size:12px;text-align:right;border:1px solid #E3E8EE;border-radius:5px;font-variant-numeric:tabular-nums}
-.tin:hover{border-color:#C9D2DD}
-.tin.saved{border-color:#15613F;background:#F3FAF6}.cg{color:#15613F}.cr{color:#99301C}.ca{color:#8A5A00}
-.pill{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:4px;display:inline-block}
-.pill.g{background:#DFEFE6;color:#15613F}.pill.r{background:#FADFDA;color:#99301C}.pill.a{background:#FBEFE2;color:#8A4B08}
-.exc{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-top:1px solid #F0F3F7;font-size:13.5px;color:#37475A;line-height:1.55}
+tr.clik:hover td{background:#F4F7FA}
+tr.sub td{background:#FAFCFE;font-size:13px}
+tr.sub2 td{background:#F2F6FA;font-size:12.5px}
+.car{display:inline-block;width:13px;color:#6B7A8A;font-weight:600}
+.tin{width:112px;padding:4px 8px;font-size:13px;text-align:right;border:1px solid #DCE4EC;border-radius:5px;font-variant-numeric:tabular-nums}
+.tin.saved{border-color:#0A5346;background:#F1FAF7}
+.exc{display:flex;gap:9px;align-items:baseline;padding:8px 0;border-top:1px solid #EFF3F7;font-size:13.5px;color:#37475A;line-height:1.55}
 .exc:first-of-type{border-top:none}
 .exc b.who{color:#0A2540;font-weight:600}
-.warn{background:#FDF3E7;color:#8A5A00;border:1px solid #F5DFBE;border-radius:6px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
-.warn.bad{background:#FADFDA;border-color:#F0B5AA;color:#99301C}
-.strip{display:flex;background:#fff;border:1px solid #E3E8EE;border-radius:8px;margin-bottom:14px;overflow:hidden}
-.strip>div{flex:1;padding:10px 14px;border-right:1px solid #F0F3F7}
-.strip>div:last-child{border-right:none}
-.strip.tall>div{padding:9px 14px}
-.strip .v{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#0A2540}
-.strip .l{font-size:12px;color:#566575}
-.track{height:6px;border-radius:3px;background:#EDF1F5;overflow:hidden;margin:7px 0 5px;display:flex}
-.track i{display:block;height:6px}
-.split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.pane{border:1px solid #E3E8EE;border-radius:6px;height:186px;overflow:auto;background:#fff}
-.ph{position:sticky;top:0;background:#F7FAFC;border-bottom:1px solid #E3E8EE;padding:5px 9px;font-size:10.5px;font-weight:600;color:#4A5A6A;letter-spacing:.05em;text-transform:uppercase}
-.it{padding:5px 9px;font-size:13px;cursor:pointer;display:flex;gap:6px;align-items:center;border-bottom:1px solid #F7FAFC}
-.it:hover{background:#F0F7FB}
-.it .ar{color:#0091AE;font-weight:600;opacity:0;font-size:11px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pane{border:1px solid #DCE4EC;border-radius:7px;height:200px;overflow:auto;background:#fff}
+.ph{position:sticky;top:0;background:#F4F7FA;border-bottom:1px solid #DCE4EC;padding:5px 10px;font-size:10.5px;font-weight:600;color:#4A5A6A;letter-spacing:.05em;text-transform:uppercase}
+.it{padding:5px 10px;font-size:13px;cursor:pointer;display:flex;gap:6px;align-items:center;border-bottom:1px solid #F7FAFC}
+.it:hover{background:#EDF6FA}
+.it .ar{color:#0091AE;font-weight:600;opacity:0;font-size:11.5px}
 .it:hover .ar{opacity:1}
-.it.off{color:#B7C0C9;cursor:not-allowed}
+.it.off{color:#A8B4C0;cursor:not-allowed}
 .it.off:hover{background:#fff}
-.it.on{background:#F7FAFC}
-.pane .none{padding:8px 9px;font-size:11.5px;color:#B7C0C9}
+.it.on{background:#F4F7FA}
+.pane .none{padding:9px 10px;font-size:12.5px;color:#A8B4C0}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:820px){.grid{grid-template-columns:1fr}}
-#loading{padding:60px;text-align:center;color:#697386}
+@media(max-width:1050px){.grid{grid-template-columns:1fr}}
+#loading{padding:60px;text-align:center;color:#566575}
 </style>
 </head>
 <body>
-<div class="hdr">
-  <h1>Revenue command</h1>
-  <span id="mon"></span>
-  <a href="/callnow.html" style="font-size:11px;color:#0091AE;margin-left:auto;text-decoration:none;font-weight:600">Call Now &rarr;</a>
-</div>
-<div class="wrap">
-  <div id="loading">Loading...</div>
-  <div id="app" style="display:none"></div>
+<div class="shell">
+  <div class="nav">
+    <h1>Revenue command</h1>
+    <div class="who" id="who"></div>
+    <div id="navlinks"></div>
+    <div class="foot">
+      <a href="/callnow.html">Call Now &rarr;</a>
+      <a href="/">Dashboard &rarr;</a>
+    </div>
+  </div>
+  <div class="main">
+    <div id="loading">Loading...</div>
+    <div id="app" style="display:none"></div>
+  </div>
 </div>
 <script>
-var J = null, EDIT = null, OPEN = {}, OPENC = {};
+var J = null, EDIT = null, OPEN = {}, OPENC = {}, VIEW = localStorage.getItem("vp_view") || "overview";
 function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
 function inr(v){ v = Math.round(v||0); return v>=1e7 ? "₹"+(v/1e7).toFixed(2)+"Cr" : v>=1e5 ? "₹"+(v/1e5).toFixed(1)+"L" : "₹"+fmt(v); }
@@ -118,6 +133,23 @@ function load(month){
     })
     .catch(function(e){ fail(e.message); });
 }
+function go(v){ VIEW = v; localStorage.setItem("vp_view", v); draw(); }
+function drawNav(){
+  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)]];
+  if (J.isVP) {
+    items.push(["mapping", "Mapping", String(J.drift.length)]);
+    items.push(["admin", "Teams and targets", ""]);
+  }
+  var h = "";
+  items.forEach(function(it){
+    var bad = it[0] === "mapping" && J.drift.length ? " bad" : "";
+    h += "<button class='" + (VIEW === it[0] ? "on" : "") + "' onclick=\"go('" + it[0] + "')\">" + it[1] +
+      (it[2] && it[2] !== "0" ? "<span class='cnt" + bad + "'>" + it[2] + "</span>" : "") + "</button>";
+  });
+  document.getElementById("navlinks").innerHTML = h;
+  document.getElementById("who").innerHTML = (J.me ? esc(J.me) + "<br>" : "") +
+    (J.isVP ? "VP access" : "Manager, your team only");
+}
 function draw(){
   var h = "";
   if (!J.persistent) h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, so teams and targets vanish on the next deploy. In Railway add a Volume mounted at <b>/data</b>.</div>";
@@ -125,9 +157,15 @@ function draw(){
   // The strip and the exceptions feed are both narrow content that was eating full
   // width. The manager table has 13 columns and genuinely needs the room, so it stays
   // full width below them.
-  h += "<div class='row2'>" + drawStrip() + drawExceptions() + "</div>" +
-    drawTeams() + (J.isVP ? drawDrift() + drawAdmin() : "");
+  // One view at a time: the nav rail decides what is on screen, so no page is crowded.
+  var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets" }[VIEW] || "Overview";
+  h += "<div class='top'><h2>" + title + "</h2><span id='mon'></span></div>";
+  if (VIEW === "managers") h += drawTeams();
+  else if (VIEW === "mapping" && J.isVP) h += drawDrift();
+  else if (VIEW === "admin" && J.isVP) h += drawAdmin();
+  else h += drawStrip() + drawExceptions();
   document.getElementById("app").innerHTML = h;
+  drawNav();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
     (behind ? "<span class='pill r' style='margin-left:8px;padding:3px 9px'>" + behind + " behind pace</span>" : "") +
@@ -148,29 +186,35 @@ function monthOpts(){
   }
   return out;
 }
+function tile(cls, v, l){
+  return "<div class='tile " + cls + "'><div class='v'>" + v + "</div><div class='l'>" + l + "</div></div>";
+}
 function drawStrip(){
-  var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0;
+  var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
   J.teams.forEach(function(x){
     t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
     co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
+    over += x.overdue; unc += x.uncalled;
   });
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
   var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
   var gap = Math.round(a - pace);
   var c2e = co ? Math.round(1000 * e / co) / 10 : null;
-  var h = "<div class='strip tall'><div>" +
-    "<div class='v'>" + inr(a) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + inr(t) + "</span></div>" +
-    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#0091AE'></i>" +
-      (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FF7A59'></i>" : "") + "</div>" +
+  var h = "<div class='tiles'>";
+  h += "<div class='tile hero'><div class='v'>" + inr(a) + " <span style='font-size:14px;color:#93A7BC;font-weight:400'>of " + inr(t) + "</span></div>" +
+    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#38BDF8'></i>" +
+      (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FB923C'></i>" : "") + "</div>" +
     "<div class='l'>" + att + "% attained · " + el + "% of month elapsed · " +
-    (gap >= 0 ? "<span class='cg'>" + inr(gap) + " ahead</span>" : "<span class='cr'>" + inr(-gap) + " behind pace</span>") + "</div></div>" +
-    "<div><div class='v'>" + fmt(e) + (te ? " <span style='font-size:12px;color:#697386;font-weight:400'>/ " + fmt(te) + "</span>" : "") + "</div><div class='l'>Enrolments</div></div>" +
-    "<div><div class='v'>" + fmt(co) + "</div><div class='l'>Counsellings</div></div>" +
-    "<div><div class='v'>" + (c2e === null ? "–" : c2e + "%") + "</div><div class='l'>C2E</div></div>" +
-    "<div><div class='v'>" + fmt(done) + " <span style='font-size:12px;color:#697386;font-weight:400'>of " + fmt(due) + "</span></div><div class='l'>Due calls made today</div></div>" +
-    "<div><div class='v " + (missed ? "cr" : "") + "'>" + fmt(missed) + "</div><div class='l'>Missed today</div></div>";
-  if (J.scope !== "own") h += "<div><div class='v " + (J.drift.length ? "cr" : "") + "'>" + fmt(J.drift.length) + "</div><div class='l'>Agents unmapped</div></div>";
+    (gap >= 0 ? "<span style='color:#6EE7B7'>" + inr(gap) + " ahead</span>" : "<span style='color:#FDBA74'>" + inr(-gap) + " behind pace</span>") + "</div></div>";
+  h += tile("blue", fmt(e) + (te ? " <span style='font-size:14px;font-weight:400'>/ " + fmt(te) + "</span>" : ""), "Enrolments");
+  h += tile("blue", fmt(co), "Counsellings");
+  h += tile("teal", c2e === null ? "–" : c2e + "%", "C2E");
+  h += tile("grey", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made today");
+  h += tile(missed ? "red" : "grey", fmt(missed), "Missed today");
+  h += tile(over ? "amber" : "grey", fmt(over), "Follow-ups overdue");
+  h += tile(unc ? "amber" : "grey", fmt(unc), "Never called");
+  if (J.scope !== "own") h += tile(J.drift.length ? "red" : "grey", fmt(J.drift.length), "Agents unmapped");
   return h + "</div>";
 }
 function drawExceptions(){
@@ -277,12 +321,11 @@ function creatorRows(t){
   return h;
 }
 function drawDrift(){
-  if (!J.drift.length) return "";
-  var h = "<details class='sec' style='padding:10px 14px'><summary style='cursor:pointer;list-style:none;display:flex;gap:9px;align-items:center'>" +
-    "<b style='font-size:13px'>Unmapped agents</b><span class='pill r'>" + J.drift.length + "</span>" +
-    "<span class='mut' style='font-size:11.5px'>hold " + fmt(J.drift.reduce(function(a, d){ return a + d.leads; }, 0)) + " leads and are missing from every number above</span>" +
-    "<span style='margin-left:auto;color:#0091AE;font-weight:600;font-size:12px'>Assign</span></summary>";
-  h += "<div class='tw' style='margin-top:9px;max-height:280px;overflow:auto'><table><thead><tr><th>Agent</th><th>Email</th><th class='n'>Leads</th><th>Status</th><th>Assign to</th></tr></thead><tbody>";
+  if (!J.drift.length) return "<div class='sec'><h2>Mapping</h2><div class='sub cg'>Every lead-owning agent belongs to a team.</div></div>";
+  var h = "<div class='sec'><h2>Unmapped agents <span class='pill r'>" + J.drift.length + "</span></h2>" +
+    "<div class='sub'>They hold " + fmt(J.drift.reduce(function(a, d){ return a + d.leads; }, 0)) +
+    " leads and are missing from every number in this dashboard. Assign each to a manager.</div>";
+  h += "<div class='tw'><table><thead><tr><th>Agent</th><th>Email</th><th class='n'>Leads</th><th>Status</th><th>Assign to</th></tr></thead><tbody>";
   J.drift.forEach(function(d){
     h += "<tr><td><b>" + esc(d.name) + "</b></td><td class='mut'>" + esc(d.email) + "</td>" +
       "<td class='n'>" + fmt(d.leads) + "</td>" +
@@ -291,7 +334,7 @@ function drawDrift(){
       J.teams.map(function(t){ return "<option value='" + t.id + "'>" + esc(t.name || "(unnamed)") + "</option>"; }).join("") +
       "</select></td></tr>";
   });
-  h += "</tbody></table></div></details>";
+  h += "</tbody></table></div></div>";
   return h;
 }
 function assign(agentId, teamId){
