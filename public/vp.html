@@ -54,6 +54,8 @@ th{background:#F4F7FA;padding:9px 11px;text-align:left;font-size:11.5px;font-wei
 td{padding:10px 11px;border-bottom:1px solid #EFF3F7;white-space:nowrap;vertical-align:top}
 tr:last-child td{border-bottom:none}
 td.n,th.n{text-align:left;font-variant-numeric:tabular-nums}
+table.rt td.n,table.rt th.n{text-align:right}
+table.rt td:first-child,table.rt th:first-child{text-align:left}
 .tw{border:1px solid #DCE4EC;border-radius:8px;overflow:auto}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
 .pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block}
@@ -77,6 +79,8 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .exccard{border:1px solid #DCE4EC;border-radius:9px;padding:10px 11px;background:#fff;min-height:170px;display:flex;flex-direction:column}
 .exccard h5{font-size:12.5px}
 .exccard .exc{font-size:12px;line-height:1.45;padding:6px 0}
+.exccard .qline{font-size:11.5px;color:#566575;background:#F4F7FA;border-radius:6px;padding:5px 8px;margin:2px 0 6px;line-height:1.5}
+.exccard.bad .qline{background:#FDF1ED}
 .exccard.bad{border-color:#F0C0B2;background:#FEF8F6}
 .exccard h5{font-size:13.5px;font-weight:600;color:#0A2540;display:flex;align-items:center;gap:7px;margin-bottom:2px}
 .exccard .ok{font-size:12.5px;color:#0A5346;padding:5px 0}
@@ -205,7 +209,7 @@ function draw(){
   if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
-  else h += drawStrip() + drawExceptions() + drawCallNow();
+  else h += drawStrip() + drawCallNow() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
@@ -310,6 +314,13 @@ function drawExceptions(){
     var anyBad = items.some(function(e){ return e.level === "bad"; });
     h += "<div class='exccard" + (anyBad ? " bad" : "") + "'><h5>" + esc(k) +
       (items.length ? "<span class='pill " + (anyBad ? "r" : "a") + "'>" + items.length + "</span>" : "") + "</h5>";
+    var tm = J.teams.filter(function(t){ return t.name === k; })[0];
+    if (tm) {
+      h += "<div class='qline'>" +
+        "<b>" + fmt(tm.queue) + "</b> must call · <b>" + fmt(tm.due) + "</b> due today · " +
+        "<b class='cg'>" + fmt(tm.done) + "</b> called · <b class='" + (tm.missed ? "cr" : "mut") + "'>" + fmt(tm.missed) + "</b> missed" +
+        (tm.overdue ? " · <b class='cr'>" + fmt(tm.overdue) + "</b> overdue" : "") + "</div>";
+    }
     if (!items.length) h += "<div class='ok'>Nothing flagged.</div>";
     items.forEach(function(e){
       h += "<div class='exc'><span class='pill " + (e.level === "bad" ? "r" : "a") + "'>" + esc(e.kind) + "</span>" +
@@ -352,7 +363,7 @@ function drawCallNow(){
     tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue", cov(ovT, ov)) +
     tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
     "</div>";
-  h += "<div class='tw'><table><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table class='rt'><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
   J.teams.slice().sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
     h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b></td>" +
       "<td class='n'><b>" + fmt(x.queue) + "</b>" + qbar(x) + "</td>" +
