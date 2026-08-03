@@ -32,6 +32,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tile{border-radius:10px;padding:12px 14px}
 .tile .v{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
 .tile .l{font-size:12px;margin-top:1px}
+.tile .sb{font-size:11.5px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(10,37,64,.09);opacity:.85}
 .tile.hero{grid-column:1 / -1;background:#0A2540}
 .tile.hero .v{color:#fff;font-size:26px}
 .tile.hero .l{color:#93A7BC}
@@ -72,8 +73,10 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .exc .pill{margin-bottom:3px}
 .exc:first-of-type{border-top:none}
 .exc b.who{color:#0A2540;font-weight:600}
-.excgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:10px;align-items:stretch}
-.exccard{border:1px solid #DCE4EC;border-radius:9px;padding:11px 13px;background:#fff;min-height:186px;display:flex;flex-direction:column}
+.excgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(174px,1fr));gap:9px;align-items:stretch}
+.exccard{border:1px solid #DCE4EC;border-radius:9px;padding:10px 11px;background:#fff;min-height:170px;display:flex;flex-direction:column}
+.exccard h5{font-size:12.5px}
+.exccard .exc{font-size:12px;line-height:1.45;padding:6px 0}
 .exccard.bad{border-color:#F0C0B2;background:#FEF8F6}
 .exccard h5{font-size:13.5px;font-weight:600;color:#0A2540;display:flex;align-items:center;gap:7px;margin-bottom:2px}
 .exccard .ok{font-size:12.5px;color:#0A5346;padding:5px 0}
@@ -225,8 +228,13 @@ function monthOpts(){
   }
   return out;
 }
-function tile(cls, v, l){
-  return "<div class='tile " + cls + "'><div class='v'>" + v + "</div><div class='l'>" + l + "</div></div>";
+function tile(cls, v, l, sub){
+  return "<div class='tile " + cls + "'><div class='v'>" + v + "</div><div class='l'>" + l + "</div>" +
+    (sub ? "<div class='sb'>" + sub + "</div>" : "") + "</div>";
+}
+function cov(done, total){
+  if (!total) return "";
+  return fmt(done) + " called · " + Math.round(100 * done / total) + "%";
 }
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
@@ -318,25 +326,30 @@ function qbar(x){
   return "<div style='height:5px;border-radius:3px;background:#E7EEF4;overflow:hidden;display:flex;margin-top:4px'>" +
     "<i style='display:block;height:5px;width:" + pct + "%;background:#0091AE'></i>" +
     "<i style='display:block;height:5px;width:" + (100 - pct) + "%;background:#FF7A59'></i></div>" +
-    "<div class='mut' style='font-size:11.5px;margin-top:2px'>" + pct + "% of today done</div>";
+    "<div class='mut' style='font-size:11.5px;margin-top:2px'><b class='cg'>" + fmt(done) + "</b> done · <b class='cr'>" +
+    fmt(due - done) + "</b> missed · " + pct + "%</div>";
 }
 function drawCallNow(){
   var t = 0, f = 0, sc = 0, il = 0, nd = 0, due = 0, done = 0, missed = 0, ov = 0, unc = 0;
+  var qT = 0, fT = 0, scT = 0, ilT = 0, ndT = 0, ovT = 0;
   J.teams.forEach(function(x){
     t += x.queue; f += (x.form || 0); sc += (x.score || 0); il += (x.intl || 0); nd += (x.needs || 0);
     due += x.due; done += x.done; missed += x.missed; ov += x.overdue; unc += x.uncalled;
+    qT += (x.queueT || 0); fT += (x.formT || 0); scT += (x.scoreT || 0);
+    ilT += (x.intlT || 0); ndT += (x.needsT || 0); ovT += (x.overdueT || 0);
   });
   var h = "<div class='sec'><h2>Call Now queue " +
     "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a></h2>" +
     "<div class='sub'>What the floor is actually working today, so you can act from here rather than opening the call tool.</div>";
   h += "<div class='tiles' style='margin-bottom:12px'>" +
-    tile("grey", fmt(t), "Must call") +
-    tile("blue", fmt(f), "Waitlist form") +
-    tile("blue", fmt(sc), "Score &ge; 6") +
-    tile("blue", fmt(il), "International") +
-    tile(nd ? "red" : "grey", fmt(nd), "Needs owner") +
-    tile(missed ? "red" : "teal", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made") +
-    tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue") +
+    tile("grey", fmt(t), "Must call", cov(qT, t)) +
+    tile("blue", fmt(f), "Waitlist form", cov(fT, f)) +
+    tile("blue", fmt(sc), "Score &ge; 6", cov(scT, sc)) +
+    tile("blue", fmt(il), "International", cov(ilT, il)) +
+    tile(nd ? "red" : "grey", fmt(nd), "Needs owner", cov(ndT, nd)) +
+    tile(missed ? "red" : "teal", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made",
+      due ? fmt(missed) + " missed · " + Math.round(100 * done / due) + "%" : "") +
+    tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue", cov(ovT, ov)) +
     tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
     "</div>";
   h += "<div class='tw'><table><thead><tr><th>Team</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";

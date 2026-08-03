@@ -2452,7 +2452,8 @@ function vpAggregate(month){
     if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
       revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
       churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0,
-      form: 0, score: 0, intl: 0, needs: 0, counsToday: 0
+      form: 0, score: 0, intl: 0, needs: 0, counsToday: 0,
+      queueT: 0, formT: 0, scoreT: 0, intlT: 0, needsT: 0, overdueT: 0
     };
     return agg[tid][creator][agentId];
   };
@@ -2485,10 +2486,14 @@ function vpAggregate(month){
     else if (r.stage !== "__fresh") o.worked++;
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     o.queue++;
-    if (sg.form) o.form++;
-    if (sg.score) o.score++;
-    if (sg.intl) o.intl++;
-    if (r.needsOwner) o.needs++;
+    // "coverage": how much of each segment has been called today
+    const ct0 = r.last >= day.start && r.last < day.end;
+    if (ct0) o.queueT++;
+    if (sg.form) { o.form++; if (ct0) o.formT++; }
+    if (sg.score) { o.score++; if (ct0) o.scoreT++; }
+    if (sg.intl) { o.intl++; if (ct0) o.intlT++; }
+    if (r.needsOwner) { o.needs++; if (ct0) o.needsT++; }
+    if (r.fu && r.fu < now && ct0) o.overdueT++;
     const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
     if (ct) o.touched++;
     if (dt) { o.due++; if (ct) o.done++; else o.missed++; }
@@ -2497,7 +2502,7 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0, counsToday: 0 }; }
+function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0, counsToday: 0, queueT: 0, formT: 0, scoreT: 0, intlT: 0, needsT: 0, overdueT: 0 }; }
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 // Revenue booked in the last 7 days against the 7 before, for the teams in scope.
