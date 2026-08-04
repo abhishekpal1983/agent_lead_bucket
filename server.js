@@ -1814,6 +1814,23 @@ const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","in
   "hs_timezone","country","conversion_probability_reason"];
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
 let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
+// Loaded from the org store once it is available, so adding a creator survives a deploy
+// without touching Railway. See adoptStoredCreators() below.
+function adoptStoredCreators(){
+  try {
+    if (typeof ORG !== "undefined" && Array.isArray(ORG.creators) && ORG.creators.length) {
+      PFRESH_LIST = ORG.creators.slice();
+      console.log("Tracked creators loaded from store: " + PFRESH_LIST.length);
+    }
+  } catch (e) {}
+}
+function persistCreators(who){
+  try {
+    if (typeof ORG === "undefined") return;
+    ORG.creators = PFRESH_LIST.slice();
+    if (typeof orgSave === "function") orgSave("creators.set", PFRESH_LIST.join(","), who || "");
+  } catch (e) {}
+}
 
 // Paged by hs_object_id cursor rather than HubSpot's `after` token. The token walk
 // dies at 10,000 results with a 400, and date-window splitting cannot rescue a bulk
@@ -2032,10 +2049,18 @@ function cnFilter(q){
   const stageSet = stages.length ? stages : CN_DEFAULT_STAGES;
   const ostate = q.ostate || "";
   const allow = q.__scope || null;
+  // Filter by manager: their agents plus the creators mapped to their team.
+  let teamScope = null;
+  const wantTeam = String(q.team || "");
+  if (wantTeam && typeof ORG !== "undefined") {
+    const tt = (ORG.teams || []).filter(function(t){ return t.id === wantTeam; })[0];
+    if (tt) teamScope = { agents: (tt.agentIds || []).map(String), creators: (tt.creators || []).slice() };
+  }
   // Default scope is the tracked creator list: those are the buckets the floor actually works.
   const scoped = String(q.scope || "tracked") !== "all";
   return callnowPool().filter(function(c){
     if (allow && !inScope(allow, c)) return false;
+    if (teamScope && !inScope(teamScope, c)) return false;
     if (scoped && PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return false;
     if (creator && (c.topmate_username || "") !== creator) return false;
     if (agent && (agent === "none" ? String(c.hubspot_owner_id || "") !== "" : String(c.hubspot_owner_id || "") !== agent)) return false;
@@ -2206,6 +2231,15 @@ app.get("/api/callnow", (req, res) => {
       .sort(function(a, b){ return b.n - a.n; }).slice(0, 500),
     creators: Object.values(byCreator).sort(function(a, b){ return b.any - a.any; }).slice(0, 400),
     stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS },
+    teamOptions: ((typeof ORG !== "undefined" && ORG.teams) || []).map(function(t){
+      return { id: t.id, name: t.name, agents: (t.agentIds || []).length, creators: (t.creators || []).length }; }),
+    yesterday: (function(){
+      if (typeof ORG === "undefined" || !ORG.daily) return null;
+      const keys = Object.keys(ORG.daily).sort();
+      const today = istParts(new Date()).date;
+      for (let i = keys.length - 1; i >= 0; i--) if (keys[i] < today) return Object.assign({ date: keys[i] }, ORG.daily[keys[i]]);
+      return null;
+    })(),
     ownerRefreshedAt: req.query.agent ? (OWNER_REFRESH[req.query.agent] || null) : null,
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
@@ -2253,6 +2287,7 @@ app.post("/api/callnow/sync-creator", async (req, res) => {
     }
     PFRESH.loadedAt = new Date().toISOString();
     if (PFRESH_LIST.indexOf(creator) < 0) PFRESH_LIST.push(creator);
+    persistCreators(typeof whoami === "function" ? whoami(req) : "");
     POOL_REV++;
     PFRESH.syncing = false;
     res.json({ ok: true, creator: creator, added: added.length, total: PFRESH.rows.length, creators: PFRESH_LIST,
@@ -2268,6 +2303,7 @@ app.post("/api/callnow/drop-creator", (req, res) => {
   PFRESH.rows = PFRESH.rows.filter(function(r){ return (r.topmate_username || "") !== creator; });
   delete PFRESH.byCreator[creator];
   PFRESH_LIST = PFRESH_LIST.filter(function(c){ return c !== creator; });
+  persistCreators(typeof whoami === "function" ? whoami(req) : "");
   POOL_REV++;
   res.json({ ok: true, creators: PFRESH_LIST, total: PFRESH.rows.length });
 });
@@ -2565,6 +2601,37 @@ function orgDrift(){
 
 // One pass over the sheet and one over the lead pool, bucketed by team, creator and
 // agent. Doing it per team would mean re-walking a 50k row pool for every manager.
+/* Daily snapshot. Today's counters reset at IST midnight, so without this there is no
+   way to answer "how many of the 789 score-6 leads did we work yesterday". Stored in the
+   org store on the volume, 90 days kept. */
+function snapshotToday(){
+  if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
+  const day = istDayBounds();
+  const key = istParts(new Date()).date;
+  const snap = { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0,
+    calls: 0, formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0, at: new Date().toISOString() };
+  callnowPool().forEach(function(c){
+    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
+    if (!ownerCounted(c.hubspot_owner_id)) return;
+    const r = cnRow(c), sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    const called = r.last >= day.start && r.last < day.end;
+    snap.pool++;
+    if (called) snap.calls++;
+    if (sg.form) { snap.form++; if (called) snap.formC++; }
+    if (sg.score) { snap.score++; if (called) snap.scoreC++; }
+    if (sg.intl) { snap.intl++; if (called) snap.intlC++; }
+    if (sg.fresh) { snap.fresh++; if (called) snap.freshC++; }
+    if (r.fu && r.fu < Date.now()) { snap.overdue++; if (called) snap.overdueC++; }
+    if (r.fu >= day.start && r.fu < day.end) { snap.due++; if (called) snap.done++; else snap.missed++; }
+  });
+  ORG.daily = ORG.daily || {};
+  ORG.daily[key] = snap;
+  const keys = Object.keys(ORG.daily).sort();
+  while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
+  if (typeof orgSave === "function") orgSave("snapshot", key, "system");
+}
+
 function vpAggregate(month){
   const teamOf = {}, agentTeam = {};
   (ORG.teams || []).forEach(function(t){
@@ -3405,6 +3472,9 @@ SERVER = app.listen(PORT, () => {
   guard("sync", function(){ return sync().then(() => syncCounsel()); })();
   // Deltas every few minutes, full rebuild only on boot and every FULL_SYNC_HOURS.
   setInterval(guard("delta", syncDelta), DELTA_MINUTES * 60 * 1000);
+  setTimeout(function(){ adoptStoredCreators(); }, 3000);
+  setTimeout(guard("snapshot", snapshotToday), 4 * 60 * 1000);
+  setInterval(guard("snapshot", snapshotToday), 15 * 60 * 1000);
   guard("sheet", function(){ return syncSheet().then(() => syncCohorts()); })();
   setInterval(guard("sync", sync), Math.max(1, FULL_SYNC_HOURS) * 3600 * 1000);
   setInterval(guard("sheet", syncSheet), SYNC_MINUTES * 60 * 1000);

@@ -35,7 +35,7 @@ select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px 
 .mhero:hover{background:#123152}
 .mhero .v{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05}
 .mhero .l{font-size:12.5px;color:#93A7BC;margin-top:2px}
-.mhero .s{font-size:12px;color:#C7D6E4;margin-top:8px;border-top:1px solid #1E3D5F;padding-top:7px}
+.mhero .s{font-size:11.5px;color:#9FB6CC;margin-top:8px;border-top:1px solid #1E3D5F;padding-top:7px;line-height:1.5}
 .mgroups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
 @media(max-width:900px){.mgroups{grid-template-columns:1fr}}
 .mgroup{background:#fff;border:1px solid #DCE4EC;border-top:3px solid #0091AE;border-radius:10px;padding:10px 13px 11px;display:flex;flex-direction:column}
@@ -158,6 +158,7 @@ var S = {
   agent: ME || (localStorage.getItem("cn_agent") || ""),
   creator: QS.get("creator") || localStorage.getItem("cn_creator") || "",
   intl: localStorage.getItem("cn_intl") || "",
+  team: localStorage.getItem("cn_team") || "",
   ostate: "",
   scope: localStorage.getItem("cn_scope") || "tracked",
   stagesOpen: false,
@@ -192,6 +193,7 @@ function qsStr(extra){
   if (S.intl) p.set("intl", S.intl);
   if (S.ostate) p.set("ostate", S.ostate);
   if (S.scope) p.set("scope", S.scope);
+  if (S.team) p.set("team", S.team);
   if (S.stages && S.stages.length) p.set("stages", S.stages.join(","));
   if (extra) Object.keys(extra).forEach(function(k){ if (extra[k]) p.set(k, extra[k]); });
   return p.toString();
@@ -201,6 +203,7 @@ function save(){
   localStorage.setItem("cn_creator", S.creator);
   localStorage.setItem("cn_intl", S.intl);
   localStorage.setItem("cn_scope", S.scope);
+  localStorage.setItem("cn_team", S.team);
 }
 
 function refreshOwner(id, then){
@@ -373,6 +376,14 @@ function heats(rows, keys){
 
 function drawFilters(){
   var h = "<div class='bar'>";
+  if (!ME && (J.teamOptions || []).length) {
+    h += "<div><label>Manager</label><select onchange=\"setF('team',this.value)\"><option value=''>All managers</option>";
+    J.teamOptions.forEach(function(t){
+      h += "<option value='" + esc(t.id) + "'" + (S.team === t.id ? " selected" : "") + ">" + esc(t.name || "(unnamed)") +
+        " · " + t.agents + " agents</option>";
+    });
+    h += "</select></div>";
+  }
   if (!ME) {
     h += "<div><label>Agent</label><select onchange=\"setF('agent',this.value)\"><option value=''>All agents</option>";
     J.agentOptions.forEach(function(a){
@@ -451,7 +462,10 @@ function drawCards(){
   var h = "<div class='mstrip'>";
   h += "<div class='mhero' onclick=\"pick('','any')\"><div class='v'>" + fmt(t.any) + "</div>" +
        "<div class='l'>Priority pool</div>" +
-       "<div class='s'>" + fmt(t.total) + " leads in view</div></div>";
+       "<div class='s'>Of " + fmt(t.total) + " leads in view. Counts a lead if it filled a waitlist form, " +
+       "scores " + J.scoreMin + " or more, is international, or is fresh and never worked.<br><br>" +
+       "Excludes anyone who has already paid or opted out, leads outside the tracked creators, " +
+       "and parking buckets.</div></div>";
   h += "<div class='mgroups'>";
   h += "<div class='mgroup'><h4>Why they qualify</h4><div class='mrow'>" +
        mi(t.form, "Form", "form") + mi(t.score, "Score &ge;" + J.scoreMin, "score") +
@@ -469,6 +483,15 @@ function drawCards(){
   h += "<div class='mrow'>" +
        mi(t.missed, "Missed", "missed", "r") + mi(bwork, "Backlog worked", "bwork", "c") +
        mi(t.touched, "Calls made", "touched") + "</div>";
+  var y = J.yesterday;
+  if (y) {
+    h += "<div style='margin-top:9px;padding-top:8px;border-top:1px solid #EFF3F7;font-size:11.5px;color:#566575;line-height:1.6'>" +
+      "<b style='color:#0A2540'>Yesterday, " + esc(y.date) + ":</b> " + fmt(y.calls) + " of " + fmt(y.pool) + " priority leads called" +
+      (y.pool ? " (" + Math.round(100 * y.calls / y.pool) + "%)" : "") + " · " +
+      fmt(y.scoreC) + " of " + fmt(y.score) + " score leads · " +
+      fmt(y.formC) + " of " + fmt(y.form) + " form leads · " +
+      fmt(y.done) + " of " + fmt(y.due) + " due follow-ups</div>";
+  }
   var ct = J.callsToday;
   if (ct) {
     h += "<div style='margin-top:9px;padding-top:8px;border-top:1px solid #EFF3F7;font-size:11.5px;color:#566575;line-height:1.6'>" +
@@ -677,6 +700,19 @@ function draw(){
       if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 30);
   }
+  var who = "";
+  if (ME) {
+    var meRow = (J.agentOptions || []).filter(function(a){ return a.id === ME; })[0];
+    who = meRow ? meRow.name : ("Owner " + ME);
+  } else if (S.agent) {
+    var aRow = (J.agentOptions || []).filter(function(a){ return a.id === S.agent; })[0];
+    if (aRow) who = aRow.name;
+  } else if (S.team) {
+    var tRow = (J.teamOptions || []).filter(function(t){ return t.id === S.team; })[0];
+    if (tRow) who = tRow.name;
+  }
+  var hdr = document.querySelector(".hdr h1");
+  if (hdr) hdr.innerHTML = "Call Now" + (who ? " <span style='font-weight:400;color:#8FD3E4'>· " + esc(who) + "</span>" : "");
   var badge = "";
   if (WHO && WHO.authOn && WHO.email) {
     badge = "<span class='mebadge'>" + esc(WHO.name || WHO.email) + "</span>" +
