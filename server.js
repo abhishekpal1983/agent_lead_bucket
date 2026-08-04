@@ -2627,7 +2627,7 @@ function orgDrift(){
 function snapCounters(){
   return { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0, calls: 0,
     formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0, counsellings: 0,
-    revenue: 0, enrolments: 0 };
+    revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
 function snapAdd(o, r, sg, called, day){
   o.pool++;
@@ -2698,6 +2698,18 @@ function snapshotToday(){
      end-of-day work against an end-of-day denominator would therefore flatter everyone.
      So the opening position is frozen at the first capture on or after OPEN_HM and never
      rewritten. Work counts keep updating to close of day, denominators do not. */
+  // Audit compliance is a fact about the day, not a point-in-time state, so it is stamped
+  // on every capture and the last one of the day is the final figure.
+  const au = (typeof coachDayDetail === "function") ? coachDayDetail(key) : { teams: {}, agents: {} };
+  Object.keys(au.teams || {}).forEach(function(id){
+    const a = au.teams[id];
+    total.audits += a.done; total.auditTarget += a.target;
+    if (teams[id]) { teams[id].audits = a.done; teams[id].auditTarget = a.target; }
+  });
+  Object.keys(agents).forEach(function(id){
+    const a = (au.agents || {})[id];
+    if (a) { agents[id].audits = a.done; agents[id].auditTarget = a.due; }
+  });
   ORG.daily = ORG.daily || {};
   const prev = ORG.daily[key];
   const now = istParts(new Date()).hm;
@@ -2744,7 +2756,8 @@ function backCounters(){
   return { pool: null, form: null, score: null, intl: null, fresh: null,
     due: null, done: null, missed: null, overdue: null, overdueC: null,
     formC: null, scoreC: null, intlC: null, freshC: null, calls: null,
-    attempts: 0, connected: 0, counsellings: 0, revenue: 0, enrolments: 0 };
+    attempts: 0, connected: 0, counsellings: 0, revenue: 0, enrolments: 0,
+    audits: 0, auditTarget: 0 };
 }
 async function snapBackfill(key){
   if (typeof ORG === "undefined" || !TOKEN || !CACHE.loadedAt) return;
@@ -2817,6 +2830,17 @@ async function snapBackfill(key){
     const tid = emailTeam[oe], aid = emailAgent[oe];
     if (tid) { const b = teamBucket(tid); b.revenue += v; if (isNew) b.enrolments++; }
     if (aid) { const b = agentBucket(aid); b.revenue += v; if (isNew) b.enrolments++; }
+  });
+  const au = (typeof coachDayDetail === "function") ? coachDayDetail(key) : { teams: {}, agents: {} };
+  Object.keys(au.teams || {}).forEach(function(id){
+    const a = au.teams[id];
+    total.audits += a.done; total.auditTarget += a.target;
+    const b = teamBucket(id);
+    b.audits = a.done; b.auditTarget = a.target;
+  });
+  Object.keys(agents).forEach(function(id){
+    const a = (au.agents || {})[id];
+    if (a) { agents[id].audits = a.done; agents[id].auditTarget = a.due; }
   });
   ORG.daily[key] = Object.assign({ at: new Date().toISOString(), backfilled: true,
     teams: teams, agents: agents }, total);
@@ -3018,6 +3042,9 @@ app.get("/api/vp", function(req, res){
   });
   const orderOf = {};
   (ORG.teams || []).forEach(function(t, i){ orderOf[t.id] = i; });
+  // Call audit compliance for today, so the revenue view can show whether managers are
+  // actually running the coaching cadence rather than only whether the floor is calling.
+  const AUDITS = (typeof coachDayDetail === "function") ? coachDayDetail(p.date) : { teams: {}, agents: {} };
   const teams = visible.map(function(team){
     const byCreator = agg[team.id] || {};
     const totals = zero();
@@ -3058,7 +3085,9 @@ app.get("/api/vp", function(req, res){
     const tg = t.teams[team.id] || {};
     const target = num(tg.revenue);
     const paceTarget = target * (dom / dim);
+    const au = (AUDITS.teams || {})[team.id] || { done: 0, target: 0 };
     return Object.assign({
+      audits: au.done, auditTarget: au.target,
       id: team.id, order: orderOf[team.id] || 0,
       name: team.name, managerEmail: team.managerEmail || "",
       agentIds: team.agentIds || [], creators: team.creators || [],
@@ -3163,7 +3192,8 @@ app.get("/api/vp/daily", function(req, res){
       // rebuilt day has no pool figure, and summing that to zero would be a lie.
       const SNAPKEYS = ["pool","form","score","intl","fresh","due","done","missed","calls",
         "formC","scoreC","intlC","freshC","overdue","overdueC","counsellings","revenue",
-        "enrolments","attempts","connected","oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue"];
+        "enrolments","attempts","connected","audits","auditTarget",
+        "oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue"];
       const roll = {};
       SNAPKEYS.forEach(function(k){
         let any = false, sum = 0;
@@ -4130,6 +4160,30 @@ app.get("/api/coaching/agent/:id", function(req, res){
 /* Whether the cadence is actually running, which is a different question from
    whether the agents are improving. Named down to the individual review, because
    "3 of 5" invites the follow-up "which two", and a VP should not have to ask. */
+/* Audit compliance for one IST day, shaped for the revenue dashboards rather than the
+   coaching page. A manager owes one review per agent on rotation, capped at COACH_PER_DAY,
+   so the honest denominator is the smaller of the two, not a flat five for a team of three. */
+function coachDayDetail(date){
+  const store = coachStore();
+  const teams = {}, agents = {};
+  (ORG.teams || []).forEach(function(t){
+    const target = Math.min(coachAgents(t).length, COACH_PER_DAY);
+    const done = store.sessions.filter(function(x){
+      return x.date === date && x.teamId === t.id && x.submittedAt;
+    });
+    teams[t.id] = { name: t.name || "(unnamed)", manager: t.managerEmail || "",
+      done: done.length, target: target };
+    const touch = function(id){
+      const k = String(id);
+      if (!agents[k]) agents[k] = { due: 0, done: 0 };
+      return agents[k];
+    };
+    coachPickAgents(t, date).forEach(function(id){ touch(id).due = 1; });
+    done.forEach(function(x){ touch(x.agentId).done = 1; });
+  });
+  return { teams: teams, agents: agents };
+}
+
 app.get("/api/coaching/summary", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
   const store = coachStore();

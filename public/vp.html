@@ -70,6 +70,28 @@ table.rt td:first-child,table.rt th:first-child{text-align:left}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
 .pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block}
 .pill.g{background:#DDEFEA;color:#0A5346}.pill.r{background:#FBE2D8;color:#8C2D12}.pill.a{background:#FAEBD7;color:#7A4A08}
+/* Daily review is a frozen report, not the live board, so it gets a paper skin: warm
+   off-white ground, white cards with a coloured spine instead of filled pastel blocks.
+   Nobody should mistake yesterday for today at a glance. */
+.rv{background:#F8F6F2;border:1px solid #E7E1D7;border-radius:12px;padding:16px 18px 18px}
+.rv h2{color:#1F2937;letter-spacing:-.01em}
+.rv .sub,.rv .mut{color:#6F6A62}
+.rv .tile{background:#fff;border:1px solid #E7E1D7;border-left:3px solid #9AA3AE;border-radius:6px;padding:11px 13px 12px;box-shadow:0 1px 1px rgba(31,41,55,.03)}
+.rv .tile .v{color:#1F2937;font-size:23px}
+.rv .tile .l{color:#6F6A62;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;margin-top:4px}
+.rv .tile .sb{border-top:1px dashed #E7E1D7;color:#6F6A62}
+.rv .tile.blue{border-left-color:#4F7FA8}.rv .tile.blue .v{color:#1F2937}.rv .tile.blue .l{color:#6F6A62}
+.rv .tile.teal{border-left-color:#3F8C77}.rv .tile.teal .v{color:#1F2937}.rv .tile.teal .l{color:#6F6A62}
+.rv .tile.amber{border-left-color:#C08A3E}.rv .tile.amber .v{color:#1F2937}.rv .tile.amber .l{color:#6F6A62}
+.rv .tile.red{border-left-color:#B4553A}.rv .tile.red .v{color:#8C2D12}.rv .tile.red .l{color:#6F6A62}
+.rv .tile.grey{border-left-color:#9AA3AE}.rv .tile.grey .v{color:#1F2937}.rv .tile.grey .l{color:#6F6A62}
+.rv .tw{border-color:#E7E1D7;background:#fff}
+.rv th{background:#F1ECE4;color:#6F6A62;border-bottom:1px solid #DED7CB}
+.rv td{border-bottom:1px solid #F1ECE4}
+.rv .warn{background:#FBF3E4;border:1px solid #E8D7B4;color:#6B5320;border-radius:8px;padding:10px 13px;font-size:12.5px;line-height:1.55}
+.rvhead{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;border-bottom:2px solid #1F2937;padding-bottom:9px;margin-bottom:13px}
+.rvhead .d{font-size:25px;font-weight:600;color:#1F2937;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.rvhead .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:#8A8378}
 .warn{background:#FAEBD7;color:#7A4A08;border:1px solid #EFD3AE;border-radius:8px;padding:10px 13px;font-size:13px;margin-bottom:12px}
 .warn.bad{background:#FBE2D8;border-color:#F0C0B2;color:#8C2D12}
 tr.clik{cursor:pointer}
@@ -243,7 +265,7 @@ function pcCell(done, total){
 function nc(v){ return v == null ? "<span class='mut' title='Not captured for this day'>–</span>" : fmt(v); }
 function dailyRows(map, label, back){
   var keys = Object.keys(map || {});
-  var cols = back ? 6 : 9;
+  var cols = back ? 7 : 10;
   if (!keys.length) return "<tr><td colspan='" + cols + "' class='mut'>Nothing recorded.</td></tr>";
   return keys.map(function(k){ return Object.assign({ k: k }, map[k]); })
     .sort(function(a, b){
@@ -261,7 +283,8 @@ function dailyRows(map, label, back){
           "<td class='n'>" + fmt(x.attempts || 0) + "</td>" +
           "<td class='n'>" + fmt(x.connected || 0) + "</td>" +
           "<td class='n " + (x.attempts && cr < 30 ? "cr" : "mut") + "'>" + (x.attempts ? cr + "%" : "–") + "</td>" +
-          "<td class='n'>" + fmt(x.counsellings || 0) + "</td>" + money + "</tr>";
+          "<td class='n'>" + fmt(x.counsellings || 0) + "</td>" + money +
+          "<td class='n'>" + auditCell(x.audits, x.auditTarget) + "</td></tr>";
       }
       var den = function(o, c){ return o == null ? c : o; };
       return "<tr>" + nm +
@@ -271,14 +294,24 @@ function dailyRows(map, label, back){
         "<td class='n " + (x.missed ? "cr" : "mut") + "'>" + nc(x.missed) + "</td>" +
         "<td class='n'>" + pcCell(x.scoreC, den(x.oScore, x.score)) + "</td>" +
         "<td class='n'>" + pcCell(x.formC, den(x.oForm, x.form)) + "</td>" +
-        "<td class='n'>" + fmt(x.counsellings) + "</td>" + money + "</tr>";
+        "<td class='n'>" + fmt(x.counsellings) + "</td>" + money +
+        "<td class='n'>" + auditCell(x.audits, x.auditTarget) + "</td></tr>";
     }).join("");
+}
+function auditTile(sn){
+  var t = sn.auditTarget || 0, d = sn.audits || 0;
+  return tile(t && d >= t ? "teal" : (d ? "amber" : "red"),
+    fmt(d) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t) + "</span>",
+    "Call audits done",
+    t ? Math.round(100 * d / t) + "% of the cadence" : "no agents on rotation");
 }
 function renderDaily(){
   var el = document.getElementById("dailywrap");
   if (!el) return;
   var j = DAILY, sn = j && j.snapshot;
-  var h = "<div class='sec'><h2>Daily review</h2>" +
+  var h = "<div class='sec rv'>" +
+    "<div class='rvhead'><span class='k'>Daily review</span><span class='d'>" + esc(j.date || "") + "</span>" +
+    "<span class='k'>" + (sn && sn.backfilled ? "rebuilt from history" : "captured live") + "</span></div>" +
     "<div class='sub'>A frozen picture of a completed day, taken every 15 minutes and kept for 90 days. Use it in the morning meeting.</div>";
   h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
     "<select onchange='loadDaily(this.value)'>" +
@@ -301,9 +334,10 @@ function renderDaily(){
       tile("blue", fmt(sn.connected || 0), "Connected", sn.attempts ? cr + "% of attempts" : "") +
       tile("blue", fmt(sn.counsellings || 0), "Counsellings") +
       tile("blue", inr(sn.revenue || 0), "Revenue booked", fmt(sn.enrolments || 0) + " enrolments") +
-      "</div>";
+      auditTile(sn) + "</div>";
     head = "<thead><tr><th>Name</th><th class='n'>Attempts</th><th class='n'>Connected</th>" +
-      "<th class='n'>Connect rate</th><th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
+      "<th class='n'>Connect rate</th><th class='n'>Counsellings</th><th class='n'>Revenue</th>" +
+      "<th class='n' title='Call audits submitted that day against the cadence'>Audits</th></tr></thead>";
   } else {
     var d = function(o, c){ return o == null ? c : o; };
     var pool = d(sn.oPool, sn.pool), due = d(sn.oDue, sn.due);
@@ -319,10 +353,11 @@ function renderDaily(){
       tile("blue", pcTxt(sn.scoreC, d(sn.oScore, sn.score)), "Score &ge;6 worked") +
       tile("blue", pcTxt(sn.formC, d(sn.oForm, sn.form)), "Waitlist form worked") +
       tile("amber", pcTxt(sn.overdueC, d(sn.oOverdue, sn.overdue)), "Overdue worked") +
-      "</div>";
+      auditTile(sn) + "</div>";
     head = "<thead><tr><th>Name</th><th class='n'>Pool at open</th><th class='n'>Called</th><th class='n'>Due done</th>" +
       "<th class='n'>Missed</th><th class='n'>Score worked</th><th class='n'>Form worked</th>" +
-      "<th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
+      "<th class='n'>Counsellings</th><th class='n'>Revenue</th>" +
+      "<th class='n' title='Call audits submitted that day against the cadence'>Audits</th></tr></thead>";
   }
   h += "<h2 style='margin-top:6px'>By team</h2><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team", back) + "</tbody></table></div>";
   h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
@@ -332,14 +367,15 @@ function pcTxt(done, total){ if (total == null || done == null) return "<span st
 function dailyCsv(){
   var sn = DAILY && DAILY.snapshot;
   if (!sn) return;
-  var head = ["Level","Name","Team","Source","PoolAtOpen","Called","DueAtOpen","Done","Missed","ScoreAtOpen","ScoreWorked","FormAtOpen","FormWorked","OverdueAtOpen","OverdueWorked","Attempts","Connected","Counsellings","Revenue","Enrolments"];
+  var head = ["Level","Name","Team","Source","PoolAtOpen","Called","DueAtOpen","Done","Missed","ScoreAtOpen","ScoreWorked","FormAtOpen","FormWorked","OverdueAtOpen","OverdueWorked","Attempts","Connected","Counsellings","Revenue","Enrolments","Audits","AuditTarget"];
   var lines = [head.join(",")];
   var src = sn.backfilled ? "rebuilt" : "live";
   var d = function(o, c){ return o == null ? c : o; };
   var row = function(level, name, team, x){
     lines.push([level, name, team || "", src, d(x.oPool, x.pool), x.calls, d(x.oDue, x.due), x.done, x.missed,
       d(x.oScore, x.score), x.scoreC, d(x.oForm, x.form), x.formC, d(x.oOverdue, x.overdue), x.overdueC,
-      x.attempts, x.connected, x.counsellings, Math.round(x.revenue || 0), x.enrolments]
+      x.attempts, x.connected, x.counsellings, Math.round(x.revenue || 0), x.enrolments,
+      x.audits, x.auditTarget]
       .map(function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","));
   };
   row("company", "All teams", "", sn);
@@ -429,13 +465,19 @@ function tile(cls, v, l, sub){
   return "<div class='tile " + cls + "'><div class='v'>" + v + "</div><div class='l'>" + l + "</div>" +
     (sub ? "<div class='sb'>" + sub + "</div>" : "") + "</div>";
 }
+function auditCell(done, target){
+  if (!target) return "<span class='mut'>–</span>";
+  var d = done || 0;
+  var cl = d >= target ? "cg" : (d === 0 ? "cr" : "ca");
+  return "<b class='" + cl + "'>" + d + "</b><span class='mut'>/" + target + "</span>";
+}
 function cov(done, total){
   if (!total) return "";
   return fmt(done) + " called · " + Math.round(100 * done / total) + "%";
 }
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
-  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0;
+  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0, au = 0, auT = 0;
   J.teams.forEach(function(x){
     t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
     co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
@@ -443,6 +485,7 @@ function drawStrip(){
     act += (x.activeAgents || 0); tot += (x.agents || []).length;
     created += (x.created || 0); cohC += (x.cohortCounselled || 0); risk += (x.risk || 0);
     ctoday += (x.counsToday || 0); ctarget += (x.targetCounsellings || 0);
+    au += (x.audits || 0); auT += (x.auditTarget || 0);
   });
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
@@ -475,6 +518,10 @@ function drawStrip(){
   h += tile(risk ? "red" : "grey", inr(Math.round(risk * ticket)), "Revenue at risk · " + fmt(risk) + " prospects");
   h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C, leads created this month");
   h += tile("blue", fmt(created), "New leads this month");
+  h += tile(auT && au >= auT ? "teal" : (au ? "amber" : "red"),
+    fmt(au) + " <span style='font-size:14px;font-weight:400'>of " + fmt(auT) + "</span>",
+    "Call audits today",
+    auT ? Math.round(100 * au / auT) + "% of the cadence" : "no agents on rotation");
   return h + "</div>" +
     "<div style='font-size:12px;color:#6B7A8A;margin:-4px 0 12px;line-height:1.55'>" +
     "<b>C2E</b> is enrolments divided by counsellings this month, across all leads, not only fresh ones. " +
@@ -597,7 +644,7 @@ function drawCallNow(){
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
-  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th><th class='n' title='Call audits submitted today against the cadence'>Audits</th></tr></thead><tbody>";
   J.teams.filter(function(t){ return !ONLY || t.id === ONLY; }).forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
     var open = !!OPEN[t.id];
@@ -611,7 +658,8 @@ function drawTeams(){
       "<td class='n'>" + fmt(t.enrolments) + "</td>" +
       "<td class='n'>" + fmt(t.counsellings || 0) + "</td>" +
       "<td class='n'>" + (t.counsellings ? (Math.round(1000 * t.enrolments / t.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(t.queue) + "</td>" + todayCell(t) + backlogCell(t) + "</tr>";
+      "<td class='n'>" + fmt(t.queue) + "</td>" + todayCell(t) + backlogCell(t) +
+      "<td class='n'>" + auditCell(t.audits, t.auditTarget) + "</td></tr>";
     if (open) h += creatorRows(t);
   });
   h += "</tbody></table></div></div>";
@@ -654,7 +702,7 @@ function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
 function creatorRows(t){
   var h = "";
   if (!t.creatorRows.length) {
-    return "<tr class='sub'><td colspan='9' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
+    return "<tr class='sub'><td colspan='10' class='mut'>No creators mapped to this team yet. Assign them below.</td></tr>";
   }
   t.creatorRows.forEach(function(c){
     var k = t.id + "||" + c.u, open = !!OPENC[k];
@@ -669,9 +717,10 @@ function creatorRows(t){
       "<td class='n'>" + fmt(c.enrolments) + "</td>" +
       "<td class='n'>" + fmt(c.counsellings || 0) + "</td>" +
       "<td class='n'>" + (c.counsellings ? (Math.round(1000 * c.enrolments / c.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-      "<td class='n'>" + fmt(c.queue) + "</td>" + todayCell(c) + backlogCell(c) + "</tr>";
+      "<td class='n'>" + fmt(c.queue) + "</td>" + todayCell(c) + backlogCell(c) +
+      "<td class='n mut'>–</td></tr>";
     if (open) {
-      if (!c.agents.length) h += "<tr class='sub2'><td colspan='9' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
+      if (!c.agents.length) h += "<tr class='sub2'><td colspan='10' style='padding-left:48px' class='mut'>No agent activity for this creator.</td></tr>";
       c.agents.forEach(function(a){
         h += "<tr class='sub2'><td style='padding-left:48px'>" + esc(a.name) +
           (a.active ? "" : " <span class='pill a'>inactive</span>") + "</td>" +
@@ -679,7 +728,8 @@ function creatorRows(t){
           "<td class='n'>" + fmt(a.enrolments) + "</td>" +
           "<td class='n'>" + fmt(a.counsellings || 0) + "</td>" +
           "<td class='n'>" + (a.counsellings ? (Math.round(1000 * a.enrolments / a.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
-          "<td class='n'>" + fmt(a.queue) + "</td>" + todayCell(a) + backlogCell(a) + "</tr>";
+          "<td class='n'>" + fmt(a.queue) + "</td>" + todayCell(a) + backlogCell(a) +
+          "<td class='n mut'>–</td></tr>";
       });
     }
   });
