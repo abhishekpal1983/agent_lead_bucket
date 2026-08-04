@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Shared theme for the sales ops dashboards
+   --------------------------------------------------------------------------
+   Loaded AFTER each page's own <style> block, so these rules win without any
+   page having to be rewritten. That is deliberate: the pages are single-file
+   HTML with their layout and their JS in the same document, and rewriting
+   their CSS in place is how you break a working dashboard at 9am.
+
+   This layer only touches chrome. Surfaces, type, spacing, tables, controls.
+   It leaves semantic colour alone, because a red number means something on
+   these pages and a theme has no business deciding it should be blue.
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  /* One accent, used for the thing you are meant to click or read first.
+     Everything else earns its colour by meaning. */
+  --t-accent:#4F46E5;
+  --t-accent-soft:#EEF0FE;
+  --t-accent-deep:#3730A3;
+
+  --t-ink:#111827;
+  --t-ink-2:#4B5563;
+  --t-ink-3:#8A93A3;
+
+  --t-canvas:#F6F7FB;
+  --t-surface:#FFFFFF;
+  --t-line:#E8EAF0;
+  --t-line-soft:#F1F3F7;
+
+  --t-navy:#141B34;
+  --t-navy-2:#1E2748;
+
+  --t-green:#0F9F6E;  --t-green-bg:#E6F7F0;
+  --t-amber:#B45309;  --t-amber-bg:#FEF6E7;
+  --t-red:#DC2626;    --t-red-bg:#FEECEC;
+
+  --t-radius:14px;
+  --t-shadow:0 1px 2px rgba(17,24,39,.04), 0 6px 16px -8px rgba(17,24,39,.10);
+  --t-shadow-lift:0 2px 4px rgba(17,24,39,.05), 0 12px 28px -12px rgba(17,24,39,.16);
+
+  /* index.html reads these, so remapping them retints that page for free */
+  --bg:#F6F7FB; --card:#FFFFFF; --text:#111827; --muted:#6B7280; --line:#E8EAF0;
+  --shadow:0 1px 2px rgba(17,24,39,.04), 0 6px 16px -8px rgba(17,24,39,.10);
+}
+
+/* ---------- type ----------
+   Inter with tabular figures, because every one of these pages is a column of
+   numbers and proportional digits make them jitter as they refresh. */
+body {
+  font-family:"Inter","Inter var",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important;
+  background:var(--t-canvas) !important;
+  color:var(--t-ink) !important;
+  -webkit-font-smoothing:antialiased;
+  letter-spacing:-.006em;
+}
+body, table, input, select, textarea, button { font-variant-numeric:tabular-nums; }
+
+h1 { font-size:20px !important; font-weight:650 !important; letter-spacing:-.021em !important; }
+h2 { font-weight:620 !important; letter-spacing:-.014em !important; }
+
+/* ---------- surfaces ----------
+   One card treatment everywhere: white, hairline, soft shadow, generous radius.
+   The old look was a flat grey box on a flat grey page, which is most of why
+   it read as dull. Depth is doing the separating now, not more lines. */
+.sec, .card, .pane, .teamcard, .exccard, .syncbox, .prog, .adminwrap, .mgroup, .dblock, .tblwrap {
+  background:var(--t-surface) !important;
+  border:1px solid var(--t-line) !important;
+  border-radius:var(--t-radius) !important;
+  box-shadow:var(--t-shadow) !important;
+}
+.sec { padding:16px 18px !important; }
+.card { border-radius:var(--t-radius) !important; }
+.sec.hero, .tile.hero {
+  background:linear-gradient(180deg,#FFFFFF 0%, #FAFBFF 100%) !important;
+  border-color:#DFE3F5 !important;
+}
+
+/* Metric tiles: the number is the point, so it gets the size. */
+.tile { border-radius:var(--t-radius) !important; padding:14px 16px !important; box-shadow:var(--t-shadow) !important; }
+.card .v, .tile .v, .tile b { letter-spacing:-.03em; }
+.card .l, .tile .l { letter-spacing:.06em !important; }
+
+/* ---------- tables ----------
+   Header rows lose their grey slab and become quiet micro caps on white, with
+   one rule under them. Rows get a hover tint so the eye can track across. */
+th {
+  background:var(--t-surface) !important;
+  color:var(--t-ink-3) !important;
+  font-size:10.5px !important;
+  font-weight:600 !important;
+  letter-spacing:.07em !important;
+  text-transform:uppercase !important;
+  border-bottom:1px solid var(--t-line) !important;
+  padding:10px 11px !important;
+}
+td { border-bottom:1px solid var(--t-line-soft) !important; color:var(--t-ink) !important; }
+tbody tr:hover td { background:#FAFAFF !important; }
+tbody tr:last-child td { border-bottom:none !important; }
+
+/* ---------- controls ---------- */
+.btn, button.btn {
+  border-radius:9px !important;
+  border:1px solid var(--t-line) !important;
+  background:var(--t-surface) !important;
+  color:var(--t-ink-2) !important;
+  font-weight:560 !important;
+  padding:7px 14px !important;
+  transition:background .12s ease, border-color .12s ease, transform .06s ease;
+}
+.btn:hover { background:#FBFBFE !important; border-color:#D6DAE6 !important; }
+.btn:active { transform:translateY(.5px); }
+.btn.p, .btn.pri {
+  background:var(--t-accent) !important; border-color:var(--t-accent) !important;
+  color:#fff !important; box-shadow:0 1px 2px rgba(79,70,229,.28) !important;
+}
+.btn.p:hover { background:var(--t-accent-deep) !important; border-color:var(--t-accent-deep) !important; }
+.btn.d { background:var(--t-red-bg) !important; border-color:#F6C9C9 !important; color:var(--t-red) !important; }
+
+input[type=text], input[type=url], input[type=date], input[type=number], select, textarea {
+  border:1px solid var(--t-line) !important;
+  border-radius:9px !important;
+  padding:7px 11px !important;
+  background:var(--t-surface) !important;
+  color:var(--t-ink) !important;
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline:none !important;
+  border-color:var(--t-accent) !important;
+  box-shadow:0 0 0 3px var(--t-accent-soft) !important;
+}
+
+/* Segmented toggles: tabs, chips, filter buttons. Pill shaped, accent when on. */
+.tabs button, .chipb, .it, .viewtabs button, .tabs2 button {
+  border-radius:999px !important;
+  border:1px solid var(--t-line) !important;
+  background:var(--t-surface) !important;
+  color:var(--t-ink-2) !important;
+  font-weight:560 !important;
+  padding:6px 15px !important;
+}
+.tabs button.on, .chipb.on, .it.on, .viewtabs button.on, .tabs2 button.on {
+  background:var(--t-accent) !important;
+  border-color:var(--t-accent) !important;
+  color:#fff !important;
+  box-shadow:0 1px 2px rgba(79,70,229,.3) !important;
+}
+
+/* ---------- chrome ----------
+   The navy goes deeper and slightly cooler so the white content reads as lit
+   rather than as the same grey continuing. */
+.nav, .hdr { background:var(--t-navy) !important; }
+.nav button.on { background:var(--t-accent) !important; color:#fff !important; }
+.nav button:hover, .nav .tools a:hover { background:var(--t-navy-2) !important; }
+.nav .cnt { background:rgba(255,255,255,.10) !important; color:#C9CFE6 !important; }
+.nav button.on .cnt { background:rgba(255,255,255,.22) !important; color:#fff !important; }
+
+/* ---------- state colours, kept semantic ---------- */
+.warn { background:var(--t-amber-bg) !important; border-color:#F6E2BC !important; color:var(--t-amber) !important; border-radius:11px !important; }
+.err, .warn.bad { background:var(--t-red-bg) !important; border-color:#F6C9C9 !important; color:var(--t-red) !important; border-radius:11px !important; }
+
+/* ---------- misc ---------- */
+a { color:var(--t-accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+.spin { border-top-color:var(--t-accent) !important; }
+.mut, .sub { color:var(--t-ink-2) !important; }
+::selection { background:#DDD9FD; }
+
+::-webkit-scrollbar { height:10px; width:10px; }
+::-webkit-scrollbar-thumb { background:#D8DCE8; border-radius:8px; border:2px solid var(--t-canvas); }
+::-webkit-scrollbar-thumb:hover { background:#C3C9DB; }
