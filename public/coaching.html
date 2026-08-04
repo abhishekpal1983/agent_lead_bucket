@@ -3,94 +3,221 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Call coaching</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:light}
+/* Coaching has its own skin rather than the shared theme. It is a workspace you sit
+   inside for twenty minutes, not a board you glance at, so it wants more air, larger
+   hit targets and a header that tells you where you are. */
+:root{
+  color-scheme:light;
+  --ink:#0E1220; --ink2:#4A5268; --ink3:#8A91A6; --ink4:#AEB4C6;
+  --canvas:#F6F7FC; --surface:#FFFFFF;
+  --line:#EAEBF2; --line2:#F2F3F8;
+  --ind:#4F46E5; --ind-d:#3F37C9; --ind-soft:#EEEDFE; --ind-ink:#3730A3;
+  --em:#0E9F6E; --em-soft:#E3F7EF; --em-ink:#04624A;
+  --rose:#E02D3C; --rose-soft:#FDECEE; --rose-ink:#9B1220;
+  --amb:#B45309; --amb-soft:#FEF4E4; --amb-ink:#7C3D06;
+  --r:16px;
+  --sh:0 1px 2px rgba(14,18,32,.04), 0 8px 24px -12px rgba(14,18,32,.14);
+  --sh2:0 2px 6px rgba(14,18,32,.06), 0 18px 40px -18px rgba(14,18,32,.22);
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F6F8;color:#191C20;font-size:13px;line-height:1.5}
-.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-.hdr h1{font-size:16px;font-weight:800}
-.hdr p{font-size:11px;color:#9CA3AF}
-.wrap{max-width:1100px;margin:0 auto;padding:16px 20px 60px}
-.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-select,input[type=text],input[type=url],textarea{border:1px solid #E5E7EB;border-radius:7px;padding:6px 10px;font-size:12.5px;font-family:inherit;background:#fff;color:#191C20}
-textarea{width:100%;resize:vertical;min-height:52px;line-height:1.55}
-.prog{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700}
-.prog b{color:#4338CA}
-.card{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;overflow:hidden}
-.chd{padding:13px 17px;border-bottom:1px solid #F3F4F6;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.chd h2{font-size:14px;font-weight:800}
-.chd .meta{font-size:11px;color:#9CA3AF}
-.chd .right{margin-left:auto;display:flex;gap:10px;align-items:center}
-.cbody{padding:13px 17px}
-.pill{font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:9px;text-transform:uppercase;letter-spacing:.03em}
-.pill.p{background:#EDE9FE;color:#4338CA}.pill.done{background:#D1FAE5;color:#065F46}
-.pill.open{background:#FEF3C7;color:#92400E}.pill.none{background:#F3F4F6;color:#6B7280}
-.grp{font-size:9.5px;font-weight:800;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px}
-.row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #F9FAFB}
-.row .lb{flex:1;font-size:12.5px}
-.row.auto .lb{color:#6B7280}
-.yn{display:flex;gap:5px}
-.yn button{border:1px solid #E5E7EB;background:#fff;border-radius:6px;padding:3px 12px;font-size:11px;font-weight:800;cursor:pointer;color:#6B7280}
-.yn button.y.on{background:#059669;border-color:#059669;color:#fff}
-.yn button.n.on{background:#DC2626;border-color:#DC2626;color:#fff}
-.yn button.a.on{background:#E5E7EB;border-color:#D1D5DB;color:#374151}
-.auto .yn span{border-radius:6px;padding:3px 12px;font-size:11px;font-weight:800}
-.auto .yn span.y{background:#D1FAE5;color:#065F46}
-.auto .yn span.n{background:#FEE2E2;color:#991B1B}
-.note{margin:6px 0 10px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:9px 11px}
-.note label{display:block;font-size:10.5px;font-weight:800;color:#991B1B;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
-.note textarea{border-color:#FECACA;background:#fff}
-.act{margin-top:14px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:11px 13px}
-.act label{display:block;font-size:10.5px;font-weight:800;color:#4338CA;margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em}
-.act .hint{font-size:11px;color:#6B7280;margin-bottom:7px}
-.prev{background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 13px;margin-bottom:12px}
-.prev .q{font-size:11px;color:#6B7280;margin-bottom:6px}
-.prev .txt{font-size:12.5px;font-weight:600;margin-bottom:8px}
-.foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6}
-.foot .sc{font-size:12px;font-weight:800}
-.foot .right{margin-left:auto;display:flex;gap:8px;align-items:center}
-.btn{border:1px solid #191C20;background:#191C20;color:#fff;border-radius:8px;padding:7px 17px;font-size:12.5px;font-weight:800;cursor:pointer}
-.btn.sec{background:#fff;color:#374151;border-color:#E5E7EB}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-.warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
-.err{background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;border-radius:8px;padding:8px 13px;font-size:12px;margin-top:10px}
-.empty{padding:14px 17px;font-size:12.5px;color:#9CA3AF}
-a{color:#4338CA}
-.hist{margin-top:10px;font-size:11.5px;color:#6B7280}
-.hist table{border-collapse:collapse;width:100%;margin-top:6px;font-size:11.5px}
-.hist th{text-align:left;font-size:9.5px;color:#9CA3AF;text-transform:uppercase;padding:4px 6px;background:#F9FAFB}
-.hist td{padding:4px 6px;border-bottom:1px solid #F3F4F6}
-.tabs{display:flex;gap:8px;margin-bottom:14px}
-.tabs button{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;font-weight:800;cursor:pointer;color:#374151}
-.tabs button.on{background:#191C20;color:#fff;border-color:#191C20}
-.ptab{width:100%;border-collapse:collapse;font-size:12px}
-.ptab th{background:#F9FAFB;text-align:left;font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;padding:7px 9px;white-space:nowrap}
-.ptab td{padding:8px 9px;border-bottom:1px solid #F3F4F6;vertical-align:top}
-.ptab tr.cold td{background:#FFFBEB}
-.ptab .nm{font-weight:800}
-.up{color:#059669;font-weight:800}.down{color:#DC2626;font-weight:800}.flat{color:#9CA3AF;font-weight:700}
-.gap{display:inline-block;background:#FEE2E2;color:#991B1B;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;margin:1px 3px 1px 0}
-.spark{display:flex;gap:2px;align-items:flex-end;height:22px}
-.spark i{width:7px;background:#C7D2FE;border-radius:1px;display:block}
-.hrow td{background:#FCFCFD}
-.hrow table{width:100%;border-collapse:collapse;font-size:11.5px}
-.hrow th{background:#fff}
-.lnk{background:none;border:none;color:#4338CA;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
-#loading{padding:60px;text-align:center;color:#9CA3AF}
-.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--canvas); color:var(--ink); font-size:13.5px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; letter-spacing:-.008em; font-variant-numeric:tabular-nums;
+}
+
+/* ---------- header band ----------
+   A dark band at the top does two jobs: it stops the page reading as one flat sheet
+   of grey, and it gives the tabs somewhere to live that is not competing with the
+   content cards below. */
+.top{
+  background:radial-gradient(1200px 320px at 12% -40%, #4C43D8 0%, transparent 62%), linear-gradient(180deg,#1B1936 0%, #14162B 100%);
+  color:#fff; padding:20px 30px 0;
+}
+.topin{max-width:1080px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand h1{font-size:19px;font-weight:600;letter-spacing:-.022em}
+.dot{width:7px;height:7px;border-radius:50%;background:#5BE9B9;box-shadow:0 0 0 4px rgba(91,233,185,.16)}
+.brand .links{margin-left:auto;display:flex;gap:16px}
+.brand .links a{color:#A9AEC9;font-size:12.5px;font-weight:450;text-decoration:none}
+.brand .links a:hover{color:#fff}
+.blurb{color:#9298B8;font-size:12.5px;margin-top:5px;max-width:640px}
+.tabs{display:flex;gap:4px;margin-top:16px;padding:4px;background:rgba(255,255,255,.07);border-radius:12px;width:max-content}
+.tabs button{
+  border:none;background:none;color:#B8BDD6;font-family:inherit;font-size:12.5px;font-weight:500;
+  padding:7px 16px;border-radius:9px;cursor:pointer;transition:background .13s ease,color .13s ease;
+}
+.tabs button:hover{color:#fff}
+.tabs button.on{background:#fff;color:#14162B;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.top .pad{height:18px}
+
+.wrap{max-width:1080px;margin:0 auto;padding:20px 30px 70px}
+
+/* ---------- controls row ---------- */
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.stat{
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:9px 15px;font-size:12.5px;font-weight:450;color:var(--ink2);box-shadow:var(--sh);
+  display:flex;align-items:center;gap:9px;
+}
+.stat b{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-.02em}
+.stat .mini{width:44px;height:5px;background:var(--line);border-radius:99px;overflow:hidden}
+.stat .mini i{display:block;height:5px;background:var(--ind);border-radius:99px}
+select,input[type=text],input[type=url],textarea{
+  border:1px solid var(--line);border-radius:11px;padding:8px 12px;font-size:12.5px;
+  font-family:inherit;background:var(--surface);color:var(--ink);transition:border-color .13s,box-shadow .13s;
+}
+select{padding-right:30px}
+textarea{width:100%;resize:vertical;min-height:58px;line-height:1.6}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ind);box-shadow:0 0 0 3.5px var(--ind-soft)}
+.sync{margin-left:auto;font-size:11.5px;color:var(--ink3);display:flex;align-items:center;gap:6px}
+
+.btn{
+  border:1px solid var(--line);background:var(--surface);color:var(--ink2);border-radius:11px;
+  padding:8px 16px;font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer;
+  transition:background .13s,border-color .13s,transform .06s;
+}
+.btn:hover{background:#FBFBFE;border-color:#DCDEEA}
+.btn:active{transform:translateY(.5px)}
+.btn.p{background:var(--ind);border-color:var(--ind);color:#fff;box-shadow:0 1px 2px rgba(79,70,229,.3),0 6px 16px -8px rgba(79,70,229,.7)}
+.btn.p:hover{background:var(--ind-d);border-color:var(--ind-d)}
+
+/* ---------- review card ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:16px;box-shadow:var(--sh);overflow:hidden;transition:box-shadow .18s}
+.card:hover{box-shadow:var(--sh2)}
+.card.done{border-color:#D8F0E6}
+.chd{padding:15px 20px;display:flex;align-items:center;gap:13px;flex-wrap:wrap;border-bottom:1px solid var(--line2)}
+.av{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;flex:none;letter-spacing:-.01em}
+.who h2{font-size:14.5px;font-weight:600;letter-spacing:-.016em}
+.who .meta{font-size:11.5px;color:var(--ink3);margin-top:1px}
+.who .meta a{color:var(--ind);font-weight:500;text-decoration:none}
+.who .meta a:hover{text-decoration:underline}
+.chd .right{margin-left:auto;display:flex;gap:9px;align-items:center}
+.play{
+  display:inline-flex;align-items:center;gap:6px;background:var(--ind-soft);color:var(--ind-ink);
+  border-radius:10px;padding:7px 13px;font-size:12px;font-weight:550;text-decoration:none;
+}
+.play:hover{background:#E4E2FD}
+.cbody{padding:6px 20px 18px}
+
+.pill{font-size:10px;font-weight:600;padding:3px 9px;border-radius:7px;letter-spacing:.02em;white-space:nowrap}
+.pill.p{background:var(--ind-soft);color:var(--ind-ink)}
+.pill.done{background:var(--em-soft);color:var(--em-ink)}
+.pill.open{background:var(--amb-soft);color:var(--amb-ink)}
+.pill.none{background:#F1F2F7;color:var(--ink2)}
+
+.grp{font-size:10px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.09em;margin:16px 0 2px}
+
+/* Checklist rows. Fixed height and a hairline, so the eye runs straight down the
+   control column instead of hunting for it across a wide gap. */
+.row{display:flex;align-items:center;gap:14px;min-height:42px;border-bottom:1px solid var(--line2)}
+.row:last-of-type{border-bottom:none}
+.row .lb{flex:1;font-size:13px;color:var(--ink)}
+.row.auto .lb{color:var(--ink2)}
+.row.auto{min-height:36px}
+
+/* One connected segmented control, not three loose buttons. */
+.seg{display:inline-flex;background:#F3F4F9;border-radius:10px;padding:3px;gap:2px}
+.seg button{
+  border:none;background:none;font-family:inherit;font-size:11.5px;font-weight:550;color:var(--ink2);
+  padding:5px 13px;border-radius:8px;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s;min-width:44px;
+}
+.seg button:hover{color:var(--ink)}
+.seg button.on.y{background:var(--em);color:#fff;box-shadow:0 1px 2px rgba(14,159,110,.35)}
+.seg button.on.n{background:var(--rose);color:#fff;box-shadow:0 1px 2px rgba(224,45,60,.35)}
+.seg button.on.a{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(14,18,32,.14)}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:550;padding:4px 11px;border-radius:9px}
+.chk.y{background:var(--em-soft);color:var(--em-ink)}
+.chk.n{background:var(--rose-soft);color:var(--rose-ink)}
+.chk svg{width:12px;height:12px}
+
+.note{margin:2px 0 12px;background:var(--rose-soft);border:1px solid #FAD4D9;border-left:3px solid var(--rose);border-radius:0 12px 12px 0;padding:11px 13px}
+.note label{display:block;font-size:10px;font-weight:600;color:var(--rose-ink);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em}
+.note textarea{border-color:#F6C8CE;background:#fff}
+.note textarea:focus{border-color:var(--rose);box-shadow:0 0 0 3.5px rgba(224,45,60,.12)}
+
+.act{margin-top:18px;background:linear-gradient(180deg,#F7F6FF 0%,#FBFBFF 100%);border:1px solid #E2DFFB;border-radius:13px;padding:13px 15px}
+.act label{display:block;font-size:10px;font-weight:600;color:var(--ind-ink);text-transform:uppercase;letter-spacing:.07em}
+.act .hint{font-size:11.5px;color:var(--ink3);margin:3px 0 9px}
+.act textarea{border-color:#DFDCF9;background:#fff}
+
+.prev{background:#FAFAFD;border:1px solid var(--line);border-radius:13px;padding:12px 15px;margin:14px 0 4px}
+.prev .q{font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:5px}
+.prev .txt{font-size:13px;font-weight:500;margin-bottom:10px;color:var(--ink)}
+
+.foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px;padding-top:15px;border-top:1px solid var(--line2)}
+.ring{display:flex;align-items:center;gap:10px}
+.ring .n{font-size:15px;font-weight:600;letter-spacing:-.02em}
+.ring .c{font-size:11px;color:var(--ink3)}
+.foot .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+
+.empty{padding:16px 20px 20px;font-size:13px;color:var(--ink2)}
+.warn{background:var(--amb-soft);color:var(--amb-ink);border:1px solid #F7E2C2;border-radius:13px;padding:11px 15px;font-size:12.5px;margin-bottom:14px}
+.err{background:var(--rose-soft);color:var(--rose-ink);border:1px solid #FAD4D9;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px}
+.hero{background:linear-gradient(135deg,#EEEDFE 0%,#F6F5FF 60%,#FFFFFF 100%);border:1px solid #E2DFFB;border-radius:var(--r);padding:20px 22px;margin-bottom:16px}
+.hero h3{font-size:15px;font-weight:600;letter-spacing:-.018em;margin-bottom:4px}
+.hero p{font-size:12.5px;color:var(--ink2);max-width:620px}
+
+/* ---------- progress table ---------- */
+.tbl{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{
+  text-align:left;font-size:10px;font-weight:600;color:var(--ink4);text-transform:uppercase;
+  letter-spacing:.09em;padding:12px 14px;background:#FCFCFE;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+td{padding:11px 14px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#FBFBFE}
+tr.stale td{background:#FFFCF4}
+tr.stale:hover td{background:#FFF9EC}
+.nm{display:flex;align-items:center;gap:10px;font-weight:550;white-space:nowrap}
+.av.s{width:28px;height:28px;border-radius:9px;font-size:11px}
+.up{color:var(--em);font-weight:600}.down{color:var(--rose);font-weight:600}.flat{color:var(--ink4)}
+.gapchip{display:inline-block;background:var(--rose-soft);color:var(--rose-ink);font-size:10.5px;font-weight:550;padding:2px 8px;border-radius:7px;margin:2px 4px 0 0}
+.spark{display:flex;gap:3px;align-items:flex-end;height:24px}
+.spark i{width:6px;border-radius:2px;display:block;background:linear-gradient(180deg,#8B84F0 0%,#4F46E5 100%)}
+.hrow td{background:#FCFCFE;padding:0}
+.hin{padding:14px 16px}
+.hin table{font-size:12px}
+.hin th{background:transparent;padding:7px 10px}
+.hin td{padding:8px 10px}
+.lnk{background:none;border:none;color:var(--ind);font-size:12px;font-weight:550;cursor:pointer;padding:4px 8px;border-radius:8px;font-family:inherit}
+.lnk:hover{background:var(--ind-soft)}
+.cap{font-size:11.5px;color:var(--ink3);margin-top:12px}
+
+/* ---------- managers ---------- */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.bars td{padding:5px 0;font-size:11.5px;color:var(--ink2)}
+.trk{background:#F0F1F7;border-radius:99px;height:8px;width:100%;overflow:hidden}
+.trk i{display:block;height:8px;border-radius:99px}
+
+#loading{padding:80px 20px;text-align:center;color:var(--ink3);font-size:13px}
+.spin{width:26px;height:26px;border:2.5px solid var(--line);border-top-color:var(--ind);border-radius:50%;margin:0 auto 14px;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+a{color:var(--ind)}
+::-webkit-scrollbar{height:10px;width:10px}
+::-webkit-scrollbar-thumb{background:#DCDEEA;border-radius:8px;border:2px solid var(--canvas)}
 </style>
-<link rel="stylesheet" href="/theme.css">
 </head>
 <body>
-<div class="hdr">
-  <h1>Call coaching</h1>
-  <p id="sub">Five agents a day, picked in rotation. The call is picked for you, from the last two days where possible and the last five otherwise.</p>
-  <a href="/callnow.html" style="font-size:11px;margin-left:auto">Call now</a>
-  <a href="/" style="font-size:11px">Dashboard</a>
+<div class="top">
+  <div class="topin">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Call coaching</h1>
+      <div class="links"><a href="/callnow.html">Call now</a><a href="/vp.html">Revenue command</a><a href="/">Dashboard</a></div>
+    </div>
+    <p class="blurb">Five agents a day, picked in rotation. The call is picked for you, from the last two days where possible and the last five otherwise.</p>
+    <div id="tabhost"></div>
+    <div class="pad"></div>
+  </div>
 </div>
 <div class="wrap">
-  <div id="loading"><div class="spin"></div>Loading today's five...</div>
+  <div id="loading"><div class="spin"></div>Loading today's five</div>
   <div id="app" style="display:none"></div>
 </div>
 <script>
@@ -102,6 +229,31 @@ function mmss(s){s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+"m "+("0
 function hsLink(id){
   var p = (DATA && DATA.portal) || { uiDomain: "app-na2.hubspot.com", portalId: "244132076" };
   return "https://" + p.uiDomain + "/contacts/" + p.portalId + "/record/0-1/" + id;
+}
+/* Avatars are the cheapest way to make a list of names scannable, and a hashed hue
+   means the same person is the same colour on every view without storing anything. */
+var AVS = [["#EEEDFE","#3730A3"],["#E1F5EE","#04624A"],["#FBEAF0","#8A2148"],["#E6F1FB","#0C447C"],
+           ["#FAECE7","#8A3316"],["#F5F0E1","#6B5411"],["#EAF3DE","#33600F"],["#F1EDFB","#5B2E8C"]];
+function initials(n){
+  var p = String(n||"?").trim().split(/\s+/);
+  return ((p[0]||"?")[0] + (p.length>1 ? p[p.length-1][0] : "")).toUpperCase();
+}
+function avatar(name, small){
+  var h = 0, s = String(name||"");
+  for (var i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  var c = AVS[h % AVS.length];
+  return '<div class="av' + (small?" s":"") + '" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(initials(name)) + '</div>';
+}
+function tick(){ return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>'; }
+function cross(){ return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>'; }
+function donut(pct, yes, of){
+  var r = 15, c = 2 * Math.PI * r, on = c * Math.max(0, Math.min(1, pct/100));
+  var col = pct >= 75 ? "#0E9F6E" : (pct >= 50 ? "#B45309" : "#E02D3C");
+  return '<div class="ring"><svg width="38" height="38" viewBox="0 0 38 38">' +
+    '<circle cx="19" cy="19" r="' + r + '" fill="none" stroke="#F0F1F7" stroke-width="4"/>' +
+    '<circle cx="19" cy="19" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="4" stroke-linecap="round" ' +
+    'stroke-dasharray="' + on.toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 19 19)"/></svg>' +
+    '<div><div class="n">' + yes + ' of ' + of + '</div><div class="c">this call</div></div></div>';
 }
 
 function load(){
@@ -133,7 +285,8 @@ function tabs(cur){
     '<button class="' + (cur==="today"?"on":"") + '" onclick="switchTo(\'today\')">Today\'s five</button>' +
     '<button class="' + (cur==="progress"?"on":"") + '" onclick="switchTo(\'progress\')">Progress</button>';
   if (IS_VP) h += '<button class="' + (cur==="managers"?"on":"") + '" onclick="switchTo(\'managers\')">Managers</button>';
-  return h + '</div>';
+  document.getElementById("tabhost").innerHTML = h + '</div>';
+  return "";
 }
 function switchTo(v){
   var q = new URLSearchParams(location.search);
@@ -146,19 +299,20 @@ function render(){
   document.getElementById("loading").style.display = "none";
   var app = document.getElementById("app");
   app.style.display = "block";
+  tabs("today");
 
   var done = j.rows.filter(function(r){ return STATE[r.agentId] && STATE[r.agentId].saved; }).length;
-  var h = tabs("today");
-  h += '<div class="bar">';
-  h += '<div class="prog"><b>' + done + '</b> of ' + j.rows.length + ' reviewed today</div>';
-  h += '<input type="text" id="dt" value="' + esc(j.date) + '" style="width:120px" title="IST date">';
+  var pct = j.rows.length ? Math.round(done * 100 / j.rows.length) : 0;
+  var h = '<div class="bar">';
+  h += '<div class="stat"><b>' + done + '</b> of ' + j.rows.length + ' reviewed today <span class="mini"><i style="width:' + pct + '%"></i></span></div>';
+  h += '<input type="text" id="dt" value="' + esc(j.date) + '" style="width:122px" title="IST date">';
   if (j.isVP && j.teams.length) {
     h += '<select id="tm">' + j.teams.map(function(t){
       return '<option value="' + esc(t.id) + '"' + (t.id===j.team.id?" selected":"") + '>' + esc(t.name || "(unnamed team)") + '</option>';
     }).join("") + '</select>';
   }
-  h += '<button class="btn sec" onclick="go()">Go</button>';
-  h += '<span style="margin-left:auto;font-size:11px;color:#9CA3AF">Calls synced ' + (j.callsLoadedAt ? tm(j.callsLoadedAt) : "not yet") + '</span>';
+  h += '<button class="btn" onclick="go()">Go</button>';
+  h += '<span class="sync">Calls synced ' + (j.callsLoadedAt ? tm(j.callsLoadedAt) : "not yet") + '</span>';
   h += '</div>';
 
   if (!j.persistent) h += '<div class="warn">The org store is not persistent, so these reviews will be lost on the next deploy. Attach a Railway volume at /data.</div>';
@@ -171,18 +325,19 @@ function render(){
 function card(row){
   var st = STATE[row.agentId];
   var j = DATA;
-  var h = '<div class="card"><div class="chd">';
-  h += '<h2>' + esc(row.agentName) + '</h2>';
+  var h = '<div class="card' + (st.saved ? " done" : "") + '"><div class="chd">';
+  h += avatar(row.agentName);
+  h += '<div class="who"><h2>' + esc(row.agentName) + '</h2>';
   if (row.call) {
-    h += '<span class="meta"><a href="' + hsLink(row.call.contactId) + '" target="_blank" rel="noopener" style="font-weight:700">' + esc(row.call.contactName) + ' &nearr;</a> · ' + tm(row.call.at) + ' · ' + mmss(row.call.seconds);
-    if (row.call.disposition) h += ' · ' + esc(row.call.disposition);
-    h += '</span>';
-    if (row.call.isPriority) h += '<span class="pill p">priority lead</span>';
-    if (row.call.widened) h += '<span class="pill none" title="Nothing in the last two days, so the window widened to five">' + row.call.ageDays + ' days old</span>';
+    h += '<div class="meta"><a href="' + hsLink(row.call.contactId) + '" target="_blank" rel="noopener">' + esc(row.call.contactName) + ' &nearr;</a> · ' +
+      tm(row.call.at) + ' · ' + mmss(row.call.seconds) + (row.call.disposition ? ' · ' + esc(row.call.disposition) : '') + '</div>';
   }
+  h += '</div>';
   h += '<div class="right">';
+  if (row.call && row.call.isPriority) h += '<span class="pill p">priority lead</span>';
+  if (row.call && row.call.widened) h += '<span class="pill none" title="Nothing in the last two days, so the window widened to five">' + row.call.ageDays + ' days old</span>';
   h += st.saved ? '<span class="pill done">reviewed</span>' : '<span class="pill open">to do</span>';
-  if (row.call && row.call.recording) h += '<a href="' + esc(row.call.recording) + '" target="_blank" style="font-size:11.5px;font-weight:700">Play call</a>';
+  if (row.call && row.call.recording) h += '<a class="play" href="' + esc(row.call.recording) + '" target="_blank" rel="noopener">&#9654; Play call</a>';
   h += '</div></div>';
 
   if (!row.call) {
@@ -193,24 +348,26 @@ function card(row){
   h += '<div class="cbody">';
 
   if (row.prev) {
-    h += '<div class="prev"><div class="q">Last session, ' + esc(row.prev.date) + ', the action item was</div>';
+    h += '<div class="prev"><div class="q">Last session, ' + esc(row.prev.date) + '</div>';
     h += '<div class="txt">' + esc(row.prev.actionItem) + '</div>';
-    h += '<div class="yn" style="gap:6px">' + ["done","partial","not_done"].map(function(v){
+    h += '<div class="seg">' + ["done","partial","not_done"].map(function(v){
       var lbl = v === "not_done" ? "not done" : v;
-      return '<button class="' + (v==="done"?"y":"n") + (st.prevVerdict===v?" on":"") + '" onclick="setPrev(\'' + row.agentId + '\',\'' + v + '\')">' + lbl + '</button>';
+      var cls = v === "done" ? "y" : (v === "partial" ? "a" : "n");
+      return '<button class="' + cls + (st.prevVerdict===v?" on":"") + '" onclick="setPrev(\'' + row.agentId + '\',\'' + v + '\')">' + lbl + '</button>';
     }).join("") + '</div></div>';
   }
 
   h += '<div class="grp">From HubSpot</div>';
   j.items.filter(function(i){ return i.auto; }).forEach(function(i){
     var v = st.items[i.key] || row.auto[i.key] || "";
-    h += '<div class="row auto"><div class="lb">' + esc(i.label) + '</div><div class="yn"><span class="' + (v==="yes"?"y":"n") + '">' + (v==="yes"?"yes":"no") + '</span></div></div>';
+    h += '<div class="row auto"><div class="lb">' + esc(i.label) + '</div>' +
+      '<span class="chk ' + (v==="yes"?"y":"n") + '">' + (v==="yes"?tick()+"yes":cross()+"no") + '</span></div>';
   });
 
   h += '<div class="grp">Your judgement</div>';
   j.items.filter(function(i){ return !i.auto; }).forEach(function(i){
     var v = st.items[i.key] || "";
-    h += '<div class="row"><div class="lb">' + esc(i.label) + '</div><div class="yn">';
+    h += '<div class="row"><div class="lb">' + esc(i.label) + '</div><div class="seg">';
     ["yes","no","na"].forEach(function(o){
       var cls = o === "yes" ? "y" : (o === "no" ? "n" : "a");
       h += '<button class="' + cls + (v===o?" on":"") + '" onclick="setItem(\'' + row.agentId + '\',\'' + i.key + '\',\'' + o + '\')">' + (o==="na"?"n/a":o) + '</button>';
@@ -228,10 +385,10 @@ function card(row){
 
   var sc = score(st.items);
   h += '<div class="foot">';
-  h += '<span class="sc">Score ' + sc.yes + ' of ' + sc.of + '</span>';
-  h += '<input type="url" placeholder="Meet recording link" value="' + esc(st.recordingUrl) + '" oninput="setRec(\'' + row.agentId + '\',this.value)" style="width:260px">';
-  if (!st.recordingUrl) h += '<span style="font-size:11px;color:#9CA3AF">recording not linked</span>';
-  h += '<div class="right"><button class="btn" onclick="submit(\'' + row.agentId + '\')">' + (st.saved ? "Update" : "Submit review") + '</button></div>';
+  h += donut(sc.of ? sc.yes * 100 / sc.of : 0, sc.yes, sc.of);
+  h += '<input type="url" placeholder="Meet recording link" value="' + esc(st.recordingUrl) + '" oninput="setRec(\'' + row.agentId + '\',this.value)" style="width:250px">';
+  if (!st.recordingUrl) h += '<span class="pill open">recording not linked</span>';
+  h += '<div class="right"><button class="btn p" onclick="submit(\'' + row.agentId + '\')">' + (st.saved ? "Update review" : "Submit review") + '</button></div>';
   h += '</div>';
   if (st.err) h += '<div class="err">' + esc(st.err) + '</div>';
   h += '</div></div>';
@@ -274,8 +431,7 @@ function submit(agentId){
     .catch(function(e){ st.err = e.message; render(); });
 }
 
-
-/* ---------- progress view ---------- */
+/* ---------- progress ---------- */
 function loadProgress(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/progress?" + q.toString(), {credentials:"same-origin"})
@@ -289,10 +445,12 @@ function renderProgress(){
   document.getElementById("loading").style.display = "none";
   var app = document.getElementById("app");
   app.style.display = "block";
+  tabs("progress");
 
   var coached = j.rows.filter(function(r){ return r.sessions > 0; }).length;
-  var h = tabs("progress");
-  h += '<div class="bar"><div class="prog"><b>' + coached + '</b> of ' + j.rows.length + ' agents coached at least once</div>';
+  var pct = j.rows.length ? Math.round(coached * 100 / j.rows.length) : 0;
+  var h = '<div class="bar">';
+  h += '<div class="stat"><b>' + coached + '</b> of ' + j.rows.length + ' agents coached <span class="mini"><i style="width:' + pct + '%"></i></span></div>';
   if (j.isVP && j.teams.length) {
     h += '<select onchange="pickTeam(this.value)">' + j.teams.map(function(t){
       return '<option value="' + esc(t.id) + '"' + (t.id===j.team.id?" selected":"") + '>' + esc(t.name || "(unnamed team)") + '</option>';
@@ -300,67 +458,76 @@ function renderProgress(){
   }
   h += '</div>';
 
-  h += '<div class="card"><table class="ptab"><thead><tr>' +
+  /* Before the first review, every row would be flagged amber, and a table where
+     everything is flagged flags nothing. Say so once instead. */
+  if (!coached) {
+    h += '<div class="hero"><h3>Nothing coached on this team yet</h3>' +
+      '<p>Once reviews start landing, this table fills with each agent\'s score trend, whether their last action item was done, and any item they have failed three times in the last five sessions.</p></div>';
+  }
+
+  h += '<div class="tbl"><table><thead><tr>' +
     '<th>Agent</th><th>Sessions</th><th>Last</th><th>Score</th><th>Trend</th><th>Last 5</th>' +
     '<th>Action items landed</th><th>Open action item</th><th></th></tr></thead><tbody>';
 
   j.rows.forEach(function(r, i){
-    var cold = r.sessions === 0 || (r.daysSince !== null && r.daysSince > 7);
-    h += '<tr class="' + (cold ? "cold" : "") + '">';
-    h += '<td class="nm">' + esc(r.agentName);
+    var stale = r.sessions > 0 && r.daysSince !== null && r.daysSince > 7;
+    h += '<tr class="' + (stale ? "stale" : "") + '">';
+    h += '<td><div class="nm">' + avatar(r.agentName, true) + '<span>' + esc(r.agentName) + '</span></div>';
     if (r.persistentGaps.length) {
-      h += '<div>' + r.persistentGaps.map(function(g){ return '<span class="gap">' + esc(g.label) + '</span>'; }).join("") + '</div>';
+      h += '<div style="margin-left:38px">' + r.persistentGaps.map(function(g){ return '<span class="gapchip">' + esc(g.label) + '</span>'; }).join("") + '</div>';
     }
     h += '</td>';
-    h += '<td>' + r.sessions + '</td>';
-    h += '<td>' + (r.lastDate ? esc(r.lastDate) + '<div style="font-size:10.5px;color:#9CA3AF">' + r.daysSince + 'd ago</div>' : '<span style="color:#B45309;font-weight:700">never</span>') + '</td>';
-    h += '<td>' + (r.lastScore ? r.lastScore.yes + '/' + r.lastScore.of : '–') + '</td>';
+    h += '<td>' + (r.sessions || '<span class="flat">0</span>') + '</td>';
+    h += '<td>' + (r.lastDate
+      ? esc(r.lastDate) + '<div style="font-size:10.5px;color:var(--ink4)">' + r.daysSince + 'd ago</div>'
+      : '<span class="pill none">not yet</span>') + '</td>';
+    h += '<td>' + (r.lastScore ? '<b>' + r.lastScore.yes + '</b>/' + r.lastScore.of : '<span class="flat">–</span>') + '</td>';
     h += '<td>' + trendCell(r.trend) + '</td>';
     h += '<td>' + spark(r.history) + '</td>';
-    h += '<td>' + (r.actionsGraded ? r.actionsLanded + ' of ' + r.actionsGraded : '<span class="flat">not graded yet</span>') + '</td>';
-    h += '<td style="max-width:280px;white-space:normal">' + esc(r.openAction || "–") + '</td>';
+    h += '<td>' + (r.actionsGraded ? '<b>' + r.actionsLanded + '</b> of ' + r.actionsGraded : '<span class="flat">not graded yet</span>') + '</td>';
+    h += '<td style="max-width:260px;white-space:normal;color:var(--ink2)">' + esc(r.openAction || "–") + '</td>';
     h += '<td>' + (r.sessions ? '<button class="lnk" onclick="toggleHist(' + i + ')">history</button>' : '') + '</td>';
     h += '</tr>';
-    h += '<tr class="hrow" id="h' + i + '" style="display:none"><td colspan="9">' + histTable(r) + '</td></tr>';
+    h += '<tr class="hrow" id="h' + i + '" style="display:none"><td colspan="9"><div class="hin">' + histTable(r) + '</div></td></tr>';
   });
   h += '</tbody></table></div>';
-  h += '<p style="font-size:11px;color:#9CA3AF">Amber rows are agents never coached, or not coached in over a week. Red chips are items failed in three of the last five sessions.</p>';
+  h += '<p class="cap">Amber rows are agents not coached in over a week. Red chips are items failed in three of the last five sessions.</p>';
   app.innerHTML = h;
 }
 
 function trendCell(t){
   if (t === null) return '<span class="flat">–</span>';
-  if (t > 3) return '<span class="up">+' + t + '</span>';
-  if (t < -3) return '<span class="down">' + t + '</span>';
+  if (t > 3) return '<span class="up">&uarr; ' + t + '</span>';
+  if (t < -3) return '<span class="down">&darr; ' + Math.abs(t) + '</span>';
   return '<span class="flat">' + (t > 0 ? "+" : "") + t + '</span>';
 }
 function spark(hist){
   if (!hist.length) return '<span class="flat">–</span>';
   var h = hist.slice(0, 8).slice().reverse();
   return '<div class="spark">' + h.map(function(x){
-    return '<i style="height:' + Math.max(3, Math.round(x.pct * 0.22)) + 'px" title="' + esc(x.date) + ': ' + x.pct + '%"></i>';
+    return '<i style="height:' + Math.max(3, Math.round(x.pct * 0.24)) + 'px" title="' + esc(x.date) + ': ' + x.pct + '%"></i>';
   }).join("") + '</div>';
 }
 function verdictLbl(v){
-  if (v === "done") return '<span style="color:#059669;font-weight:800">done</span>';
-  if (v === "partial") return '<span style="color:#D97706;font-weight:800">partial</span>';
-  if (v === "not_done") return '<span style="color:#DC2626;font-weight:800">not done</span>';
+  if (v === "done") return '<span class="up">done</span>';
+  if (v === "partial") return '<span style="color:var(--amb);font-weight:600">partial</span>';
+  if (v === "not_done") return '<span class="down">not done</span>';
   return '<span class="flat">–</span>';
 }
 function histTable(r){
   var h = '<table><thead><tr><th>Date</th><th>Score</th><th>Call</th><th>Previous item</th><th>Action item set</th><th>What was missing</th><th>Recording</th></tr></thead><tbody>';
   r.history.forEach(function(s){
     h += '<tr><td>' + esc(s.date) + '</td>';
-    h += '<td>' + s.yes + '/' + s.of + '</td>';
+    h += '<td><b>' + s.yes + '</b>/' + s.of + '</td>';
     h += '<td>' + (s.contactId ? '<a href="' + hsLink(s.contactId) + '" target="_blank" rel="noopener">' + esc(s.contactName || "contact") + ' &nearr;</a>' : esc(s.contactName || "–")) + '</td>';
     h += '<td>' + verdictLbl(s.prevVerdict) + '</td>';
-    h += '<td style="max-width:240px;white-space:normal">' + esc(s.actionItem) + '</td>';
+    h += '<td style="max-width:230px;white-space:normal">' + esc(s.actionItem) + '</td>';
     var notes = Object.keys(s.notes || {}).map(function(k){
       var lbl = (DATA.items.filter(function(i){ return i.key === k; })[0] || {}).label || k;
       return '<b>' + esc(lbl) + ':</b> ' + esc(s.notes[k]);
     });
-    h += '<td style="max-width:340px;white-space:normal">' + (notes.length ? notes.join("<br>") : '<span class="flat">nothing failed</span>') + '</td>';
-    h += '<td>' + (s.recordingUrl ? '<a href="' + esc(s.recordingUrl) + '" target="_blank" rel="noopener">listen &nearr;</a>' : '<span style="color:#B45309">missing</span>') + '</td>';
+    h += '<td style="max-width:330px;white-space:normal;color:var(--ink2)">' + (notes.length ? notes.join("<br>") : '<span class="flat">nothing failed</span>') + '</td>';
+    h += '<td>' + (s.recordingUrl ? '<a href="' + esc(s.recordingUrl) + '" target="_blank" rel="noopener">listen &nearr;</a>' : '<span class="pill open">missing</span>') + '</td>';
     h += '</tr>';
   });
   return h + '</tbody></table>';
@@ -375,7 +542,7 @@ function pickTeam(id){
   location.search = "?" + q.toString();
 }
 
-/* ---------- managers view, VP only ---------- */
+/* ---------- managers, VP only ---------- */
 function loadManagers(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/summary?" + q.toString(), {credentials:"same-origin"})
@@ -389,73 +556,65 @@ function renderManagers(){
   document.getElementById("loading").style.display = "none";
   var app = document.getElementById("app");
   app.style.display = "block";
+  tabs("managers");
 
-  var h = tabs("managers");
-  h += '<div class="bar">';
-  h += '<div class="prog">Today <b>' + j.todayDoneOrg + '</b> of ' + j.todayExpectedOrg + ' audits done</div>';
-  h += '<div class="prog">Last 7 days <b>' + j.total7d + '</b> of ' + j.expected7dOrg + '</div>';
-  h += '<div class="prog">Org average score <b>' + (j.orgAvg === null ? "–" : j.orgAvg + "%") + '</b></div>';
-  h += '<input type="text" id="dt" value="' + esc(j.today) + '" style="width:120px" title="IST date">';
-  h += '<button class="btn sec" onclick="goManagers()">Go</button>';
+  var pct = j.todayExpectedOrg ? Math.round(j.todayDoneOrg * 100 / j.todayExpectedOrg) : 0;
+  var h = '<div class="bar">';
+  h += '<div class="stat"><b>' + j.todayDoneOrg + '</b> of ' + j.todayExpectedOrg + ' audits today <span class="mini"><i style="width:' + pct + '%"></i></span></div>';
+  h += '<div class="stat"><b>' + j.total7d + '</b> of ' + j.expected7dOrg + ' this week</div>';
+  h += '<div class="stat"><b>' + (j.orgAvg === null ? "–" : j.orgAvg + "%") + '</b> org average score</div>';
+  h += '<input type="text" id="dt" value="' + esc(j.today) + '" style="width:122px" title="IST date">';
+  h += '<button class="btn" onclick="goManagers()">Go</button>';
   h += '</div>';
 
+  h += '<div class="mgrid">';
   j.teams.forEach(function(t){
     var behind = t.todayDone < t.todayExpected;
     h += '<div class="card"><div class="chd">';
-    h += '<h2>' + esc(t.name || "(unnamed team)") + '</h2>';
-    h += '<span class="meta">' + esc(t.managerEmail || "no manager mapped") + ' · ' + t.agents + ' agents</span>';
-    h += '<div class="right">';
-    h += '<span class="pill ' + (behind ? "open" : "done") + '">' + t.todayDone + ' of ' + t.todayExpected + ' today</span>';
-    h += '<span class="pill none">' + t.sessions7d + ' of ' + t.expected7d + ' this week</span>';
-    h += '</div></div><div class="cbody">';
+    h += avatar(t.name || "team");
+    h += '<div class="who"><h2>' + esc(t.name || "(unnamed team)") + '</h2>' +
+      '<div class="meta">' + esc(t.managerEmail || "no manager mapped") + ' · ' + t.agents + ' agents</div></div>';
+    h += '<div class="right"><span class="pill ' + (behind ? "open" : "done") + '">' + t.todayDone + ' of ' + t.todayExpected + ' today</span></div>';
+    h += '</div><div class="cbody">';
 
-    h += '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">';
-
-    h += '<div style="flex:1;min-width:260px">';
     h += '<div class="grp">Today, by agent</div>';
-    if (!t.todayRows.length) h += '<div style="font-size:12px;color:#9CA3AF">No agents eligible. Managers are excluded from their own rotation.</div>';
+    if (!t.todayRows.length) h += '<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">No agents eligible. Managers are excluded from their own rotation.</div>';
     t.todayRows.forEach(function(r){
-      h += '<div class="row"><div class="lb">' + esc(r.agentName) + (r.extra ? ' <span class="pill none">outside rotation</span>' : '') + '</div>';
+      h += '<div class="row"><div class="lb" style="display:flex;align-items:center;gap:9px">' + avatar(r.agentName, true) +
+        '<span>' + esc(r.agentName) + (r.extra ? ' <span class="pill none">outside rotation</span>' : '') + '</span></div>';
       if (r.done) {
-        h += '<span style="font-size:11px;color:#6B7280">' + (r.score ? r.score.yes + '/' + r.score.of : '') + '</span>';
-        if (!r.recording) h += '<span class="gap">no recording</span>';
-        h += '<span class="pill done">done ' + tm(r.at).split(", ").pop() + '</span>';
+        if (r.score) h += '<span style="font-size:11.5px;color:var(--ink3)">' + r.score.yes + '/' + r.score.of + '</span>';
+        if (!r.recording) h += '<span class="gapchip">no recording</span>';
+        h += '<span class="chk y">' + tick() + 'done</span>';
       } else {
         h += '<span class="pill open">outstanding</span>';
       }
       h += '</div>';
     });
-    h += '</div>';
 
-    h += '<div style="flex:1;min-width:260px">';
-    h += '<div class="grp">Last 7 days</div>';
-    h += '<table class="ptab"><tbody>';
+    h += '<div class="grp">Last 7 days</div><table class="bars">';
     t.daily.forEach(function(d){
-      var pct = d.expected ? Math.round(d.done * 100 / d.expected) : 0;
-      h += '<tr><td style="width:92px">' + esc(d.date) + '</td>';
-      h += '<td style="width:70px">' + d.done + ' of ' + d.expected + '</td>';
-      h += '<td><div style="background:#F3F4F6;border-radius:4px;height:9px;width:100%"><div style="background:' +
-        (pct >= 100 ? "#059669" : pct > 0 ? "#F0B429" : "#E5E7EB") + ';height:9px;border-radius:4px;width:' +
-        Math.min(100, pct) + '%"></div></div></td></tr>';
+      var p = d.expected ? Math.round(d.done * 100 / d.expected) : 0;
+      h += '<tr><td style="width:86px">' + esc(d.date) + '</td><td style="width:66px">' + d.done + ' of ' + d.expected + '</td>' +
+        '<td><div class="trk"><i style="width:' + Math.min(100, p) + '%;background:' +
+        (p >= 100 ? "#0E9F6E" : p > 0 ? "#E9A13B" : "#E7E9F2") + '"></i></div></td></tr>';
     });
-    h += '</tbody></table></div>';
-
-    h += '</div>';
+    h += '</table>';
 
     h += '<div class="foot">';
-    h += '<span class="sc">Average score given ' + (t.avgScore === null ? "–" : t.avgScore + "%") + '</span>';
+    h += '<span style="font-size:12.5px;color:var(--ink2)">Average given <b style="color:var(--ink)">' + (t.avgScore === null ? "–" : t.avgScore + "%") + '</b></span>';
     if (t.avgScore !== null && j.orgAvg !== null && Math.abs(t.avgScore - j.orgAvg) >= 12) {
-      h += '<span class="gap">' + (t.avgScore > j.orgAvg ? "marks well above" : "marks well below") + ' the org average of ' + j.orgAvg + '%</span>';
+      h += '<span class="gapchip">' + (t.avgScore > j.orgAvg ? "well above" : "well below") + ' the org ' + j.orgAvg + '%</span>';
     }
-    if (t.missingRecording) h += '<span class="gap">' + t.missingRecording + ' without a recording</span>';
-    if (t.neverCoached.length) h += '<span class="gap">never coached: ' + esc(t.neverCoached.slice(0, 6).join(", ")) + (t.neverCoached.length > 6 ? " and " + (t.neverCoached.length - 6) + " more" : "") + '</span>';
-    h += '<div class="right"><a href="?view=progress&team=' + esc(t.teamId) + '" style="font-size:11.5px;font-weight:700">See their agents &nearr;</a></div>';
+    if (t.missingRecording) h += '<span class="gapchip">' + t.missingRecording + ' without a recording</span>';
+    h += '<div class="right"><a href="?view=progress&team=' + esc(t.teamId) + '" style="font-size:12px;font-weight:550;text-decoration:none">Their agents &nearr;</a></div>';
     h += '</div>';
-
+    if (t.neverCoached.length) h += '<p class="cap">Never coached: ' + esc(t.neverCoached.slice(0, 6).join(", ")) + (t.neverCoached.length > 6 ? " and " + (t.neverCoached.length - 6) + " more" : "") + '</p>';
     h += '</div></div>';
   });
+  h += '</div>';
 
-  h += '<p style="font-size:11px;color:#9CA3AF">Outstanding means the review is due today and has not been submitted. Managers never appear in their own rotation, even when mapped as an agent on their team.</p>';
+  h += '<p class="cap">Outstanding means the review is due today and has not been submitted. Managers never appear in their own rotation, even when mapped as an agent on their team.</p>';
   app.innerHTML = h;
 }
 function goManagers(){
