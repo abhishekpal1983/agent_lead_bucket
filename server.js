@@ -2844,6 +2844,29 @@ function creatorsAll(){
     .slice(0, 2000);
 }
 
+// Manual refresh. Delta is cheap and open to managers; a full rebuild costs hundreds of
+// API calls and takes minutes, so it stays with VPs.
+let LAST_MANUAL = 0;
+app.post("/api/sync/leads", async function(req, res){
+  const mode = String(req.query.mode || "delta");
+  if (mode === "full" && !isVP(req)) return res.status(403).json({ error: "full rebuild is VP only" });
+  if (Date.now() - LAST_MANUAL < 20000) return res.json({ ok: true, skipped: "another refresh just ran" });
+  LAST_MANUAL = Date.now();
+  const t0 = Date.now();
+  try {
+    if (mode === "full") {
+      await sync();
+      await syncCounsel();
+    } else {
+      if (!CACHE.loadedAt) await sync(); else await syncDelta();
+    }
+    res.json({ ok: true, mode: mode, ms: Date.now() - t0, changed: DELTA.lastCount,
+      leads: CACHE.contacts.length, at: DELTA.at || CACHE.loadedAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/vp/team", express.json(), function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
   const b = req.body || {};
