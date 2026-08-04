@@ -3733,10 +3733,25 @@ function coachDayIndex(dateStr){ return Math.floor(Date.parse(dateStr + "T00:00:
 /* Round robin, so every agent comes up on a fixed cycle rather than whoever the
    manager happens to be worried about. Fifteen agents at five a day means each
    one is coached every third working day, and the gap is visible. */
+/* A manager auditing their own calls is not an audit, and every manager holds some
+   leads of their own, so their owner id turns up in agentIds and would otherwise
+   come round in the rotation. Excluded here rather than by asking people to unmap
+   themselves, because the mapping is load-bearing elsewhere. */
+function coachIsManager(id){
+  const o = CACHE.owners[String(id)] || {};
+  const em = String(o.email || "").toLowerCase();
+  if (!em) return false;
+  if (VP_EMAILS.indexOf(em) >= 0) return true;
+  if (typeof MANAGER_EMAILS !== "undefined" && MANAGER_EMAILS.indexOf(em) >= 0) return true;
+  return (ORG.teams || []).some(function(t){ return String(t.managerEmail || "").toLowerCase() === em; });
+}
+function coachAgents(team){
+  return (team.agentIds || []).map(String)
+    .filter(function(id){ return ownerCounted(id) && !coachIsManager(id); });
+}
+
 function coachPickAgents(team, dateStr){
-  const ids = (team.agentIds || []).map(String)
-    .filter(function(id){ return ownerCounted(id); })
-    .sort();
+  const ids = coachAgents(team).sort();
   if (!ids.length) return [];
   const n = Math.min(COACH_PER_DAY, ids.length);
   const start = (coachDayIndex(dateStr) * n) % ids.length;
@@ -4028,7 +4043,7 @@ app.get("/api/coaching/progress", function(req, res){
   if (!team) return res.status(403).json({ error: "no team is mapped to this account" });
   const store = coachStore();
   const now = Date.now();
-  const agents = (team.agentIds || []).map(String).filter(ownerCounted);
+  const agents = coachAgents(team);
 
   const rows = agents.map(function(id){
     const ss = coachSessionsFor(id).filter(function(s){ return s.submittedAt && s.teamId === team.id; });
@@ -4109,37 +4124,84 @@ app.get("/api/coaching/agent/:id", function(req, res){
   });
 });
 
-// Coverage across every team, so the cadence itself can be seen to be running.
+/* Whether the cadence is actually running, which is a different question from
+   whether the agents are improving. Named down to the individual review, because
+   "3 of 5" invites the follow-up "which two", and a VP should not have to ask. */
 app.get("/api/coaching/summary", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
   const store = coachStore();
-  const today = coachIstDate();
-  const since = Date.now() - 7 * 86400000;
-  const recent = store.sessions.filter(function(s){ return s.submittedAt && Date.parse(s.submittedAt) >= since; });
+  const today = String(req.query.date || coachIstDate());
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    days.push(new Date(Date.parse(today + "T00:00:00Z") - i * 86400000).toISOString().slice(0, 10));
+  }
+  const week = store.sessions.filter(function(s){ return s.submittedAt && days.indexOf(s.date) >= 0; });
+
   const teams = (ORG.teams || []).map(function(t){
-    const mine = recent.filter(function(s){ return s.teamId === t.id; });
+    const mine = week.filter(function(s){ return s.teamId === t.id; });
+    const agents = coachAgents(t);
+    const expectedDaily = Math.min(agents.length, COACH_PER_DAY);
     const covered = {};
     mine.forEach(function(s){ covered[String(s.agentId)] = 1; });
-    const agents = (t.agentIds || []).map(String).filter(ownerCounted);
     const scores = mine.map(function(s){ return (s.score || {}).pct || 0; });
     const avg = scores.length ? Math.round(scores.reduce(function(a, b){ return a + b; }, 0) / scores.length) : null;
+
+    // Today, named. Who was due, who was reviewed, and who is outstanding.
+    const dueToday = coachPickAgents(t, today);
+    const doneToday = {};
+    store.sessions.forEach(function(s){
+      if (s.date === today && s.teamId === t.id && s.submittedAt) doneToday[String(s.agentId)] = s;
+    });
+    const rowOf = function(id, extra){
+      const s = doneToday[id];
+      return { agentId: id, agentName: (CACHE.owners[id] || {}).name || ("Owner " + id),
+        done: !!s, at: s ? s.submittedAt : null, score: s ? (s.score || {}) : null,
+        recording: s ? !!s.recordingUrl : false, extra: !!extra };
+    };
+    // The rotation is the list of who was due, but a review done on someone outside
+    // it is still a review done. Count both, show the extras separately.
+    const todayRows = dueToday.map(function(id){ return rowOf(id, false); })
+      .concat(Object.keys(doneToday).filter(function(id){ return dueToday.indexOf(id) < 0; })
+        .map(function(id){ return rowOf(id, true); }));
+
+    // Seven day strip, so a manager who does ten on Monday and nothing after is
+    // not hidden behind a healthy weekly total.
+    const daily = days.slice().reverse().map(function(d){
+      const n = store.sessions.filter(function(s){ return s.date === d && s.teamId === t.id && s.submittedAt; }).length;
+      return { date: d, done: n, expected: expectedDaily };
+    });
+
+    const lastAt = mine.map(function(s){ return Date.parse(s.submittedAt); }).sort(function(a, b){ return b - a; })[0] || null;
+
     return {
       teamId: t.id, name: t.name, managerEmail: t.managerEmail,
-      sessions7d: mine.length, expected7d: Math.min(agents.length, COACH_PER_DAY) * 5,
-      todayDone: store.sessions.filter(function(s){ return s.date === today && s.teamId === t.id && s.submittedAt; }).length,
-      agents: agents.length, coveredAgents: Object.keys(covered).length,
+      agents: agents.length,
+      todayDone: todayRows.filter(function(r){ return r.done; }).length,
+      todayExpected: expectedDaily,
+      todayRows: todayRows,
+      daily: daily,
+      sessions7d: mine.length, expected7d: expectedDaily * 5,
+      coveredAgents: Object.keys(covered).length,
       neverCoached: agents.filter(function(id){
         return !store.sessions.some(function(s){ return String(s.agentId) === id && s.submittedAt; });
       }).map(function(id){ return (CACHE.owners[id] || {}).name || id; }),
-      // A manager who marks everyone at ninety is not coaching, and this is the
-      // only number that shows it.
+      // A manager who marks everyone at ninety is not coaching, and comparing their
+      // average against the org is the only number that shows it.
       avgScore: avg,
-      missingRecording: mine.filter(function(s){ return !s.recordingUrl; }).length
+      missingRecording: mine.filter(function(s){ return !s.recordingUrl; }).length,
+      lastActivity: lastAt ? new Date(lastAt).toISOString() : null
     };
   });
-  const all = recent.map(function(s){ return (s.score || {}).pct || 0; });
-  res.json({ teams: teams, orgAvg: all.length ? Math.round(all.reduce(function(a, b){ return a + b; }, 0) / all.length) : null,
-    total7d: recent.length, today: today });
+
+  const all = week.map(function(s){ return (s.score || {}).pct || 0; });
+  res.json({
+    teams: teams, today: today,
+    orgAvg: all.length ? Math.round(all.reduce(function(a, b){ return a + b; }, 0) / all.length) : null,
+    total7d: week.length,
+    expected7dOrg: teams.reduce(function(a, t){ return a + t.expected7d; }, 0),
+    todayDoneOrg: teams.reduce(function(a, t){ return a + t.todayDone; }, 0),
+    todayExpectedOrg: teams.reduce(function(a, t){ return a + t.todayExpected; }, 0)
+  });
 });
 
 // Railway sends SIGTERM on every redeploy. Exiting cleanly turns what it otherwise

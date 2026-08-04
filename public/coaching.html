@@ -93,7 +93,7 @@ a{color:#4338CA}
   <div id="app" style="display:none"></div>
 </div>
 <script>
-var DATA = null, STATE = {};
+var DATA = null, STATE = {}, IS_VP = false;
 
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function tm(x){return x?new Date(x).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"–";}
@@ -108,7 +108,7 @@ function load(){
   fetch("/api/coaching/today?" + q.toString(), {credentials:"same-origin"})
     .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
     .then(function(j){
-      DATA = j; STATE = {};
+      DATA = j; STATE = {}; IS_VP = !!j.isVP;
       j.rows.forEach(function(row){
         var s = row.session;
         STATE[row.agentId] = {
@@ -128,10 +128,11 @@ function load(){
 }
 
 function tabs(cur){
-  return '<div class="tabs">' +
+  var h = '<div class="tabs">' +
     '<button class="' + (cur==="today"?"on":"") + '" onclick="switchTo(\'today\')">Today\'s five</button>' +
-    '<button class="' + (cur==="progress"?"on":"") + '" onclick="switchTo(\'progress\')">Progress</button>' +
-    '</div>';
+    '<button class="' + (cur==="progress"?"on":"") + '" onclick="switchTo(\'progress\')">Progress</button>';
+  if (IS_VP) h += '<button class="' + (cur==="managers"?"on":"") + '" onclick="switchTo(\'managers\')">Managers</button>';
+  return h + '</div>';
 }
 function switchTo(v){
   var q = new URLSearchParams(location.search);
@@ -278,7 +279,7 @@ function loadProgress(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/progress?" + q.toString(), {credentials:"same-origin"})
     .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
-    .then(function(j){ DATA = j; renderProgress(); })
+    .then(function(j){ DATA = j; IS_VP = !!j.isVP; renderProgress(); })
     .catch(function(e){ document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
 
@@ -373,7 +374,96 @@ function pickTeam(id){
   location.search = "?" + q.toString();
 }
 
-if (new URLSearchParams(location.search).get("view") === "progress") loadProgress();
+/* ---------- managers view, VP only ---------- */
+function loadManagers(){
+  var q = new URLSearchParams(location.search);
+  fetch("/api/coaching/summary?" + q.toString(), {credentials:"same-origin"})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(j){ DATA = j; IS_VP = true; renderManagers(); })
+    .catch(function(e){ document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+
+function renderManagers(){
+  var j = DATA;
+  document.getElementById("loading").style.display = "none";
+  var app = document.getElementById("app");
+  app.style.display = "block";
+
+  var h = tabs("managers");
+  h += '<div class="bar">';
+  h += '<div class="prog">Today <b>' + j.todayDoneOrg + '</b> of ' + j.todayExpectedOrg + ' audits done</div>';
+  h += '<div class="prog">Last 7 days <b>' + j.total7d + '</b> of ' + j.expected7dOrg + '</div>';
+  h += '<div class="prog">Org average score <b>' + (j.orgAvg === null ? "–" : j.orgAvg + "%") + '</b></div>';
+  h += '<input type="text" id="dt" value="' + esc(j.today) + '" style="width:120px" title="IST date">';
+  h += '<button class="btn sec" onclick="goManagers()">Go</button>';
+  h += '</div>';
+
+  j.teams.forEach(function(t){
+    var behind = t.todayDone < t.todayExpected;
+    h += '<div class="card"><div class="chd">';
+    h += '<h2>' + esc(t.name || "(unnamed team)") + '</h2>';
+    h += '<span class="meta">' + esc(t.managerEmail || "no manager mapped") + ' · ' + t.agents + ' agents</span>';
+    h += '<div class="right">';
+    h += '<span class="pill ' + (behind ? "open" : "done") + '">' + t.todayDone + ' of ' + t.todayExpected + ' today</span>';
+    h += '<span class="pill none">' + t.sessions7d + ' of ' + t.expected7d + ' this week</span>';
+    h += '</div></div><div class="cbody">';
+
+    h += '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">';
+
+    h += '<div style="flex:1;min-width:260px">';
+    h += '<div class="grp">Today, by agent</div>';
+    if (!t.todayRows.length) h += '<div style="font-size:12px;color:#9CA3AF">No agents eligible. Managers are excluded from their own rotation.</div>';
+    t.todayRows.forEach(function(r){
+      h += '<div class="row"><div class="lb">' + esc(r.agentName) + (r.extra ? ' <span class="pill none">outside rotation</span>' : '') + '</div>';
+      if (r.done) {
+        h += '<span style="font-size:11px;color:#6B7280">' + (r.score ? r.score.yes + '/' + r.score.of : '') + '</span>';
+        if (!r.recording) h += '<span class="gap">no recording</span>';
+        h += '<span class="pill done">done ' + tm(r.at).split(", ").pop() + '</span>';
+      } else {
+        h += '<span class="pill open">outstanding</span>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+
+    h += '<div style="flex:1;min-width:260px">';
+    h += '<div class="grp">Last 7 days</div>';
+    h += '<table class="ptab"><tbody>';
+    t.daily.forEach(function(d){
+      var pct = d.expected ? Math.round(d.done * 100 / d.expected) : 0;
+      h += '<tr><td style="width:92px">' + esc(d.date) + '</td>';
+      h += '<td style="width:70px">' + d.done + ' of ' + d.expected + '</td>';
+      h += '<td><div style="background:#F3F4F6;border-radius:4px;height:9px;width:100%"><div style="background:' +
+        (pct >= 100 ? "#059669" : pct > 0 ? "#F0B429" : "#E5E7EB") + ';height:9px;border-radius:4px;width:' +
+        Math.min(100, pct) + '%"></div></div></td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+    h += '</div>';
+
+    h += '<div class="foot">';
+    h += '<span class="sc">Average score given ' + (t.avgScore === null ? "–" : t.avgScore + "%") + '</span>';
+    if (t.avgScore !== null && j.orgAvg !== null && Math.abs(t.avgScore - j.orgAvg) >= 12) {
+      h += '<span class="gap">' + (t.avgScore > j.orgAvg ? "marks well above" : "marks well below") + ' the org average of ' + j.orgAvg + '%</span>';
+    }
+    if (t.missingRecording) h += '<span class="gap">' + t.missingRecording + ' without a recording</span>';
+    if (t.neverCoached.length) h += '<span class="gap">never coached: ' + esc(t.neverCoached.slice(0, 6).join(", ")) + (t.neverCoached.length > 6 ? " and " + (t.neverCoached.length - 6) + " more" : "") + '</span>';
+    h += '<div class="right"><a href="?view=progress&team=' + esc(t.teamId) + '" style="font-size:11.5px;font-weight:700">See their agents &nearr;</a></div>';
+    h += '</div>';
+
+    h += '</div></div>';
+  });
+
+  h += '<p style="font-size:11px;color:#9CA3AF">Outstanding means the review is due today and has not been submitted. Managers never appear in their own rotation, even when mapped as an agent on their team.</p>';
+  app.innerHTML = h;
+}
+function goManagers(){
+  location.search = "?view=managers&date=" + encodeURIComponent(document.getElementById("dt").value.trim());
+}
+
+var VIEW = new URLSearchParams(location.search).get("view");
+if (VIEW === "progress") loadProgress();
+else if (VIEW === "managers") loadManagers();
 else load();
 </script>
 </body>
