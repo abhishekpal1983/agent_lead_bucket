@@ -223,8 +223,89 @@ function syncPanel(){
     " minutes. Counselling, forms and creator fresh run hourly.</span></div></div>";
   return h;
 }
+var DAILY = null, DAILY_DATE = "";
+function loadDaily(d){
+  fetch("/api/vp/daily" + (d ? "?date=" + encodeURIComponent(d) : ""))
+    .then(function(r){ return r.json(); })
+    .then(function(j){ DAILY = j; DAILY_DATE = j.date; renderDaily(); })
+    .catch(function(e){
+      var el = document.getElementById("dailywrap");
+      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
+    });
+}
+function pcCell(done, total){
+  if (!total) return "<span class='mut'>0</span>";
+  var p = Math.round(100 * done / total);
+  return "<b>" + fmt(done) + "</b> <span class='mut'>of " + fmt(total) + " · " + p + "%</span>";
+}
+function dailyRows(map, label){
+  var keys = Object.keys(map || {});
+  if (!keys.length) return "<tr><td colspan='9' class='mut'>Nothing recorded.</td></tr>";
+  return keys.map(function(k){ return Object.assign({ k: k }, map[k]); })
+    .sort(function(a, b){ return b.calls - a.calls || b.pool - a.pool; })
+    .map(function(x){
+      return "<tr><td><b>" + esc(x.name || x.k) + "</b>" + (label === "agent" && x.team ? " <span class='mut'>" + esc(x.team) + "</span>" : "") + "</td>" +
+        "<td class='n'>" + fmt(x.pool) + "</td>" +
+        "<td class='n'>" + pcCell(x.calls, x.pool) + "</td>" +
+        "<td class='n'>" + pcCell(x.done, x.due) + "</td>" +
+        "<td class='n " + (x.missed ? "cr" : "mut") + "'>" + fmt(x.missed) + "</td>" +
+        "<td class='n'>" + pcCell(x.scoreC, x.score) + "</td>" +
+        "<td class='n'>" + pcCell(x.formC, x.form) + "</td>" +
+        "<td class='n'>" + fmt(x.counsellings) + "</td>" +
+        "<td class='n'>" + inr(x.revenue) + (x.enrolments ? " <span class='mut'>· " + fmt(x.enrolments) + "</span>" : "") + "</td></tr>";
+    }).join("");
+}
+function renderDaily(){
+  var el = document.getElementById("dailywrap");
+  if (!el) return;
+  var j = DAILY, sn = j && j.snapshot;
+  var h = "<div class='sec'><h2>Daily review</h2>" +
+    "<div class='sub'>A frozen picture of a completed day, taken every 15 minutes and kept for 90 days. Use it in the morning meeting.</div>";
+  h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
+    "<select onchange='loadDaily(this.value)'>" +
+    (j.dates || []).map(function(d){ return "<option value='" + d + "'" + (d === j.date ? " selected" : "") + ">" + d + (d === j.today ? " (today, still moving)" : "") + "</option>"; }).join("") +
+    "</select>" +
+    "<button class='btn' onclick='dailyCsv()'>Download CSV</button>" +
+    "<button class='btn' onclick='window.print()'>Print</button>" +
+    (sn ? "<span class='mut' style='font-size:12px'>captured " + new Date(sn.at).toLocaleString('en-IN') + "</span>" : "") +
+    "</div>";
+  if (!sn) return void (el.innerHTML = h + "<div class='mut'>No snapshot stored for that date yet. The first one is written within 15 minutes of a deploy, and a full day appears from tomorrow.</div></div>");
+  h += "<div class='tiles' style='margin-bottom:12px'>" +
+    tile("grey", fmt(sn.pool), "Priority pool") +
+    tile(sn.calls ? "teal" : "red", fmt(sn.calls), "Leads called", sn.pool ? Math.round(100 * sn.calls / sn.pool) + "% of pool" : "") +
+    tile(sn.missed ? "red" : "teal", fmt(sn.done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(sn.due) + "</span>", "Due follow-ups done", fmt(sn.missed) + " missed") +
+    tile("blue", fmt(sn.counsellings), "Counsellings") +
+    tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
+    tile("blue", pcTxt(sn.scoreC, sn.score), "Score &ge;6 worked") +
+    tile("blue", pcTxt(sn.formC, sn.form), "Waitlist form worked") +
+    tile("amber", pcTxt(sn.overdueC, sn.overdue), "Overdue worked") +
+    "</div>";
+  var head = "<thead><tr><th>Name</th><th class='n'>Pool</th><th class='n'>Called</th><th class='n'>Due done</th><th class='n'>Missed</th><th class='n'>Score worked</th><th class='n'>Form worked</th><th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
+  h += "<h2 style='margin-top:6px'>By team</h2><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team") + "</tbody></table></div>";
+  h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent") + "</tbody></table></div>";
+  el.innerHTML = h + "</div>";
+}
+function pcTxt(done, total){ return total ? fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>" : "0"; }
+function dailyCsv(){
+  var sn = DAILY && DAILY.snapshot;
+  if (!sn) return;
+  var head = ["Level","Name","Team","Pool","Called","Due","Done","Missed","Score","ScoreWorked","Form","FormWorked","Overdue","OverdueWorked","Counsellings","Revenue","Enrolments"];
+  var lines = [head.join(",")];
+  var row = function(level, name, team, x){
+    lines.push([level, name, team || "", x.pool, x.calls, x.due, x.done, x.missed, x.score, x.scoreC,
+      x.form, x.formC, x.overdue, x.overdueC, x.counsellings, Math.round(x.revenue), x.enrolments]
+      .map(function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","));
+  };
+  row("company", "All teams", "", sn);
+  Object.keys(sn.teams || {}).forEach(function(k){ row("team", sn.teams[k].name, "", sn.teams[k]); });
+  Object.keys(sn.agents || {}).forEach(function(k){ row("agent", sn.agents[k].name, sn.agents[k].team, sn.agents[k]); });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = "daily_review_" + DAILY.date + ".csv";
+  a.click();
+}
 function drawNav(){
-  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)]];
+  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
     items.push(["mapping", "Mapping", String(J.drift.length)]);
@@ -267,12 +348,14 @@ function draw(){
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
     "<span id='syncbadge' style='margin-left:auto'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
-  if (VIEW === "managers") h += drawTeams();
+  if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
+  else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
   else h += drawStrip() + drawCallNow() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
+  if (VIEW === "daily") loadDaily(DAILY_DATE);
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +

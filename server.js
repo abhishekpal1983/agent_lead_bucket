@@ -2604,29 +2604,76 @@ function orgDrift(){
 /* Daily snapshot. Today's counters reset at IST midnight, so without this there is no
    way to answer "how many of the 789 score-6 leads did we work yesterday". Stored in the
    org store on the volume, 90 days kept. */
+function snapCounters(){
+  return { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0, calls: 0,
+    formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0, counsellings: 0,
+    revenue: 0, enrolments: 0 };
+}
+function snapAdd(o, r, sg, called, day){
+  o.pool++;
+  if (called) o.calls++;
+  if (sg.form) { o.form++; if (called) o.formC++; }
+  if (sg.score) { o.score++; if (called) o.scoreC++; }
+  if (sg.intl) { o.intl++; if (called) o.intlC++; }
+  if (sg.fresh) { o.fresh++; if (called) o.freshC++; }
+  if (r.fu && r.fu < Date.now()) { o.overdue++; if (called) o.overdueC++; }
+  if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
+}
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   const day = istDayBounds();
   const key = istParts(new Date()).date;
-  const snap = { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0,
-    calls: 0, formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0, at: new Date().toISOString() };
+  const teamOf = {}, teamName = {};
+  (ORG.teams || []).forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const total = snapCounters(), teams = {}, agents = {};
   callnowPool().forEach(function(c){
     if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
     if (!ownerCounted(c.hubspot_owner_id)) return;
     const r = cnRow(c), sg = cnSegs(r);
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     const called = r.last >= day.start && r.last < day.end;
-    snap.pool++;
-    if (called) snap.calls++;
-    if (sg.form) { snap.form++; if (called) snap.formC++; }
-    if (sg.score) { snap.score++; if (called) snap.scoreC++; }
-    if (sg.intl) { snap.intl++; if (called) snap.intlC++; }
-    if (sg.fresh) { snap.fresh++; if (called) snap.freshC++; }
-    if (r.fu && r.fu < Date.now()) { snap.overdue++; if (called) snap.overdueC++; }
-    if (r.fu >= day.start && r.fu < day.end) { snap.due++; if (called) snap.done++; else snap.missed++; }
+    snapAdd(total, r, sg, called, day);
+    const tid = teamOf[r.owner];
+    if (tid) {
+      if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, snapCounters());
+      snapAdd(teams[tid], r, sg, called, day);
+    }
+    if (r.owner) {
+      if (!agents[r.owner]) agents[r.owner] = Object.assign({ name: r.ownerName, team: tid ? teamName[tid] : "" }, snapCounters());
+      snapAdd(agents[r.owner], r, sg, called, day);
+    }
+    const cts = COUNSEL.byId[c.id];
+    if (cts && ts(cts) >= day.start && ts(cts) < day.end) {
+      total.counsellings++;
+      if (tid && teams[tid]) teams[tid].counsellings++;
+      if (r.owner && agents[r.owner]) agents[r.owner].counsellings++;
+    }
+  });
+  const emailTeam = {}, emailAgent = {};
+  Object.keys(teamOf).forEach(function(id){
+    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+    if (e) { emailTeam[e] = teamOf[id]; emailAgent[e] = id; }
+  });
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    if (String(r.date || "").slice(0, 10) !== key) return;
+    const v = num(r.price_inr);
+    total.revenue += v;
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    const isNew = !seen[k];
+    if (isNew) { seen[k] = 1; total.enrolments++; }
+    const oe = String(r.owner_email || "").toLowerCase();
+    const tid = emailTeam[oe], aid = emailAgent[oe];
+    if (tid) { if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, snapCounters());
+      teams[tid].revenue += v; if (isNew) teams[tid].enrolments++; }
+    if (aid) { if (!agents[aid]) agents[aid] = Object.assign({ name: (CACHE.owners[aid] || {}).name || aid, team: tid ? teamName[tid] : "" }, snapCounters());
+      agents[aid].revenue += v; if (isNew) agents[aid].enrolments++; }
   });
   ORG.daily = ORG.daily || {};
-  ORG.daily[key] = snap;
+  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), teams: teams, agents: agents }, total);
   const keys = Object.keys(ORG.daily).sort();
   while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
   if (typeof orgSave === "function") orgSave("snapshot", key, "system");
@@ -2945,6 +2992,32 @@ app.post("/api/sync/leads", async function(req, res){
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+app.get("/api/vp/daily", function(req, res){
+  const all = (typeof ORG !== "undefined" && ORG.daily) || {};
+  const dates = Object.keys(all).sort().reverse();
+  const today = istParts(new Date()).date;
+  const want = String(req.query.date || "") || dates.filter(function(d){ return d < today; })[0] || dates[0] || "";
+  const snap = all[want] || null;
+  const me = String(whoami(req) || "").toLowerCase();
+  const vp = isVP(req);
+  let scoped = snap;
+  if (snap && !vp && me) {
+    const mine = (ORG.teams || []).filter(function(t){ return String(t.managerEmail || "").toLowerCase() === me; });
+    if (mine.length) {
+      const names = mine.map(function(t){ return t.name || "(unnamed)"; });
+      const teams = {}, agents = {};
+      Object.keys(snap.teams || {}).forEach(function(id){ if (mine.some(function(t){ return t.id === id; })) teams[id] = snap.teams[id]; });
+      Object.keys(snap.agents || {}).forEach(function(id){ if (names.indexOf(snap.agents[id].team) >= 0) agents[id] = snap.agents[id]; });
+      const roll = snapCounters();
+      Object.keys(teams).forEach(function(id){
+        Object.keys(roll).forEach(function(k){ roll[k] += (teams[id][k] || 0); });
+      });
+      scoped = Object.assign({ at: snap.at, teams: teams, agents: agents }, roll);
+    }
+  }
+  res.json({ date: want, dates: dates, snapshot: scoped, isVP: vp, today: today });
 });
 
 app.post("/api/vp/team", express.json(), function(req, res){
