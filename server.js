@@ -1950,6 +1950,17 @@ function cnFilter(q){
   });
 }
 
+// Parking buckets and managers hold enormous piles that are not real working queues.
+// They still appear in the agent table, but they must not inflate the headline totals.
+// Ids: Abhishek Pal, Anand Mehta, Pawanpreet Singh, Hritika Jain, plus unassigned.
+const NONCOUNT_OWNERS = (process.env.NONCOUNT_OWNERS || "165087274,163874118,162610237,164253068,none")
+  .split(",").map(function(x){ return x.trim(); }).filter(function(x){ return x !== ""; });
+function ownerCounted(id){
+  const k = String(id || "");
+  if (!k) return NONCOUNT_OWNERS.indexOf("none") < 0;
+  return NONCOUNT_OWNERS.indexOf(k) < 0;
+}
+
 app.get("/api/callnow", (req, res) => {
   const allow = scopeFor(req);
   if (allow) req.query.__scope = allow;
@@ -1967,11 +1978,12 @@ app.get("/api/callnow", (req, res) => {
   stageOrder.forEach(function(s){ byStage[s] = blank(); });
   rows.forEach(function(r){
     const s = cnSegs(r), any = s.form || s.score || s.intl || s.fresh;
+    const isCounted = ownerCounted(r.owner);
     const b = byStage[r.stage] || (byStage[r.stage] = blank());
     const now = Date.now();
     const calledToday = r.last >= day.start && r.last < day.end;
     const dueToday = r.fu >= day.start && r.fu < day.end;
-    [b, tot].forEach(function(x){
+    (isCounted ? [b, tot] : []).forEach(function(x){
       // Backlog: no next step scheduled, or the next step is already past, or never called.
       // Deduped union, so a lead that is all three still counts once.
       const inBacklog = !r.fu || r.fu < now || !r.last;
@@ -2009,6 +2021,7 @@ app.get("/api/callnow", (req, res) => {
       }
     });
     if (!byAgent[r.owner]) byAgent[r.owner] = { id: r.owner, name: r.ownerName, active: r.owner ? !r.inactive : false,
+      counted: isCounted,
       total: 0, any: 0, form: 0, score: 0, intl: 0, needs: 0, overdue: 0, nofu: 0, uncalled: 0,
       due: 0, done: 0, missed: 0, touched: 0, bwork: 0 };
     const a = byAgent[r.owner];

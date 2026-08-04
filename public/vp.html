@@ -354,7 +354,7 @@ function drawCallNow(){
     "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a></h2>" +
     "<div class='sub'>What the floor is actually working today, so you can act from here rather than opening the call tool.</div>";
   h += "<div class='tiles' style='margin-bottom:12px'>" +
-    tile("grey", fmt(t), "Must call", cov(qT, t)) +
+    tile("grey", fmt(t), "Priority pool", cov(qT, t)) +
     tile("blue", fmt(f), "Waitlist form", cov(fT, f)) +
     tile("blue", fmt(sc), "Score &ge; 6", cov(scT, sc)) +
     tile("blue", fmt(il), "International", cov(ilT, il)) +
@@ -385,7 +385,7 @@ function drawCallNow(){
   } else {
     rows = J.teams.slice();
   }
-  h += "<div class='tw'><table class='rt'><thead><tr><th>" + (byAgent ? "Agent" : "Team") + "</th><th class='n'>Must call</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
+  h += "<div class='tw'><table class='rt'><thead><tr><th>" + (byAgent ? "Agent" : "Team") + "</th><th class='n'>Priority pool</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
   rows.sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
     h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b>" +
       (x.active === false ? " <span class='pill a'>inactive</span>" : "") + "</td>" +
