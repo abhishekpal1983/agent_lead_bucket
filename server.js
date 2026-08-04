@@ -220,6 +220,109 @@ async function sync(){
   }
 }
 
+/* ---------- Incremental lead sync ----------
+   The full per-owner rebuild reads ~29k contacts every pass to find that a couple of
+   hundred changed. This asks HubSpot only for contacts modified since the last run,
+   using an hs_object_id cursor so it cannot hit the 10k search ceiling, and merges them
+   into the existing cache by id. A full rebuild still runs on boot and nightly, which
+   is what catches deletions and merges that a delta can never see. */
+const DELTA_MINUTES = parseInt(process.env.DELTA_MINUTES || "10", 10);
+const FULL_SYNC_HOURS = parseFloat(process.env.FULL_SYNC_HOURS || "12");
+const DELTA_OVERLAP_MIN = parseInt(process.env.DELTA_OVERLAP_MIN || "60", 10);
+let DELTA = { at: null, running: false, lastCount: 0, lastMs: 0, error: null, since: null, disabled: String(process.env.DELTA_OFF || "") === "1" };
+
+async function fetchModifiedSince(sinceMs){
+  const out = [];
+  let lastId = "0", guard = 0;
+  while (guard < 800) {
+    guard++;
+    const filters = [
+      { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(sinceMs) },
+      { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+    ];
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters }], properties: PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+    const rows = j.results || [];
+    if (!rows.length) break;
+    rows.forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
+    lastId = rows[rows.length - 1].id;
+    if (rows.length < 100) break;
+    await sleep(120);
+  }
+  return out;
+}
+
+// Route each changed contact to the right bucket. A lead that gained a stage moves out
+// of fresh; one that lost its owner leaves the pool entirely.
+function applyDelta(rows){
+  const idxStaged = {};
+  CACHE.contacts.forEach(function(c, i){ idxStaged[c.id] = i; });
+  const fresh = Object.assign({}, CACHE.fresh || {});
+  const freshOwnerOf = {};
+  Object.keys(fresh).forEach(function(oid){
+    (fresh[oid] || []).forEach(function(f){ freshOwnerOf[f.id] = oid; });
+  });
+  let staged = 0, fr = 0, dropped = 0;
+  const dropFromFresh = function(id){
+    const oid = freshOwnerOf[id];
+    if (oid === undefined) return;
+    fresh[oid] = (fresh[oid] || []).filter(function(f){ return f.id !== id; });
+    delete freshOwnerOf[id];
+  };
+  rows.forEach(function(c){
+    const owner = String(c.hubspot_owner_id || "");
+    const hasStage = !!c.contact_engagement_stage;
+    if (!owner) {
+      if (idxStaged[c.id] !== undefined) { CACHE.contacts[idxStaged[c.id]] = null; delete idxStaged[c.id]; }
+      dropFromFresh(c.id);
+      dropped++;
+      return;
+    }
+    if (hasStage) {
+      dropFromFresh(c.id);
+      if (idxStaged[c.id] !== undefined) CACHE.contacts[idxStaged[c.id]] = c;
+      else { CACHE.contacts.push(c); idxStaged[c.id] = CACHE.contacts.length - 1; }
+      staged++;
+    } else {
+      if (idxStaged[c.id] !== undefined) { CACHE.contacts[idxStaged[c.id]] = null; delete idxStaged[c.id]; }
+      const prev = freshOwnerOf[c.id];
+      if (prev !== undefined && prev !== owner) dropFromFresh(c.id);
+      if (!fresh[owner]) fresh[owner] = [];
+      const at = fresh[owner].findIndex(function(f){ return f.id === c.id; });
+      if (at >= 0) fresh[owner][at] = c; else fresh[owner].push(c);
+      freshOwnerOf[c.id] = owner;
+      fr++;
+    }
+  });
+  CACHE.contacts = CACHE.contacts.filter(Boolean);
+  CACHE.fresh = fresh;
+  POOL_REV++;
+  return { staged: staged, fresh: fr, dropped: dropped };
+}
+
+async function syncDelta(){
+  if (!TOKEN || DELTA.disabled || DELTA.running) return;
+  if (CACHE.syncing) return;                 // a full rebuild is authoritative, do not fight it
+  if (!CACHE.loadedAt) return;               // nothing to merge into yet
+  DELTA.running = true;
+  const t0 = Date.now();
+  try {
+    const base = DELTA.at ? Date.parse(DELTA.at) : Date.parse(CACHE.loadedAt);
+    const since = base - DELTA_OVERLAP_MIN * 60000;
+    const rows = await fetchModifiedSince(since);
+    const r = applyDelta(rows);
+    DELTA = { at: new Date().toISOString(), running: false, lastCount: rows.length, lastMs: Date.now() - t0,
+      error: null, since: new Date(since).toISOString(), disabled: DELTA.disabled };
+    console.log("Delta sync: " + rows.length + " changed contacts in " + DELTA.lastMs + "ms (" +
+      r.staged + " staged, " + r.fresh + " fresh, " + r.dropped + " unassigned) · pool now " +
+      CACHE.contacts.length + " staged");
+  } catch (e) {
+    DELTA.running = false; DELTA.error = e.message;
+    console.error("Delta sync failed: " + e.message);
+  }
+}
+
 /* ---------- counselling detection via engagement stage history ---------- */
 const COUNSELLED_SET = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","Follow up","FU_DNP","FU_RCB"];
 let COUNSEL = { byId: {}, loadedAt: null, syncing: false, error: null };
@@ -681,6 +784,7 @@ app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing:
   counselLoadedAt: COUNSEL.loadedAt, counselled: Object.keys(COUNSEL.byId).length, counselSyncing: COUNSEL.syncing, counselError: COUNSEL.error,
   leadsTodayDate: LEADS_TODAY.date, leadsTodayLoadedAt: LEADS_TODAY.loadedAt, leadsTodayCount: Object.keys(LEADS_TODAY.byId).length, leadsTodayError: LEADS_TODAY.error,
   backupPoolLoadedAt: BACKUP.loadedAt, backupPoolCount: BACKUP.rows.length, backupPoolSyncing: BACKUP.syncing, backupPoolError: BACKUP.error,
+  deltaAt: DELTA.at, deltaSince: DELTA.since, deltaCount: DELTA.lastCount, deltaMs: DELTA.lastMs, deltaError: DELTA.error, deltaOff: DELTA.disabled,
   formsLoadedAt: FORMS.loadedAt, formsEmails: FORMS.byEmail.size, formsSource: FORMS.source, formsSyncing: FORMS.syncing, formsError: FORMS.error,
   unownedLoadedAt: UNOWNED.loadedAt, unownedCount: UNOWNED.rows.length, unownedSyncing: UNOWNED.syncing, unownedError: UNOWNED.error,
   pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing, pfreshError: PFRESH.error }));
@@ -2705,14 +2809,16 @@ app.get("/api/vp", function(req, res){
     week: weekTrend(Object.keys(scopedEmails).length ? scopedEmails : null),
     leadsLoadedAt: CACHE.loadedAt, leadsSyncing: CACHE.syncing, leadsCount: CACHE.contacts.length,
     syncs: {
-      leads: { at: CACHE.loadedAt, running: !!CACHE.syncing, n: CACHE.contacts.length, label: "Leads" },
+      leads: { at: DELTA.at || CACHE.loadedAt, running: !!(CACHE.syncing || DELTA.running), n: CACHE.contacts.length,
+        label: "Leads" + (DELTA.at ? " (incremental)" : "") },
+      fullRebuild: { at: CACHE.loadedAt, running: !!CACHE.syncing, n: CACHE.contacts.length, label: "Full rebuild" },
       sheet: { at: SHEET.loadedAt, running: false, n: (SHEET.rows || []).length, label: "Payments sheet" },
       counsel: { at: COUNSEL.loadedAt, running: !!COUNSEL.syncing, n: Object.keys(COUNSEL.byId || {}).length, label: "Counselling history" },
       creatorFresh: { at: PFRESH.loadedAt, running: !!PFRESH.syncing, n: (PFRESH.rows || []).length, label: "Creator fresh leads" },
       forms: { at: FORMS.loadedAt, running: !!FORMS.syncing, n: FORMS.byEmail.size, label: "Waitlist forms" },
       unowned: { at: UNOWNED.loadedAt, running: !!UNOWNED.syncing, n: (UNOWNED.rows || []).length, label: "Unassigned priority leads" }
     },
-    syncMinutes: SYNC_MINUTES,
+    syncMinutes: DELTA_MINUTES,
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: vp ? orgDrift() : [],
@@ -3261,8 +3367,10 @@ let SERVER = null;
 SERVER = app.listen(PORT, () => {
   console.log("Listening on " + PORT);
   guard("sync", function(){ return sync().then(() => syncCounsel()); })();
+  // Deltas every few minutes, full rebuild only on boot and every FULL_SYNC_HOURS.
+  setInterval(guard("delta", syncDelta), DELTA_MINUTES * 60 * 1000);
   guard("sheet", function(){ return syncSheet().then(() => syncCohorts()); })();
-  setInterval(guard("sync", sync), SYNC_MINUTES * 60 * 1000);
+  setInterval(guard("sync", sync), Math.max(1, FULL_SYNC_HOURS) * 3600 * 1000);
   setInterval(guard("sheet", syncSheet), SYNC_MINUTES * 60 * 1000);
   setInterval(guard("cohorts", syncCohorts), COHORT_MINUTES * 60 * 1000);
   setInterval(guard("counsel", syncCounsel), COHORT_MINUTES * 60 * 1000);
