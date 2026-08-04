@@ -457,7 +457,9 @@ function drawCsync(){
   });
   h += "</select>";
   h += "<button class='btn p' " + (SYNCING_OWNER ? "disabled" : "") + " onclick='syncCreator()'>" + (SYNCING_OWNER ? "Syncing..." : "Sync now") + "</button>";
-  h += "<span style='font-size:11px;color:#8B99A8'>Additions last until the next deploy. Add to PRIORITY_FRESH_CREATORS in Railway to keep them.</span>";
+  h += J.creatorsPersistent
+    ? "<span style='font-size:11px;color:#0F7B6C'>Saved on the volume. Additions and removals survive a redeploy, no Railway change needed.</span>"
+    : "<span style='font-size:11px;color:#B54708'>No writable volume is mounted, so additions last only until the next deploy. Attach a volume at /data, or add the creator to PRIORITY_FRESH_CREATORS in Railway.</span>";
   h += "</div></details>";
   return h;
 }

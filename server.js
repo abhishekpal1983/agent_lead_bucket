@@ -2214,6 +2214,9 @@ app.get("/api/callnow", (req, res) => {
     formsEmails: FORMS.byEmail.size, unownedLoadedAt: UNOWNED.loadedAt, unownedError: UNOWNED.error,
     pfreshLoadedAt: PFRESH.loadedAt, pfreshCount: PFRESH.rows.length, pfreshCreators: PFRESH_LIST,
     pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing,
+    // Whether an added creator actually survives a redeploy, which depends on a
+    // writable volume being mounted, not on the code path being present.
+    creatorsPersistent: typeof ORG_PERSISTENT === "undefined" ? false : ORG_PERSISTENT,
     scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY, overloadLimit: OVERLOAD_LIMIT,
     matrix: matrix, totals: tot,
     callsToday: { pool: callsPool, trackedCreators: callsScope, countedOwners: callsCounted, priorityOnly: tot.touched },
