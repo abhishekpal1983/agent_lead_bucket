@@ -413,27 +413,18 @@ function drawStrip(){
         " payments is not counted here, the agent who booked it is not mapped to a team." +
         " <a href='#' onclick=\"go('mapping');return false\" style='color:#93C5FD'>Fix mapping</a></div>"
       : "") + "</div></div>";
+  // Anything about today's calling lives in the Call Now queue below, not here, so the
+  // two sections stop repeating each other.
   h += tile("blue", fmt(e) + (te ? " <span style='font-size:14px;font-weight:400'>/ " + fmt(te) + "</span>" : ""), "Enrolments");
-  h += tile("blue", fmt(co), "Counsellings");
+  h += tile(ctarget && co >= ctarget * (J.dayOfMonth / J.daysInMonth) ? "teal" : (ctarget ? "amber" : "blue"),
+    fmt(co) + (ctarget ? " <span style='font-size:14px;font-weight:400'>of " + fmt(ctarget) + "</span>" : ""),
+    ctarget ? "Counsellings, " + Math.round(100 * co / ctarget) + "% of target" : "Counsellings this month");
+  h += tile(ctoday ? "teal" : "grey", fmt(ctoday), "Counsellings today");
   h += tile("teal", c2e === null ? "–" : c2e + "%", "C2E");
-  h += tile("grey", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made today");
-  h += tile(missed ? "red" : "grey", fmt(missed), "Missed today");
-  h += tile(over ? "amber" : "grey", fmt(over), "Follow-ups overdue");
-  h += tile(unc ? "amber" : "grey", fmt(unc), "Never called");
-
-  var ticket = e ? a / e : 0;
-  var l2c = created ? Math.round(1000 * cohC / created) / 10 : null;
-  var wk = J.week || { current: 0, previous: 0, delta: null };
-  var proj = J.dayOfMonth ? Math.round(a * J.daysInMonth / J.dayOfMonth) : 0;
-
   h += tile(act < tot / 2 ? "red" : "teal", fmt(act) + " <span style='font-size:14px;font-weight:400'>of " + fmt(tot) + "</span>", "Agents who called today");
   h += tile(risk ? "red" : "grey", inr(Math.round(risk * ticket)), "Revenue at risk · " + fmt(risk) + " prospects");
   h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C, leads created this month");
   h += tile("blue", fmt(created), "New leads this month");
-  h += tile(ctoday ? "teal" : "grey", fmt(ctoday), "Counsellings today");
-  h += tile(ctarget && co >= ctarget * (J.dayOfMonth / J.daysInMonth) ? "teal" : (ctarget ? "amber" : "grey"),
-    fmt(co) + (ctarget ? " <span style='font-size:14px;font-weight:400'>of " + fmt(ctarget) + "</span>" : ""),
-    ctarget ? "Counsellings, " + Math.round(100 * co / ctarget) + "% of target" : "Counsellings this month");
   return h + "</div>" +
     "<div style='font-size:12px;color:#6B7A8A;margin:-4px 0 12px;line-height:1.55'>" +
     "<b>C2E</b> is enrolments divided by counsellings this month, across all leads, not only fresh ones. " +
@@ -510,6 +501,8 @@ function drawCallNow(){
     tile(nd ? "red" : "grey", fmt(nd), "Needs owner", cov(ndT, nd)) +
     tile(missed ? "red" : "teal", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made",
       due ? fmt(missed) + " missed · " + Math.round(100 * done / due) + "%" : "") +
+    tile(missed ? "red" : "grey", fmt(missed), "Missed today",
+      due ? Math.round(100 * missed / due) + "% of today's due" : "") +
     tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue", cov(ovT, ov)) +
     tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
     "</div>";
