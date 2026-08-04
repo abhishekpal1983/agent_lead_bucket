@@ -468,7 +468,17 @@ function drawCards(){
         : "") + "</div>";
   h += "<div class='mrow'>" +
        mi(t.missed, "Missed", "missed", "r") + mi(bwork, "Backlog worked", "bwork", "c") +
-       mi(t.touched, "Calls made", "touched") + "</div></div>";
+       mi(t.touched, "Calls made", "touched") + "</div>";
+  var ct = J.callsToday;
+  if (ct) {
+    h += "<div style='margin-top:9px;padding-top:8px;border-top:1px solid #EFF3F7;font-size:11.5px;color:#566575;line-height:1.6'>" +
+      "<b style='color:#0A2540'>" + fmt(ct.pool) + "</b> leads called today across every lead the app holds." +
+      " <span title='Only creators in the main list'>" + fmt(ct.trackedCreators) + " on tracked creators</span>," +
+      " <span title='Parking buckets excluded'>" + fmt(ct.countedOwners) + " once parking buckets are removed</span>," +
+      " <b style='color:#0A2540'>" + fmt(ct.priorityOnly) + "</b> of those on priority leads, which is the number above." +
+      "</div>";
+  }
+  h += "</div>";
   h += "<div class='mgroup'><h4>Backlog</h4><div class='mrow'>" +
        mi(t.needs, "Needs owner", "needs", "r") + mi(t.overdue, "FU overdue", "fu_overdue", "a") +
        mi(t.nofu, "No FU", "fu_none", "a") + mi(t.intl, "International", "intl") + "</div></div>";

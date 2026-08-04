@@ -2149,6 +2149,18 @@ app.get("/api/callnow", (req, res) => {
     if (!byCreator[ck]) byCreator[ck] = { u: ck, total: 0, any: 0 };
     byCreator[ck].total++; if (any) byCreator[ck].any++;
   });
+  // Reconciliation: how many leads were called today at each level of filtering, so the
+  // "calls made" figure can be traced back to what HubSpot reports.
+  const dayR = istDayBounds();
+  let callsPool = 0, callsScope = 0, callsCounted = 0;
+  callnowPool().forEach(function(c){
+    const lc = ts(c.last_call_date_and_time);
+    if (!(lc >= dayR.start && lc < dayR.end)) return;
+    callsPool++;
+    if (PFRESH_LIST.indexOf(c.topmate_username || "") >= 0) callsScope++;
+    if (ownerCounted(c.hubspot_owner_id) && PFRESH_LIST.indexOf(c.topmate_username || "") >= 0) callsCounted++;
+  });
+
   const matrix = stageOrder.map(function(s){
     return Object.assign({ stage: s, label: CN_STAGE_LABELS[s] || s }, byStage[s] || blank());
   });
@@ -2179,6 +2191,7 @@ app.get("/api/callnow", (req, res) => {
     pfreshByCreator: PFRESH.byCreator, pfreshSyncing: PFRESH.syncing,
     scoreMin: CONV_SCORE_MIN, freshIsPriority: FRESH_IS_PRIORITY, overloadLimit: OVERLOAD_LIMIT,
     matrix: matrix, totals: tot,
+    callsToday: { pool: callsPool, trackedCreators: callsScope, countedOwners: callsCounted, priorityOnly: tot.touched },
     agents: Object.values(byAgent).sort(function(a, b){ return b.any - a.any; }),
     agentOptions: Object.keys(allAgents).map(function(id){
       const o = CACHE.owners[id] || {};
