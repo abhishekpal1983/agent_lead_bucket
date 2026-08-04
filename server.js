@@ -3916,7 +3916,8 @@ app.get("/api/coaching/today", function(req, res){
     teams: isVP(req) ? (ORG.teams || []).map(function(t){ return { id: t.id, name: t.name }; }) : [],
     items: COACH_ITEMS, rows: rows,
     callsLoadedAt: COACH.loadedAt, callsSyncing: COACH.syncing, callsError: COACH.error,
-    persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS
+    persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS,
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
 });
 

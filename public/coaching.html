@@ -82,6 +82,10 @@ var DATA = null, STATE = {};
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function tm(x){return x?new Date(x).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"–";}
 function mmss(s){s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+"m "+("0"+(s%60)).slice(-2)+"s";}
+function hsLink(id){
+  var p = (DATA && DATA.portal) || { uiDomain: "app-na2.hubspot.com", portalId: "244132076" };
+  return "https://" + p.uiDomain + "/contacts/" + p.portalId + "/record/0-1/" + id;
+}
 
 function load(){
   var q = new URLSearchParams(location.search);
@@ -139,7 +143,7 @@ function card(row){
   var h = '<div class="card"><div class="chd">';
   h += '<h2>' + esc(row.agentName) + '</h2>';
   if (row.call) {
-    h += '<span class="meta">' + esc(row.call.contactName) + ' · ' + tm(row.call.at) + ' · ' + mmss(row.call.seconds);
+    h += '<span class="meta"><a href="' + hsLink(row.call.contactId) + '" target="_blank" rel="noopener" style="font-weight:700">' + esc(row.call.contactName) + ' &nearr;</a> · ' + tm(row.call.at) + ' · ' + mmss(row.call.seconds);
     if (row.call.disposition) h += ' · ' + esc(row.call.disposition);
     h += '</span>';
     if (row.call.isPriority) h += '<span class="pill p">priority lead</span>';
