@@ -2619,6 +2619,7 @@ function snapAdd(o, r, sg, called, day){
   if (r.fu && r.fu < Date.now()) { o.overdue++; if (called) o.overdueC++; }
   if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
 }
+const OPEN_HM = process.env.OPEN_HM || "09:30";
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   const day = istDayBounds();
@@ -2672,12 +2673,140 @@ function snapshotToday(){
     if (aid) { if (!agents[aid]) agents[aid] = Object.assign({ name: (CACHE.owners[aid] || {}).name || aid, team: tid ? teamName[tid] : "" }, snapCounters());
       agents[aid].revenue += v; if (isNew) agents[aid].enrolments++; }
   });
+  /* The denominator moves all day: leads enter the pool, stages change, and an agent who
+     pushes a follow-up to tomorrow quietly removes it from today's due list. Measuring
+     end-of-day work against an end-of-day denominator would therefore flatter everyone.
+     So the opening position is frozen at the first capture on or after OPEN_HM and never
+     rewritten. Work counts keep updating to close of day, denominators do not. */
   ORG.daily = ORG.daily || {};
-  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), teams: teams, agents: agents }, total);
+  const prev = ORG.daily[key];
+  const now = istParts(new Date()).hm;
+  const freeze = function(dst, src){
+    dst.oPool = src.pool; dst.oDue = src.due; dst.oScore = src.score; dst.oForm = src.form;
+    dst.oIntl = src.intl; dst.oFresh = src.fresh; dst.oOverdue = src.overdue;
+  };
+  const carry = function(dst, src){
+    if (!src || src.oPool == null) return false;
+    dst.oPool = src.oPool; dst.oDue = src.oDue; dst.oScore = src.oScore; dst.oForm = src.oForm;
+    dst.oIntl = src.oIntl; dst.oFresh = src.oFresh; dst.oOverdue = src.oOverdue;
+    return true;
+  };
+  let openAt = prev && prev.openAt ? prev.openAt : null;
+  if (openAt) {
+    carry(total, prev);
+    Object.keys(teams).forEach(function(k){ carry(teams[k], (prev.teams || {})[k]); });
+    Object.keys(agents).forEach(function(k){ carry(agents[k], (prev.agents || {})[k]); });
+  } else if (now >= OPEN_HM) {
+    openAt = now;
+    freeze(total, total);
+    Object.keys(teams).forEach(function(k){ freeze(teams[k], teams[k]); });
+    Object.keys(agents).forEach(function(k){ freeze(agents[k], agents[k]); });
+  }
+  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), openAt: openAt,
+    teams: teams, agents: agents }, total);
   const keys = Object.keys(ORG.daily).sort();
   while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
   if (typeof orgSave === "function") orgSave("snapshot", key, "system");
 }
+
+/* Backfill for a day that finished before the snapshot job existed. Only what HubSpot and
+   the sheet still remember can be rebuilt: call attempts and connects from the call
+   objects, which keep their own timestamp, counselling entries from stage history, and
+   revenue from the dated payment sheet. Pool size, follow-ups due and follow-ups missed
+   were point-in-time states that HubSpot has since overwritten, so they stay null and the
+   page says as much rather than showing a zero that reads like a real zero. */
+function istBoundsFor(key){
+  const off = 5.5 * 3600000;
+  const start = Date.parse(key + "T00:00:00Z") - off;
+  return { start: start, end: start + 86400000 };
+}
+function backCounters(){
+  return { pool: null, form: null, score: null, intl: null, fresh: null,
+    due: null, done: null, missed: null, overdue: null, overdueC: null,
+    formC: null, scoreC: null, intlC: null, freshC: null, calls: null,
+    attempts: 0, connected: 0, counsellings: 0, revenue: 0, enrolments: 0 };
+}
+async function snapBackfill(key){
+  if (typeof ORG === "undefined" || !TOKEN || !CACHE.loadedAt) return;
+  ORG.daily = ORG.daily || {};
+  if (ORG.daily[key]) return; // a live snapshot, or an earlier backfill, already covers it
+  if (!COUNSEL.loadedAt || !SHEET.loadedAt) return; // retried hourly until both are in
+  if (key >= istParts(new Date()).date) return; // never backfill a day still in progress
+  const day = istBoundsFor(key);
+  if (!Object.keys(CALLS.dispositions).length) {
+    try {
+      const d = await hs("/calling/v1/dispositions");
+      (Array.isArray(d) ? d : (d.results || [])).forEach(function(x){ CALLS.dispositions[x.id] = x.label; });
+    } catch (e) { console.error("backfill dispositions: " + e.message); }
+  }
+  const teamOf = {}, teamName = {};
+  (ORG.teams || []).forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const total = backCounters(), teams = {}, agents = {};
+  function teamBucket(tid){
+    if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, backCounters());
+    return teams[tid];
+  }
+  function agentBucket(aid, nm){
+    if (!agents[aid]) agents[aid] = Object.assign({ name: nm || ((CACHE.owners[aid] || {}).name) || aid,
+      team: teamOf[aid] ? teamName[teamOf[aid]] : "" }, backCounters());
+    return agents[aid];
+  }
+  await fetchCallsRange(day.start, day.end, function(p){
+    const aid = String(p.hubspot_owner_id || "");
+    if (!ownerCounted(aid)) return;
+    const label = CALLS.dispositions[p.hs_call_disposition] || p.hs_call_disposition || "";
+    const conn = /connected/i.test(label) ? 1 : 0;
+    total.attempts++; total.connected += conn;
+    const tid = teamOf[aid];
+    if (tid) { const b = teamBucket(tid); b.attempts++; b.connected += conn; }
+    if (aid) { const b = agentBucket(aid); b.attempts++; b.connected += conn; }
+  });
+  // Counsellings, filtered exactly as the live snapshot filters them so the two are
+  // comparable side by side in the date picker.
+  callnowPool().forEach(function(c){
+    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
+    if (!ownerCounted(c.hubspot_owner_id)) return;
+    const r = cnRow(c), sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    const cts = COUNSEL.byId[c.id];
+    if (!cts) return;
+    const t = ts(cts);
+    if (!(t >= day.start && t < day.end)) return;
+    total.counsellings++;
+    const tid = teamOf[r.owner];
+    if (tid) teamBucket(tid).counsellings++;
+    if (r.owner) agentBucket(r.owner, r.ownerName).counsellings++;
+  });
+  const emailTeam = {}, emailAgent = {};
+  Object.keys(teamOf).forEach(function(id){
+    const e = String(((CACHE.owners[id] || {}).email) || "").toLowerCase();
+    if (e) { emailTeam[e] = teamOf[id]; emailAgent[e] = id; }
+  });
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    if (String(r.date || "").slice(0, 10) !== key) return;
+    const v = num(r.price_inr);
+    total.revenue += v;
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    const isNew = !seen[k];
+    if (isNew) { seen[k] = 1; total.enrolments++; }
+    const oe = String(r.owner_email || "").toLowerCase();
+    const tid = emailTeam[oe], aid = emailAgent[oe];
+    if (tid) { const b = teamBucket(tid); b.revenue += v; if (isNew) b.enrolments++; }
+    if (aid) { const b = agentBucket(aid); b.revenue += v; if (isNew) b.enrolments++; }
+  });
+  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), backfilled: true,
+    teams: teams, agents: agents }, total);
+  const keys = Object.keys(ORG.daily).sort();
+  while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
+  if (typeof orgSave === "function") orgSave("backfill", key, "system");
+  console.log("Backfilled " + key + ": " + total.attempts + " attempts, " +
+    total.counsellings + " counsellings, " + Math.round(total.revenue) + " revenue");
+}
+function yesterdayKey(){ return istParts(new Date(Date.now() - 86400000)).date; }
 
 function vpAggregate(month){
   const teamOf = {}, agentTeam = {};
@@ -3010,11 +3139,22 @@ app.get("/api/vp/daily", function(req, res){
       const teams = {}, agents = {};
       Object.keys(snap.teams || {}).forEach(function(id){ if (mine.some(function(t){ return t.id === id; })) teams[id] = snap.teams[id]; });
       Object.keys(snap.agents || {}).forEach(function(id){ if (names.indexOf(snap.agents[id].team) >= 0) agents[id] = snap.agents[id]; });
-      const roll = snapCounters();
-      Object.keys(teams).forEach(function(id){
-        Object.keys(roll).forEach(function(k){ roll[k] += (teams[id][k] || 0); });
+      // Roll up only over keys the teams actually carry, and keep null as null: a
+      // rebuilt day has no pool figure, and summing that to zero would be a lie.
+      const SNAPKEYS = ["pool","form","score","intl","fresh","due","done","missed","calls",
+        "formC","scoreC","intlC","freshC","overdue","overdueC","counsellings","revenue",
+        "enrolments","attempts","connected","oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue"];
+      const roll = {};
+      SNAPKEYS.forEach(function(k){
+        let any = false, sum = 0;
+        Object.keys(teams).forEach(function(id){
+          const v = teams[id][k];
+          if (v != null) { any = true; sum += v; }
+        });
+        roll[k] = any ? sum : (snap[k] == null ? null : 0);
       });
-      scoped = Object.assign({ at: snap.at, teams: teams, agents: agents }, roll);
+      scoped = Object.assign({ at: snap.at, openAt: snap.openAt, backfilled: !!snap.backfilled,
+        teams: teams, agents: agents }, roll);
     }
   }
   res.json({ date: want, dates: dates, snapshot: scoped, isVP: vp, today: today });
@@ -3914,6 +4054,10 @@ SERVER = app.listen(PORT, () => {
   setInterval(guard("cohorts", syncCohorts), COHORT_MINUTES * 60 * 1000);
   setInterval(guard("counsel", syncCounsel), COHORT_MINUTES * 60 * 1000);
   setTimeout(guard("calls", syncCalls), 90 * 1000);
+  // Rebuild yesterday from HubSpot history if no live snapshot exists for it. No-ops
+  // once stored, so the hourly repeat is just a retry until counselling and sheet land.
+  setTimeout(guard("backfill", function(){ return snapBackfill(yesterdayKey()); }), 9 * 60 * 1000);
+  setInterval(guard("backfill", function(){ return snapBackfill(yesterdayKey()); }), 3600 * 1000);
   setInterval(guard("calls", syncCalls), COHORT_MINUTES * 60 * 1000);
   setTimeout(guard("coachCalls", syncCoachCalls), 120 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);

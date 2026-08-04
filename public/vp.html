@@ -234,25 +234,44 @@ function loadDaily(d){
     });
 }
 function pcCell(done, total){
+  // null means the number was never captured for that day, which is not the same as zero.
+  if (total == null || done == null) return "<span class='mut' title='Not captured for this day'>–</span>";
   if (!total) return "<span class='mut'>0</span>";
   var p = Math.round(100 * done / total);
   return "<b>" + fmt(done) + "</b> <span class='mut'>of " + fmt(total) + " · " + p + "%</span>";
 }
-function dailyRows(map, label){
+function nc(v){ return v == null ? "<span class='mut' title='Not captured for this day'>–</span>" : fmt(v); }
+function dailyRows(map, label, back){
   var keys = Object.keys(map || {});
-  if (!keys.length) return "<tr><td colspan='9' class='mut'>Nothing recorded.</td></tr>";
+  var cols = back ? 6 : 9;
+  if (!keys.length) return "<tr><td colspan='" + cols + "' class='mut'>Nothing recorded.</td></tr>";
   return keys.map(function(k){ return Object.assign({ k: k }, map[k]); })
-    .sort(function(a, b){ return b.calls - a.calls || b.pool - a.pool; })
+    .sort(function(a, b){
+      if (back) return (b.attempts || 0) - (a.attempts || 0) || (b.revenue || 0) - (a.revenue || 0);
+      return b.calls - a.calls || b.pool - a.pool;
+    })
     .map(function(x){
-      return "<tr><td><b>" + esc(x.name || x.k) + "</b>" + (label === "agent" && x.team ? " <span class='mut'>" + esc(x.team) + "</span>" : "") + "</td>" +
-        "<td class='n'>" + fmt(x.pool) + "</td>" +
-        "<td class='n'>" + pcCell(x.calls, x.pool) + "</td>" +
-        "<td class='n'>" + pcCell(x.done, x.due) + "</td>" +
-        "<td class='n " + (x.missed ? "cr" : "mut") + "'>" + fmt(x.missed) + "</td>" +
-        "<td class='n'>" + pcCell(x.scoreC, x.score) + "</td>" +
-        "<td class='n'>" + pcCell(x.formC, x.form) + "</td>" +
-        "<td class='n'>" + fmt(x.counsellings) + "</td>" +
-        "<td class='n'>" + inr(x.revenue) + (x.enrolments ? " <span class='mut'>· " + fmt(x.enrolments) + "</span>" : "") + "</td></tr>";
+      var nm = "<td><b>" + esc(x.name || x.k) + "</b>" +
+        (label === "agent" && x.team ? " <span class='mut'>" + esc(x.team) + "</span>" : "") + "</td>";
+      var money = "<td class='n'>" + inr(x.revenue) +
+        (x.enrolments ? " <span class='mut'>· " + fmt(x.enrolments) + "</span>" : "") + "</td>";
+      if (back) {
+        var cr = x.attempts ? Math.round(100 * (x.connected || 0) / x.attempts) : 0;
+        return "<tr>" + nm +
+          "<td class='n'>" + fmt(x.attempts || 0) + "</td>" +
+          "<td class='n'>" + fmt(x.connected || 0) + "</td>" +
+          "<td class='n " + (x.attempts && cr < 30 ? "cr" : "mut") + "'>" + (x.attempts ? cr + "%" : "–") + "</td>" +
+          "<td class='n'>" + fmt(x.counsellings || 0) + "</td>" + money + "</tr>";
+      }
+      var den = function(o, c){ return o == null ? c : o; };
+      return "<tr>" + nm +
+        "<td class='n'>" + nc(den(x.oPool, x.pool)) + "</td>" +
+        "<td class='n'>" + pcCell(x.calls, den(x.oPool, x.pool)) + "</td>" +
+        "<td class='n'>" + pcCell(x.done, den(x.oDue, x.due)) + "</td>" +
+        "<td class='n " + (x.missed ? "cr" : "mut") + "'>" + nc(x.missed) + "</td>" +
+        "<td class='n'>" + pcCell(x.scoreC, den(x.oScore, x.score)) + "</td>" +
+        "<td class='n'>" + pcCell(x.formC, den(x.oForm, x.form)) + "</td>" +
+        "<td class='n'>" + fmt(x.counsellings) + "</td>" + money + "</tr>";
     }).join("");
 }
 function renderDaily(){
@@ -270,30 +289,57 @@ function renderDaily(){
     (sn ? "<span class='mut' style='font-size:12px'>captured " + new Date(sn.at).toLocaleString('en-IN') + "</span>" : "") +
     "</div>";
   if (!sn) return void (el.innerHTML = h + "<div class='mut'>No snapshot stored for that date yet. The first one is written within 15 minutes of a deploy, and a full day appears from tomorrow.</div></div>");
-  h += "<div class='tiles' style='margin-bottom:12px'>" +
-    tile("grey", fmt(sn.pool), "Priority pool") +
-    tile(sn.calls ? "teal" : "red", fmt(sn.calls), "Leads called", sn.pool ? Math.round(100 * sn.calls / sn.pool) + "% of pool" : "") +
-    tile(sn.missed ? "red" : "teal", fmt(sn.done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(sn.due) + "</span>", "Due follow-ups done", fmt(sn.missed) + " missed") +
-    tile("blue", fmt(sn.counsellings), "Counsellings") +
-    tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
-    tile("blue", pcTxt(sn.scoreC, sn.score), "Score &ge;6 worked") +
-    tile("blue", pcTxt(sn.formC, sn.form), "Waitlist form worked") +
-    tile("amber", pcTxt(sn.overdueC, sn.overdue), "Overdue worked") +
-    "</div>";
-  var head = "<thead><tr><th>Name</th><th class='n'>Pool</th><th class='n'>Called</th><th class='n'>Due done</th><th class='n'>Missed</th><th class='n'>Score worked</th><th class='n'>Form worked</th><th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
-  h += "<h2 style='margin-top:6px'>By team</h2><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team") + "</tbody></table></div>";
-  h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent") + "</tbody></table></div>";
+  var back = !!sn.backfilled, head;
+  if (back) {
+    h += "<div class='warn' style='margin-bottom:11px'>Rebuilt from history, not captured live. " +
+      "Call attempts, connects, counsellings and revenue are exact, because HubSpot and the payment sheet " +
+      "keep them with their own dates. Pool size, follow-ups due and follow-ups missed cannot be rebuilt: " +
+      "they were point-in-time states that HubSpot has since overwritten. Days captured live show all of it.</div>";
+    var cr = sn.attempts ? Math.round(100 * (sn.connected || 0) / sn.attempts) : 0;
+    h += "<div class='tiles' style='margin-bottom:12px'>" +
+      tile(sn.attempts ? "teal" : "red", fmt(sn.attempts || 0), "Call attempts") +
+      tile("blue", fmt(sn.connected || 0), "Connected", sn.attempts ? cr + "% of attempts" : "") +
+      tile("blue", fmt(sn.counsellings || 0), "Counsellings") +
+      tile("blue", inr(sn.revenue || 0), "Revenue booked", fmt(sn.enrolments || 0) + " enrolments") +
+      "</div>";
+    head = "<thead><tr><th>Name</th><th class='n'>Attempts</th><th class='n'>Connected</th>" +
+      "<th class='n'>Connect rate</th><th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
+  } else {
+    var d = function(o, c){ return o == null ? c : o; };
+    var pool = d(sn.oPool, sn.pool), due = d(sn.oDue, sn.due);
+    h += "<div class='sub' style='margin:-4px 0 10px'>" +
+      (sn.openAt ? "Denominators frozen at " + esc(sn.openAt) + " IST, so pushing a follow-up to tomorrow does not shrink today's due list. Work counts run to close of day."
+                 : "Opening position was not captured for this day, so the denominators are as they stood at the last capture.") + "</div>";
+    h += "<div class='tiles' style='margin-bottom:12px'>" +
+      tile("grey", fmt(pool), "Priority pool at open") +
+      tile(sn.calls ? "teal" : "red", fmt(sn.calls), "Leads called", pool ? Math.round(100 * sn.calls / pool) + "% of pool" : "") +
+      tile(sn.missed ? "red" : "teal", fmt(sn.done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due follow-ups done", fmt(sn.missed) + " missed") +
+      tile("blue", fmt(sn.counsellings), "Counsellings") +
+      tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
+      tile("blue", pcTxt(sn.scoreC, d(sn.oScore, sn.score)), "Score &ge;6 worked") +
+      tile("blue", pcTxt(sn.formC, d(sn.oForm, sn.form)), "Waitlist form worked") +
+      tile("amber", pcTxt(sn.overdueC, d(sn.oOverdue, sn.overdue)), "Overdue worked") +
+      "</div>";
+    head = "<thead><tr><th>Name</th><th class='n'>Pool at open</th><th class='n'>Called</th><th class='n'>Due done</th>" +
+      "<th class='n'>Missed</th><th class='n'>Score worked</th><th class='n'>Form worked</th>" +
+      "<th class='n'>Counsellings</th><th class='n'>Revenue</th></tr></thead>";
+  }
+  h += "<h2 style='margin-top:6px'>By team</h2><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team", back) + "</tbody></table></div>";
+  h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
   el.innerHTML = h + "</div>";
 }
-function pcTxt(done, total){ return total ? fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>" : "0"; }
+function pcTxt(done, total){ if (total == null || done == null) return "<span style='font-size:20px'>–</span>"; return total ? fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>" : "0"; }
 function dailyCsv(){
   var sn = DAILY && DAILY.snapshot;
   if (!sn) return;
-  var head = ["Level","Name","Team","Pool","Called","Due","Done","Missed","Score","ScoreWorked","Form","FormWorked","Overdue","OverdueWorked","Counsellings","Revenue","Enrolments"];
+  var head = ["Level","Name","Team","Source","PoolAtOpen","Called","DueAtOpen","Done","Missed","ScoreAtOpen","ScoreWorked","FormAtOpen","FormWorked","OverdueAtOpen","OverdueWorked","Attempts","Connected","Counsellings","Revenue","Enrolments"];
   var lines = [head.join(",")];
+  var src = sn.backfilled ? "rebuilt" : "live";
+  var d = function(o, c){ return o == null ? c : o; };
   var row = function(level, name, team, x){
-    lines.push([level, name, team || "", x.pool, x.calls, x.due, x.done, x.missed, x.score, x.scoreC,
-      x.form, x.formC, x.overdue, x.overdueC, x.counsellings, Math.round(x.revenue), x.enrolments]
+    lines.push([level, name, team || "", src, d(x.oPool, x.pool), x.calls, d(x.oDue, x.due), x.done, x.missed,
+      d(x.oScore, x.score), x.scoreC, d(x.oForm, x.form), x.formC, d(x.oOverdue, x.overdue), x.overdueC,
+      x.attempts, x.connected, x.counsellings, Math.round(x.revenue || 0), x.enrolments]
       .map(function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","));
   };
   row("company", "All teams", "", sn);
