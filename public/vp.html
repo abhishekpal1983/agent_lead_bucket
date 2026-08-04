@@ -318,7 +318,7 @@ function drawExceptions(){
     var tm = J.teams.filter(function(t){ return t.name === k; })[0];
     if (tm) {
       h += "<div class='qline'>" +
-        "<b>" + fmt(tm.queue) + "</b> must call · <b>" + fmt(tm.due) + "</b> due today · " +
+        "<b>" + fmt(tm.queue) + "</b> in the priority pool · <b>" + fmt(tm.due) + "</b> due today · " +
         "<b class='cg'>" + fmt(tm.done) + "</b> called · <b class='" + (tm.missed ? "cr" : "mut") + "'>" + fmt(tm.missed) + "</b> missed" +
         (tm.overdue ? " · <b class='cr'>" + fmt(tm.overdue) + "</b> overdue" : "") + "</div>";
     }
@@ -352,7 +352,7 @@ function drawCallNow(){
   });
   var h = "<div class='sec'><h2>Call Now queue " +
     "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a></h2>" +
-    "<div class='sub'>What the floor is actually working today, so you can act from here rather than opening the call tool.</div>";
+    "<div class='sub'>What the floor is actually working today. Parking buckets and manager-held leads are excluded from these numbers.</div>";
   h += "<div class='tiles' style='margin-bottom:12px'>" +
     tile("grey", fmt(t), "Priority pool", cov(qT, t)) +
     tile("blue", fmt(f), "Waitlist form", cov(fT, f)) +

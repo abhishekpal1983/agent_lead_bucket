@@ -2485,6 +2485,9 @@ function vpAggregate(month){
     const aid = String(c.hubspot_owner_id || "");
     const tid = teamOf[aid];
     if (!tid) return;
+    // Parking buckets and managers hold piles that are not a working queue. Their revenue
+    // still counts, their leads do not, otherwise a manager's own bucket swamps the team.
+    if (typeof ownerCounted === "function" && !ownerCounted(aid)) return;
     const r = cnRow(c), sg = cnSegs(r);
     const o = cell(tid, r.creator || "(no creator)", aid);
     // first-counselled month, attributed to the lead's current owner, same rule as elsewhere
