@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Call coaching</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F6F8;color:#191C20;font-size:13px;line-height:1.5}
+.hdr{background:#fff;border-bottom:1px solid #E5E7EB;padding:14px 24px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.hdr h1{font-size:16px;font-weight:800}
+.hdr p{font-size:11px;color:#9CA3AF}
+.wrap{max-width:1100px;margin:0 auto;padding:16px 20px 60px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+select,input[type=text],input[type=url],textarea{border:1px solid #E5E7EB;border-radius:7px;padding:6px 10px;font-size:12.5px;font-family:inherit;background:#fff;color:#191C20}
+textarea{width:100%;resize:vertical;min-height:52px;line-height:1.55}
+.prog{background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700}
+.prog b{color:#4338CA}
+.card{background:#fff;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:14px;overflow:hidden}
+.chd{padding:13px 17px;border-bottom:1px solid #F3F4F6;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.chd h2{font-size:14px;font-weight:800}
+.chd .meta{font-size:11px;color:#9CA3AF}
+.chd .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.cbody{padding:13px 17px}
+.pill{font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:9px;text-transform:uppercase;letter-spacing:.03em}
+.pill.p{background:#EDE9FE;color:#4338CA}.pill.done{background:#D1FAE5;color:#065F46}
+.pill.open{background:#FEF3C7;color:#92400E}.pill.none{background:#F3F4F6;color:#6B7280}
+.grp{font-size:9.5px;font-weight:800;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px}
+.row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #F9FAFB}
+.row .lb{flex:1;font-size:12.5px}
+.row.auto .lb{color:#6B7280}
+.yn{display:flex;gap:5px}
+.yn button{border:1px solid #E5E7EB;background:#fff;border-radius:6px;padding:3px 12px;font-size:11px;font-weight:800;cursor:pointer;color:#6B7280}
+.yn button.y.on{background:#059669;border-color:#059669;color:#fff}
+.yn button.n.on{background:#DC2626;border-color:#DC2626;color:#fff}
+.yn button.a.on{background:#E5E7EB;border-color:#D1D5DB;color:#374151}
+.auto .yn span{border-radius:6px;padding:3px 12px;font-size:11px;font-weight:800}
+.auto .yn span.y{background:#D1FAE5;color:#065F46}
+.auto .yn span.n{background:#FEE2E2;color:#991B1B}
+.note{margin:6px 0 10px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:9px 11px}
+.note label{display:block;font-size:10.5px;font-weight:800;color:#991B1B;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+.note textarea{border-color:#FECACA;background:#fff}
+.act{margin-top:14px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:11px 13px}
+.act label{display:block;font-size:10.5px;font-weight:800;color:#4338CA;margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em}
+.act .hint{font-size:11px;color:#6B7280;margin-bottom:7px}
+.prev{background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 13px;margin-bottom:12px}
+.prev .q{font-size:11px;color:#6B7280;margin-bottom:6px}
+.prev .txt{font-size:12.5px;font-weight:600;margin-bottom:8px}
+.foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6}
+.foot .sc{font-size:12px;font-weight:800}
+.foot .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{border:1px solid #191C20;background:#191C20;color:#fff;border-radius:8px;padding:7px 17px;font-size:12.5px;font-weight:800;cursor:pointer}
+.btn.sec{background:#fff;color:#374151;border-color:#E5E7EB}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.warn{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:8px 13px;font-size:12px;margin-bottom:12px}
+.err{background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;border-radius:8px;padding:8px 13px;font-size:12px;margin-top:10px}
+.empty{padding:14px 17px;font-size:12.5px;color:#9CA3AF}
+a{color:#4338CA}
+.hist{margin-top:10px;font-size:11.5px;color:#6B7280}
+.hist table{border-collapse:collapse;width:100%;margin-top:6px;font-size:11.5px}
+.hist th{text-align:left;font-size:9.5px;color:#9CA3AF;text-transform:uppercase;padding:4px 6px;background:#F9FAFB}
+.hist td{padding:4px 6px;border-bottom:1px solid #F3F4F6}
+#loading{padding:60px;text-align:center;color:#9CA3AF}
+.spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Call coaching</h1>
+  <p id="sub">Five agents a day, picked in rotation. The call is picked for you.</p>
+  <a href="/callnow.html" style="font-size:11px;margin-left:auto">Call now</a>
+  <a href="/" style="font-size:11px">Dashboard</a>
+</div>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div>Loading today's five...</div>
+  <div id="app" style="display:none"></div>
+</div>
+<script>
+var DATA = null, STATE = {};
+
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
+function tm(x){return x?new Date(x).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"–";}
+function mmss(s){s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+"m "+("0"+(s%60)).slice(-2)+"s";}
+
+function load(){
+  var q = new URLSearchParams(location.search);
+  fetch("/api/coaching/today?" + q.toString(), {credentials:"same-origin"})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(j){
+      DATA = j; STATE = {};
+      j.rows.forEach(function(row){
+        var s = row.session;
+        STATE[row.agentId] = {
+          items: s ? Object.assign({}, s.items) : Object.assign({}, row.auto),
+          notes: s ? Object.assign({}, s.notes) : {},
+          actionItem: s ? s.actionItem : "",
+          prevVerdict: s ? s.prevVerdict : "",
+          recordingUrl: s ? s.recordingUrl : "",
+          saved: !!(s && s.submittedAt), err: ""
+        };
+      });
+      render();
+    })
+    .catch(function(e){
+      document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+    });
+}
+
+function render(){
+  var j = DATA;
+  document.getElementById("loading").style.display = "none";
+  var app = document.getElementById("app");
+  app.style.display = "block";
+
+  var done = j.rows.filter(function(r){ return STATE[r.agentId] && STATE[r.agentId].saved; }).length;
+  var h = '<div class="bar">';
+  h += '<div class="prog"><b>' + done + '</b> of ' + j.rows.length + ' reviewed today</div>';
+  h += '<input type="text" id="dt" value="' + esc(j.date) + '" style="width:120px" title="IST date">';
+  if (j.isVP && j.teams.length) {
+    h += '<select id="tm">' + j.teams.map(function(t){
+      return '<option value="' + esc(t.id) + '"' + (t.id===j.team.id?" selected":"") + '>' + esc(t.name || "(unnamed team)") + '</option>';
+    }).join("") + '</select>';
+  }
+  h += '<button class="btn sec" onclick="go()">Go</button>';
+  h += '<span style="margin-left:auto;font-size:11px;color:#9CA3AF">Calls synced ' + (j.callsLoadedAt ? tm(j.callsLoadedAt) : "not yet") + '</span>';
+  h += '</div>';
+
+  if (!j.persistent) h += '<div class="warn">The org store is not persistent, so these reviews will be lost on the next deploy. Attach a Railway volume at /data.</div>';
+  if (j.callsError) h += '<div class="warn">Call sync error: ' + esc(j.callsError) + '</div>';
+
+  h += j.rows.map(card).join("");
+  app.innerHTML = h;
+}
+
+function card(row){
+  var st = STATE[row.agentId];
+  var j = DATA;
+  var h = '<div class="card"><div class="chd">';
+  h += '<h2>' + esc(row.agentName) + '</h2>';
+  if (row.call) {
+    h += '<span class="meta">' + esc(row.call.contactName) + ' · ' + tm(row.call.at) + ' · ' + mmss(row.call.seconds);
+    if (row.call.disposition) h += ' · ' + esc(row.call.disposition);
+    h += '</span>';
+    if (row.call.isPriority) h += '<span class="pill p">priority lead</span>';
+  }
+  h += '<div class="right">';
+  h += st.saved ? '<span class="pill done">reviewed</span>' : '<span class="pill open">to do</span>';
+  if (row.call && row.call.recording) h += '<a href="' + esc(row.call.recording) + '" target="_blank" style="font-size:11.5px;font-weight:700">Play call</a>';
+  h += '</div></div>';
+
+  if (!row.call) {
+    h += '<div class="empty">No call to review: ' + esc(row.reason || "none found") + '. This agent rolls over to the next cycle.</div></div>';
+    return h;
+  }
+
+  h += '<div class="cbody">';
+
+  if (row.prev) {
+    h += '<div class="prev"><div class="q">Last session, ' + esc(row.prev.date) + ', the action item was</div>';
+    h += '<div class="txt">' + esc(row.prev.actionItem) + '</div>';
+    h += '<div class="yn" style="gap:6px">' + ["done","partial","not_done"].map(function(v){
+      var lbl = v === "not_done" ? "not done" : v;
+      return '<button class="' + (v==="done"?"y":"n") + (st.prevVerdict===v?" on":"") + '" onclick="setPrev(\'' + row.agentId + '\',\'' + v + '\')">' + lbl + '</button>';
+    }).join("") + '</div></div>';
+  }
+
+  h += '<div class="grp">From HubSpot</div>';
+  j.items.filter(function(i){ return i.auto; }).forEach(function(i){
+    var v = st.items[i.key] || row.auto[i.key] || "";
+    h += '<div class="row auto"><div class="lb">' + esc(i.label) + '</div><div class="yn"><span class="' + (v==="yes"?"y":"n") + '">' + (v==="yes"?"yes":"no") + '</span></div></div>';
+  });
+
+  h += '<div class="grp">Your judgement</div>';
+  j.items.filter(function(i){ return !i.auto; }).forEach(function(i){
+    var v = st.items[i.key] || "";
+    h += '<div class="row"><div class="lb">' + esc(i.label) + '</div><div class="yn">';
+    ["yes","no","na"].forEach(function(o){
+      var cls = o === "yes" ? "y" : (o === "no" ? "n" : "a");
+      h += '<button class="' + cls + (v===o?" on":"") + '" onclick="setItem(\'' + row.agentId + '\',\'' + i.key + '\',\'' + o + '\')">' + (o==="na"?"n/a":o) + '</button>';
+    });
+    h += '</div></div>';
+    if (v === "no") {
+      h += '<div class="note"><label>What was missing, required</label>';
+      h += '<textarea oninput="setNote(\'' + row.agentId + '\',\'' + i.key + '\',this.value)" placeholder="Say what happened, not what they should be like. A timestamp helps.">' + esc(st.notes[i.key] || "") + '</textarea></div>';
+    }
+  });
+
+  h += '<div class="act"><label>One action item for the next session</label>';
+  h += '<div class="hint">Pick the single gap you discussed on the call. It gets graded next time.</div>';
+  h += '<textarea oninput="setAction(\'' + row.agentId + '\',this.value)" placeholder="Ask about current role and goal before mentioning the course, on every call this week.">' + esc(st.actionItem) + '</textarea></div>';
+
+  var sc = score(st.items);
+  h += '<div class="foot">';
+  h += '<span class="sc">Score ' + sc.yes + ' of ' + sc.of + '</span>';
+  h += '<input type="url" placeholder="Meet recording link" value="' + esc(st.recordingUrl) + '" oninput="setRec(\'' + row.agentId + '\',this.value)" style="width:260px">';
+  if (!st.recordingUrl) h += '<span style="font-size:11px;color:#9CA3AF">recording not linked</span>';
+  h += '<div class="right"><button class="btn" onclick="submit(\'' + row.agentId + '\')">' + (st.saved ? "Update" : "Submit review") + '</button></div>';
+  h += '</div>';
+  if (st.err) h += '<div class="err">' + esc(st.err) + '</div>';
+  h += '</div></div>';
+  return h;
+}
+
+function score(items){
+  var yes = 0, no = 0;
+  DATA.items.forEach(function(i){
+    if (items[i.key] === "yes") yes++;
+    else if (items[i.key] === "no") no++;
+  });
+  return { yes: yes, no: no, of: yes + no };
+}
+
+function setItem(a,k,v){ var s=STATE[a]; s.items[k] = (s.items[k]===v?"":v); if(s.items[k]!=="no") delete s.notes[k]; s.err=""; render(); }
+function setNote(a,k,v){ STATE[a].notes[k] = v; }
+function setAction(a,v){ STATE[a].actionItem = v; }
+function setRec(a,v){ STATE[a].recordingUrl = v; }
+function setPrev(a,v){ STATE[a].prevVerdict = (STATE[a].prevVerdict===v?"":v); render(); }
+function go(){
+  var d = document.getElementById("dt").value.trim();
+  var t = document.getElementById("tm");
+  location.search = "?date=" + encodeURIComponent(d) + (t ? "&team=" + encodeURIComponent(t.value) : "");
+}
+
+function submit(agentId){
+  var row = DATA.rows.filter(function(r){ return String(r.agentId) === String(agentId); })[0];
+  var st = STATE[agentId];
+  var body = {
+    date: DATA.date, agentId: agentId,
+    callId: row.call ? row.call.id : "", call: row.call, auto: row.auto,
+    items: st.items, notes: st.notes, actionItem: st.actionItem,
+    prevVerdict: st.prevVerdict, recordingUrl: st.recordingUrl
+  };
+  fetch("/api/coaching/session", { method:"POST", credentials:"same-origin",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) })
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(j){ st.saved = true; st.err = ""; if (!j.persistent) st.err = "Saved to memory only, the volume is not writable."; render(); })
+    .catch(function(e){ st.err = e.message; render(); });
+}
+
+load();
+</script>
+</body>
+</html>

@@ -3525,6 +3525,366 @@ const runChain = guard("boot chain", function(){
   return syncForms().then(syncUnowned).then(syncPriorityFresh);
 });
 
+/* ==========================================================================
+   Coaching cadence: five reviewed calls a manager a day
+   --------------------------------------------------------------------------
+   The programme fails the moment a manager chooses which call to review, so
+   the rotation and the call pick are both deterministic functions of
+   (manager, IST date). Same inputs, same five agents, same five calls, for
+   everyone who opens the page. Nothing here is re-rollable.
+
+   Three of the nine checklist items are answered from HubSpot rather than by
+   the manager, so the hygiene half of the score is not a matter of opinion.
+   ========================================================================== */
+
+const COACH_MIN_SECONDS = Math.max(0, parseInt(process.env.COACH_MIN_SECONDS || "90", 10));
+const COACH_PER_DAY = Math.max(1, parseInt(process.env.COACH_PER_DAY || "5", 10));
+const COACH_LOOKBACK_HOURS = Math.max(6, parseInt(process.env.COACH_LOOKBACK_HOURS || "48", 10));
+
+/* The nine items. `auto` ones are derived, never typed. Order is the order the
+   call itself runs in, so a manager listening once can tick straight down. */
+const COACH_ITEMS = [
+  { key: "logged",   auto: true,  label: "Call logged with an outcome" },
+  { key: "followup", auto: true,  label: "Follow up date set after the call" },
+  { key: "length",   auto: true,  label: "Call ran past " + COACH_MIN_SECONDS + " seconds" },
+  { key: "opening",  auto: false, label: "Opening set the call up, not just an intent check" },
+  { key: "needs",    auto: false, label: "Proper need analysis before pitching" },
+  { key: "linked",   auto: false, label: "Pitch linked to something the lead actually said" },
+  { key: "objection",auto: false, label: "Responded to the objection raised" },
+  { key: "nextstep", auto: false, label: "Specific next step agreed on the call" },
+  { key: "written",  auto: false, label: "Follow up sent on WhatsApp or email" }
+];
+const COACH_JUDGED = COACH_ITEMS.filter(function(i){ return !i.auto; }).map(function(i){ return i.key; });
+const COACH_KEYS = COACH_ITEMS.map(function(i){ return i.key; });
+
+/* ---------- deterministic picking ----------
+   A string hash, not Math.random. The point is that two managers opening the
+   same day see the same list, and that reloading never produces a new one. */
+function coachHash(s){
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0);
+}
+function coachIstDate(d){ return istParts(d || new Date()).date; }
+function coachDayIndex(dateStr){ return Math.floor(Date.parse(dateStr + "T00:00:00Z") / 86400000); }
+
+/* Round robin, so every agent comes up on a fixed cycle rather than whoever the
+   manager happens to be worried about. Fifteen agents at five a day means each
+   one is coached every third working day, and the gap is visible. */
+function coachPickAgents(team, dateStr){
+  const ids = (team.agentIds || []).map(String)
+    .filter(function(id){ return ownerCounted(id); })
+    .sort();
+  if (!ids.length) return [];
+  const n = Math.min(COACH_PER_DAY, ids.length);
+  const start = (coachDayIndex(dateStr) * n) % ids.length;
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(ids[(start + i) % ids.length]);
+  return out;
+}
+
+/* ---------- call inventory ----------
+   syncCalls aggregates counts by owner and never keeps the individual call, so
+   coaching needs its own pull: the last COACH_LOOKBACK_HOURS of call objects
+   with their contact association, duration and recording url. Roughly two
+   thousand calls a day, which is twenty search pages, hourly. */
+let COACH = { calls: [], byOwner: {}, loadedAt: null, syncing: false, error: null };
+
+async function syncCoachCalls(){
+  if (!TOKEN || COACH.syncing) return;
+  COACH.syncing = true;
+  try {
+    const from = Date.now() - COACH_LOOKBACK_HOURS * 3600000;
+    const filters = [{ propertyName: "hs_timestamp", operator: "GTE", value: String(from) }];
+    const props = ["hs_timestamp", "hubspot_owner_id", "hs_call_duration", "hs_call_disposition",
+      "hs_call_recording_url", "hs_call_title", "hs_call_direction"];
+    let after, pages = 0;
+    const raw = [];
+    do {
+      const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: filters }], properties: props,
+        sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }], limit: 100, after: after }) });
+      (j.results || []).forEach(function(r){ raw.push({ id: r.id, p: r.properties || {} }); });
+      after = j.paging && j.paging.next && j.paging.next.after;
+      await sleep(120);
+      pages++;
+    } while (after && pages < 60);
+
+    /* Search will not return associations, so the contact link is a second pass.
+       Without it a call cannot be tied to a lead and the review has no subject. */
+    const link = {};
+    for (let i = 0; i < raw.length; i += 100) {
+      const inputs = raw.slice(i, i + 100).map(function(r){ return { id: r.id }; });
+      try {
+        const a = await hs("/crm/v4/associations/calls/contacts/batch/read", { method: "POST",
+          body: JSON.stringify({ inputs: inputs }) });
+        (a.results || []).forEach(function(r){
+          const to = (r.to || [])[0];
+          if (to) link[String(r.from && r.from.id)] = String(to.toObjectId || to.id);
+        });
+      } catch (e) { console.error("coach assoc: " + e.message); }
+      await sleep(120);
+    }
+
+    const byOwner = {};
+    const calls = raw.map(function(r){
+      const p = r.p;
+      const rec = {
+        id: r.id,
+        at: ts(p.hs_timestamp),
+        ownerId: String(p.hubspot_owner_id || ""),
+        seconds: Math.round(num(p.hs_call_duration) / 1000),
+        disposition: COACH_DISPO(p.hs_call_disposition),
+        recording: p.hs_call_recording_url || "",
+        title: clip(p.hs_call_title, 80),
+        contactId: link[r.id] || ""
+      };
+      if (rec.ownerId) (byOwner[rec.ownerId] = byOwner[rec.ownerId] || []).push(rec);
+      return rec;
+    });
+    Object.keys(byOwner).forEach(function(k){ byOwner[k].sort(function(a, b){ return b.at - a.at; }); });
+    COACH = { calls: calls, byOwner: byOwner, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Coach calls synced: " + calls.length + " in last " + COACH_LOOKBACK_HOURS + "h across " +
+      Object.keys(byOwner).length + " owners");
+  } catch (e) {
+    COACH.syncing = false; COACH.error = e.message;
+    console.error("Coach call sync failed: " + e.message);
+  }
+}
+function COACH_DISPO(id){
+  if (!id) return "";
+  return (CALLS.dispositions && CALLS.dispositions[id]) || String(id);
+}
+
+/* One call per agent, drawn from calls long enough to be a real conversation.
+   Deterministic within that set, and weighted toward the calls worth hearing:
+   priority pool leads first, then anything on a tracked creator. */
+function coachPickCall(agentId, dateStr, already){
+  const pool = (COACH.byOwner[String(agentId)] || []).filter(function(c){
+    return c.seconds >= COACH_MIN_SECONDS && c.contactId && already.indexOf(c.id) < 0;
+  });
+  if (!pool.length) return null;
+  // Priority means the same thing here as it does on Call Now: form, score,
+  // international or fresh. Reusing cnSegs keeps the two pages from drifting apart.
+  const priority = {};
+  try {
+    cnFilter({ scope: "tracked" }).forEach(function(r){
+      const s = cnSegs(r);
+      if (r.id && (s.form || s.score || s.intl || s.fresh)) priority[String(r.id)] = r;
+    });
+  } catch (e) {}
+  const ranked = pool.slice().sort(function(a, b){
+    const ap = priority[a.contactId] ? 1 : 0, bp = priority[b.contactId] ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    return a.id < b.id ? -1 : 1;
+  });
+  const top = ranked.filter(function(c){ return priority[c.contactId]; });
+  const set = top.length ? top : ranked;
+  const pick = set[coachHash(dateStr + ":" + agentId) % set.length];
+  const lead = priority[pick.contactId] || null;
+  return Object.assign({}, pick, {
+    contactName: lead ? lead.name : coachContactName(pick.contactId),
+    stage: lead ? lead.stage : "",
+    creator: lead ? lead.creator : "",
+    score: lead ? lead.score : null,
+    isPriority: !!lead
+  });
+}
+function coachContactName(id){
+  const c = (CACHE.contacts || []).filter(function(x){ return String(x.id) === String(id); })[0];
+  if (!c) return "Contact " + id;
+  return [c.firstname, c.lastname].filter(Boolean).join(" ") || c.email || ("Contact " + id);
+}
+
+/* ---------- the three derived answers ----------
+   Judged from the call and the contact as they stand now, so a manager never
+   argues about whether the CRM was updated. */
+function coachAuto(call){
+  const c = (CACHE.contacts || []).filter(function(x){ return String(x.id) === String(call.contactId); })[0];
+  const fu = c ? ts(c.follow_up_date_and_time) : 0;
+  return {
+    logged: call.disposition ? "yes" : "no",
+    followup: (fu && fu > call.at) ? "yes" : "no",
+    length: call.seconds >= COACH_MIN_SECONDS ? "yes" : "no"
+  };
+}
+
+/* ---------- store ----------
+   Sessions live in the org store beside teams and targets, on the same volume.
+   Capped, because this grows every working day and the file is read whole. */
+function coachStore(){
+  if (!ORG.coaching) ORG.coaching = { sessions: [] };
+  if (!Array.isArray(ORG.coaching.sessions)) ORG.coaching.sessions = [];
+  return ORG.coaching;
+}
+function coachSessionsFor(agentId){
+  return coachStore().sessions
+    .filter(function(s){ return String(s.agentId) === String(agentId); })
+    .sort(function(a, b){ return (b.date < a.date) ? -1 : 1; });
+}
+function coachTeamFor(req){
+  const me = String(whoami(req) || "").toLowerCase();
+  const teams = ORG.teams || [];
+  if (isVP(req)) {
+    const want = String(req.query.team || "");
+    if (want) return teams.filter(function(t){ return t.id === want; })[0] || null;
+    return teams[0] || null;
+  }
+  return teams.filter(function(t){ return String(t.managerEmail || "").toLowerCase() === me; })[0] || null;
+}
+function coachScore(items){
+  let yes = 0, no = 0;
+  COACH_KEYS.forEach(function(k){
+    if (items[k] === "yes") yes++;
+    else if (items[k] === "no") no++;
+  });
+  return { yes: yes, no: no, of: yes + no, pct: (yes + no) ? Math.round(yes * 100 / (yes + no)) : 0 };
+}
+
+/* ---------- routes ---------- */
+
+// Today's five. Existing sessions are merged in so a half-finished day resumes
+// where the manager left it, and a submitted one is never re-picked.
+app.get("/api/coaching/today", function(req, res){
+  const team = coachTeamFor(req);
+  if (!team) return res.status(403).json({ error: "no team is mapped to " + (whoami(req) || "this account") });
+  const date = String(req.query.date || coachIstDate());
+  const store = coachStore();
+  const done = store.sessions.filter(function(s){ return s.date === date && s.teamId === team.id; });
+  const doneCallIds = done.map(function(s){ return s.callId; });
+  const agents = coachPickAgents(team, date);
+
+  const rows = agents.map(function(id){
+    const existing = done.filter(function(s){ return String(s.agentId) === String(id); })[0];
+    const owner = CACHE.owners[id] || {};
+    const history = coachSessionsFor(id).filter(function(s){ return s.date < date && s.submittedAt; });
+    const prev = history[0] || null;
+    if (existing) {
+      return { agentId: id, agentName: owner.name || ("Owner " + id), session: existing,
+        call: existing.call || null, auto: existing.auto || {},
+        prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null };
+    }
+    const call = coachPickCall(id, date, doneCallIds);
+    return { agentId: id, agentName: owner.name || ("Owner " + id), session: null,
+      call: call, auto: call ? coachAuto(call) : {},
+      prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null,
+      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " + COACH_LOOKBACK_HOURS + " hours" };
+  });
+
+  res.json({
+    date: date, team: { id: team.id, name: team.name, managerEmail: team.managerEmail },
+    teams: isVP(req) ? (ORG.teams || []).map(function(t){ return { id: t.id, name: t.name }; }) : [],
+    items: COACH_ITEMS, rows: rows,
+    callsLoadedAt: COACH.loadedAt, callsSyncing: COACH.syncing, callsError: COACH.error,
+    persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS
+  });
+});
+
+// Submit one review. The score is computed here, never accepted from the client,
+// and a note is required against every item marked no.
+app.post("/api/coaching/session", express.json(), function(req, res){
+  const team = coachTeamFor(req);
+  if (!team) return res.status(403).json({ error: "no team is mapped to this account" });
+  const b = req.body || {};
+  const date = String(b.date || coachIstDate());
+  const agentId = String(b.agentId || "");
+  if (!agentId) return res.status(400).json({ error: "agentId is required" });
+  if ((team.agentIds || []).map(String).indexOf(agentId) < 0 && !isVP(req)) {
+    return res.status(403).json({ error: "that agent is not on your team" });
+  }
+
+  const items = {}, notes = {};
+  const missing = [];
+  COACH_ITEMS.forEach(function(it){
+    const v = String((b.items || {})[it.key] || "");
+    items[it.key] = (v === "yes" || v === "no" || v === "na") ? v : "";
+    const n = String((b.notes || {})[it.key] || "").trim();
+    if (n) notes[it.key] = n.slice(0, 600);
+    if (!it.auto && items[it.key] === "") missing.push(it.label);
+    if (items[it.key] === "no" && !n) missing.push("a note against: " + it.label);
+  });
+  const action = String(b.actionItem || "").trim();
+  if (!action) missing.push("one action item");
+  if (missing.length) return res.status(400).json({ error: "still needed: " + missing.join("; ") });
+
+  const store = coachStore();
+  const idx = store.sessions.findIndex(function(s){
+    return s.date === date && String(s.agentId) === agentId && s.teamId === team.id;
+  });
+  const rec = {
+    id: idx >= 0 ? store.sessions[idx].id : newId(),
+    date: date, teamId: team.id, teamName: team.name,
+    managerEmail: whoami(req), agentId: agentId,
+    agentName: (CACHE.owners[agentId] || {}).name || ("Owner " + agentId),
+    callId: String(b.callId || ""), call: b.call || null, auto: b.auto || {},
+    items: items, notes: notes,
+    actionItem: action.slice(0, 400),
+    prevVerdict: ["done", "partial", "not_done", ""].indexOf(String(b.prevVerdict || "")) >= 0 ? String(b.prevVerdict || "") : "",
+    recordingUrl: String(b.recordingUrl || "").trim().slice(0, 500),
+    score: null, submittedAt: new Date().toISOString()
+  };
+  rec.score = coachScore(items);
+  if (idx >= 0) store.sessions[idx] = rec; else store.sessions.push(rec);
+  // Ninety days of five a day per manager is a few thousand records; cap well above
+  // that so the file cannot grow without bound if the cadence sticks.
+  if (store.sessions.length > 8000) store.sessions = store.sessions.slice(-8000);
+  const saved = orgSave("coaching.session", rec.agentName + " " + date, whoami(req));
+  res.json({ ok: true, persistent: saved && ORG_PERSISTENT, session: rec });
+});
+
+// One agent's history: the trend, and whether each action item actually landed.
+app.get("/api/coaching/agent/:id", function(req, res){
+  const id = String(req.params.id || "");
+  const sessions = coachSessionsFor(id).filter(function(s){ return s.submittedAt; });
+  const owner = CACHE.owners[id] || {};
+  res.json({
+    agentId: id, agentName: owner.name || ("Owner " + id),
+    items: COACH_ITEMS,
+    sessions: sessions.slice(0, 40),
+    // Which items keep coming back. Three failures in the last five sessions is a
+    // pattern rather than a bad day, and it is what should reach the VP.
+    persistent: COACH_JUDGED.map(function(k){
+      const last5 = sessions.slice(0, 5);
+      const fails = last5.filter(function(s){ return (s.items || {})[k] === "no"; }).length;
+      const label = (COACH_ITEMS.filter(function(i){ return i.key === k; })[0] || {}).label || k;
+      return { key: k, label: label, fails: fails, of: last5.length, flagged: fails >= 3 };
+    }).filter(function(x){ return x.flagged; })
+  });
+});
+
+// Coverage across every team, so the cadence itself can be seen to be running.
+app.get("/api/coaching/summary", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const store = coachStore();
+  const today = coachIstDate();
+  const since = Date.now() - 7 * 86400000;
+  const recent = store.sessions.filter(function(s){ return s.submittedAt && Date.parse(s.submittedAt) >= since; });
+  const teams = (ORG.teams || []).map(function(t){
+    const mine = recent.filter(function(s){ return s.teamId === t.id; });
+    const covered = {};
+    mine.forEach(function(s){ covered[String(s.agentId)] = 1; });
+    const agents = (t.agentIds || []).map(String).filter(ownerCounted);
+    const scores = mine.map(function(s){ return (s.score || {}).pct || 0; });
+    const avg = scores.length ? Math.round(scores.reduce(function(a, b){ return a + b; }, 0) / scores.length) : null;
+    return {
+      teamId: t.id, name: t.name, managerEmail: t.managerEmail,
+      sessions7d: mine.length, expected7d: Math.min(agents.length, COACH_PER_DAY) * 5,
+      todayDone: store.sessions.filter(function(s){ return s.date === today && s.teamId === t.id && s.submittedAt; }).length,
+      agents: agents.length, coveredAgents: Object.keys(covered).length,
+      neverCoached: agents.filter(function(id){
+        return !store.sessions.some(function(s){ return String(s.agentId) === id && s.submittedAt; });
+      }).map(function(id){ return (CACHE.owners[id] || {}).name || id; }),
+      // A manager who marks everyone at ninety is not coaching, and this is the
+      // only number that shows it.
+      avgScore: avg,
+      missingRecording: mine.filter(function(s){ return !s.recordingUrl; }).length
+    };
+  });
+  const all = recent.map(function(s){ return (s.score || {}).pct || 0; });
+  res.json({ teams: teams, orgAvg: all.length ? Math.round(all.reduce(function(a, b){ return a + b; }, 0) / all.length) : null,
+    total7d: recent.length, today: today });
+});
+
 // Railway sends SIGTERM on every redeploy. Exiting cleanly turns what it otherwise
 // reports as a crash into a normal shutdown. Requires the start command to be
 // "node server.js", not "npm start", or npm swallows the signal as PID 1.
@@ -3555,6 +3915,8 @@ SERVER = app.listen(PORT, () => {
   setInterval(guard("counsel", syncCounsel), COHORT_MINUTES * 60 * 1000);
   setTimeout(guard("calls", syncCalls), 90 * 1000);
   setInterval(guard("calls", syncCalls), COHORT_MINUTES * 60 * 1000);
+  setTimeout(guard("coachCalls", syncCoachCalls), 120 * 1000);
+  setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);
   setInterval(guard("leadsToday", maybeRunLeadsTodayCheckpoint), 60 * 1000);
   guard("leadsTodayBoot", bootstrapLeadsTodayOnBoot)();
   guard("backupPool", syncBackupPool)();
