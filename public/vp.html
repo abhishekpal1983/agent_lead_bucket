@@ -3,8 +3,19 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Revenue command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:light}
+:root{color-scheme:light;
+  --ink:#0E1220; --ink2:#4A5268; --ink3:#8A91A6; --ink4:#AEB4C6;
+  --canvas:#F6F7FC; --surface:#FFFFFF; --line:#EAEBF2; --line2:#F2F3F8;
+  --ind:#4F46E5; --ind-d:#3F37C9; --ind-soft:#EEEDFE; --ind-ink:#3730A3;
+  --em:#0E9F6E; --em-soft:#E3F7EF; --em-ink:#04624A;
+  --rose:#E02D3C; --rose-soft:#FDECEE; --rose-ink:#9B1220;
+  --amb:#B45309; --amb-soft:#FEF4E4; --amb-ink:#7C3D06;
+  --sh:0 1px 2px rgba(14,18,32,.04), 0 8px 24px -12px rgba(14,18,32,.14);
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F7FA;color:#0A2540;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
 .shell{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
@@ -144,8 +155,82 @@ tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:1050px){.grid{grid-template-columns:1fr}}
 #loading{padding:60px;text-align:center;color:#566575}
+
+/* ==================== Revenue command skin ====================
+   Self-contained rather than layered on theme.css, so tuning this page cannot
+   drag Overview or Call Now around. Colour here is strictly semantic: green,
+   amber and red only ever mean on track, slipping, off; indigo only ever means
+   interactive; everything else is grey. That is what makes red mean something. */
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--canvas);color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.008em;-webkit-font-smoothing:antialiased}
+.nav{background:linear-gradient(180deg,#1B1936 0%,#13152A 100%)}
+.nav h1{font-weight:600;letter-spacing:-.02em}
+.nav .who{color:#7A81A3}
+.nav button,.nav .tools a{border-radius:9px;font-weight:450;transition:background .13s,color .13s}
+.nav button:hover,.nav .tools a:hover{background:#262B49;color:#fff}
+.nav button.on{background:var(--ind);color:#fff;font-weight:500}
+.nav .cnt{background:rgba(255,255,255,.09);color:#B8BDD6}
+.nav button.on .cnt{background:rgba(255,255,255,.22);color:#fff}
+.nav .cnt.bad{background:#7F1D1D;color:#FCA5A5}
+.nav .tools{border-top:1px solid #262B49}
+.nav .tools .lbl{color:#5E6488}
+.sec{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);padding:16px 18px}
+.sec h2{font-size:14px;font-weight:600;letter-spacing:-.016em}
+.sec .sub{color:var(--ink3)}
+th{background:#FCFCFE;color:var(--ink4);font-size:9.5px;font-weight:600;letter-spacing:.09em;border-bottom:1px solid var(--line)}
+td{border-bottom:1px solid var(--line2)}
+tbody tr:hover td{background:#FBFBFE}
+.btn{border-radius:10px;border-color:var(--line);color:var(--ink2);font-weight:500}
+.btn:hover{background:#FBFBFE;border-color:#DCDEEA}
+.btn.p{background:var(--ind);border-color:var(--ind);color:#fff;box-shadow:0 1px 2px rgba(79,70,229,.3)}
+.btn.d{background:var(--rose-soft);border-color:#FAD4D9;color:var(--rose-ink)}
+input,select{border-radius:10px;border-color:var(--line)}
+input:focus,select:focus{outline:none;border-color:var(--ind);box-shadow:0 0 0 3.5px var(--ind-soft)}
+.mut{color:var(--ink3)}
+.cg{color:var(--em)}.cr{color:var(--rose)}.ca{color:var(--amb)}
+
+/* hero */
+.herorev{background:linear-gradient(135deg,#1E1B4B 0%,#312E81 55%,#3730A3 100%);border-radius:18px;padding:20px 22px;color:#fff;margin-bottom:16px}
+.herorev .hl{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:#A5A3E8;font-weight:600}
+.hrow{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-top:5px}
+.hv{font-size:31px;font-weight:600;letter-spacing:-.032em}
+.hof{font-size:14px;color:#A5A3E8}
+.hchip{margin-left:auto;font-size:11.5px;font-weight:550;padding:5px 11px;border-radius:9px}
+.hchip.good{background:rgba(110,231,183,.16);color:#6EE7B7}
+.hchip.bad{background:rgba(253,186,116,.16);color:#FDBA74}
+.htrack{margin-top:13px;height:8px;background:rgba(255,255,255,.12);border-radius:99px;position:relative}
+.htrack i{display:block;height:8px;background:#67E8F9;border-radius:99px}
+.htrack b{position:absolute;top:-3px;width:2px;height:14px;background:#FDBA74;border-radius:2px}
+.hsub{font-size:11.5px;color:#B9B7EE;margin-top:8px}
+.hwarn{margin-top:9px;font-size:11.5px;color:#FDBA74}
+.hwarn a{color:#C7C3F5}
+
+/* bands */
+.bandl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin:16px 0 8px}
+.bandl span{text-transform:none;letter-spacing:-.006em;font-weight:450;font-size:11.5px;color:var(--ink3);margin-left:8px}
+.tiles2{display:grid;grid-template-columns:repeat(auto-fit,minmax(216px,1fr));gap:11px}
+.t2{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 15px;box-shadow:var(--sh);transition:box-shadow .16s,transform .06s}
+.t2:hover{box-shadow:0 2px 6px rgba(14,18,32,.06),0 18px 40px -18px rgba(14,18,32,.22)}
+.t2:active{transform:translateY(.5px)}
+.t2.bad{border-color:#F7CFD4}
+.t2h{display:flex;align-items:center;gap:7px}
+.t2l{font-size:9.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+.ch{margin-left:auto;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.ch.g{background:var(--em-soft);color:var(--em-ink)}
+.ch.r{background:var(--rose-soft);color:var(--rose-ink)}
+.ch.a{background:var(--amb-soft);color:var(--amb-ink)}
+.ch.n{background:#F1F2F7;color:var(--ink2)}
+.t2v{font-size:25px;font-weight:600;letter-spacing:-.03em;margin-top:6px;line-height:1.15}
+.t2of{font-size:13px;font-weight:400;color:var(--ink3);letter-spacing:-.01em}
+.t2f{font-size:11px;color:var(--ink2);margin-top:8px;line-height:1.5}
+.t2f a{color:var(--ind);text-decoration:none;font-weight:550}
+.pb{margin-top:9px;height:6px;background:#F0F1F7;border-radius:99px;position:relative}
+.pb i{display:block;height:6px;border-radius:99px}
+.pb b{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink);border-radius:2px}
+.seg3{display:flex;gap:2px;margin-top:10px}
+.seg3 i{height:6px;display:block}
+.seg3 i:first-child{border-radius:99px 0 0 99px}
+.seg3 i:last-child{border-radius:0 99px 99px 0}
 </style>
-<link rel="stylesheet" href="/theme.css">
 </head>
 <body>
 <div class="shell">
@@ -476,6 +561,54 @@ function cov(done, total){
   if (!total) return "";
   return fmt(done) + " called · " + Math.round(100 * done / total) + "%";
 }
+/* ---------- Overview strip ----------
+   Twelve tiles in three bands, and the band names are the argument: revenue is a
+   result, so when it is short the fix is always one band down. Outcome is what the
+   month is doing, Engine is what produces it, Hygiene is what quietly rots.
+
+   Every tile carries a comparison chip, and the comparison is month to date against
+   last month's same day. Comparing a part month against a finished one is the most
+   common way a dashboard lies: every metric reads down until the last week. */
+
+function pctDelta(now, then){
+  if (!then) return null;
+  return Math.round(1000 * (now - then) / then) / 10;
+}
+// Green when up is good, red when down is bad, and inverted for metrics where less
+// is better. Neutral grey when there is nothing to compare against yet.
+function chip(delta, opts){
+  opts = opts || {};
+  if (delta === null || delta === undefined) return "<span class='ch n'>" + (opts.empty || "no prior month") + "</span>";
+  const good = opts.lowerIsBetter ? delta < 0 : delta > 0;
+  const flat = Math.abs(delta) < (opts.tol === undefined ? 2 : opts.tol);
+  const cls = flat ? "n" : (good ? "g" : "r");
+  const arrow = delta > 0 ? "&uarr;" : (delta < 0 ? "&darr;" : "");
+  const unit = opts.pts ? " pts" : "%";
+  return "<span class='ch " + cls + "'>" + arrow + " " + Math.abs(delta) + unit + (opts.suffix || " MoM") + "</span>";
+}
+function paceBar(pctDone, pctElapsed){
+  const p = Math.max(0, Math.min(100, pctDone));
+  const col = pctDone >= pctElapsed ? "#0E9F6E" : (pctDone >= pctElapsed - 12 ? "#B45309" : "#E02D3C");
+  return "<div class='pb'><i style='width:" + p + "%;background:" + col + "'></i>" +
+    "<b style='left:" + Math.max(0, Math.min(100, pctElapsed)) + "%'></b></div>";
+}
+function paceLine(pctDone, pctElapsed){
+  const d = Math.round((pctDone - pctElapsed) * 10) / 10;
+  if (d >= 0) return Math.round(pctDone) + "% done, " + Math.round(pctElapsed) + "% of month gone. <b class='cg'>" + d + " points ahead.</b>";
+  return Math.round(pctDone) + "% done, " + Math.round(pctElapsed) + "% of month gone. <b class='cr'>" + Math.abs(d) + " points behind.</b>";
+}
+// A tile with nothing under the number is a number without a verdict, so `foot` is
+// required rather than optional.
+function tile2(o){
+  const click = o.href ? " onclick=\"location.href='" + o.href + "'\" style='cursor:pointer'"
+    : (o.go ? " onclick=\"go('" + o.go + "')\" style='cursor:pointer'" : "");
+  return "<div class='t2 " + (o.cls || "") + "'" + click + ">" +
+    "<div class='t2h'><span class='t2l'>" + o.label + "</span>" + (o.chip || "") + "</div>" +
+    "<div class='t2v'>" + o.value + (o.of ? " <span class='t2of'>" + o.of + "</span>" : "") + "</div>" +
+    (o.viz || "") +
+    "<div class='t2f'>" + o.foot + "</div></div>";
+}
+
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
   var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0, au = 0, auT = 0;
@@ -488,6 +621,7 @@ function drawStrip(){
     ctoday += (x.counsToday || 0); ctarget += (x.targetCounsellings || 0);
     au += (x.audits || 0); auT += (x.auditTarget || 0);
   });
+  var P = J.prior || {};
   var pace = t * (J.dayOfMonth / J.daysInMonth);
   var att = t ? Math.round(1000 * a / t) / 10 : 0;
   var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
@@ -495,39 +629,131 @@ function drawStrip(){
   var c2e = co ? Math.round(1000 * e / co) / 10 : null;
   var ticket = e ? a / e : 0;
   var l2c = created ? Math.round(1000 * cohC / created) / 10 : null;
-  var h = "<div class='tiles'>";
-  h += "<div class='tile hero'><div class='v'>" + inr(a) + " <span style='font-size:14px;color:#93A7BC;font-weight:400'>of " + inr(t) + "</span></div>" +
-    "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#38BDF8'></i>" +
-      (att < el ? "<i style='width:" + Math.min(100 - Math.min(100, att), el - att) + "%;background:#FB923C'></i>" : "") + "</div>" +
-    "<div class='l'>" + att + "% attained · " + el + "% of month elapsed · " +
-    (gap >= 0 ? "<span style='color:#6EE7B7'>" + inr(gap) + " ahead</span>" : "<span style='color:#FDBA74'>" + inr(-gap) + " behind pace</span>") +
+  var daysLeft = Math.max(0, J.daysInMonth - J.dayOfMonth);
+
+  /* Run rate is taken from the last seven days rather than the month so far, because
+     a slow first week should not keep dragging the forecast down for three more. */
+  var wk = J.week || {};
+  var perDay = wk.current ? wk.current / 7 : (J.dayOfMonth ? a / J.dayOfMonth : 0);
+  var lands = Math.round(a + perDay * daysLeft);
+  var landsGap = lands - t;
+
+  /* ---------- hero ---------- */
+  var h = "<div class='herorev'>" +
+    "<div class='hl'>Revenue this month</div>" +
+    "<div class='hrow'><span class='hv'>" + inr(a) + "</span><span class='hof'>of " + inr(t) + "</span>" +
+    (gap >= 0
+      ? "<span class='hchip good'>" + inr(gap) + " ahead of pace</span>"
+      : "<span class='hchip bad'>" + inr(-gap) + " behind pace</span>") + "</div>" +
+    "<div class='htrack'><i style='width:" + Math.min(100, att) + "%'></i><b style='left:" + Math.min(100, el) + "%'></b></div>" +
+    "<div class='hsub'>" + att + "% attained · " + el + "% of month elapsed · the marker is pace" +
+    (P.revenue ? " · last month to day " + P.throughDay + " was " + inr(P.revenue) : "") + "</div>" +
     (J.unattributed && J.unattributed.missing > 0
-      ? "<div style='margin-top:5px;color:#FDBA74'>Sheet total for the month is " + inr(J.unattributed.all) +
-        ". " + inr(J.unattributed.missing) + " across " + fmt(J.unattributed.rows) +
-        " payments is not counted here, the agent who booked it is not mapped to a team." +
-        " <a href='#' onclick=\"go('mapping');return false\" style='color:#93C5FD'>Fix mapping</a></div>"
-      : "") + "</div></div>";
-  // Anything about today's calling lives in the Call Now queue below, not here, so the
-  // two sections stop repeating each other.
-  h += tile("blue", fmt(e) + (te ? " <span style='font-size:14px;font-weight:400'>/ " + fmt(te) + "</span>" : ""), "Enrolments");
-  h += tile(ctarget && co >= ctarget * (J.dayOfMonth / J.daysInMonth) ? "teal" : (ctarget ? "amber" : "blue"),
-    fmt(co) + (ctarget ? " <span style='font-size:14px;font-weight:400'>of " + fmt(ctarget) + "</span>" : ""),
-    ctarget ? "Counsellings, " + Math.round(100 * co / ctarget) + "% of target" : "Counsellings this month");
-  h += tile(ctoday ? "teal" : "grey", fmt(ctoday), "Counsellings today");
-  h += tile("teal", c2e === null ? "–" : c2e + "%", "C2E");
-  h += tile(act < tot / 2 ? "red" : "teal", fmt(act) + " <span style='font-size:14px;font-weight:400'>of " + fmt(tot) + "</span>", "Agents who called today");
-  h += tile(risk ? "red" : "grey", inr(Math.round(risk * ticket)), "Revenue at risk · " + fmt(risk) + " prospects");
-  h += tile("blue", l2c === null ? "–" : l2c + "%", "L2C, leads created this month");
-  h += tile("blue", fmt(created), "New leads this month");
-  h += tile(auT && au >= auT ? "teal" : (au ? "amber" : "red"),
-    fmt(au) + " <span style='font-size:14px;font-weight:400'>of " + fmt(auT) + "</span>",
-    "Call audits today",
-    auT ? Math.round(100 * au / auT) + "% of the cadence" : "no agents on rotation");
-  return h + "</div>" +
-    "<div style='font-size:12px;color:#6B7A8A;margin:-4px 0 12px;line-height:1.55'>" +
-    "<b>C2E</b> is enrolments divided by counsellings this month, across all leads, not only fresh ones. " +
-    "<b>L2C</b> is a cohort measure: of the leads created this month, the share that has reached a counselling stage so far, " +
-    "so it reads low early in the month.</div>";
+      ? "<div class='hwarn'>" + inr(J.unattributed.missing) + " across " + fmt(J.unattributed.rows) +
+        " payments is not counted here, the agent who booked it is not mapped to a team. " +
+        "<a href='#' onclick=\"go('mapping');return false\">Fix mapping</a></div>"
+      : "") + "</div>";
+
+  /* ---------- outcome ---------- */
+  h += "<div class='bandl'>Outcome <span>what the month is doing</span></div><div class='tiles2'>";
+  h += tile2({
+    label: "Lands at",
+    chip: "<span class='ch " + (landsGap >= 0 ? "g" : "r") + "'>" + daysLeft + " days left</span>",
+    value: inr(lands), of: "of " + inr(t),
+    viz: paceBar(t ? Math.min(100, 100 * lands / t) : 0, 100),
+    foot: "At the last 7 days' rate. " + (landsGap >= 0
+      ? "<b class='cg'>" + inr(landsGap) + " over.</b>"
+      : "<b class='cr'>" + inr(-landsGap) + " short.</b>")
+  });
+  h += tile2({
+    label: "Enrolments", go: "managers",
+    chip: chip(pctDelta(e, P.enrolments)),
+    value: fmt(e), of: te ? "of " + fmt(te) : "",
+    viz: te ? paceBar(100 * e / te, el) : "",
+    foot: te ? paceLine(100 * e / te, el) : "No enrolment target set for the month."
+  });
+  h += tile2({
+    label: "C2E", go: "managers",
+    chip: chip(c2e !== null && P.c2e !== null ? Math.round((c2e - P.c2e) * 10) / 10 : null, { pts: true, tol: 0.5 }),
+    value: c2e === null ? "–" : c2e + "%", of: P.c2e !== null ? "vs " + P.c2e + "% last month" : "",
+    foot: (c2e !== null && P.c2e !== null && c2e < P.c2e)
+      ? "Conversion is slipping, not volume."
+      : "Enrolments over counsellings, all leads."
+  });
+  h += tile2({
+    label: "Revenue at risk", cls: risk ? "bad" : "", go: "managers",
+    chip: "<span class='ch " + (risk ? "r" : "n") + "'>" + fmt(risk) + " prospects</span>",
+    value: inr(Math.round(risk * ticket)),
+    foot: risk ? "Counselled, not enrolled, going cold." : "Nothing sitting at risk today."
+  });
+  h += "</div>";
+
+  /* ---------- engine ---------- */
+  h += "<div class='bandl'>Engine <span>what produces it</span></div><div class='tiles2'>";
+  h += tile2({
+    label: "Counsellings", go: "managers",
+    chip: chip(pctDelta(co, P.counsellings)),
+    value: fmt(co), of: ctarget ? "of " + fmt(ctarget) : "",
+    viz: ctarget ? paceBar(100 * co / ctarget, el) : "",
+    foot: ctarget ? paceLine(100 * co / ctarget, el) : "No counselling target set for the month."
+  });
+  h += tile2({
+    label: "Counsellings today",
+    chip: "<span class='ch " + (ctoday ? "g" : "r") + "'>" + (ctoday ? "running" : "none yet") + "</span>",
+    value: fmt(ctoday),
+    foot: ctarget ? "Needs " + fmt(Math.ceil(ctarget / J.daysInMonth)) + " a day to hit target." : "No target to pace against."
+  });
+  h += tile2({
+    label: "New leads", go: "managers",
+    chip: chip(pctDelta(created, P.created)),
+    value: fmt(created),
+    foot: P.created ? "Last month to day " + P.throughDay + ": " + fmt(P.created) + "." : "Created this month, top of the funnel."
+  });
+  h += tile2({
+    label: "L2C",
+    chip: chip(l2c !== null && P.l2c !== null ? Math.round((l2c - P.l2c) * 10) / 10 : null, { pts: true, tol: 0.5 }),
+    value: l2c === null ? "–" : l2c + "%", of: P.l2c !== null ? "vs " + P.l2c + "%" : "",
+    foot: "Of leads created this month, the share counselled. Reads low early."
+  });
+  h += "</div>";
+
+  /* ---------- hygiene ---------- */
+  var pool = due + unc;
+  h += "<div class='bandl'>Hygiene <span>what quietly rots</span></div><div class='tiles2'>";
+  h += tile2({
+    label: "Queue worked today", cls: over > 300 ? "bad" : "", href: "/callnow.html",
+    chip: "<span class='ch " + (over ? "r" : "n") + "'>" + fmt(over) + " overdue</span>",
+    value: fmt(done), of: "of " + fmt(due) + " due",
+    viz: "<div class='seg3'><i style='flex:" + Math.max(1, done) + ";background:#0E9F6E'></i>" +
+      "<i style='flex:" + Math.max(1, missed) + ";background:#E9A13B'></i>" +
+      "<i style='flex:" + Math.max(1, Math.max(0, due - done - missed)) + ";background:#F0F1F7'></i></div>",
+    foot: fmt(missed) + " missed, " + fmt(Math.max(0, due - done - missed)) + " untouched."
+  });
+  h += tile2({
+    label: "Agents who dialled", cls: act < tot / 2 ? "bad" : "", go: "managers",
+    chip: "<span class='ch " + (act < tot / 2 ? "r" : "g") + "'>" + (tot ? Math.round(100 * act / tot) : 0) + "% of the floor</span>",
+    value: fmt(act), of: "of " + fmt(tot),
+    foot: act < tot / 2 ? "More than half the floor has not dialled today." : "Most of the floor is working."
+  });
+  h += tile2({
+    label: "Unmapped revenue", cls: (J.unattributed && J.unattributed.missing) ? "bad" : "", go: "mapping",
+    chip: "<span class='ch " + ((J.unattributed && J.unattributed.missing) ? "r" : "g") + "'>" +
+      ((J.unattributed && J.unattributed.rows) ? fmt(J.unattributed.rows) + " payments" : "clean") + "</span>",
+    value: inr((J.unattributed && J.unattributed.missing) || 0),
+    foot: (J.unattributed && J.unattributed.missing)
+      ? "Booked by agents on no team, so it is missing from every number above."
+      : "Every payment maps to a team."
+  });
+  h += tile2({
+    label: "Call audits", cls: auT && !au ? "bad" : "", href: "/coaching.html?view=managers",
+    chip: "<span class='ch " + (auT && au >= auT ? "g" : (au ? "a" : "r")) + "'>" +
+      (auT ? Math.round(100 * au / auT) + "% of cadence" : "no rotation") + "</span>",
+    value: fmt(au), of: auT ? "of " + fmt(auT) : "",
+    foot: auT ? "Managers owe " + fmt(auT) + " reviews today." : "No agents on rotation yet."
+  });
+  h += "</div>";
+
+  return h;
 }
 function drawExceptions(){
   var x = J.exceptions || [];

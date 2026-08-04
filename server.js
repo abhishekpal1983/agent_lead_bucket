@@ -2926,6 +2926,67 @@ function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, 
 function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
 
 // Revenue booked in the last 7 days against the 7 before, for the teams in scope.
+/* Last month, truncated to the same day of month.
+   Comparing day 21 against a finished month is the most common way a dashboard
+   lies to you: every metric looks down until the last week, then jumps. Every
+   chip on the Overview strip therefore compares like with like, month to date
+   against month to date.
+
+   Scope is the set of owner ids the caller can see, so a manager's chip reflects
+   their team rather than the company. Pass null for everything. */
+function vpPriorMonth(month, dom, ownerIds){
+  const y = Number(month.slice(0, 4)), m = Number(month.slice(5, 7));
+  const pm = m === 1 ? { y: y - 1, m: 12 } : { y: y, m: m - 1 };
+  const key = pm.y + "-" + ("0" + pm.m).slice(-2);
+  // February cannot be compared on the 31st, so clamp to that month's length.
+  const pdim = new Date(pm.y, pm.m, 0).getDate();
+  const cut = Math.min(dom, pdim);
+  const endMs = Date.parse(key + "-" + ("0" + cut).slice(-2) + "T23:59:59+05:30");
+
+  const scope = ownerIds ? {} : null;
+  const emails = ownerIds ? {} : null;
+  if (ownerIds) {
+    ownerIds.forEach(function(id){
+      scope[String(id)] = 1;
+      const e = String(((CACHE.owners[String(id)] || {}).email) || "").toLowerCase();
+      if (e) emails[e] = 1;
+    });
+  }
+
+  let revenue = 0, enrolments = 0;
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    const d = String(r.date || "").slice(0, 10);
+    if (d.slice(0, 7) !== key) return;
+    if (Number(d.slice(8, 10)) > cut) return;
+    if (emails && !emails[String(r.owner_email || "").toLowerCase()]) return;
+    revenue += num(r.price_inr);
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + (r.creator_username || "");
+    if (!seen[k]) { seen[k] = 1; enrolments++; }
+  });
+
+  let counsellings = 0, created = 0, cohortCounselled = 0;
+  (CACHE.contacts || []).forEach(function(c){
+    if (scope && !scope[String(c.hubspot_owner_id || "")]) return;
+    const cts = COUNSEL.byId[c.id];
+    const ct = cts ? ts(cts) : 0;
+    if (ct && ymOf(cts) === key && ct <= endMs) counsellings++;
+    const cr = ts(c.createdate);
+    if (cr && ymOf(c.createdate) === key && cr <= endMs) {
+      created++;
+      // Same cohort rule as the live L2C: created in the month, reached counselling
+      // by the same point in that month.
+      if (ct && ct <= endMs) cohortCounselled++;
+    }
+  });
+
+  return { month: key, throughDay: cut, revenue: Math.round(revenue), enrolments: enrolments,
+    counsellings: counsellings, created: created, cohortCounselled: cohortCounselled,
+    c2e: counsellings ? Math.round(1000 * enrolments / counsellings) / 10 : null,
+    l2c: created ? Math.round(1000 * cohortCounselled / created) / 10 : null,
+    ticket: enrolments ? Math.round(revenue / enrolments) : 0 };
+}
+
 function weekTrend(teamAgentEmails){
   const now = Date.now(), d7 = now - 7 * 86400000, d14 = now - 14 * 86400000;
   let cur = 0, prev = 0;
@@ -3112,6 +3173,7 @@ app.get("/api/vp", function(req, res){
   });
   res.json({
     week: weekTrend(Object.keys(scopedEmails).length ? scopedEmails : null),
+    prior: vpPriorMonth(month, dom, vp ? null : visible.reduce(function(a, t){ return a.concat(t.agentIds || []); }, [])),
     leadsLoadedAt: CACHE.loadedAt, leadsSyncing: CACHE.syncing, leadsCount: CACHE.contacts.length,
     syncs: {
       leads: { at: DELTA.at || CACHE.loadedAt, running: !!(CACHE.syncing || DELTA.running), n: CACHE.contacts.length,
