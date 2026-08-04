@@ -2515,6 +2515,23 @@ function authGate(req, res, next){
     if (p.indexOf("/api/") === 0) {
       req.query.agent = s.ownerId;
       req.query.owner = s.ownerId;
+      // Rewriting the query is not enough: several routes take the owner id in the path,
+      // so without this an agent could read a colleague's snapshot, drill or coaching
+      // record just by editing the URL.
+      const OWNED = [/^\/api\/agent\/([^\/]+)/, /^\/api\/drill\/([^\/]+)/,
+        /^\/api\/coaching\/agent\/([^\/]+)/, /^\/api\/callnow\/refresh-owner\/([^\/]+)/];
+      for (let i = 0; i < OWNED.length; i++) {
+        const m = p.match(OWNED[i]);
+        if (m && String(m[1]) !== String(s.ownerId)) {
+          return res.status(403).json({ error: "you can only see your own leads" });
+        }
+      }
+      // Manager and VP surfaces are closed to agents outright.
+      if (p.indexOf("/api/vp") === 0 || p.indexOf("/api/coaching") === 0) {
+        if (p.indexOf("/api/coaching/agent/") !== 0) {
+          return res.status(403).json({ error: "manager access only" });
+        }
+      }
     }
     // agents only get the call list and their own snapshot
     const allowed = ["/callnow.html", "/agent.html", "/login.html", "/"];

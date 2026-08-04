@@ -139,12 +139,16 @@ tr.det b{color:#0A2540}
   <span id="whobadge"></span>
   <p id="sub">Priority leads by stage: waitlist form submitters, conversion score, international</p>
   <span style="margin-left:auto;display:flex;gap:13px;align-items:center;flex-wrap:wrap">
-    <a href="https://hubspot-dashboard-production-29f4.up.railway.app/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Daily activity &nearr;</a>
-    <a href="https://topmate-counselled-qa-production.up.railway.app/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Daily counsellings &nearr;</a>
-    <a href="https://d1exlk6979guxa.cloudfront.net/audits/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Quality &nearr;</a>
-    <a href="/coaching.html" style="font-size:12px;color:#4338CA;text-decoration:none;font-weight:600">Call coaching</a>
-    <a href="/vp.html" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Revenue command &nearr;</a>
-    <a href="/" style="font-size:12px;color:#697386;text-decoration:none;font-weight:600">Dashboard</a>
+    <span id="extnav" style="display:none;gap:13px;align-items:center;flex-wrap:wrap">
+      <a href="https://hubspot-dashboard-production-29f4.up.railway.app/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Daily activity &nearr;</a>
+      <a href="https://topmate-counselled-qa-production.up.railway.app/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Daily counsellings &nearr;</a>
+      <a href="https://d1exlk6979guxa.cloudfront.net/audits/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Quality &nearr;</a>
+    </span>
+    <span id="mgrnav" style="display:none;gap:13px;align-items:center;flex-wrap:wrap">
+      <a href="/coaching.html" style="font-size:12px;color:#4338CA;text-decoration:none;font-weight:600">Call coaching</a>
+      <a href="/vp.html" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Revenue command &nearr;</a>
+      <a href="/" style="font-size:12px;color:#697386;text-decoration:none;font-weight:600">Dashboard</a>
+    </span>
   </span>
 </div>
 <div class="wrap">
@@ -732,8 +736,18 @@ function boot(){
   // so it must never gate the first paint.
   if (ME) setTimeout(function(){ refreshOwner(ME); }, 1200);
 }
+function showNav(role){
+  // Manager tools stay hidden from agents. The server already redirects them away from
+  // those pages, but a link that bounces you back looks like a fault, not a boundary.
+  var mgr = role !== "agent";
+  ["mgrnav", "extnav"].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = mgr ? "flex" : "none";
+  });
+}
 fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
   WHO = j;
+  showNav(j && j.authOn ? (j.role || "agent") : "manager");
   if (j && j.role === "agent" && j.ownerId) ME = j.ownerId;
   if (j && j.email) {
     var el = document.getElementById("loading");
@@ -741,7 +755,7 @@ fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
       esc(j.email) + " · role " + esc(j.role || "unknown") + " <a href='/auth/logout' style='color:#0091AE'>sign out</a></div>";
   }
   boot();
-}).catch(function(){ boot(); });
+}).catch(function(){ showNav("manager"); boot(); });
 setInterval(function(){ if (!LOADING && !SYNCING_OWNER) { if (ME) refreshOwner(ME, load); else load(); } }, 15 * 60 * 1000);
 </script>
 </body>
