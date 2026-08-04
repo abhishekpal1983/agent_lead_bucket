@@ -176,6 +176,19 @@ function go(v){ VIEW = v; localStorage.setItem("vp_view", v); draw(); }
 var SYNCOPEN = false;
 function agoMin(at){ return at ? Math.round((Date.now() - Date.parse(at)) / 60000) : null; }
 function toggleSync(){ SYNCOPEN = !SYNCOPEN; draw(); }
+var REFRESHING = false;
+function hardRefresh(mode){
+  if (REFRESHING) return;
+  REFRESHING = true; draw();
+  fetch("/api/sync/leads?mode=" + mode, { method: "POST" })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      REFRESHING = false;
+      if (j && j.error) { alert(j.error); draw(); return; }
+      load(J.month);
+    })
+    .catch(function(e){ REFRESHING = false; alert(e.message); draw(); });
+}
 function drawSync(){
   var sy = J.syncs || {};
   var keys = Object.keys(sy);
@@ -194,7 +207,12 @@ function drawSync(){
 function syncPanel(){
   if (!SYNCOPEN) return "";
   var sy = J.syncs || {};
-  var h = "<div class='syncbox'><div style='font-weight:600;margin-bottom:6px'>Data freshness</div>";
+  var h = "<div class='syncbox'><div style='display:flex;align-items:center;gap:9px;margin-bottom:7px'>" +
+    "<b>Data freshness</b>" +
+    "<button class='btn p' style='margin-left:auto' " + (REFRESHING ? "disabled" : "") + " onclick=\"hardRefresh('delta')\">" +
+    (REFRESHING ? "Refreshing..." : "Refresh calling data") + "</button>" +
+    (J.isVP ? "<button class='btn' " + (REFRESHING ? "disabled" : "") + " onclick=\"hardRefresh('full')\">Full rebuild</button>" : "") +
+    "</div>";
   Object.keys(sy).forEach(function(k){
     var x = sy[k], m = agoMin(x.at);
     h += "<div class='r'><span>" + esc(x.label) + "</span>" +
@@ -394,8 +412,12 @@ function drawCallNow(){
     qT += (x.queueT || 0); fT += (x.formT || 0); scT += (x.scoreT || 0);
     ilT += (x.intlT || 0); ndT += (x.needsT || 0); ovT += (x.overdueT || 0);
   });
+  var lm = agoMin((J.syncs && J.syncs.leads && J.syncs.leads.at) || J.leadsLoadedAt);
   var h = "<div class='sec'><h2>Call Now queue " +
-    "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a></h2>" +
+    "<a href='/callnow.html' style='font-size:12.5px;font-weight:600;color:#0091AE;text-decoration:none;margin-left:6px'>open &rarr;</a>" +
+    "<span style='font-size:12px;font-weight:400;color:#6B7A8A;margin-left:8px'>updated " + (lm === null ? "never" : lm + "m ago") + "</span>" +
+    "<button class='btn' style='font-size:11.5px;padding:3px 9px;margin-left:8px' " + (REFRESHING ? "disabled" : "") +
+    " onclick=\"hardRefresh('delta')\">" + (REFRESHING ? "Refreshing..." : "Refresh now") + "</button></h2>" +
     "<div class='sub'>What the floor is actually working today. Parking buckets and manager-held leads are excluded from these numbers.</div>";
   h += "<div class='tiles' style='margin-bottom:12px'>" +
     tile("grey", fmt(t), "Priority pool", cov(qT, t)) +
