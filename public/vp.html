@@ -449,6 +449,8 @@ function drawStrip(){
   var el = Math.round(1000 * J.dayOfMonth / J.daysInMonth) / 10;
   var gap = Math.round(a - pace);
   var c2e = co ? Math.round(1000 * e / co) / 10 : null;
+  var ticket = e ? a / e : 0;
+  var l2c = created ? Math.round(1000 * cohC / created) / 10 : null;
   var h = "<div class='tiles'>";
   h += "<div class='tile hero'><div class='v'>" + inr(a) + " <span style='font-size:14px;color:#93A7BC;font-weight:400'>of " + inr(t) + "</span></div>" +
     "<div class='track'><i style='width:" + Math.min(100, att) + "%;background:#38BDF8'></i>" +
