@@ -3696,7 +3696,12 @@ const runChain = guard("boot chain", function(){
 
 const COACH_MIN_SECONDS = Math.max(0, parseInt(process.env.COACH_MIN_SECONDS || "90", 10));
 const COACH_PER_DAY = Math.max(1, parseInt(process.env.COACH_PER_DAY || "5", 10));
+/* Two windows, not one. The preferred window is the last two days, because feedback
+   on a call from this morning lands differently from feedback on one from last week.
+   But an agent who was on leave, or had a thin day, would otherwise be skipped
+   entirely, so the pick widens to five days rather than dropping them. */
 const COACH_LOOKBACK_HOURS = Math.max(6, parseInt(process.env.COACH_LOOKBACK_HOURS || "48", 10));
+const COACH_MAX_HOURS = Math.max(COACH_LOOKBACK_HOURS, parseInt(process.env.COACH_MAX_HOURS || "120", 10));
 
 /* The nine items. `auto` ones are derived, never typed. Order is the order the
    call itself runs in, so a manager listening once can tick straight down. */
@@ -3742,16 +3747,25 @@ function coachPickAgents(team, dateStr){
 
 /* ---------- call inventory ----------
    syncCalls aggregates counts by owner and never keeps the individual call, so
-   coaching needs its own pull: the last COACH_LOOKBACK_HOURS of call objects
-   with their contact association, duration and recording url. Roughly two
-   thousand calls a day, which is twenty search pages, hourly. */
-let COACH = { calls: [], byOwner: {}, loadedAt: null, syncing: false, error: null };
+   coaching needs its own pull: call objects with their contact association,
+   duration and recording url.
+
+   The buffer holds COACH_MAX_HOURS. Fetching five days on every pass would cost
+   roughly fifty search pages and fifty association batches an hour, which is
+   most of the saving the delta lead sync just won. So the first pass loads the
+   full window and every pass after it asks only for calls since the last one,
+   with an hour of overlap, and merges by call id. Steady state is two or three
+   API calls an hour. */
+let COACH = { calls: [], byOwner: {}, loadedAt: null, syncedTo: 0, syncing: false, error: null };
 
 async function syncCoachCalls(){
   if (!TOKEN || COACH.syncing) return;
   COACH.syncing = true;
   try {
-    const from = Date.now() - COACH_LOOKBACK_HOURS * 3600000;
+    const now = Date.now();
+    const floor = now - COACH_MAX_HOURS * 3600000;
+    const full = !COACH.syncedTo;
+    const from = full ? floor : Math.max(floor, COACH.syncedTo - 3600000);
     const filters = [{ propertyName: "hs_timestamp", operator: "GTE", value: String(from) }];
     const props = ["hs_timestamp", "hubspot_owner_id", "hs_call_duration", "hs_call_disposition",
       "hs_call_recording_url", "hs_call_title", "hs_call_direction"];
@@ -3765,7 +3779,7 @@ async function syncCoachCalls(){
       after = j.paging && j.paging.next && j.paging.next.after;
       await sleep(120);
       pages++;
-    } while (after && pages < 60);
+    } while (after && pages < 80);
 
     /* Search will not return associations, so the contact link is a second pass.
        Without it a call cannot be tied to a lead and the review has no subject. */
@@ -3783,10 +3797,9 @@ async function syncCoachCalls(){
       await sleep(120);
     }
 
-    const byOwner = {};
-    const calls = raw.map(function(r){
+    const fresh = raw.map(function(r){
       const p = r.p;
-      const rec = {
+      return {
         id: r.id,
         at: ts(p.hs_timestamp),
         ownerId: String(p.hubspot_owner_id || ""),
@@ -3796,13 +3809,22 @@ async function syncCoachCalls(){
         title: clip(p.hs_call_title, 80),
         contactId: link[r.id] || ""
       };
-      if (rec.ownerId) (byOwner[rec.ownerId] = byOwner[rec.ownerId] || []).push(rec);
-      return rec;
     });
-    Object.keys(byOwner).forEach(function(k){ byOwner[k].sort(function(a, b){ return b.at - a.at; }); });
-    COACH = { calls: calls, byOwner: byOwner, loadedAt: new Date().toISOString(), syncing: false, error: null };
-    console.log("Coach calls synced: " + calls.length + " in last " + COACH_LOOKBACK_HOURS + "h across " +
-      Object.keys(byOwner).length + " owners");
+
+    // Merge by id, then drop anything that has aged out of the window.
+    const byId = {};
+    (full ? [] : COACH.calls).forEach(function(c){ byId[c.id] = c; });
+    fresh.forEach(function(c){ byId[c.id] = c; });
+    const calls = Object.keys(byId).map(function(k){ return byId[k]; })
+      .filter(function(c){ return c.at >= floor; })
+      .sort(function(a, b){ return b.at - a.at; });
+
+    const byOwner = {};
+    calls.forEach(function(c){ if (c.ownerId) (byOwner[c.ownerId] = byOwner[c.ownerId] || []).push(c); });
+    COACH = { calls: calls, byOwner: byOwner, loadedAt: new Date().toISOString(),
+      syncedTo: now, syncing: false, error: null };
+    console.log("Coach calls " + (full ? "full load" : "delta") + ": " + fresh.length + " fetched, " +
+      calls.length + " held over " + COACH_MAX_HOURS + "h across " + Object.keys(byOwner).length + " owners");
   } catch (e) {
     COACH.syncing = false; COACH.error = e.message;
     console.error("Coach call sync failed: " + e.message);
@@ -3817,10 +3839,10 @@ function COACH_DISPO(id){
    Deterministic within that set, and weighted toward the calls worth hearing:
    priority pool leads first, then anything on a tracked creator. */
 function coachPickCall(agentId, dateStr, already){
-  const pool = (COACH.byOwner[String(agentId)] || []).filter(function(c){
+  const all = (COACH.byOwner[String(agentId)] || []).filter(function(c){
     return c.seconds >= COACH_MIN_SECONDS && c.contactId && already.indexOf(c.id) < 0;
   });
-  if (!pool.length) return null;
+  if (!all.length) return null;
   // Priority means the same thing here as it does on Call Now: form, score,
   // international or fresh. Reusing cnSegs keeps the two pages from drifting apart.
   const priority = {};
@@ -3830,21 +3852,29 @@ function coachPickCall(agentId, dateStr, already){
       if (r.id && (s.form || s.score || s.intl || s.fresh)) priority[String(r.id)] = r;
     });
   } catch (e) {}
-  const ranked = pool.slice().sort(function(a, b){
-    const ap = priority[a.contactId] ? 1 : 0, bp = priority[b.contactId] ? 1 : 0;
-    if (ap !== bp) return bp - ap;
-    return a.id < b.id ? -1 : 1;
-  });
+
+  // Recent first. Only if the last two days hold nothing does the window widen,
+  // so a normal week is always coached on fresh calls and a thin one is still coached.
+  const cut = Date.now() - COACH_LOOKBACK_HOURS * 3600000;
+  const recent = all.filter(function(c){ return c.at >= cut; });
+  const widened = !recent.length;
+  const pool = widened ? all : recent;
+
+  const ranked = pool.slice().sort(function(a, b){ return a.id < b.id ? -1 : 1; });
   const top = ranked.filter(function(c){ return priority[c.contactId]; });
   const set = top.length ? top : ranked;
   const pick = set[coachHash(dateStr + ":" + agentId) % set.length];
   const lead = priority[pick.contactId] || null;
+  const ageDays = Math.max(0, Math.round((Date.now() - pick.at) / 86400000));
   return Object.assign({}, pick, {
     contactName: lead ? lead.name : coachContactName(pick.contactId),
     stage: lead ? lead.stage : "",
     creator: lead ? lead.creator : "",
     score: lead ? lead.score : null,
-    isPriority: !!lead
+    isPriority: !!lead,
+    widened: widened,
+    ageDays: ageDays,
+    candidates: pool.length
   });
 }
 function coachContactName(id){
@@ -3925,7 +3955,7 @@ app.get("/api/coaching/today", function(req, res){
     return { agentId: id, agentName: owner.name || ("Owner " + id), session: null,
       call: call, auto: call ? coachAuto(call) : {},
       prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null,
-      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " + COACH_LOOKBACK_HOURS + " hours" };
+      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " + Math.round(COACH_MAX_HOURS / 24) + " days" };
   });
 
   res.json({
@@ -3988,6 +4018,75 @@ app.post("/api/coaching/session", express.json(), function(req, res){
   if (store.sessions.length > 8000) store.sessions = store.sessions.slice(-8000);
   const saved = orgSave("coaching.session", rec.agentName + " " + date, whoami(req));
   res.json({ ok: true, persistent: saved && ORG_PERSISTENT, session: rec });
+});
+
+/* Progress, which is the whole point of running a cadence rather than keeping a log.
+   One row per agent: how often they have been coached, where the score is going, and
+   whether the thing they committed to last time actually happened. */
+app.get("/api/coaching/progress", function(req, res){
+  const team = coachTeamFor(req);
+  if (!team) return res.status(403).json({ error: "no team is mapped to this account" });
+  const store = coachStore();
+  const now = Date.now();
+  const agents = (team.agentIds || []).map(String).filter(ownerCounted);
+
+  const rows = agents.map(function(id){
+    const ss = coachSessionsFor(id).filter(function(s){ return s.submittedAt && s.teamId === team.id; });
+    const last = ss[0] || null;
+    const recent = ss.slice(0, 5);
+    const pcts = recent.map(function(s){ return (s.score || {}).pct || 0; });
+    const avg = pcts.length ? Math.round(pcts.reduce(function(a, b){ return a + b; }, 0) / pcts.length) : null;
+    // Trend compares the last three against the three before them. Two sessions is
+    // noise, so it stays null until there is enough to say anything.
+    const a3 = ss.slice(0, 3).map(function(s){ return (s.score || {}).pct || 0; });
+    const b3 = ss.slice(3, 6).map(function(s){ return (s.score || {}).pct || 0; });
+    const mean = function(x){ return x.length ? x.reduce(function(p, q){ return p + q; }, 0) / x.length : null; };
+    const trend = (a3.length >= 2 && b3.length >= 2) ? Math.round(mean(a3) - mean(b3)) : null;
+
+    // The carry forward: last session set an action item, the session after it says
+    // whether it landed. An item nobody has graded yet is the open one.
+    const graded = ss.filter(function(s){ return s.prevVerdict; });
+    const landed = graded.filter(function(s){ return s.prevVerdict === "done"; }).length;
+
+    return {
+      agentId: id,
+      agentName: (CACHE.owners[id] || {}).name || ("Owner " + id),
+      sessions: ss.length,
+      lastDate: last ? last.date : "",
+      daysSince: last ? Math.round((now - Date.parse(last.date + "T00:00:00Z")) / 86400000) : null,
+      lastScore: last ? (last.score || {}) : null,
+      avg5: avg,
+      trend: trend,
+      openAction: last ? last.actionItem : "",
+      actionsGraded: graded.length,
+      actionsLanded: landed,
+      missingRecording: ss.filter(function(s){ return !s.recordingUrl; }).length,
+      // Three failures in the last five sessions is a pattern rather than a bad day.
+      persistentGaps: COACH_JUDGED.map(function(k){
+        const fails = recent.filter(function(s){ return (s.items || {})[k] === "no"; }).length;
+        return { key: k, fails: fails,
+          label: (COACH_ITEMS.filter(function(i){ return i.key === k; })[0] || {}).label || k };
+      }).filter(function(x){ return x.fails >= 3; }),
+      history: ss.slice(0, 12).map(function(s){
+        return { date: s.date, pct: (s.score || {}).pct || 0, yes: (s.score || {}).yes || 0,
+          of: (s.score || {}).of || 0, actionItem: s.actionItem, prevVerdict: s.prevVerdict,
+          recordingUrl: s.recordingUrl, contactName: (s.call || {}).contactName || "",
+          contactId: (s.call || {}).contactId || "",
+          notes: s.notes || {}, items: s.items || {} };
+      })
+    };
+  }).sort(function(a, b){
+    // Never coached first, then longest since, because that is the queue to fix.
+    const ad = a.daysSince === null ? 9999 : a.daysSince;
+    const bd = b.daysSince === null ? 9999 : b.daysSince;
+    return bd - ad;
+  });
+
+  res.json({
+    team: { id: team.id, name: team.name }, items: COACH_ITEMS, rows: rows,
+    teams: isVP(req) ? (ORG.teams || []).map(function(t){ return { id: t.id, name: t.name }; }) : [],
+    isVP: isVP(req), portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
 });
 
 // One agent's history: the trend, and whether each action item actually landed.

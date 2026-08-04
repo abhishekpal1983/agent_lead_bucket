@@ -60,6 +60,22 @@ a{color:#4338CA}
 .hist table{border-collapse:collapse;width:100%;margin-top:6px;font-size:11.5px}
 .hist th{text-align:left;font-size:9.5px;color:#9CA3AF;text-transform:uppercase;padding:4px 6px;background:#F9FAFB}
 .hist td{padding:4px 6px;border-bottom:1px solid #F3F4F6}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tabs button{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;font-weight:800;cursor:pointer;color:#374151}
+.tabs button.on{background:#191C20;color:#fff;border-color:#191C20}
+.ptab{width:100%;border-collapse:collapse;font-size:12px}
+.ptab th{background:#F9FAFB;text-align:left;font-size:9.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;padding:7px 9px;white-space:nowrap}
+.ptab td{padding:8px 9px;border-bottom:1px solid #F3F4F6;vertical-align:top}
+.ptab tr.cold td{background:#FFFBEB}
+.ptab .nm{font-weight:800}
+.up{color:#059669;font-weight:800}.down{color:#DC2626;font-weight:800}.flat{color:#9CA3AF;font-weight:700}
+.gap{display:inline-block;background:#FEE2E2;color:#991B1B;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;margin:1px 3px 1px 0}
+.spark{display:flex;gap:2px;align-items:flex-end;height:22px}
+.spark i{width:7px;background:#C7D2FE;border-radius:1px;display:block}
+.hrow td{background:#FCFCFD}
+.hrow table{width:100%;border-collapse:collapse;font-size:11.5px}
+.hrow th{background:#fff}
+.lnk{background:none;border:none;color:#4338CA;font-size:11.5px;font-weight:700;cursor:pointer;padding:0}
 #loading{padding:60px;text-align:center;color:#9CA3AF}
 .spin{width:28px;height:28px;border:3px solid #E5E7EB;border-top-color:#4338CA;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -68,7 +84,7 @@ a{color:#4338CA}
 <body>
 <div class="hdr">
   <h1>Call coaching</h1>
-  <p id="sub">Five agents a day, picked in rotation. The call is picked for you.</p>
+  <p id="sub">Five agents a day, picked in rotation. The call is picked for you, from the last two days where possible and the last five otherwise.</p>
   <a href="/callnow.html" style="font-size:11px;margin-left:auto">Call now</a>
   <a href="/" style="font-size:11px">Dashboard</a>
 </div>
@@ -111,6 +127,18 @@ function load(){
     });
 }
 
+function tabs(cur){
+  return '<div class="tabs">' +
+    '<button class="' + (cur==="today"?"on":"") + '" onclick="switchTo(\'today\')">Today\'s five</button>' +
+    '<button class="' + (cur==="progress"?"on":"") + '" onclick="switchTo(\'progress\')">Progress</button>' +
+    '</div>';
+}
+function switchTo(v){
+  var q = new URLSearchParams(location.search);
+  q.set("view", v);
+  location.search = "?" + q.toString();
+}
+
 function render(){
   var j = DATA;
   document.getElementById("loading").style.display = "none";
@@ -118,7 +146,8 @@ function render(){
   app.style.display = "block";
 
   var done = j.rows.filter(function(r){ return STATE[r.agentId] && STATE[r.agentId].saved; }).length;
-  var h = '<div class="bar">';
+  var h = tabs("today");
+  h += '<div class="bar">';
   h += '<div class="prog"><b>' + done + '</b> of ' + j.rows.length + ' reviewed today</div>';
   h += '<input type="text" id="dt" value="' + esc(j.date) + '" style="width:120px" title="IST date">';
   if (j.isVP && j.teams.length) {
@@ -147,6 +176,7 @@ function card(row){
     if (row.call.disposition) h += ' · ' + esc(row.call.disposition);
     h += '</span>';
     if (row.call.isPriority) h += '<span class="pill p">priority lead</span>';
+    if (row.call.widened) h += '<span class="pill none" title="Nothing in the last two days, so the window widened to five">' + row.call.ageDays + ' days old</span>';
   }
   h += '<div class="right">';
   h += st.saved ? '<span class="pill done">reviewed</span>' : '<span class="pill open">to do</span>';
@@ -242,7 +272,109 @@ function submit(agentId){
     .catch(function(e){ st.err = e.message; render(); });
 }
 
-load();
+
+/* ---------- progress view ---------- */
+function loadProgress(){
+  var q = new URLSearchParams(location.search);
+  fetch("/api/coaching/progress?" + q.toString(), {credentials:"same-origin"})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(j){ DATA = j; renderProgress(); })
+    .catch(function(e){ document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+
+function renderProgress(){
+  var j = DATA;
+  document.getElementById("loading").style.display = "none";
+  var app = document.getElementById("app");
+  app.style.display = "block";
+
+  var coached = j.rows.filter(function(r){ return r.sessions > 0; }).length;
+  var h = tabs("progress");
+  h += '<div class="bar"><div class="prog"><b>' + coached + '</b> of ' + j.rows.length + ' agents coached at least once</div>';
+  if (j.isVP && j.teams.length) {
+    h += '<select onchange="pickTeam(this.value)">' + j.teams.map(function(t){
+      return '<option value="' + esc(t.id) + '"' + (t.id===j.team.id?" selected":"") + '>' + esc(t.name || "(unnamed team)") + '</option>';
+    }).join("") + '</select>';
+  }
+  h += '</div>';
+
+  h += '<div class="card"><table class="ptab"><thead><tr>' +
+    '<th>Agent</th><th>Sessions</th><th>Last</th><th>Score</th><th>Trend</th><th>Last 5</th>' +
+    '<th>Action items landed</th><th>Open action item</th><th></th></tr></thead><tbody>';
+
+  j.rows.forEach(function(r, i){
+    var cold = r.sessions === 0 || (r.daysSince !== null && r.daysSince > 7);
+    h += '<tr class="' + (cold ? "cold" : "") + '">';
+    h += '<td class="nm">' + esc(r.agentName);
+    if (r.persistentGaps.length) {
+      h += '<div>' + r.persistentGaps.map(function(g){ return '<span class="gap">' + esc(g.label) + '</span>'; }).join("") + '</div>';
+    }
+    h += '</td>';
+    h += '<td>' + r.sessions + '</td>';
+    h += '<td>' + (r.lastDate ? esc(r.lastDate) + '<div style="font-size:10.5px;color:#9CA3AF">' + r.daysSince + 'd ago</div>' : '<span style="color:#B45309;font-weight:700">never</span>') + '</td>';
+    h += '<td>' + (r.lastScore ? r.lastScore.yes + '/' + r.lastScore.of : '–') + '</td>';
+    h += '<td>' + trendCell(r.trend) + '</td>';
+    h += '<td>' + spark(r.history) + '</td>';
+    h += '<td>' + (r.actionsGraded ? r.actionsLanded + ' of ' + r.actionsGraded : '<span class="flat">not graded yet</span>') + '</td>';
+    h += '<td style="max-width:280px;white-space:normal">' + esc(r.openAction || "–") + '</td>';
+    h += '<td>' + (r.sessions ? '<button class="lnk" onclick="toggleHist(' + i + ')">history</button>' : '') + '</td>';
+    h += '</tr>';
+    h += '<tr class="hrow" id="h' + i + '" style="display:none"><td colspan="9">' + histTable(r) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  h += '<p style="font-size:11px;color:#9CA3AF">Amber rows are agents never coached, or not coached in over a week. Red chips are items failed in three of the last five sessions.</p>';
+  app.innerHTML = h;
+}
+
+function trendCell(t){
+  if (t === null) return '<span class="flat">–</span>';
+  if (t > 3) return '<span class="up">+' + t + '</span>';
+  if (t < -3) return '<span class="down">' + t + '</span>';
+  return '<span class="flat">' + (t > 0 ? "+" : "") + t + '</span>';
+}
+function spark(hist){
+  if (!hist.length) return '<span class="flat">–</span>';
+  var h = hist.slice(0, 8).slice().reverse();
+  return '<div class="spark">' + h.map(function(x){
+    return '<i style="height:' + Math.max(3, Math.round(x.pct * 0.22)) + 'px" title="' + esc(x.date) + ': ' + x.pct + '%"></i>';
+  }).join("") + '</div>';
+}
+function verdictLbl(v){
+  if (v === "done") return '<span style="color:#059669;font-weight:800">done</span>';
+  if (v === "partial") return '<span style="color:#D97706;font-weight:800">partial</span>';
+  if (v === "not_done") return '<span style="color:#DC2626;font-weight:800">not done</span>';
+  return '<span class="flat">–</span>';
+}
+function histTable(r){
+  var h = '<table><thead><tr><th>Date</th><th>Score</th><th>Call</th><th>Previous item</th><th>Action item set</th><th>What was missing</th><th>Recording</th></tr></thead><tbody>';
+  r.history.forEach(function(s){
+    h += '<tr><td>' + esc(s.date) + '</td>';
+    h += '<td>' + s.yes + '/' + s.of + '</td>';
+    h += '<td>' + (s.contactId ? '<a href="' + hsLink(s.contactId) + '" target="_blank" rel="noopener">' + esc(s.contactName || "contact") + ' &nearr;</a>' : esc(s.contactName || "–")) + '</td>';
+    h += '<td>' + verdictLbl(s.prevVerdict) + '</td>';
+    h += '<td style="max-width:240px;white-space:normal">' + esc(s.actionItem) + '</td>';
+    var notes = Object.keys(s.notes || {}).map(function(k){
+      var lbl = (DATA.items.filter(function(i){ return i.key === k; })[0] || {}).label || k;
+      return '<b>' + esc(lbl) + ':</b> ' + esc(s.notes[k]);
+    });
+    h += '<td style="max-width:340px;white-space:normal">' + (notes.length ? notes.join("<br>") : '<span class="flat">nothing failed</span>') + '</td>';
+    h += '<td>' + (s.recordingUrl ? '<a href="' + esc(s.recordingUrl) + '" target="_blank" rel="noopener">listen &nearr;</a>' : '<span style="color:#B45309">missing</span>') + '</td>';
+    h += '</tr>';
+  });
+  return h + '</tbody></table>';
+}
+function toggleHist(i){
+  var el = document.getElementById("h" + i);
+  el.style.display = el.style.display === "none" ? "table-row" : "none";
+}
+function pickTeam(id){
+  var q = new URLSearchParams(location.search);
+  q.set("team", id); q.set("view", "progress");
+  location.search = "?" + q.toString();
+}
+
+if (new URLSearchParams(location.search).get("view") === "progress") loadProgress();
+else load();
 </script>
 </body>
 </html>
