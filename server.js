@@ -2704,6 +2704,15 @@ app.get("/api/vp", function(req, res){
   res.json({
     week: weekTrend(Object.keys(scopedEmails).length ? scopedEmails : null),
     leadsLoadedAt: CACHE.loadedAt, leadsSyncing: CACHE.syncing, leadsCount: CACHE.contacts.length,
+    syncs: {
+      leads: { at: CACHE.loadedAt, running: !!CACHE.syncing, n: CACHE.contacts.length, label: "Leads" },
+      sheet: { at: SHEET.loadedAt, running: false, n: (SHEET.rows || []).length, label: "Payments sheet" },
+      counsel: { at: COUNSEL.loadedAt, running: !!COUNSEL.syncing, n: Object.keys(COUNSEL.byId || {}).length, label: "Counselling history" },
+      creatorFresh: { at: PFRESH.loadedAt, running: !!PFRESH.syncing, n: (PFRESH.rows || []).length, label: "Creator fresh leads" },
+      forms: { at: FORMS.loadedAt, running: !!FORMS.syncing, n: FORMS.byEmail.size, label: "Waitlist forms" },
+      unowned: { at: UNOWNED.loadedAt, running: !!UNOWNED.syncing, n: (UNOWNED.rows || []).length, label: "Unassigned priority leads" }
+    },
+    syncMinutes: SYNC_MINUTES,
     month: month, dayOfMonth: dom, daysInMonth: dim,
     persistent: ORG_PERSISTENT, isVP: isVP(req), me: whoami(req),
     teams: teams, drift: vp ? orgDrift() : [],

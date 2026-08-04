@@ -25,6 +25,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .main{padding:18px 22px 50px;max-width:1400px}
 .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .top h2{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:16px;cursor:pointer;border:1px solid transparent}
+.sync .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.sync.ok{background:#DDEFEA;color:#0A5346}.sync.ok .dot{background:#0A5346}
+.sync.run{background:#FAEBD7;color:#7A4A08}.sync.run .dot{background:#B8791A;animation:pulse 1.1s infinite}
+.sync.old{background:#FBE2D8;color:#8C2D12}.sync.old .dot{background:#8C2D12}
+@keyframes pulse{50%{opacity:.25}}
+.syncbox{background:#fff;border:1px solid #DCE4EC;border-radius:9px;padding:10px 13px;margin-bottom:12px;font-size:12.5px}
+.syncbox .r{display:flex;gap:10px;padding:4px 0;border-top:1px solid #EFF3F7}
+.syncbox .r:first-of-type{border-top:none}
+.syncbox .r span:last-child{margin-left:auto;color:#566575}
 .sec{background:#fff;border:1px solid #DCE4EC;border-radius:10px;margin-bottom:14px;padding:14px 16px}
 .sec h2{font-size:15px;font-weight:600;margin-bottom:3px;color:#0A2540}
 .sec .sub{font-size:12.5px;color:#566575;margin-bottom:10px}
@@ -163,6 +173,38 @@ function load(month){
     .catch(function(e){ fail(e.message); });
 }
 function go(v){ VIEW = v; localStorage.setItem("vp_view", v); draw(); }
+var SYNCOPEN = false;
+function agoMin(at){ return at ? Math.round((Date.now() - Date.parse(at)) / 60000) : null; }
+function toggleSync(){ SYNCOPEN = !SYNCOPEN; draw(); }
+function drawSync(){
+  var sy = J.syncs || {};
+  var keys = Object.keys(sy);
+  var running = keys.filter(function(k){ return sy[k].running; });
+  var never = keys.filter(function(k){ return !sy[k].at; });
+  var stale = keys.filter(function(k){ var m = agoMin(sy[k].at); return m !== null && m > 90; });
+  var cls = (running.length || never.length) ? "run" : (stale.length ? "old" : "ok");
+  var txt = never.length ? "First sync running, numbers are incomplete"
+    : running.length ? (running.length + " sync" + (running.length > 1 ? "s" : "") + " running, numbers may be partial")
+    : stale.length ? "Data is stale"
+    : "Data current, " + (agoMin(sy.leads && sy.leads.at) || 0) + "m ago";
+  var el = document.getElementById("syncbadge");
+  if (el) el.innerHTML = "<span class='sync " + cls + "' onclick='toggleSync()' title='Click for detail'>" +
+    "<span class='dot'></span>" + esc(txt) + "</span>";
+}
+function syncPanel(){
+  if (!SYNCOPEN) return "";
+  var sy = J.syncs || {};
+  var h = "<div class='syncbox'><div style='font-weight:600;margin-bottom:6px'>Data freshness</div>";
+  Object.keys(sy).forEach(function(k){
+    var x = sy[k], m = agoMin(x.at);
+    h += "<div class='r'><span>" + esc(x.label) + "</span>" +
+      "<span>" + (x.running ? "<b class='ca'>syncing now</b> · " : "") +
+      (x.at ? fmt(x.n) + " records · " + m + "m ago" : "<b class='cr'>not loaded yet</b>") + "</span></div>";
+  });
+  h += "<div class='r'><span class='mut'>Leads re-sync every " + (J.syncMinutes || 30) +
+    " minutes. Counselling, forms and creator fresh run hourly.</span></div></div>";
+  return h;
+}
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)]];
   if (J.isVP) {
@@ -205,13 +247,15 @@ function draw(){
     title += " · " + (only ? (only.name || "team") : "team");
   }
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
-    (ONLY ? "<a href='/vp.html' class='btn' style='margin-left:auto'>All teams</a>" : "") + "</div>";
+    "<span id='syncbadge' style='margin-left:auto'></span>" +
+    (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
   if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
   else h += drawStrip() + drawCallNow() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
+  drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
     (behind ? "<span class='pill r' style='margin-left:8px;padding:3px 9px'>" + behind + " behind pace</span>" : "") +
