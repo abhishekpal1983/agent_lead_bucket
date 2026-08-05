@@ -2125,73 +2125,241 @@ function ownerCounted(id){
       being dropped, so the arithmetic still closes.
    ========================================================================== */
 const CN2_SEGMENTS = ["form", "score", "fresh", "intl", "any", "needs", "all"];
+const CN2_TIMING = ["due", "over", "nofu", "sched"];
+const CN2_OPEN_HM = process.env.CN2_OPEN_HM || process.env.OPEN_HM || "09:30";
+const CN2_MASK = { form: 1, score: 2, fresh: 4, intl: 8, needs: 16 };
+
+function cn2Classify(r, day){
+  const sg = cnSegs(r);
+  const over = !!(r.fu && r.fu < day.start);
+  const due = !!(r.fu && r.fu >= day.start && r.fu < day.end);
+  const nofu = !r.fu;
+  // A DNP lead with no priority signal is never presented as today's work, whatever its
+  // follow-up says. It is held in the second section rather than dropped, so the two
+  // sections still add up to the stage total.
+  const parked = r.stage === "dnp_other";
+  let mask = 0;
+  if (sg.form) mask |= CN2_MASK.form;
+  if (sg.score) mask |= CN2_MASK.score;
+  if (sg.fresh) mask |= CN2_MASK.fresh;
+  if (sg.intl) mask |= CN2_MASK.intl;
+  if (r.needsOwner) mask |= CN2_MASK.needs;
+  return {
+    stage: r.stage,
+    sec: (!parked && (due || over || nofu)) ? "n" : "a",
+    t: due ? "due" : (over ? "over" : (nofu ? "nofu" : "sched")),
+    mask: mask,
+    owner: r.owner || "",
+    creator: r.creator || ""
+  };
+}
+function cn2Pack(c){ return [c.stage, c.sec, c.t, c.mask, c.owner, c.creator].join("|"); }
+function cn2Unpack(v){
+  const a = String(v).split("|");
+  return { stage: a[0], sec: a[1], t: a[2], mask: parseInt(a[3], 10) || 0, owner: a[4] || "", creator: a[5] || "" };
+}
+function cn2Hit(c, seg){
+  if (seg === "all") return true;
+  if (seg === "any") return !!(c.mask & (CN2_MASK.form | CN2_MASK.score | CN2_MASK.fresh | CN2_MASK.intl));
+  return !!(c.mask & (CN2_MASK[seg] || 0));
+}
+
+/* The denominator has to be the one that stood at the start of the day. Freezing counts
+   alone is not enough: a lead called at noon can change stage or have its follow-up moved,
+   and would then be counted as worked against a different cell from the one it was in at
+   the bell. So the classification of every lead is frozen by id, once, and progress is
+   measured against that. Kept for the current day only, written once. */
+function cn2Store(){
+  if (typeof ORG === "undefined") return null;
+  if (!ORG.cn2open || typeof ORG.cn2open !== "object") ORG.cn2open = { date: "", at: null, rows: {} };
+  return ORG.cn2open;
+}
+function cn2Freeze(force){
+  const st = cn2Store();
+  if (!st || !CACHE.loadedAt) return null;
+  const date = istParts(new Date()).date;
+  if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
+  const day = istDayBounds();
+  const rows = {};
+  let n = 0;
+  cnFilter({ scope: "tracked" }).forEach(function(r){
+    if (!ownerCounted(r.owner)) return;
+    rows[r.id] = cn2Pack(cn2Classify(r, day));
+    n++;
+  });
+  if (!n) return null;
+  ORG.cn2open = { date: date, at: new Date().toISOString(), rows: rows };
+  if (typeof orgSave === "function") orgSave("cn2.freeze", date + ":" + n, "system");
+  console.log("Call Now v2 frozen for " + date + ": " + n + " leads");
+  return ORG.cn2open;
+}
+function cn2FreezeDue(){
+  const st = cn2Store();
+  if (!st) return;
+  const date = istParts(new Date()).date;
+  if (st.date === date) return;
+  if (istParts(new Date()).hm < CN2_OPEN_HM) return;
+  cn2Freeze(false);
+}
 
 function cn2Cell(){
-  const c = { due: 0, over: 0, nofu: 0, sched: 0 };
+  const c = {};
+  CN2_TIMING.forEach(function(k){ c[k] = 0; });
   CN2_SEGMENTS.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
   return c;
 }
-function cn2Add(cell, r, sg, worked){
-  const hit = { form: sg.form, score: sg.score, fresh: sg.fresh, intl: sg.intl,
-    any: !!(sg.form || sg.score || sg.intl || sg.fresh), needs: r.needsOwner, all: true };
+function cn2Add(cell, c, worked){
   CN2_SEGMENTS.forEach(function(k){
-    if (!hit[k]) return;
+    if (!cn2Hit(c, k)) return;
     cell[k]++;
     if (worked) cell[k + "W"]++;
   });
 }
 
+// One place that decides which leads a v2 request is about, so the matrix and the drill
+// down can never disagree with each other.
+function cn2Set(req){
+  const day = istDayBounds();
+  const frozen = cn2Store();
+  const isFrozen = !!(frozen && frozen.date === istParts(new Date()).date && frozen.rows &&
+    Object.keys(frozen.rows).length);
+  const pool = {};
+  cnFilter({ scope: "tracked" }).forEach(function(r){ pool[r.id] = r; });
+
+  const wantAgent = String(req.query.agent || "");
+  const wantTeam = String(req.query.team || "");
+  const wantCreator = String(req.query.creator || "");
+  const wantIntl = String(req.query.intl || "");
+  let teamAgents = null;
+  if (wantTeam && typeof ORG !== "undefined") {
+    const tt = (ORG.teams || []).filter(function(t){ return t.id === wantTeam; })[0];
+    if (tt) teamAgents = (tt.agentIds || []).map(String);
+  }
+
+  const out = [];
+  const push = function(id, c){
+    if (wantAgent && String(c.owner) !== wantAgent) return;
+    if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
+    if (wantCreator && c.creator !== wantCreator) return;
+    if (wantIntl === "yes" && !(c.mask & CN2_MASK.intl)) return;
+    if (wantIntl === "no" && (c.mask & CN2_MASK.intl)) return;
+    const live = pool[id] || null;
+    out.push({ id: id, c: c, live: live,
+      worked: !!(live && live.last >= day.start && live.last < day.end),
+      gone: !live });
+  };
+
+  if (isFrozen) {
+    Object.keys(frozen.rows).forEach(function(id){ push(id, cn2Unpack(frozen.rows[id])); });
+  } else {
+    Object.keys(pool).forEach(function(id){
+      const r = pool[id];
+      if (!ownerCounted(r.owner)) return;
+      push(id, cn2Classify(r, day));
+    });
+  }
+  return { rows: out, frozen: isFrozen, frozenAt: isFrozen ? frozen.at : null, day: day };
+}
+
 app.get("/api/callnow2", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  const allow = scopeFor(req);
-  if (allow) req.query.__scope = allow;
-  const rows = cnFilter(req.query);
+  const set = cn2Set(req);
   const order = String(req.query.stages || "").split(",").map(function(x){ return x.trim(); }).filter(Boolean);
   const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
-  const day = istDayBounds();
-  const countedOnly = String(req.query.counted || "1") !== "0";
 
   const now = {}, ahead = {}, totals = { now: cn2Cell(), ahead: cn2Cell() };
   stageOrder.forEach(function(s){ now[s] = cn2Cell(); ahead[s] = cn2Cell(); });
+  let gone = 0;
+  set.rows.forEach(function(x){
+    if (!now[x.c.stage]) return;
+    if (x.gone) gone++;
+    const cell = x.c.sec === "n" ? now[x.c.stage] : ahead[x.c.stage];
+    const tot = x.c.sec === "n" ? totals.now : totals.ahead;
+    cell[x.c.t]++; tot[x.c.t]++;
+    cn2Add(cell, x.c, x.worked);
+    cn2Add(tot, x.c, x.worked);
+  });
 
-  let dropped = 0;
-  rows.forEach(function(r){
-    if (countedOnly && !ownerCounted(r.owner)) { dropped++; return; }
-    if (!now[r.stage]) return;
-    const sg = cnSegs(r);
-    const worked = r.last >= day.start && r.last < day.end;
-
-    // A whole day must pass before a follow-up is overdue.
-    const isOverdue = !!(r.fu && r.fu < day.start);
-    const isDueToday = !!(r.fu && r.fu >= day.start && r.fu < day.end);
-    const hasNoFu = !r.fu;
-    const parked = (r.stage === "dnp_other");
-
-    const actionable = !parked && (isDueToday || isOverdue || hasNoFu);
-    const cell = actionable ? now[r.stage] : ahead[r.stage];
-    const tot = actionable ? totals.now : totals.ahead;
-    // Timing is recorded in both sections. In the second it explains why a lead is
-    // sitting there: either a future follow-up, or a parked DNP whose date has lapsed.
-    if (isDueToday) { cell.due++; tot.due++; }
-    else if (isOverdue) { cell.over++; tot.over++; }
-    else if (hasNoFu) { cell.nofu++; tot.nofu++; }
-    else { cell.sched++; tot.sched++; }
-    cn2Add(cell, r, sg, worked);
-    cn2Add(tot, r, sg, worked);
+  // Filter options come from the frozen set so they cannot offer an agent with no rows.
+  const agents = {}, creators = {};
+  set.rows.forEach(function(x){
+    if (x.c.owner) agents[x.c.owner] = (agents[x.c.owner] || 0) + 1;
+    if (x.c.creator) creators[x.c.creator] = (creators[x.c.creator] || 0) + 1;
   });
 
   res.json({
     stages: stageOrder.map(function(s){
       return { stage: s, label: CN_STAGE_LABELS[s] || s, now: now[s], ahead: ahead[s] };
     }),
-    totals: totals,
-    segments: CN2_SEGMENTS,
-    dropped: dropped,
-    day: { start: day.start, end: day.end },
-    scoreMin: CONV_SCORE_MIN,
-    loadedAt: CACHE.loadedAt, syncing: CACHE.syncing,
-    stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS }
+    totals: totals, segments: CN2_SEGMENTS, timing: CN2_TIMING,
+    frozen: set.frozen, frozenAt: set.frozenAt, freezeHour: CN2_OPEN_HM, gone: gone,
+    agentOptions: Object.keys(agents).map(function(id){
+      const o = CACHE.owners[id] || {};
+      return { id: id, name: o.name || ("Owner " + id), n: agents[id], active: o.active !== false };
+    }).sort(function(a, b){ return b.n - a.n; }),
+    creatorOptions: Object.keys(creators).map(function(u){ return { u: u, n: creators[u] }; })
+      .sort(function(a, b){ return b.n - a.n; }),
+    teamOptions: ((typeof ORG !== "undefined" && ORG.teams) || []).map(function(t){
+      return { id: t.id, name: t.name || "(unnamed)" };
+    }),
+    scoreMin: CONV_SCORE_MIN, loadedAt: CACHE.loadedAt, syncing: CACHE.syncing
   });
+});
+
+// Drill down. Same lead shape the original Call Now uses, so the row reads identically.
+app.get("/api/callnow2/leads", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  const set = cn2Set(req);
+  const stage = String(req.query.stage || "");
+  const sec = String(req.query.sec || "");
+  const seg = String(req.query.seg || "all");
+  const t = String(req.query.t || "");
+  const worked = String(req.query.worked || "");
+  const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
+
+  let rows = set.rows.filter(function(x){
+    if (stage && x.c.stage !== stage) return false;
+    if (sec && x.c.sec !== sec) return false;
+    if (t && x.c.t !== t) return false;
+    if (worked === "1" && !x.worked) return false;
+    if (worked === "0" && x.worked) return false;
+    return cn2Hit(x.c, seg);
+  });
+  const total = rows.length;
+  rows = rows.sort(function(a, b){
+    if (a.worked !== b.worked) return a.worked ? 1 : -1;   // unworked first, that is the job
+    const af = a.live ? a.live.fu : 0, bf = b.live ? b.live.fu : 0;
+    return (af || Infinity) - (bf || Infinity);
+  }).slice(0, limit);
+
+  res.json({
+    total: total, shown: rows.length, frozen: set.frozen,
+    rows: rows.map(function(x){
+      const r = x.live;
+      const o = CACHE.owners[x.c.owner] || {};
+      return {
+        id: x.id, worked: x.worked, gone: x.gone,
+        openStage: x.c.stage, openTiming: x.c.t, section: x.c.sec,
+        name: r ? r.name : "(no longer in the pool)",
+        stage: r ? r.stage : x.c.stage,
+        ownerName: r ? r.ownerName : (o.name || (x.c.owner ? "Owner " + x.c.owner : "(unassigned)")),
+        creator: x.c.creator,
+        phone: r ? r.phone : "",
+        last: r ? r.last : 0, fu: r ? r.fu : 0,
+        calls: r ? r.calls : 0, own: r ? r.own : 0,
+        score: r ? r.score : 0, intl: !!(x.c.mask & CN2_MASK.intl),
+        forms: r ? r.forms : [], needsOwner: !!(x.c.mask & CN2_MASK.needs),
+        why: r ? r.why : "", outcome: r ? r.outcome : ""
+      };
+    }),
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
+  });
+});
+
+app.post("/api/callnow2/refreeze", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  const st = cn2Freeze(true);
+  res.json({ ok: !!st, at: st ? st.at : null, n: st ? Object.keys(st.rows).length : 0 });
 });
 
 app.get("/api/callnow", (req, res) => {
@@ -4768,6 +4936,9 @@ SERVER = app.listen(PORT, () => {
   // Lock the day's five at the bell, and keep retrying through the day so a call sync
   // that was still failing at 09:30 does not cost the whole day.
   setInterval(guard("coachLock", coachLockDue), 5 * 60 * 1000);
+  // Freeze the Call Now v2 denominator at the bell, then leave it alone all day.
+  setInterval(guard("cn2Freeze", cn2FreezeDue), 5 * 60 * 1000);
+  setTimeout(guard("cn2Freeze", cn2FreezeDue), 280 * 1000);
   setTimeout(guard("coachLock", coachLockDue), 260 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);
   setInterval(guard("coachRetry", function(){
