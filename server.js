@@ -2630,7 +2630,7 @@ function snapCounters(){
     needs: 0, needsC: 0, uncalled: 0, uncalledC: 0, counsellings: 0,
     revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
-function snapAdd(o, r, sg, called, day){
+function snapAdd(o, r, sg, called, day, fromU){
   o.pool++;
   if (called) o.calls++;
   if (sg.form) { o.form++; if (called) o.formC++; }
@@ -2638,12 +2638,15 @@ function snapAdd(o, r, sg, called, day){
   if (sg.intl) { o.intl++; if (called) o.intlC++; }
   if (sg.fresh) { o.fresh++; if (called) o.freshC++; }
   if (r.needsOwner) { o.needs++; if (called) o.needsC++; }
-  // Never-called is the one bucket the act of calling destroys: once someone dials, the
-  // lead leaves it. So the count is who is still uncalled, and the worked figure is who
-  // was dialled today for what the stage counter says was the first time.
+  // Never-called is the one bucket that calling destroys: dial the lead and it leaves.
+  // So the count is who is still uncalled, and the worked figure comes from the id set
+  // frozen at the opening bell, which is the only exact way to answer it.
   if (!r.last) o.uncalled++;
-  else if (called && r.calls <= 1) o.uncalledC++;
-  if (r.fu && r.fu < Date.now()) { o.overdue++; if (called) o.overdueC++; }
+  if (fromU) o.uncalledC++;
+  // Overdue means carried in from a previous day. Using "before now" instead would let
+  // a follow-up due at 11am become overdue at 11:01 and inflate the bucket through the
+  // day, and it would also double-count against today's missed.
+  if (r.fu && r.fu < day.start) { o.overdue++; if (called) o.overdueC++; }
   if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
 }
 const OPEN_HM = process.env.OPEN_HM || "09:30";
@@ -2657,26 +2660,33 @@ function snapshotToday(){
     (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
   });
   const total = snapCounters(), teams = {}, agents = {};
+  // The filters below are deliberately identical to vpAggregate, which is what draws the
+  // Call Now queue on Overview. If the two ever drift, the daily review stops being a
+  // review of that queue and becomes a second, competing number.
+  const prev0 = (ORG.daily || {})[key];
+  const prevU = (prev0 && Array.isArray(prev0.openU)) ? prev0.openU.reduce(function(m, id){ m[id] = 1; return m; }, {}) : null;
+  const nowU = [];
   callnowPool().forEach(function(c){
-    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
-    if (!ownerCounted(c.hubspot_owner_id)) return;
+    const aid = String(c.hubspot_owner_id || "");
+    const tid = teamOf[aid];
+    if (!tid) return;
+    if (!ownerCounted(aid)) return;
     const r = cnRow(c), sg = cnSegs(r);
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     const called = r.last >= day.start && r.last < day.end;
-    snapAdd(total, r, sg, called, day);
-    const tid = teamOf[r.owner];
-    if (tid) {
-      if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, snapCounters());
-      snapAdd(teams[tid], r, sg, called, day);
-    }
+    if (!r.last) nowU.push(c.id);
+    const fromU = !!(prevU && prevU[c.id] && called);
+    snapAdd(total, r, sg, called, day, fromU);
+    if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, snapCounters());
+    snapAdd(teams[tid], r, sg, called, day, fromU);
     if (r.owner) {
-      if (!agents[r.owner]) agents[r.owner] = Object.assign({ name: r.ownerName, team: tid ? teamName[tid] : "" }, snapCounters());
-      snapAdd(agents[r.owner], r, sg, called, day);
+      if (!agents[r.owner]) agents[r.owner] = Object.assign({ name: r.ownerName, team: teamName[tid] }, snapCounters());
+      snapAdd(agents[r.owner], r, sg, called, day, fromU);
     }
     const cts = COUNSEL.byId[c.id];
     if (cts && ts(cts) >= day.start && ts(cts) < day.end) {
       total.counsellings++;
-      if (tid && teams[tid]) teams[tid].counsellings++;
+      teams[tid].counsellings++;
       if (r.owner && agents[r.owner]) agents[r.owner].counsellings++;
     }
   });
@@ -2718,7 +2728,7 @@ function snapshotToday(){
     if (a) { agents[id].audits = a.done; agents[id].auditTarget = a.due; }
   });
   ORG.daily = ORG.daily || {};
-  const prev = ORG.daily[key];
+  const prev = prev0;
   const now = istParts(new Date()).hm;
   const freeze = function(dst, src){
     dst.oPool = src.pool; dst.oDue = src.due; dst.oScore = src.score; dst.oForm = src.form;
@@ -2743,11 +2753,23 @@ function snapshotToday(){
     Object.keys(teams).forEach(function(k){ freeze(teams[k], teams[k]); });
     Object.keys(agents).forEach(function(k){ freeze(agents[k], agents[k]); });
   }
+  const openU = openAt
+    ? (prev0 && Array.isArray(prev0.openU) ? prev0.openU : nowU)
+    : null;
   ORG.daily[key] = Object.assign({ at: new Date().toISOString(), openAt: openAt,
-    teams: teams, agents: agents }, total);
+    openU: openU, teams: teams, agents: agents }, total);
+  // The id set is only needed while the day is running. Dropping it from older days keeps
+  // the store small enough to rewrite every fifteen minutes.
+  Object.keys(ORG.daily).forEach(function(k){ if (k !== key && ORG.daily[k]) delete ORG.daily[k].openU; });
   const keys = Object.keys(ORG.daily).sort();
   while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
   if (typeof orgSave === "function") orgSave("snapshot", key, "system");
+  // Total must equal the sum of the teams, because only team-mapped owners are counted.
+  // If that ever stops being true the daily review has drifted from the Call Now queue.
+  const sum = Object.keys(teams).reduce(function(n, k){ return n + teams[k].pool; }, 0);
+  if (sum !== total.pool) {
+    console.error("Snapshot drift on " + key + ": total pool " + total.pool + " vs team sum " + sum);
+  }
 }
 
 /* Backfill for a day that finished before the snapshot job existed. Only what HubSpot and
@@ -2810,8 +2832,8 @@ async function snapBackfill(key){
   // Counsellings, filtered exactly as the live snapshot filters them so the two are
   // comparable side by side in the date picker.
   callnowPool().forEach(function(c){
-    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
-    if (!ownerCounted(c.hubspot_owner_id)) return;
+    const aid = String(c.hubspot_owner_id || "");
+    if (!teamOf[aid] || !ownerCounted(aid)) return;
     const r = cnRow(c), sg = cnSegs(r);
     if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
     const cts = COUNSEL.byId[c.id];

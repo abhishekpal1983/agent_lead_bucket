@@ -437,9 +437,10 @@ function renderDaily(){
     workedTile("amber", sn.needsC, d(sn.oNeeds, sn.needs), "Needs owner worked") +
     workedTile("amber", sn.done, due, "Due calls made") +
     tile(sn.missed ? "red" : "teal", nc(sn.missed), "Missed",
-      due ? Math.round(100 * (sn.missed || 0) / due) + "% of the day's due" +
-        (pushed > 0 ? " · " + fmt(pushed) + " rescheduled out" : "") : "") +
-    workedTile("amber", sn.overdueC, d(sn.oOverdue, sn.overdue), "Follow-ups overdue worked") +
+      (due ? Math.round(100 * (sn.missed || 0) / due) + "% of the day's due" : "") +
+      (pushed > 0 ? " · " + fmt(pushed) + " pushed out" : "") +
+      (pushed < 0 ? " · " + fmt(-pushed) + " pulled in" : "")) +
+    workedTile("amber", sn.overdueC, d(sn.oOverdue, sn.overdue), "Overdue backlog worked") +
     workedTile("amber", sn.uncalledC, d(sn.oUncalled, sn.uncalled), "Fresh / never called worked") +
     tile("blue", fmt(sn.counsellings), "Counsellings") +
     tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
@@ -448,7 +449,7 @@ function renderDaily(){
   var head = "<thead><tr><th>Name</th>" +
     "<th class='n'>Priority pool</th><th class='n'>Waitlist form</th><th class='n'>Score &ge; 6</th>" +
     "<th class='n'>International</th><th class='n'>Needs owner</th><th class='n'>Due calls</th>" +
-    "<th class='n'>Missed</th><th class='n'>FU overdue</th><th class='n'>Fresh / never called</th>" +
+    "<th class='n'>Missed</th><th class='n' title='Follow-ups carried in from before today'>Overdue backlog</th><th class='n'>Fresh / never called</th>" +
     "<th class='n'>Counsellings</th><th class='n'>Revenue</th><th class='n'>Audits</th></tr></thead>";
   h += "<h2 style='margin-top:6px'>By team</h2><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team", back) + "</tbody></table></div>";
   h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
