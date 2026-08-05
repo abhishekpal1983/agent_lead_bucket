@@ -2125,7 +2125,7 @@ function ownerCounted(id){
       being dropped, so the arithmetic still closes.
    ========================================================================== */
 const CN2_SEGMENTS = ["form", "score", "fresh", "intl", "any", "needs", "all"];
-const CN2_TIMING = ["due", "over", "nofu", "sched"];
+const CN2_TIMING = ["due", "over", "nofu", "fresh", "sched"];
 const CN2_OPEN_HM = process.env.CN2_OPEN_HM || process.env.OPEN_HM || "09:30";
 const CN2_MASK = { form: 1, score: 2, fresh: 4, intl: 8, needs: 16 };
 
@@ -2144,10 +2144,14 @@ function cn2Classify(r, day){
   if (sg.fresh) mask |= CN2_MASK.fresh;
   if (sg.intl) mask |= CN2_MASK.intl;
   if (r.needsOwner) mask |= CN2_MASK.needs;
+  // A never-worked fresh lead has no follow-up by definition. Letting it sit in "No FU"
+  // buries the staged leads that genuinely lost their next step, which is the number a
+  // manager needs. It gets its own bucket.
+  const isFresh = r.stage === "__fresh" && nofu;
   return {
     stage: r.stage,
     sec: (!parked && (due || over || nofu)) ? "n" : "a",
-    t: due ? "due" : (over ? "over" : (nofu ? "nofu" : "sched")),
+    t: due ? "due" : (over ? "over" : (isFresh ? "fresh" : (nofu ? "nofu" : "sched"))),
     mask: mask,
     owner: r.owner || "",
     creator: r.creator || ""
@@ -2176,7 +2180,14 @@ function cn2Store(){
 }
 function cn2Freeze(force){
   const st = cn2Store();
-  if (!st || !CACHE.loadedAt) return null;
+  if (!st) return null;
+  /* Freezing against a pool that is still loading is worse than not freezing at all: the
+     denominator is wrong for the rest of the day and looks authoritative. Every source
+     that feeds callnowPool has to have landed first, and the result has to be in the same
+     league as the last good freeze. */
+  if (!CACHE.loadedAt || CACHE.syncing) return null;
+  if (!PFRESH.loadedAt || PFRESH.syncing) return null;
+  if (!UNOWNED.loadedAt) return null;
   const date = istParts(new Date()).date;
   if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
   const day = istDayBounds();
@@ -2188,7 +2199,14 @@ function cn2Freeze(force){
     n++;
   });
   if (!n) return null;
-  ORG.cn2open = { date: date, at: new Date().toISOString(), rows: rows };
+  const wasN = st.lastGood || 0;
+  if (!force && wasN && n < wasN * 0.6) {
+    console.error("Call Now v2 freeze refused: " + n + " leads against a usual " + wasN +
+      ". The pool looks incomplete, retrying on the next pass.");
+    return null;
+  }
+  ORG.cn2open = { date: date, at: new Date().toISOString(), rows: rows,
+    lastGood: Math.max(n, st.lastGood || 0) };
   if (typeof orgSave === "function") orgSave("cn2.freeze", date + ":" + n, "system");
   console.log("Call Now v2 frozen for " + date + ": " + n + " leads");
   return ORG.cn2open;
@@ -2244,9 +2262,13 @@ function cn2Set(req){
     if (wantIntl === "yes" && !(c.mask & CN2_MASK.intl)) return;
     if (wantIntl === "no" && (c.mask & CN2_MASK.intl)) return;
     const live = pool[id] || null;
-    out.push({ id: id, c: c, live: live,
+    const nowC = live ? cn2Classify(live, day) : null;
+    out.push({ id: id, c: c, live: live, now: nowC,
       worked: !!(live && live.last >= day.start && live.last < day.end),
-      gone: !live });
+      gone: !live,
+      movedStage: !!(nowC && nowC.stage !== c.stage),
+      movedFu: !!(nowC && nowC.t !== c.t),
+      movedOwner: !!(nowC && nowC.owner !== c.owner) });
   };
 
   if (isFrozen) {
@@ -2282,9 +2304,16 @@ app.get("/api/callnow2", function(req, res){
 
   // Filter options come from the frozen set so they cannot offer an agent with no rows.
   const agents = {}, creators = {};
+  const move = { called: 0, stage: 0, fu: 0, owner: 0, gone: 0, still: 0 };
   set.rows.forEach(function(x){
     if (x.c.owner) agents[x.c.owner] = (agents[x.c.owner] || 0) + 1;
     if (x.c.creator) creators[x.c.creator] = (creators[x.c.creator] || 0) + 1;
+    if (x.worked) move.called++;
+    if (x.movedStage) move.stage++;
+    if (x.movedFu) move.fu++;
+    if (x.movedOwner) move.owner++;
+    if (x.gone) move.gone++;
+    if (!x.worked && !x.movedStage && !x.movedFu && !x.gone) move.still++;
   });
 
   res.json({
@@ -2293,6 +2322,7 @@ app.get("/api/callnow2", function(req, res){
     }),
     totals: totals, segments: CN2_SEGMENTS, timing: CN2_TIMING,
     frozen: set.frozen, frozenAt: set.frozenAt, freezeHour: CN2_OPEN_HM, gone: gone,
+    movement: move,
     agentOptions: Object.keys(agents).map(function(id){
       const o = CACHE.owners[id] || {};
       return { id: id, name: o.name || ("Owner " + id), n: agents[id], active: o.active !== false };
@@ -2323,6 +2353,12 @@ app.get("/api/callnow2/leads", function(req, res){
     if (t && x.c.t !== t) return false;
     if (worked === "1" && !x.worked) return false;
     if (worked === "0" && x.worked) return false;
+    const mv = String(req.query.moved || "");
+    if (mv === "stage" && !x.movedStage) return false;
+    if (mv === "fu" && !x.movedFu) return false;
+    if (mv === "owner" && !x.movedOwner) return false;
+    if (mv === "gone" && !x.gone) return false;
+    if (mv === "still" && (x.worked || x.movedStage || x.movedFu || x.gone)) return false;
     return cn2Hit(x.c, seg);
   });
   const total = rows.length;
@@ -2340,6 +2376,8 @@ app.get("/api/callnow2/leads", function(req, res){
       return {
         id: x.id, worked: x.worked, gone: x.gone,
         openStage: x.c.stage, openTiming: x.c.t, section: x.c.sec,
+        movedStage: x.movedStage, movedFu: x.movedFu, movedOwner: x.movedOwner,
+        nowStage: x.now ? x.now.stage : "", nowTiming: x.now ? x.now.t : "",
         name: r ? r.name : "(no longer in the pool)",
         stage: r ? r.stage : x.c.stage,
         ownerName: r ? r.ownerName : (o.name || (x.c.owner ? "Owner " + x.c.owner : "(unassigned)")),

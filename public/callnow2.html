@@ -63,6 +63,16 @@ td a:hover{text-decoration:underline}
 .pill.a{background:#FAEBD7;color:#7A4A08}.pill.f{background:#E8E4FB;color:#3B2E7E}
 .pill.s{background:#DCEDF6;color:#0B4A66}.pill.i{background:#E2F0E9;color:#1D5E48}
 .sec h2 .btn{font-size:11.5px;padding:3px 9px}
+.mvbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+.mvl{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8B99A8;margin-right:2px}
+.btn.mv{font-weight:400;color:#4A5A6A}
+.btn.mv b{color:#0A2540;font-variant-numeric:tabular-nums}
+.btn.mv.on{background:#0A2540;color:#93A7BC;border-color:#0A2540}
+.btn.mv.on b{color:#fff}
+tfoot tr.sub td{background:#1E3A5F}
+tfoot tr td{border-radius:0}
+tfoot tr:last-child td:first-child{border-radius:0 0 0 8px}
+tfoot tr:last-child td:last-child{border-radius:0 0 8px 0}
 .load{padding:60px;text-align:center;color:#6B7A8A;font-size:13.5px}
 .spin{width:22px;height:22px;border:2.5px solid #DCE4EC;border-top-color:#0091AE;border-radius:50%;
   margin:0 auto 12px;animation:sp .8s linear infinite}
@@ -118,8 +128,10 @@ function loadLeads(){
     .then(function(j){ LEADS_LOADING = false; L = j; draw(); })
     .catch(function(e){ LEADS_LOADING = false; L = { error: e.message }; draw(); });
 }
-function pick(stage, sec, seg, t, worked){
-  PICK = { stage: stage || "", sec: sec || "", seg: seg || "all", t: t || "", worked: worked == null ? "" : worked };
+function pick(stage, sec, seg, t, worked, moved){
+  PICK = { stage: stage || "", sec: sec || "", seg: seg || "all", t: t || "",
+    worked: worked == null ? "" : worked, moved: moved || "" };
+  if (moved === "" && arguments.length === 6) PICK.worked = "1";
   L = null; loadLeads();
   setTimeout(function(){
     var el = document.getElementById("drill");
@@ -133,7 +145,8 @@ function refreeze(){
     .catch(function(e){ alert(e.message); });
 }
 
-var TIMING = [["due","Due today"],["over","Overdue"],["nofu","No FU"],["sched","Scheduled"]];
+var TIMING = [["due","Due today"],["over","Overdue"],["nofu","No FU"],
+  ["fresh","Fresh / never worked"],["sched","Scheduled"]];
 var SEGS = [["form","Form leads"],["score","Score &ge;6"],["fresh","Fresh / never called"],
   ["intl","International"],["any","Any priority"],["needs","Needs owner"],["all","All in stage"]];
 function head(){
@@ -176,18 +189,29 @@ function bodyFor(which){
   }).join("");
   return out || "<tr><td colspan='" + (1 + TIMING.length + SEGS.length) + "' class='z'>Nothing here.</td></tr>";
 }
-function foot(){
-  var n = J.totals.now, a = J.totals.ahead;
-  var h = "<tfoot><tr><td>Total</td>";
+// Subtotal under each section, then the grand total under the second one. Both use the
+// same shape so the eye can add the two subtotals and land on the total.
+function footRow(label, cells, cls){
+  var h = "<tr class='" + (cls || "") + "'><td>" + label + "</td>";
   TIMING.forEach(function(t, i){
-    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + fmt(n[t[0]] + a[t[0]]) + "</td>";
+    var v = cells.reduce(function(a, c){ return a + c[t[0]]; }, 0);
+    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + (v ? fmt(v) : "<span class='z'>0</span>") + "</td>";
   });
   SEGS.forEach(function(t, i){
-    var tot = n[t[0]] + a[t[0]], w = n[t[0] + "W"] + a[t[0] + "W"];
+    var tot = cells.reduce(function(a, c){ return a + c[t[0]]; }, 0);
+    var w = cells.reduce(function(a, c){ return a + c[t[0] + "W"]; }, 0);
     h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + fmt(tot) +
       "<span class='w'>" + fmt(w) + " called · " + (tot ? Math.round(100 * w / tot) : 0) + "%</span></td>";
   });
-  return h + "</tr></tfoot>";
+  return h + "</tr>";
+}
+function subFoot(which){
+  return "<tfoot>" + footRow(which === "now" ? "Needs action today" : "Not due today",
+    [J.totals[which]], "sub") + "</tfoot>";
+}
+function foot(){
+  return "<tfoot>" + footRow("Not due today", [J.totals.ahead], "sub") +
+    footRow("Total, both sections", [J.totals.now, J.totals.ahead]) + "</tfoot>";
 }
 function sel(id, label, opts, val){
   var h = "<select onchange=\"Q." + id + "=this.value;load()\"><option value=''>" + label + "</option>";
@@ -212,6 +236,24 @@ function bar(){
   h += "<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>" +
     (J.loadedAt ? "leads synced " + new Date(J.loadedAt).toLocaleString("en-IN") : "") + "</span>";
   return h + "</div>";
+}
+// The reason the ids are kept rather than the counts: what has happened to this
+// morning's list since the bell.
+function movement(){
+  var m = J.movement;
+  if (!J.frozen || !m) return "";
+  var chip = function(k, n, label, tip){
+    return "<button class='btn mv" + (PICK && PICK.moved === k ? " on" : "") + "' title='" + tip +
+      "' onclick=\"pick('','','all','','', '" + k + "')\"><b>" + fmt(n) + "</b> " + label + "</button>";
+  };
+  return "<div class='mvbar'><span class='mvl'>Since open</span>" +
+    chip("", m.called, "called", "Last call falls today") +
+    chip("stage", m.stage, "changed stage", "In a different stage now from the one they were in at open") +
+    chip("fu", m.fu, "follow-up moved", "Their follow-up timing has changed since open") +
+    chip("owner", m.owner, "reassigned", "A different agent owns them now") +
+    chip("gone", m.gone, "left the pool", "No longer in the tracked pool at all") +
+    chip("still", m.still, "untouched", "Not called, not moved, not reassigned") +
+    "</div>";
 }
 function frozenNote(){
   if (!J.frozen) {
@@ -240,8 +282,14 @@ function drill(){
   var st = (J.stages.filter(function(s){ return s.stage === PICK.stage; })[0] || {}).label || PICK.stage;
   var segLabel = (SEGS.filter(function(x){ return x[0] === PICK.seg; })[0] || ["", PICK.seg])[1];
   var tLabel = PICK.t ? (TIMING.filter(function(x){ return x[0] === PICK.t; })[0] || ["", PICK.t])[1] : "";
-  title = esc(st) + " · " + (PICK.sec === "n" ? "needs action today" : "not due today") +
-    (tLabel ? " · " + tLabel : " · " + segLabel);
+  var MVL = { stage: "Changed stage since open", fu: "Follow-up moved since open",
+    owner: "Reassigned since open", gone: "Left the pool since open", still: "Untouched since open" };
+  if (PICK.moved || (!PICK.stage && PICK.worked === "1")) {
+    title = PICK.moved ? MVL[PICK.moved] : "Called today";
+  } else {
+    title = esc(st) + " · " + (PICK.sec === "n" ? "needs action today" : "not due today") +
+      (tLabel ? " · " + tLabel : " · " + segLabel);
+  }
   var h = "<div class='sec' id='drill'><h2><span class='spine now'></span>" + title +
     "<button class='btn' style='margin-left:auto' onclick='unpick()'>Close</button></h2>";
   if (LEADS_LOADING) return h + "<div class='load'><div class='spin'></div>Loading leads</div></div>";
@@ -270,7 +318,9 @@ function drill(){
       "<td style='text-align:left'>" + tm(r.last) + "</td>" +
       "<td style='text-align:left'>" + tm(r.fu) + "</td>" +
       "<td>" + fmt(r.calls) + (r.own && r.own !== r.calls ? "<span class='mut'> / " + fmt(r.own) + " own</span>" : "") + "</td>" +
-      "<td style='text-align:left'>" + (why.join(" ") || "<span class='z'>–</span>") + "</td>" +
+      "<td style='text-align:left'>" + (why.join(" ") || "<span class='z'>–</span>") +
+        (r.movedStage ? "<div class='mut'>was " + esc(r.openStage) + ", now " + esc(r.nowStage) + "</div>" : "") +
+        (r.movedFu && !r.movedStage ? "<div class='mut'>timing was " + esc(r.openTiming) + ", now " + esc(r.nowTiming) + "</div>" : "") + "</td>" +
       "<td style='text-align:left'>" + (r.worked ? "<span class='pill g'>called</span>" :
         (r.gone ? "<span class='pill a'>left the pool</span>" : "<span class='pill r'>not yet</span>")) + "</td></tr>";
   }).join("");
@@ -281,10 +331,10 @@ function draw(){
   if (LOADING) { el.innerHTML = "<div class='load'><div class='spin'></div>Loading</div>"; return; }
   if (!J) return;
   if (J.error) { el.innerHTML = "<div class='warn'>" + esc(J.error) + "</div>"; return; }
-  var h = bar() + frozenNote();
+  var h = bar() + frozenNote() + movement();
   h += "<div class='sec'><h2><span class='spine now'></span>Needs action today</h2>" +
     "<div class='sub'>Due today, overdue, or carrying no follow-up at all. A DNP lead with no priority signal is never here, whatever its follow-up says. Click any cell for the leads behind it.</div>" +
-    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("now") + "</tbody></table></div></div>";
+    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("now") + "</tbody>" + subFoot("now") + "</table></div></div>";
   h += "<div class='sec'><h2><span class='spine ahead'></span>Not due today</h2>" +
     "<div class='sub'>Follow-up set for a future date, plus the parked DNP leads held out of today's work. Same columns, so each one adds to the section above to give the stage total.</div>" +
     "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("ahead") + "</tbody>" + foot() + "</table></div>" +
