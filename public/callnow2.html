@@ -150,8 +150,22 @@ th.edge,td.edge{border-left:2px solid #C2D2E0}
 .sec.mini th{white-space:normal;line-height:1.25;vertical-align:bottom;text-align:right}
 .sec.mini th:first-child,.sec.mini td:first-child{width:172px;text-align:left}
 .sec.mini table{table-layout:auto}
-tr.tot td.gA{background:#E7EEF5}
+/* Subtotal and total rows carry a fill so they read as summaries rather than as one more
+   stage, and they are clickable like any other cell. */
+tr.tot.sub td{background:#DCE7F0;border-top:2px solid #B9CBDC}
+tr.tot.sub td:first-child{background:#DCE7F0}
+tr.tot.sub td.gA{background:#D2DFEC}
+tr.tot.grand td{background:#0A2540;color:#fff;border-top:2px solid #0A2540}
+tr.tot.grand td:first-child{background:#0A2540;color:#fff}
+tr.tot.grand td.gA{background:#12304F}
+tr.tot.grand .sub3,tr.tot.grand .sub3 b{color:#AFC3D6}
+tr.tot.grand td.z{color:#5C728A}
+tr.tot td.cell:hover{box-shadow:inset 0 0 0 2px #0091AE}
 tr.tot .sub3{font-weight:400}
+/* Long lists scroll inside the card instead of pushing the page down forever. */
+.tw.scrolly{max-height:420px}
+.sec.mini .tw.scrolly td{padding:6px 12px}
+.sec.mini .tw.scrolly .sub3{font-size:10.5px}
 .st{margin:0}
 tr.rowlink.on td{background:#DCEDF6}
 tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
@@ -284,18 +298,22 @@ function body(sec){
     COLS.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,false,i,mx);});
     return h+"</tr>";}).join("");}
 // v1 puts the total inside the table body as a light row, not a dark sticky footer.
-// The dark one was covering the last row and could not be clicked.
-function totRow(label,cells){
-  var h="<tr class='tot'><td><b>"+label+"</b></td>";
-  var col=function(k,g,i){
+// The dark one was covering the last row and could not be clicked. These are clickable
+// too: a column total opens that column across every stage.
+function totRow(label,cells,secKey,cls){
+  var h="<tr class='tot "+(cls||"")+"'><td><b>"+label+"</b></td>";
+  var col=function(k,g,i,isT){
     var t=cells.reduce(function(a,c){return a+c[k];},0),
         w=cells.reduce(function(a,c){return a+(c[k+"W"]||0);},0);
-    var cls="n "+g+(i===0?" edge":"");
-    if(!t)return "<td class='"+cls+" z'>0</td>";
-    return "<td class='"+cls+"'>"+fmt(t)+"<div class='sub3'><b class='"+
+    var arg=isT?{stage:"",sec:secKey,t:k}:{stage:"",sec:secKey,col:k};
+    var on=PICK&&!PICK.stage&&PICK.sec===secKey&&(isT?PICK.t===k:(PICK.col===k&&!PICK.t));
+    var cc="n cell "+g+(i===0?" edge":"")+(on?" sel":"");
+    var click=" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'";
+    if(!t)return "<td class='"+cc+" z'"+click+">0</td>";
+    return "<td class='"+cc+"'"+click+">"+fmt(t)+"<div class='sub3'><b class='"+
       (w/t>=0.6?"c":(w?"d":"m"))+"'>"+fmt(w)+"</b> called &middot; "+Math.round(100*w/t)+"%</div></td>";};
-  TIMING.forEach(function(t,i){h+=col(t[0],"gA",i);});
-  COLS.forEach(function(t,i){h+=col(t[0],"gB",i);});
+  TIMING.forEach(function(t,i){h+=col(t[0],"gA",i,true);});
+  COLS.forEach(function(t,i){h+=col(t[0],"gB",i,false);});
   return h+"</tr>";}
 function movement(){
   var m=J.movement;if(!m)return "";
@@ -435,15 +453,21 @@ function drill(){
 function agentTable(){
   if(!A||!A.agents||!A.agents.length)return "";
   var mx=0; A.agents.forEach(function(a){ if(a.n.all>mx)mx=a.n.all; });
+  // Working agents first, then parking buckets, then anyone deactivated. A deactivated
+  // agent's pile is a reassignment job, not a calling job, so it does not belong on top.
+  var list=A.agents.slice().sort(function(x,y){
+    var rx=(x.active?0:2)+(x.counted?0:1), ry=(y.active?0:2)+(y.counted?0:1);
+    return rx-ry || y.n.all-x.n.all;
+  });
   var h="<div class='sec mini'><h2>Today's calling list by agent</h2>"+
     "<div class='sub'>Every lead on today's list, split by whoever held it this morning. Click a row to scope the whole page to that agent. "+
     "Rows marked <b>not counted</b> are parking buckets, shown for visibility but left out of every total above.</div>"+
-    "<div class='tw'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
+    "<div class='tw scrolly'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
     "<th class='n gA edge'>Due today</th><th class='n gA'>Overdue</th><th class='n gA'>No FU</th><th class='n gA'>Fresh</th>"+
     "<th class='n gB edge'>Form</th><th class='n gB'>Score</th><th class='n gB'>Intl</th><th class='n gB'>Refilled</th>"+
     "<th class='n'>Called</th><th class='n'>Booked later</th><th class='n'>DNP</th></tr></thead><tbody>";
   var pill=function(v,cls){ return v?"<span class='pill"+(cls||"")+"'>"+fmt(v)+"</span>":"<span class='z'>0</span>"; };
-  A.agents.forEach(function(a){
+  list.forEach(function(a){
     var w=mx?Math.round(56*a.n.all/mx):0;
     var miss=a.n.due-a.n.dueW;
     h+="<tr class='rowlink"+(Q.agent===a.id?" on":"")+"' onclick=\"Q.agent='"+esc(a.id)+"';load()\">"+
@@ -490,8 +514,8 @@ function draw(){
     var last=i===SECS.length-1;
     h+="<div class='sec mini'><h2>"+s[1]+"</h2><div class='sub'>"+s[2]+"</div>"+
       "<div class='tw'><table>"+head()+"<tbody>"+body(s[0])+
-      totRow(s[1],[J.totals[s[0]]])+
-      (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d]):"")+
+      totRow(s[1],[J.totals[s[0]]],s[0],"sub")+
+      (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
   h+=agentTable()+drill();
   el.innerHTML=h;}

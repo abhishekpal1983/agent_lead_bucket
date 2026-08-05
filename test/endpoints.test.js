@@ -60,7 +60,10 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2/leads?sec=d&col=all", "drill: did not pick up"],
       ["/api/callnow2/leads?moved=still", "drill: nothing happened to them"],
       ["/api/callnow2/agents", "the agent table"],
-      ["/api/callnow2/agents?team=t1", "the agent table filtered by manager"]
+      ["/api/callnow2/agents?team=t1", "the agent table filtered by manager"],
+      ["/api/callnow2/leads?sec=n&col=score", "clicking a section subtotal, every stage"],
+      ["/api/callnow2/leads?col=all", "clicking the grand total, every stage and group"],
+      ["/api/callnow2/leads?sec=a&t=sched", "clicking a timing subtotal in booked for later"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -86,6 +89,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ag.raw);
     ok("each agent row carries the three groups",
       ag.body && ag.body.agents.every(function(a){ return a.n && a.a && a.d; }));
+
+    // A subtotal must open more leads than any single stage under it, or the click is lying.
+    const whole = await get("/api/callnow2/leads?col=all");
+    const oneStage = await get("/api/callnow2/leads?stage=counselled&col=all");
+    ok("the grand total opens every lead, not one stage's worth",
+      whole.body && oneStage.body && whole.body.total > oneStage.body.total,
+      (whole.body || {}).total + " vs " + (oneStage.body || {}).total);
+    const secN = await get("/api/callnow2/leads?sec=n&col=all");
+    ok("a section subtotal opens only that section",
+      secN.body && whole.body && secN.body.total < whole.body.total,
+      (secN.body || {}).total + " vs " + (whole.body || {}).total);
 
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,
