@@ -3727,6 +3727,37 @@ app.get("/api/reconcile/calls", async function(req, res){
   }
 });
 
+/* A second Railway service gets its own disk, so teams, mapping and targets start empty
+   there. These two let the whole org store be copied across in one download and one
+   paste, rather than retyping twenty-eight mappings. Read-only export, and an import that
+   refuses anything that is not shaped like an org store. */
+app.get("/api/org/export", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  res.setHeader("Content-Disposition", "attachment; filename=org-export.json");
+  res.json({
+    exportedAt: new Date().toISOString(),
+    teams: ORG.teams || [], targets: ORG.targets || {}, benchmarks: ORG.benchmarks || {},
+    creators: ORG.creators || []
+  });
+});
+
+app.post("/api/org/import", express.json({ limit: "4mb" }), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  if (!Array.isArray(b.teams)) return res.status(400).json({ error: "that file has no teams in it" });
+  // Only the setup travels. Daily snapshots and coaching sessions belong to whichever
+  // service produced them and must not be overwritten by a copy from somewhere else.
+  ORG.teams = b.teams;
+  if (b.targets && typeof b.targets === "object") ORG.targets = b.targets;
+  if (b.benchmarks && typeof b.benchmarks === "object") ORG.benchmarks = b.benchmarks;
+  if (Array.isArray(b.creators) && b.creators.length) {
+    ORG.creators = b.creators;
+    if (typeof adoptStoredCreators === "function") adoptStoredCreators();
+  }
+  if (typeof orgSave === "function") orgSave("org.import", String(b.teams.length) + " teams", whoami(req));
+  res.json({ ok: true, teams: ORG.teams.length, creators: (ORG.creators || []).length });
+});
+
 app.get("/api/vp/daily", function(req, res){
   const all = (typeof ORG !== "undefined" && ORG.daily) || {};
   const dates = Object.keys(all).sort().reverse();
