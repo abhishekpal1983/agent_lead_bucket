@@ -2650,6 +2650,10 @@ function snapAdd(o, r, sg, called, day, fromU){
   if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
 }
 const OPEN_HM = process.env.OPEN_HM || "09:30";
+// Bumped whenever the meaning of a counter changes. A day frozen under an older
+// definition is refrozen rather than carried forward, otherwise a denominator captured
+// under the old scope would silently poison the whole day.
+const SNAP_VERSION = 2;
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   const day = istDayBounds();
@@ -2663,7 +2667,8 @@ function snapshotToday(){
   // The filters below are deliberately identical to vpAggregate, which is what draws the
   // Call Now queue on Overview. If the two ever drift, the daily review stops being a
   // review of that queue and becomes a second, competing number.
-  const prev0 = (ORG.daily || {})[key];
+  const stored = (ORG.daily || {})[key];
+  const prev0 = (stored && stored.sv === SNAP_VERSION) ? stored : null;
   const prevU = (prev0 && Array.isArray(prev0.openU)) ? prev0.openU.reduce(function(m, id){ m[id] = 1; return m; }, {}) : null;
   const nowU = [];
   callnowPool().forEach(function(c){
@@ -2756,7 +2761,7 @@ function snapshotToday(){
   const openU = openAt
     ? (prev0 && Array.isArray(prev0.openU) ? prev0.openU : nowU)
     : null;
-  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), openAt: openAt,
+  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), sv: SNAP_VERSION, openAt: openAt,
     openU: openU, teams: teams, agents: agents }, total);
   // The id set is only needed while the day is running. Dropping it from older days keeps
   // the store small enough to rewrite every fifteen minutes.
@@ -2874,7 +2879,7 @@ async function snapBackfill(key){
     const a = (au.agents || {})[id];
     if (a) { agents[id].audits = a.done; agents[id].auditTarget = a.due; }
   });
-  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), backfilled: true,
+  ORG.daily[key] = Object.assign({ at: new Date().toISOString(), sv: SNAP_VERSION, backfilled: true,
     teams: teams, agents: agents }, total);
   const keys = Object.keys(ORG.daily).sort();
   while (keys.length > 90) { delete ORG.daily[keys.shift()]; }
