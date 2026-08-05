@@ -90,7 +90,7 @@ function withTimeout(p,ms){
 function load(){LOADING=true;draw();
   withTimeout(Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),fetch("/api/callnow2/agents?"+qs()).then(asJson)]),60000)
     .then(function(r){LOADING=false;
-      if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true};draw();setTimeout(load,20000);return;}
+      if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true,building:true};draw();setTimeout(load,15000);return;}
       J=r[0];A=r[1];draw();if(PICK)loadLeads();})
     .catch(function(e){LOADING=false;J={error:e.message,retry:true};draw();});}
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
@@ -100,6 +100,12 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
 function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:""},o);L=null;loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
+function rebuild(btn){
+  if(btn){btn.disabled=true;btn.textContent="Building...";}
+  fetch("/api/callnow2/rebuild",{method:"POST"}).then(asJson)
+    .then(function(){setTimeout(load,8000);})
+    .catch(function(e){alert(e.message);});
+}
 function refreeze(){if(!confirm("Lock the list again using the leads as they are right now? Today's progress will then be measured from this moment instead of from midnight."))return;
   fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(){load();}).catch(function(e){alert(e.message);});}
 
@@ -167,7 +173,9 @@ function bar(){
   h+=sel("creator","All creators",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
   h+="<button class='btn' onclick='load()'>Reload</button>";
   if(Q.team||Q.agent||Q.creator)h+="<button class='btn' onclick='Q={team:\"\",agent:\"\",creator:\"\"};load()'>Clear</button>";
-  h+="<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>"+(J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+"</span>";
+  h+="<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>"+
+    (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+
+    (J.listBuiltAt?" · list built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN")+" in "+Math.round((J.listBuildMs||0)/1000)+"s":"")+"</span>";
   return h+"</div>";}
 function agentTable(){
   if(!A||!A.agents)return "";
@@ -235,7 +243,10 @@ function draw(){
   if(LOADING){el.innerHTML="<div class='load'><div class='spin'></div>Building today's calling list. The first load after a deploy can take a minute.</div>";return;}
   if(!J)return;
   if(J.error){el.innerHTML="<div class='warn'>"+esc(J.error)+
-    (J.retry?" <button class='btn' style='margin-left:8px' onclick='load()'>Try again</button>":"")+"</div>";return;}
+    (J.building?" Checking again every fifteen seconds.":"")+
+    (J.retry?" <button class='btn' style='margin-left:8px' onclick='load()'>Try again</button>":"")+
+    (J.building?" <button class='btn' style='margin-left:6px' onclick='rebuild(this)'>Build it now</button>":"")+
+    "</div>";return;}
   var fx=document.getElementById("fxtag");
   if(fx)fx.innerHTML=J.fixtures?"<span class='tag fx'>test data, not real</span>":"";
   var h=bar()+baseNote()+movement();

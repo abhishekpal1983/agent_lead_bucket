@@ -2182,18 +2182,65 @@ function cn2CheapQualify(c, day){
   return !last || fl > last;
 }
 
-let CN2_CACHE = { key: "", rows: null, live: null };
+/* Building this list walks the entire lead pool. Doing that inside a request blocks the
+   whole Node process: no other page is served, the Railway healthcheck times out, and the
+   platform restarts the service. That restart loop is exactly what a spinner that never
+   ends looks like from the browser.
+
+   So the list is built by a background job that yields between chunks, and requests only
+   ever read the last finished build. A request can now be slow to have data, but it can
+   never be slow to answer. */
+const CN2_CHUNK = 2000;
+let CN2_POOL = { key: "", rows: [], live: {}, at: null, ms: 0, building: false };
+
 function cn2PoolKey(){
   return [CACHE.loadedAt, PFRESH.loadedAt, UNOWNED.loadedAt, FORMS.loadedAt, POOL_REV,
     istParts(new Date(cn2Now())).date].join("|");
 }
 function cn2Ready(){
   if (CN2_FIXTURE_DATA) return true;
-  return !!(CACHE.loadedAt && PFRESH.loadedAt && UNOWNED.loadedAt);
+  return !!(CN2_POOL.at && CN2_POOL.rows.length);
+}
+function yieldToLoop(){ return new Promise(function(r){ setImmediate(r); }); }
+
+async function cn2Build(force){
+  if (CN2_FIXTURE_DATA) return;
+  if (CN2_POOL.building) return;
+  if (!CACHE.loadedAt || !PFRESH.loadedAt || !UNOWNED.loadedAt) return;
+  const key = cn2PoolKey();
+  if (!force && CN2_POOL.key === key && CN2_POOL.rows.length) return;
+  CN2_POOL.building = true;
+  const t0 = Date.now();
+  try {
+    const day = CN2.dayBoundsFor(cn2Now());
+    const src = callnowPool();
+    const out = [], live = {};
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (ownerCounted(c.hubspot_owner_id) &&
+          PFRESH_LIST.indexOf(c.topmate_username || "") >= 0 &&
+          cn2CheapQualify(c, day)) {
+        const r = cnRow(c);
+        // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
+        if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
+        out.push(r); live[r.id] = r;
+      }
+      // Hand the process back often enough that health checks and every other page
+      // keep answering while this runs.
+      if ((i % CN2_CHUNK) === CN2_CHUNK - 1) await yieldToLoop();
+    }
+    CN2_POOL = { key: key, rows: out, live: live, at: new Date().toISOString(),
+      ms: Date.now() - t0, building: false };
+    console.log("Call Now v2 list built: " + out.length + " of " + src.length +
+      " leads in " + CN2_POOL.ms + "ms");
+  } catch (e) {
+    CN2_POOL.building = false;
+    console.error("Call Now v2 build failed: " + ((e && e.message) || e));
+  }
 }
 function cn2Rows(){
-  const day = CN2.dayBoundsFor(cn2Now());
   if (CN2_FIXTURE_DATA) {
+    const day = CN2.dayBoundsFor(cn2Now());
     return CN2_FIXTURE_DATA.rows.filter(function(r){
       if (CN2_STAGES.indexOf(r.stage) < 0) return false;
       if (CN2_EXTRA_STAGES.indexOf(r.stage) < 0) return true;
@@ -2202,31 +2249,15 @@ function cn2Rows(){
       return false;
     });
   }
-  const key = cn2PoolKey();
-  if (CN2_CACHE.key === key && CN2_CACHE.rows) return CN2_CACHE.rows;
-  const t0 = Date.now();
-  const out = [];
-  callnowPool().forEach(function(c){
-    if (!ownerCounted(c.hubspot_owner_id)) return;
-    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
-    if (!cn2CheapQualify(c, day)) return;
-    const r = cnRow(c);
-    // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
-    if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
-    out.push(r);
-  });
-  const live = {};
-  out.forEach(function(r){ live[r.id] = r; });
-  CN2_CACHE = { key: key, rows: out, live: live };
-  console.log("Call Now v2 pool built: " + out.length + " leads in " + (Date.now() - t0) + "ms");
-  return out;
+  return CN2_POOL.rows;
 }
 function cn2Live(){
-  if (CN2_CACHE.key === cn2PoolKey() && CN2_CACHE.live) return CN2_CACHE.live;
-  const live = {};
-  cn2Rows().forEach(function(r){ live[r.id] = r; });
-  if (CN2_CACHE.rows) CN2_CACHE.live = live;
-  return live;
+  if (CN2_FIXTURE_DATA) {
+    const live = {};
+    cn2Rows().forEach(function(r){ live[r.id] = r; });
+    return live;
+  }
+  return CN2_POOL.live;
 }
 
 function cn2Store(){
@@ -2244,6 +2275,7 @@ function cn2Freeze(force){
     if (!CACHE.loadedAt || CACHE.syncing) return null;
     if (!PFRESH.loadedAt || PFRESH.syncing) return null;
     if (!UNOWNED.loadedAt) return null;
+    if (!cn2Ready()) return null;   // never lock a list that has not finished building
   }
   const date = istParts(new Date(cn2Now())).date;
   if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
@@ -2325,7 +2357,7 @@ function cn2StageOrder(base){
 
 app.get("/api/callnow2", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
   const ctx = cn2Context(req);
   const order = cn2StageOrder(ctx.base);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
@@ -2356,7 +2388,8 @@ app.get("/api/callnow2", function(req, res){
       .sort(function(a, b){ return b.n - a.n; }),
     teamOptions: cn2Teams().map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; }),
     scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
-    fixtures: !!CN2_FIXTURE_DATA
+    fixtures: !!CN2_FIXTURE_DATA,
+    listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length
   });
 });
 
@@ -2364,7 +2397,7 @@ app.get("/api/callnow2", function(req, res){
    worked" reads at every level without a second definition anywhere. */
 app.get("/api/callnow2/agents", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
   const ctx = cn2Context(req);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
   const teamOf = {}, teamName = {};
@@ -2400,7 +2433,7 @@ app.get("/api/callnow2/agents", function(req, res){
 
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
   const ctx = cn2Context(req);
   const stage = String(req.query.stage || ""), sec = String(req.query.sec || "");
   const col = String(req.query.col || "all"), t = String(req.query.t || "");
@@ -2454,6 +2487,12 @@ app.get("/api/callnow2/leads", function(req, res){
     }),
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
+});
+
+app.post("/api/callnow2/rebuild", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  guard("cn2BuildManual", function(){ return cn2Build(true); })();
+  res.status(202).json({ ok: true, building: true });
 });
 
 app.post("/api/callnow2/refreeze", function(req, res){
@@ -5105,8 +5144,11 @@ SERVER = app.listen(PORT, () => {
   // that was still failing at 09:30 does not cost the whole day.
   setInterval(guard("coachLock", coachLockDue), 5 * 60 * 1000);
   // Freeze the Call Now v2 denominator at the bell, then leave it alone all day.
+  // Build the v2 list in the background, never inside a request.
+  setTimeout(guard("cn2Build", function(){ return cn2Build(); }), 100 * 1000);
+  setInterval(guard("cn2Build", function(){ return cn2Build(); }), 5 * 60 * 1000);
   setInterval(guard("cn2Freeze", cn2FreezeDue), 5 * 60 * 1000);
-  setTimeout(guard("cn2Freeze", cn2FreezeDue), 280 * 1000);
+  setTimeout(guard("cn2Freeze", cn2FreezeDue), 300 * 1000);
   setTimeout(guard("coachLock", coachLockDue), 260 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);
   setInterval(guard("coachRetry", function(){
