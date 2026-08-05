@@ -154,7 +154,7 @@ tfoot tr:first-child td:first-child{background:#12304F}
   <span class="livebadge">PRIVATE</span>
   <span id="fxtag"></span>
   <p id="sub">Today's calling list is locked at midnight. Every lead sits in exactly one of the three groups, so the three always add up to the stage total.</p>
-  <span style="margin-left:auto;display:flex;gap:13px;align-items:center;flex-wrap:wrap">
+  <span id="vpnav" style="margin-left:auto;display:none;gap:13px;align-items:center;flex-wrap:wrap">
     <a class="ico" href="/callnow.html">Call Now &nearr;</a>
     <a class="ico" href="/vp.html">Revenue command &nearr;</a>
   </span>
@@ -254,8 +254,9 @@ function baseNote(){
   if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
   return "<div class='sec mini'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
     new Date(J.frozenAt).toLocaleString("en-IN")+"</b> with "+fmt(J.baseSize)+
-    " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning. "+
-    "<a href='#' class='a2' onclick='refreeze();return false'>Lock again using right now</a></div></div>";}
+    " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning."+
+    (J.isVP?" <a href='#' class='a2' onclick='refreeze();return false'>Lock again using right now</a>":"")+
+    "</div></div>";}
 function sel(id,label,opts,val){
   var h="<div><label>"+label+"</label><select onchange='Q."+id+"=this.value;load()'><option value=''>All</option>";
   opts.forEach(function(o){h+="<option value='"+esc(o.v)+"'"+(String(val)===String(o.v)?" selected":"")+">"+esc(o.l)+"</option>";});
@@ -365,10 +366,12 @@ function draw(){
         fmt(pr.leadsSoFar)+" leads so far"+(pr.syncError?" &middot; error: "+esc(pr.syncError):"")+"</div></div>";}
     el.innerHTML="<div class='warn'>"+esc(J.error)+(J.building?" Checking again every fifteen seconds.":"")+
       (J.retry?" <button class='btn' onclick='load()'>Try again</button>":"")+
-      (J.building?" <button class='btn' onclick='rebuild(this)'>Build it now</button>":"")+bar2+"</div>";
+      (J.building&&J.isVP?" <button class='btn' onclick='rebuild(this)'>Build it now</button>":"")+bar2+"</div>";
     return;}
   var fx=document.getElementById("fxtag");
   if(fx)fx.innerHTML=J.fixtures?"<span class='mebadge'>test data, not real</span>":"";
+  var nav=document.getElementById("vpnav");
+  if(nav)nav.style.display=J.isVP?"flex":"none";
   var h=bar()+baseNote()+movement();
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;

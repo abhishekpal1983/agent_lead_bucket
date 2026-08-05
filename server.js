@@ -2494,6 +2494,9 @@ app.get("/api/callnow2", function(req, res){
     teamOptions: cn2Teams().map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; }),
     scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
     fixtures: !!CN2_FIXTURE_DATA,
+    // The page hides anything not meant for the reader rather than relying on the route
+    // gate alone, so opening v2 to managers later cannot leak a control by accident.
+    isVP: isVP(req), role: (req.session && req.session.role) || "manager",
     listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length
   });
 });
