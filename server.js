@@ -1662,8 +1662,13 @@ const CONV_SCORE_MIN = parseInt(process.env.CONV_SCORE_MIN || "6", 10);
 // Above this many leads owed in a day, an agent cannot realistically work the queue,
 // so the manager view flags them for parking and reassignment.
 const OVERLOAD_LIMIT = parseInt(process.env.OVERLOAD_LIMIT || "100", 10);
-let FORMS = { byEmail: new Map(), source: "", counts: {}, loadedAt: null, syncing: false, error: null };
+let FORMS = { byEmail: new Map(), labels: {}, source: "", counts: {}, loadedAt: null, syncing: false, error: null };
 
+/* The submission carries every answer the lead gave. Keeping only the email and the
+   timestamp threw away the single most useful thing on a form lead: what they actually
+   said about their role, their goal and how soon they want to move. */
+const FORM_SKIP_FIELDS = ["email", "firstname", "lastname", "phone", "mobilephone",
+  "hs_context", "topmate_username", "creator_username"];
 async function fetchFormSubmissions(guid){
   const out = [];
   let after, pages = 0;
@@ -1671,14 +1676,45 @@ async function fetchFormSubmissions(guid){
     const j = await hs("/form-integrations/v1/submissions/forms/" + guid + "?limit=50" + (after ? "&after=" + encodeURIComponent(after) : ""));
     (j.results || []).forEach(function(r){
       let em = "";
-      (r.values || []).forEach(function(v){ if (String(v.name || "").toLowerCase() === "email") em = String(v.value || "").trim().toLowerCase(); });
-      if (em) out.push({ email: em, at: r.submittedAt || 0 });
+      const answers = [];
+      (r.values || []).forEach(function(v){
+        const nm = String(v.name || "").toLowerCase();
+        if (nm === "email") { em = String(v.value || "").trim().toLowerCase(); return; }
+        if (FORM_SKIP_FIELDS.indexOf(nm) >= 0) return;
+        const val = String(v.value == null ? "" : v.value).trim();
+        if (!val) return;
+        // Multi-select answers arrive semicolon separated, which reads badly on one line.
+        answers.push({ name: nm, value: val.split(";").map(function(x){ return x.trim(); }).filter(Boolean) });
+      });
+      if (em) out.push({ email: em, at: r.submittedAt || 0, answers: answers });
     });
     after = j.paging && j.paging.next && j.paging.next.after;
     pages++;
     await sleep(150);
   } while (after && pages < 200);
   return out;
+}
+
+/* Field names on a submission are internal ("what_is_your_current_role"). The question as
+   the lead saw it lives on the form definition, so it is fetched once per form. */
+async function fetchFormLabels(guid){
+  const map = {};
+  const take = function(f){
+    if (!f) return;
+    const n = String(f.name || "").toLowerCase();
+    const l = String(f.label || "").trim();
+    if (n && l) map[n] = l;
+  };
+  try {
+    const j = await hs("/marketing/v3/forms/" + guid);
+    (j.fieldGroups || []).forEach(function(g){ (g.fields || []).forEach(take); });
+    if (Object.keys(map).length) return map;
+  } catch (e) { /* fall through to the older shape below */ }
+  try {
+    const j2 = await hs("/forms/v2/forms/" + guid);
+    (j2.formFieldGroups || []).forEach(function(g){ (g.fields || []).forEach(take); });
+  } catch (e) { console.error("form labels " + guid + ": " + e.message); }
+  return map;
 }
 
 const FORMS_HOURS = parseFloat(process.env.FORMS_HOURS || "6");
@@ -1691,19 +1727,25 @@ async function syncForms(force){
   FORMS.syncing = true;
   try {
   const map = new Map();
-  const counts = {};
+  const counts = {}, labels = {};
   let ok = 0, err = "";
   for (const f of WAITLIST_FORMS) {
     try {
       const subs = await fetchFormSubmissions(f.guid);
+      if (!labels[f.guid]) labels[f.guid] = await fetchFormLabels(f.guid);
       subs.forEach(function(s){
         const k = String(s.email || "").toLowerCase();
         if (!k) return;
-        if (!map.has(k)) map.set(k, { labels: {}, n: 0, last: 0 });
+        if (!map.has(k)) map.set(k, { labels: {}, n: 0, last: 0, subs: [] });
         const e = map.get(k), at = ts(s.at);
         e.n++;
         if (at > e.last) e.last = at;
         if (!e.labels[f.label] || at > e.labels[f.label]) e.labels[f.label] = at;
+        // Keep the latest submission per form. Someone who filled the same form three
+        // times does not need three copies of the same answers on screen.
+        const prev = e.subs.filter(function(x){ return x.form === f.label; })[0];
+        if (!prev) e.subs.push({ form: f.label, guid: f.guid, at: at, answers: s.answers });
+        else if (at > prev.at) { prev.at = at; prev.answers = s.answers; }
       });
       counts[f.label] = subs.length;
       ok++;
@@ -1724,6 +1766,7 @@ async function syncForms(force){
   const keepOld = ok === 0 && FORMS.byEmail.size > 0;
   FORMS = {
     byEmail: keepOld ? FORMS.byEmail : map,
+    labels: Object.keys(labels).length ? labels : FORMS.labels,
     counts: keepOld ? FORMS.counts : counts,
     source: ok === WAITLIST_FORMS.length ? "forms-api" : (keepOld ? "forms-api (cached)" : (ok > 0 ? "forms-api (partial)" : "conversion-event fallback only")),
     loadedAt: keepOld ? FORMS.loadedAt : new Date().toISOString(),
@@ -1750,6 +1793,20 @@ function formMeta(c){
   const em = String(c.email || "").trim().toLowerCase();
   const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
   return { n: hit ? (hit.n || 0) : 0, last: hit ? (hit.last || 0) : 0 };
+}
+// What the lead actually wrote on the form, with the question worded the way they saw it.
+function formAnswers(c){
+  const em = String(c.email || "").trim().toLowerCase();
+  const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  if (!hit || !hit.subs || !hit.subs.length) return [];
+  return hit.subs.slice().sort(function(a, b){ return b.at - a.at; }).map(function(sub){
+    const lab = (FORMS.labels || {})[sub.guid] || {};
+    return { form: sub.form, at: sub.at,
+      answers: (sub.answers || []).map(function(a){
+        return { q: lab[a.name] || a.name.replace(/_/g, " ").replace(/^\w/, function(m){ return m.toUpperCase(); }),
+          a: a.value };
+      }) };
+  });
 }
 
 /* Leads that no active agent is working: unassigned, or held by a deactivated owner.
@@ -2005,6 +2062,7 @@ function cnRow(c){
     owner: String(c.hubspot_owner_id || ""),
     ownerName: o.name || (oid ? "Owner " + oid : "(unassigned)"),
     creator: c.topmate_username || "",
+    email: String(c.email || "").trim(),
     last: ts(c.last_call_date_and_time),
     fu: ts(c.follow_up_date_and_time),
     calls: num(c.callscurrent_stage),
@@ -2493,6 +2551,7 @@ app.get("/api/callnow2/leads", function(req, res){
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,
+        formSubs: (r.forms && r.forms.length) ? formAnswers({ email: r.email }) : [],
         convRecent: r.convRecent || "", convFirst: r.convFirst || "",
         bookTitle: r.bookTitle || "", bookType: r.bookType || "",
         bookAt: r.bookAt || 0, bookN: r.bookN || 0,

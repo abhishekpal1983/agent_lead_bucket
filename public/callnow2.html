@@ -140,6 +140,11 @@ tfoot tr:first-child td{background:#12304F}
 tfoot tr:first-child td:first-child{background:#12304F}
 .chips{margin-bottom:2px}
 .det td{white-space:normal}
+.fsub{margin:2px 0 10px}
+.fhd{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#566575;margin-bottom:7px}
+.qa{margin-bottom:9px}
+.qa .q{color:#4A6785;font-size:12.5px;margin-bottom:2px}
+.qa .a{color:#0A2540;font-size:14px;font-weight:500;line-height:1.4}
 </style>
 <link rel="stylesheet" href="/theme.css">
 </head><body>
@@ -272,12 +277,25 @@ function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
 function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
 function hsl(id){var p=(L&&L.portal)||{};return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
 function toggleDet(id){OPEN[id]=!OPEN[id];draw();}
+// What the lead told us on the form, laid out as question and answer the way they saw it.
+function formBlock(subs){
+  if(!subs||!subs.length)return "";
+  return subs.map(function(sub){
+    var qa=(sub.answers||[]).map(function(x){
+      return "<div class='qa'><div class='q'>"+esc(x.q)+"</div>"+
+        (x.a||[]).map(function(v){return "<div class='a'>"+esc(v)+"</div>";}).join("")+"</div>";
+    }).join("");
+    return "<div class='fsub'><div class='fhd'>"+esc(sub.form)+
+      (sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
+      (qa||"<div class='z'>No answers captured on this submission.</div>")+"</div>";
+  }).join("");}
 function detRow(r,cols){
-  var bits=[];
-  if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
-    (r.formN>1?" &middot; "+r.formN+" submissions":"")+(r.formLast?" &middot; last "+esc(tmp(r.formLast)):""));
-  if(r.convRecent)bits.push("<b>Latest conversion:</b> "+esc(r.convRecent));
-  if(r.convFirst&&r.convFirst!==r.convRecent)bits.push("<b>First conversion:</b> "+esc(r.convFirst));
+  var bits=[],h="";
+  if(r.formSubs&&r.formSubs.length)h+=formBlock(r.formSubs);
+  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
+    (r.formN>1?" &middot; "+r.formN+" submissions":"")+(r.formLast?" &middot; last "+esc(tmp(r.formLast)):"")+
+    "<br><span class='z'>Answers not captured for this submission.</span>");
+  else if(r.convRecent)bits.push("<b>Came in through:</b> "+esc(r.convRecent));
   if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+
     (r.bookType?" ("+esc(r.bookType.replace(/_/g," "))+")":"")+
     (r.bookAt?" on "+esc(tmp(r.bookAt)):"")+(r.bookN>1?" &middot; "+r.bookN+" bookings":""));
@@ -285,8 +303,8 @@ function detRow(r,cols){
   if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
   if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
   if(r.coldReason)bits.push("<b>Reason given:</b> "+esc(r.coldReason));
-  if(!bits.length)bits.push("<span class='z'>Nothing recorded on this lead beyond the basics.</span>");
-  return "<tr class='det'><td colspan='"+cols+"'>"+bits.join("<br>")+"</td></tr>";}
+  if(!h&&!bits.length)bits.push("<span class='z'>Nothing recorded on this lead beyond the basics.</span>");
+  return "<tr class='det'><td colspan='"+cols+"'>"+h+bits.join("<br>")+"</td></tr>";}
 function drill(){
   if(!PICK)return "";
   var h="<div class='sec' id='drill'><h2>Leads <button class='btn' style='float:right' onclick='unpick()'>Close</button></h2>";
