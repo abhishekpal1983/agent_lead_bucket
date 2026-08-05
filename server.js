@@ -2063,6 +2063,7 @@ function cnRow(c){
     ownerName: o.name || (oid ? "Owner " + oid : "(unassigned)"),
     creator: c.topmate_username || "",
     email: String(c.email || "").trim(),
+    source: String(c.actual_source || "").trim(),
     last: ts(c.last_call_date_and_time),
     fu: ts(c.follow_up_date_and_time),
     calls: num(c.callscurrent_stage),
@@ -2422,18 +2423,20 @@ function cn2Context(req){
   const wantAgent = String(req.query.agent || "");
   const wantTeam = String(req.query.team || "");
   const wantCreator = String(req.query.creator || "");
+  const wantSource = String(req.query.source || "");
   let teamAgents = null;
   if (wantTeam) {
     const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
     if (tt) teamAgents = (tt.agentIds || []).map(String);
   }
-  if (wantAgent || teamAgents || wantCreator) {
+  if (wantAgent || teamAgents || wantCreator || wantSource) {
     const kept = {};
     Object.keys(base).forEach(function(id){
       const c = CN2.unpack(base[id]);
       if (wantAgent && String(c.owner) !== wantAgent) return;
       if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
       if (wantCreator && c.creator !== wantCreator) return;
+      if (wantSource && (c.source || "(not set)") !== wantSource) return;
       kept[id] = base[id];
     });
     base = kept;
@@ -2485,6 +2488,8 @@ app.get("/api/callnow2", function(req, res){
       return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
     creatorOptions: Object.keys(creators).map(function(u){ return { u: u, n: creators[u] }; })
+      .sort(function(a, b){ return b.n - a.n; }),
+    sourceOptions: Object.keys(sources).map(function(u){ return { u: u, n: sources[u] }; })
       .sort(function(a, b){ return b.n - a.n; }),
     teamOptions: cn2Teams().map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; }),
     scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
@@ -2545,7 +2550,7 @@ app.get("/api/callnow2/leads", function(req, res){
         movedStage: !!(x.now && x.now.stage !== x.c.stage),
         movedFu: !!(x.now && x.now.t !== x.c.t),
         movedOwner: !!(x.now && x.now.owner !== x.c.owner),
-        ownerName: cn2OwnerName(x.c.owner), creator: x.c.creator,
+        ownerName: cn2OwnerName(x.c.owner), creator: x.c.creator, source: x.c.source || "",
         phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
         calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",

@@ -142,5 +142,18 @@ head("Off-base effort");
   eq("and it is the right one", off[0].id, "new1");
 }
 
+head("Lead source survives the pack, and an older locked list still parses");
+{
+  const c = cn2.classify({ id: "s1", stage: "counselled", fu: 0, last: 0, owner: "9",
+    creator: "ayush_singh13", source: "digital product" }, day6, { work: WORK });
+  const packed = cn2.pack(c);
+  eq("source is packed", cn2.unpack(packed).source, "digital product");
+  eq("creator still packed", cn2.unpack(packed).creator, "ayush_singh13");
+  eq("a list locked before source existed reads as blank, not a crash",
+    cn2.unpack("counselled|n|nofu|0|9|ayush_singh13").source, "");
+  eq("and the rest of that older row is still correct",
+    cn2.unpack("counselled|n|nofu|0|9|ayush_singh13").owner, "9");
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

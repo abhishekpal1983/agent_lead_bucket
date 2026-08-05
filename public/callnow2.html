@@ -166,7 +166,7 @@ tfoot tr:first-child td:first-child{background:#12304F}
 <script>
 
 var J=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={};
-var Q={team:"",agent:"",creator:""};
+var Q={team:"",agent:"",creator:"",source:""};
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function fmt(n){return (n||0).toLocaleString("en-IN");}
 function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}catch(e){
@@ -265,13 +265,19 @@ function bar(){
   h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
   h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
   h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
+  h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
   h+="<div style='align-self:flex-end'><button class='btn' onclick='load()'>Reload</button>";
-  if(Q.team||Q.agent||Q.creator)h+=" <button class='btn' onclick='Q={team:\"\",agent:\"\",creator:\"\"};load()'>Clear</button>";
+  if(Q.team||Q.agent||Q.creator||Q.source)h+=" <button class='btn' onclick='Q={team:\"\",agent:\"\",creator:\"\",source:\"\"};load()'>Clear</button>";
   h+="</div>";
   h+="<div style='margin-left:auto;align-self:flex-end;font-size:11.5px;color:#566575'>"+
     (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+
     (J.listBuiltAt?" &middot; list built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div>";
   return h+"</div>";}
+// actual_source arrives as machine values like "digital product" or "marketing webinar".
+function srcLabel(v){
+  if(!v)return "(not set)";
+  return String(v).replace(/_/g," ").replace(/^\w/,function(m){return m.toUpperCase();});
+}
 function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
   return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
 function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
@@ -291,6 +297,7 @@ function formBlock(subs){
   }).join("");}
 function detRow(r,cols){
   var bits=[],h="";
+  if(r.source)bits.push("<b>Source:</b> "+esc(srcLabel(r.source)));
   if(r.formSubs&&r.formSubs.length)h+=formBlock(r.formSubs);
   else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
     (r.formN>1?" &middot; "+r.formN+" submissions":"")+(r.formLast?" &middot; last "+esc(tmp(r.formLast)):"")+
@@ -328,6 +335,7 @@ function drill(){
     if(r.why.ifc)tags.push("<span class='tag p'>IFC due</span>");
     if(r.why.fresh)tags.push("<span class='tag p'>fresh</span>");
     if(r.needsOwner)tags.push("<span class='tag o'>needs owner</span>");
+    if(r.source)tags.push("<span class='tag src'>"+esc(srcLabel(r.source))+"</span>");
     if(r.bookTitle)tags.push("<span class='tag src'>"+esc(String(r.bookTitle).slice(0,34))+"</span>");
     var moved="";
     if(r.movedStage)moved="<div class='sub3'>was "+esc(r.openStage)+", now "+esc(r.nowStage)+"</div>";
