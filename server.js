@@ -4288,8 +4288,12 @@ app.get("/api/coaching/today", function(req, res){
   const date = String(req.query.date || coachIstDate());
   const store = coachStore();
   const done = store.sessions.filter(function(s){ return s.date === date && s.teamId === team.id; });
-  const doneCallIds = done.map(function(s){ return s.callId; });
-  const agents = coachPickAgents(team, date);
+  // The day's five are locked once and then honoured. A manager arriving before the bell
+  // locks it early rather than seeing a pick that could still move.
+  const lock = coachAssignments()[coachAssignKey(date, team.id)] || coachLock(date, team, whoami(req));
+  const agents = lock ? lock.rows.map(function(r){ return r.agentId; }) : coachPickAgents(team, date);
+  const lockedOf = {};
+  if (lock) lock.rows.forEach(function(r){ lockedOf[String(r.agentId)] = r; });
 
   const rows = agents.map(function(id){
     const existing = done.filter(function(s){ return String(s.agentId) === String(id); })[0];
@@ -4301,11 +4305,18 @@ app.get("/api/coaching/today", function(req, res){
         call: existing.call || null, auto: existing.auto || {},
         prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null };
     }
-    const call = coachPickCall(id, date, doneCallIds);
+    const a = lockedOf[String(id)];
+    if (a) {
+      return { agentId: id, agentName: owner.name || ("Owner " + id), session: null,
+        call: a.call, auto: a.auto || {},
+        prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null,
+        reason: a.reason || "" };
+    }
+    // Only reached when the call buffer is empty, so nothing can be locked yet.
     return { agentId: id, agentName: owner.name || ("Owner " + id), session: null,
-      call: call, auto: call ? coachAuto(call) : {},
+      call: null, auto: {},
       prev: prev ? { date: prev.date, actionItem: prev.actionItem, score: prev.score } : null,
-      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " + Math.round(COACH_MAX_HOURS / 24) + " days" };
+      reason: "waiting for the call history to load" };
   });
 
   res.json({
@@ -4314,6 +4325,7 @@ app.get("/api/coaching/today", function(req, res){
     items: COACH_ITEMS, rows: rows,
     callsLoadedAt: COACH.loadedAt, callsSyncing: COACH.syncing, callsError: COACH.error,
     callsPartial: !!COACH.partial, callsHeld: (COACH.calls || []).length,
+    lockedAt: lock ? lock.at : null, lockHour: COACH_LOCK_HM,
     persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS,
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
@@ -4487,6 +4499,63 @@ function coachDayDetail(date){
   return { teams: teams, agents: agents };
 }
 
+/* Locking the day's five.
+   The pick is deterministic for a given agent, date and candidate set, but the candidate
+   set moves: calls sync in hourly, leads enter and leave the priority segments, and the
+   in-memory buffer rebuilds on every deploy. So an unstarted card could change under a
+   manager mid-morning, which also weakens the whole point of a pick nobody chooses.
+   The day's five are therefore written once, at COACH_LOCK_HM, and honoured from then on.
+   A manager who opens the page before that hour locks it early, which is the same
+   guarantee reached by a different door. */
+const COACH_LOCK_HM = process.env.COACH_LOCK_HM || "09:30";
+
+function coachAssignments(){
+  const store = coachStore();
+  if (!store.assignments || typeof store.assignments !== "object") store.assignments = {};
+  return store.assignments;
+}
+function coachAssignKey(date, teamId){ return date + "|" + teamId; }
+
+function coachLock(date, team, who){
+  const all = coachAssignments();
+  const key = coachAssignKey(date, team.id);
+  if (all[key]) return all[key];
+  // Never lock a day against an empty or still-loading buffer: that would freeze "no call
+  // to review" for everyone and there would be no way back without editing the store.
+  if (!COACH.loadedAt || !(COACH.calls || []).length) return null;
+  const doneCallIds = coachStore().sessions
+    .filter(function(s){ return s.date === date && s.teamId === team.id; })
+    .map(function(s){ return s.callId; });
+  const taken = doneCallIds.slice();
+  const rows = coachPickAgents(team, date).map(function(id){
+    const call = coachPickCall(id, date, taken);
+    if (call) taken.push(call.id);
+    return { agentId: String(id), callId: call ? call.id : "", call: call || null,
+      auto: call ? coachAuto(call) : {},
+      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " +
+        Math.round(COACH_MAX_HOURS / 24) + " days" };
+  });
+  all[key] = { at: new Date().toISOString(), by: who || "system", date: date,
+    teamId: team.id, rows: rows };
+  // Assignments are only interesting while the day is open or being reviewed the morning
+  // after. Thirty days is generous and keeps the store small enough to rewrite often.
+  const keys = Object.keys(all).sort();
+  while (keys.length > 30 * Math.max(1, (ORG.teams || []).length)) { delete all[keys.shift()]; }
+  if (typeof orgSave === "function") orgSave("coach.lock", key, who || "system");
+  console.log("Coaching locked " + key + ": " + rows.filter(function(r){ return r.callId; }).length +
+    " of " + rows.length + " agents have a call");
+  return all[key];
+}
+
+// Runs on a timer. Locks every team once the hour has passed, and keeps trying through
+// the day so a call sync that was still failing at the bell does not cost the whole day.
+function coachLockDue(){
+  if (typeof ORG === "undefined") return;
+  const date = coachIstDate();
+  if (istParts(new Date()).hm < COACH_LOCK_HM) return;
+  (ORG.teams || []).forEach(function(t){ coachLock(date, t, "system"); });
+}
+
 app.post("/api/coaching/resync", function(req, res){
   if (COACH.syncing) return res.json({ ok: true, running: true });
   // Independent of the Revenue command refresh on purpose: nothing here touches CACHE.
@@ -4610,6 +4679,10 @@ SERVER = app.listen(PORT, () => {
      Offset from the lead syncs so the two are not competing for the same rate limit at
      the same second, and retried in five minutes rather than an hour when it fails. */
   setTimeout(guard("coachCalls", syncCoachCalls), 200 * 1000);
+  // Lock the day's five at the bell, and keep retrying through the day so a call sync
+  // that was still failing at 09:30 does not cost the whole day.
+  setInterval(guard("coachLock", coachLockDue), 5 * 60 * 1000);
+  setTimeout(guard("coachLock", coachLockDue), 260 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);
   setInterval(guard("coachRetry", function(){
     if (COACH.syncing) return;

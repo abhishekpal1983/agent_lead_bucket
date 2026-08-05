@@ -325,6 +325,9 @@ function render(){
     }).join("") + '</select>';
   }
   h += '<button class="btn" onclick="go()">Go</button>';
+  h += '<span class="sync">' + (j.lockedAt
+    ? "Today's five locked " + tm(j.lockedAt)
+    : "Not locked yet, locks at " + esc(j.lockHour || "09:30") + " IST") + '</span>';
   h += '<span class="sync">' + (j.callsSyncing ? "Pulling calls..."
     : (j.callsLoadedAt ? fmt(j.callsHeld || 0) + " calls held, synced " + tm(j.callsLoadedAt) : "Calls not synced yet")) + '</span>';
   if (!j.callsSyncing) h += '<button class="btn" style="font-size:11.5px;padding:3px 9px" onclick="resync(this)">Retry call sync</button>';
