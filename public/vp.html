@@ -557,7 +557,7 @@ function draw(){
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
-  else h += drawStrip() + drawCallNow() + drawExceptions();
+  else h += drawStrip() + drawCallNow() + drawRecon() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
   if (VIEW === "daily") loadDaily(DAILY_DATE);
@@ -835,6 +835,69 @@ function qbar(x){
     "<i style='display:block;height:5px;width:" + (100 - pct) + "%;background:#FF7A59'></i></div>" +
     "<div class='mut' style='font-size:11.5px;margin-top:2px'><b class='cg'>" + fmt(done) + "</b> done · <b class='cr'>" +
     fmt(due - done) + "</b> missed · " + pct + "%</div>";
+}
+var RECON = null, RECON_LOADING = false;
+function loadRecon(force){
+  if (RECON_LOADING) return;
+  RECON_LOADING = true; draw();
+  fetch("/api/reconcile/calls" + (force ? "?force=1" : ""))
+    .then(asJson)
+    .then(function(j){ RECON_LOADING = false; RECON = j; draw(); })
+    .catch(function(e){ RECON_LOADING = false; RECON = { error: e.message }; draw(); });
+}
+function reconLost(title, rows, note){
+  if (!rows || !rows.length) return "";
+  var n = rows.reduce(function(a, r){ return a + r.n; }, 0);
+  return "<details style='margin-top:7px'><summary style='cursor:pointer;font-size:12.5px;color:#37475A'>" +
+    "<b>" + fmt(n) + "</b> " + title + "</summary>" +
+    "<div class='mut' style='font-size:11.5px;margin:4px 0 6px'>" + note + "</div>" +
+    "<div class='tw'><table class='rt'><thead><tr><th>Owner</th><th class='n'>Calls</th><th>Creators</th></tr></thead><tbody>" +
+    rows.slice(0, 12).map(function(r){
+      return "<tr><td>" + esc(r.name) + "</td><td class='n'>" + fmt(r.n) + "</td><td class='mut'>" +
+        r.creators.map(function(c){ return esc(c.u) + " " + c.n; }).join(", ") + "</td></tr>";
+    }).join("") + "</tbody></table></div></details>";
+}
+// Every dashboard number is a filtered subset of what HubSpot holds. This ladder starts
+// from HubSpot's own count so the gap can be argued about rather than guessed at.
+function drawRecon(){
+  var h = "<div class='sec'><h2>Calls today, reconciled against HubSpot " +
+    "<button class='btn' style='font-size:11.5px;padding:3px 9px;margin-left:8px' " +
+    (RECON_LOADING ? "disabled" : "") + " onclick='loadRecon(1)'>" +
+    (RECON_LOADING ? "Checking..." : (RECON ? "Re-check" : "Check now")) + "</button></h2>" +
+    "<div class='sub'>Where the difference between HubSpot's count and the queue's count comes from.</div>";
+  if (!RECON) return h + "<div class='mut'>Not checked yet. This asks HubSpot directly for every contact whose last call is today, then follows each one down to the queue.</div></div>";
+  if (RECON.error) return h + "<div class='warn bad'>" + esc(RECON.error) + "</div></div>";
+  var st = RECON.steps || {};
+  var rung = function(label, v, prev, why){
+    var drop = prev == null ? 0 : prev - v;
+    return "<tr><td>" + label + "</td><td class='n'><b>" + fmt(v) + "</b></td>" +
+      "<td class='n " + (drop > 0 ? "cr" : "mut") + "'>" + (drop > 0 ? "−" + fmt(drop) : "–") + "</td>" +
+      "<td class='mut'>" + why + "</td></tr>";
+  };
+  h += "<div class='tw' style='margin-bottom:4px'><table class='rt'><thead><tr><th>Step</th>" +
+    "<th class='n'>Calls</th><th class='n'>Lost here</th><th>Why</th></tr></thead><tbody>" +
+    rung("In HubSpot, last call is today", st.hubspot, null, "the true number") +
+    rung("Held in this app", st.inCache, st.hubspot, "the app only pulls owned, priority and tracked-creator leads") +
+    rung("Has an owner", st.hasOwner, st.inCache, "unassigned leads belong to no agent") +
+    rung("Owner is on a mapped team", st.ownerOnTeam, st.hasOwner, "an agent not mapped to a team rolls up nowhere") +
+    rung("Owner is counted", st.ownerCounted, st.ownerOnTeam, "parking buckets and manager-held leads are excluded by design") +
+    rung("Lead is in a priority segment", st.prioritySegment, st.ownerCounted, "waitlist form, score 6 or more, international, or fresh") +
+    "</tbody></table></div>";
+  h += "<div class='sub' style='margin:8px 0 2px'><b>" + fmt(st.prioritySegment || 0) +
+    "</b> is the figure the Call Now queue and the daily review show. Expand any row below to see who the missing calls belong to.</div>";
+  h += reconLost("not held in this app", RECON.lost.notInCache,
+    "These leads were called but the app has never pulled them, usually because their creator is not in the tracked list or they sit in a parking bucket that is too large to load.");
+  h += reconLost("on leads with no owner", RECON.lost.noOwner, "Unassigned in HubSpot.");
+  h += reconLost("by agents not mapped to a team", RECON.lost.ownerOffTeam,
+    "Real work that rolls up to nobody. Map these agents under a manager and they start counting.");
+  h += reconLost("in parking buckets or manager-held", RECON.lost.parkingBucket,
+    "Excluded on purpose. Change NONCOUNT_OWNERS in Railway if that is wrong.");
+  h += reconLost("on leads outside the priority segments", RECON.lost.notPriority,
+    "Called, but the lead carries no waitlist form, no score of 6 or more, is not international and is not fresh.");
+  h += "<div class='mut' style='font-size:11.5px;margin-top:9px'>Checked " +
+    new Date(RECON.at).toLocaleString('en-IN') + ". Lead cache last built " +
+    (RECON.leadsLoadedAt ? new Date(RECON.leadsLoadedAt).toLocaleString('en-IN') : "never") + ".</div>";
+  return h + "</div>";
 }
 function drawCallNow(){
   var t = 0, f = 0, sc = 0, il = 0, nd = 0, due = 0, done = 0, missed = 0, ov = 0, unc = 0;

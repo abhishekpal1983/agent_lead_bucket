@@ -3292,6 +3292,114 @@ app.get("/api/sync/status", function(req, res){
   }));
 });
 
+/* Calls-today reconciliation.
+   HubSpot is the only place that knows how many contacts were actually dialled. Every
+   number on these dashboards is a filtered subset of that, and until now the ladder
+   started from the app's own cache, which hides the one loss that matters most: leads
+   HubSpot has that the app never pulled. This starts from HubSpot's own count and shows
+   where each lead falls out, by owner and by creator, so the gap is arguable rather than
+   mysterious. */
+let RECON = { at: 0, running: false, data: null, error: null };
+const RECON_TTL_MS = 5 * 60 * 1000;
+
+async function buildRecon(){
+  const day = istDayBounds();
+  const filters = [
+    { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
+    { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+  ];
+  // Pull the ids, not just the count, so the gap can be attributed.
+  const hub = {};
+  let after, pages = 0, total = 0;
+  do {
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: filters }],
+      properties: ["hubspot_owner_id", "topmate_username", "last_call_date_and_time"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+      limit: 100, after: after })});
+    total = j.total || total;
+    (j.results || []).forEach(function(r){
+      hub[r.id] = { owner: String((r.properties || {}).hubspot_owner_id || ""),
+        creator: String((r.properties || {}).topmate_username || "") };
+    });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+    pages++;
+  } while (after && pages < 60);
+
+  const teamOf = {}, teamName = {};
+  ((typeof ORG !== "undefined" && ORG.teams) || []).forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+
+  const step = { hubspot: Object.keys(hub).length, inCache: 0, hasOwner: 0, ownerOnTeam: 0,
+    ownerCounted: 0, prioritySegment: 0 };
+  const lost = { notInCache: {}, noOwner: {}, ownerOffTeam: {}, parkingBucket: {}, notPriority: {} };
+  const bump = function(box, owner, creator){
+    const o = CACHE.owners[owner] || {};
+    const k = owner ? (o.name || ("Owner " + owner)) : "(unassigned)";
+    if (!box[k]) box[k] = { n: 0, creators: {} };
+    box[k].n++;
+    const cu = creator || "(no creator)";
+    box[k].creators[cu] = (box[k].creators[cu] || 0) + 1;
+  };
+
+  const cached = {};
+  callnowPool().forEach(function(c){ cached[c.id] = c; });
+
+  Object.keys(hub).forEach(function(id){
+    const h = hub[id];
+    const c = cached[id];
+    if (!c) { bump(lost.notInCache, h.owner, h.creator); return; }
+    step.inCache++;
+    const aid = String(c.hubspot_owner_id || "");
+    if (!aid) { bump(lost.noOwner, "", h.creator); return; }
+    step.hasOwner++;
+    if (!teamOf[aid]) { bump(lost.ownerOffTeam, aid, h.creator); return; }
+    step.ownerOnTeam++;
+    if (!ownerCounted(aid)) { bump(lost.parkingBucket, aid, h.creator); return; }
+    step.ownerCounted++;
+    const r = cnRow(c), sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) { bump(lost.notPriority, aid, h.creator); return; }
+    step.prioritySegment++;
+  });
+
+  const flatten = function(box){
+    return Object.keys(box).map(function(k){
+      const creators = Object.keys(box[k].creators)
+        .map(function(u){ return { u: u, n: box[k].creators[u] }; })
+        .sort(function(a, b){ return b.n - a.n; }).slice(0, 4);
+      return { name: k, n: box[k].n, creators: creators };
+    }).sort(function(a, b){ return b.n - a.n; });
+  };
+  return {
+    at: new Date().toISOString(),
+    hubspotTotal: total,
+    steps: step,
+    lost: { notInCache: flatten(lost.notInCache), noOwner: flatten(lost.noOwner),
+      ownerOffTeam: flatten(lost.ownerOffTeam), parkingBucket: flatten(lost.parkingBucket),
+      notPriority: flatten(lost.notPriority) },
+    leadsLoadedAt: CACHE.loadedAt, deltaAt: (typeof DELTA !== "undefined" && DELTA.at) || null
+  };
+}
+
+app.get("/api/reconcile/calls", async function(req, res){
+  if (!TOKEN) return res.status(503).json({ error: "no HubSpot token configured" });
+  const force = String(req.query.force || "") === "1";
+  if (!force && RECON.data && (Date.now() - RECON.at) < RECON_TTL_MS) return res.json(RECON.data);
+  if (RECON.running) return res.json(RECON.data || { running: true });
+  RECON.running = true;
+  try {
+    const d = await buildRecon();
+    RECON = { at: Date.now(), running: false, data: d, error: null };
+    res.json(d);
+  } catch (e) {
+    RECON.running = false; RECON.error = e.message;
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/vp/daily", function(req, res){
   const all = (typeof ORG !== "undefined" && ORG.daily) || {};
   const dates = Object.keys(all).sort().reverse();
