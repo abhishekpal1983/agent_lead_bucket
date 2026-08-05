@@ -2125,7 +2125,7 @@ function ownerCounted(id){
       being dropped, so the arithmetic still closes.
    ========================================================================== */
 const CN2_SEGMENTS = ["form", "score", "fresh", "intl", "any", "needs", "all"];
-const CN2_TIMING = ["due", "over", "nofu", "fresh", "sched"];
+const CN2_TIMING = ["due", "over", "nofu", "newlead", "sched"];
 const CN2_OPEN_HM = process.env.CN2_OPEN_HM || process.env.OPEN_HM || "09:30";
 const CN2_MASK = { form: 1, score: 2, fresh: 4, intl: 8, needs: 16 };
 
@@ -2151,7 +2151,7 @@ function cn2Classify(r, day){
   return {
     stage: r.stage,
     sec: (!parked && (due || over || nofu)) ? "n" : "a",
-    t: due ? "due" : (over ? "over" : (isFresh ? "fresh" : (nofu ? "nofu" : "sched"))),
+    t: due ? "due" : (over ? "over" : (isFresh ? "newlead" : (nofu ? "nofu" : "sched"))),
     mask: mask,
     owner: r.owner || "",
     creator: r.creator || ""
@@ -2222,7 +2222,7 @@ function cn2FreezeDue(){
 
 function cn2Cell(){
   const c = {};
-  CN2_TIMING.forEach(function(k){ c[k] = 0; });
+  CN2_TIMING.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
   CN2_SEGMENTS.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
   return c;
 }
@@ -2298,6 +2298,7 @@ app.get("/api/callnow2", function(req, res){
     const cell = x.c.sec === "n" ? now[x.c.stage] : ahead[x.c.stage];
     const tot = x.c.sec === "n" ? totals.now : totals.ahead;
     cell[x.c.t]++; tot[x.c.t]++;
+    if (x.worked) { cell[x.c.t + "W"]++; tot[x.c.t + "W"]++; }
     cn2Add(cell, x.c, x.worked);
     cn2Add(tot, x.c, x.worked);
   });

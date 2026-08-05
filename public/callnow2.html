@@ -146,7 +146,7 @@ function refreeze(){
 }
 
 var TIMING = [["due","Due today"],["over","Overdue"],["nofu","No FU"],
-  ["fresh","Fresh / never worked"],["sched","Scheduled"]];
+  ["newlead","Fresh / never worked"],["sched","Scheduled"]];
 var SEGS = [["form","Form leads"],["score","Score &ge;6"],["fresh","Fresh / never called"],
   ["intl","International"],["any","Any priority"],["needs","Needs owner"],["all","All in stage"]];
 function head(){
@@ -193,16 +193,17 @@ function bodyFor(which){
 // same shape so the eye can add the two subtotals and land on the total.
 function footRow(label, cells, cls){
   var h = "<tr class='" + (cls || "") + "'><td>" + label + "</td>";
-  TIMING.forEach(function(t, i){
-    var v = cells.reduce(function(a, c){ return a + c[t[0]]; }, 0);
-    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + (v ? fmt(v) : "<span class='z'>0</span>") + "</td>";
-  });
-  SEGS.forEach(function(t, i){
-    var tot = cells.reduce(function(a, c){ return a + c[t[0]]; }, 0);
-    var w = cells.reduce(function(a, c){ return a + c[t[0] + "W"]; }, 0);
-    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + fmt(tot) +
+  // Coverage under every column, timing and segment alike. A subtotal without it is just
+  // a pile size, which is the thing that was never the question.
+  var col = function(keys, i){
+    var tot = cells.reduce(function(a, c){ return a + c[keys]; }, 0);
+    var w = cells.reduce(function(a, c){ return a + (c[keys + "W"] || 0); }, 0);
+    return "<td class='" + (i === 0 ? "sep" : "") + "'>" +
+      (tot ? fmt(tot) : "<span class='z'>0</span>") +
       "<span class='w'>" + fmt(w) + " called · " + (tot ? Math.round(100 * w / tot) : 0) + "%</span></td>";
-  });
+  };
+  TIMING.forEach(function(t, i){ h += col(t[0], i); });
+  SEGS.forEach(function(t, i){ h += col(t[0], i); });
   return h + "</tr>";
 }
 function subFoot(which){
