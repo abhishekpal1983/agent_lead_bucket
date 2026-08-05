@@ -219,7 +219,11 @@ async function fetchFreshForOwner(ownerId){
 /* Progress, so a ten minute wait after a restart is something you can watch rather than
    something you have to trust. The cache is only published at the end of the loop, which
    is why every page is empty until then. */
-let SYNC_PROGRESS = { owners: 0, done: 0, contacts: 0, startedAt: null, at: null };
+const { mapLimit } = require("./lib/pool");
+// Four at a time keeps well inside HubSpot's limits and cuts the boot wait by about that
+// much. Raise with SYNC_CONCURRENCY if the portal tolerates more.
+const SYNC_CONCURRENCY = Math.max(1, parseInt(process.env.SYNC_CONCURRENCY || "4", 10));
+let SYNC_PROGRESS = { owners: 0, done: 0, contacts: 0, phase: "", startedAt: null, at: null };
 
 async function sync(){
   if (!TOKEN) { CACHE.error = "HUBSPOT_TOKEN (or HUBSPOT_ACCESS_TOKEN) env var is not set"; return; }
@@ -232,18 +236,45 @@ async function sync(){
     const contacts = [];
     const fresh = {};
     let freshTotal = 0;
-    SYNC_PROGRESS = { owners: ids.length, done: 0, contacts: 0,
+    SYNC_PROGRESS = { owners: ids.length, done: 0, contacts: 0, phase: "staged leads",
       startedAt: new Date().toISOString(), at: new Date().toISOString() };
-    for (const id of ids) {
-      try { const rows = await fetchContactsForOwner(id); contacts.push(...rows); }
-      catch (e) { console.error("owner " + id + " sync failed: " + e.message); }
-      try { const fr = await fetchFreshForOwner(id); if (fr.length) { fresh[id] = fr; freshTotal += fr.length; } }
-      catch (e) { console.error("owner " + id + " fresh sync failed: " + e.message); }
+
+    /* Two changes here, both aimed at the ten minute dead zone after every restart.
+
+       One: owners are fetched several at a time instead of one after another. HubSpot
+       is perfectly happy with this and hs() already backs off on a 429, so the wall
+       clock drops roughly in proportion to the concurrency.
+
+       Two: staged leads are published as soon as they are all in, before the fresh
+       pull starts. Staged leads are what every stage table needs, so the app becomes
+       usable at that point rather than at the very end. Fresh leads are folded in a
+       moment later and the page picks them up on its next read. */
+    const step = function(){
       SYNC_PROGRESS.done++;
-      SYNC_PROGRESS.contacts = contacts.length + freshTotal;
       SYNC_PROGRESS.at = new Date().toISOString();
-    }
-    CACHE = { contacts, owners, fresh, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    };
+    const staged = await mapLimit(ids, SYNC_CONCURRENCY, async function(id){
+      try { const rows = await fetchContactsForOwner(id); step(); return rows; }
+      catch (e) { console.error("owner " + id + " sync failed: " + e.message); step(); return []; }
+    });
+    staged.forEach(function(rows){ contacts.push(...rows); });
+    SYNC_PROGRESS.contacts = contacts.length;
+    // Publish the half that matters most, then keep going.
+    CACHE = { contacts: contacts, owners: owners, fresh: CACHE.fresh || {},
+      loadedAt: new Date().toISOString(), syncing: true, error: null, partial: "fresh leads still loading" };
+    POOL_REV++;
+    console.log("Staged leads published: " + contacts.length + " across " + ids.length + " owners, fresh still loading");
+
+    SYNC_PROGRESS.phase = "fresh leads";
+    SYNC_PROGRESS.done = 0;
+    const freshRows = await mapLimit(ids, SYNC_CONCURRENCY, async function(id){
+      try { const fr = await fetchFreshForOwner(id); step(); return { id: id, rows: fr }; }
+      catch (e) { console.error("owner " + id + " fresh sync failed: " + e.message); step(); return { id: id, rows: [] }; }
+    });
+    freshRows.forEach(function(x){ if (x.rows.length) { fresh[x.id] = x.rows; freshTotal += x.rows.length; } });
+    SYNC_PROGRESS.contacts = contacts.length + freshTotal;
+    CACHE = { contacts, owners, fresh, loadedAt: new Date().toISOString(), syncing: false, error: null, partial: null };
+    POOL_REV++;
     console.log("Synced " + contacts.length + " staged contacts + " + freshTotal + " fresh (no stage) across " + ids.length + " owners");
   } catch (e) {
     CACHE.syncing = false; CACHE.error = e.message;
@@ -817,7 +848,8 @@ app.get("/api/health", function(req, res){
                  trackedCreators: PFRESH_LIST.length },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
-                  leadsSoFar: SYNC_PROGRESS.contacts, startedAt: SYNC_PROGRESS.startedAt } };
+                  leadsSoFar: SYNC_PROGRESS.contacts, phase: SYNC_PROGRESS.phase,
+                  startedAt: SYNC_PROGRESS.startedAt, partial: CACHE.partial || null } };
       } catch (e) { return { error: (e && e.message) || String(e) }; }
     })() });
 });
@@ -3150,6 +3182,10 @@ const OPEN_HM = process.env.OPEN_HM || "09:30";
 const SNAP_VERSION = 2;
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
+  // Staged leads are now published before the fresh pull finishes, so "loaded" no longer
+  // means "complete". Freezing a day's denominator against a half-built pool would be
+  // wrong for the rest of that day and would look authoritative.
+  if (CACHE.syncing) return;
   const day = istDayBounds();
   const key = istParts(new Date()).date;
   const teamOf = {}, teamName = {};
@@ -3291,7 +3327,7 @@ function backCounters(){
     audits: 0, auditTarget: 0 };
 }
 async function snapBackfill(key){
-  if (typeof ORG === "undefined" || !TOKEN || !CACHE.loadedAt) return;
+  if (typeof ORG === "undefined" || !TOKEN || !CACHE.loadedAt || CACHE.syncing) return;
   ORG.daily = ORG.daily || {};
   if (ORG.daily[key]) return; // a live snapshot, or an earlier backfill, already covers it
   if (!COUNSEL.loadedAt || !SHEET.loadedAt) return; // retried hourly until both are in
