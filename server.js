@@ -2124,271 +2124,285 @@ function ownerCounted(id){
       whatever its follow-up says. It is held in the second section instead of
       being dropped, so the arithmetic still closes.
    ========================================================================== */
-const CN2_SEGMENTS = ["form", "score", "fresh", "intl", "any", "needs", "all"];
-const CN2_TIMING = ["due", "over", "nofu", "newlead", "sched"];
-const CN2_OPEN_HM = process.env.CN2_OPEN_HM || process.env.OPEN_HM || "09:30";
-const CN2_MASK = { form: 1, score: 2, fresh: 4, intl: 8, needs: 16 };
+/* ==========================================================================
+   Call Now v2. The model lives in lib/cn2.js as pure functions so it can be
+   tested locally against fixtures with no HubSpot token; everything here is
+   plumbing. v1 is untouched on purpose, the floor uses it every day.
+   ========================================================================== */
+const CN2 = require("./lib/cn2");
+const CN2_WORK_DAYS = process.env.WORK_DAYS || CN2.DEFAULT_WORK_DAYS;
+const CN2_WORK = CN2.workDaySet(CN2_WORK_DAYS);
+// Midnight, so a call made at 09:00 counts. Nothing the base needs is unknown at 00:05.
+const CN2_FREEZE_HM = process.env.CN2_FREEZE_HM || "00:05";
+// Leads in these stages only enter v2 when they qualify, otherwise ghosted would swamp it.
+const CN2_EXTRA_STAGES = ["IFC", "ghosted", "ni_not_interested"];
+const CN2_STAGES = CN_DEFAULT_STAGES.filter(function(s){ return s !== "dnp_other"; }).concat(CN2_EXTRA_STAGES);
 
-function cn2Classify(r, day){
-  const sg = cnSegs(r);
-  const over = !!(r.fu && r.fu < day.start);
-  const due = !!(r.fu && r.fu >= day.start && r.fu < day.end);
-  const nofu = !r.fu;
-  // A DNP lead with no priority signal is never presented as today's work, whatever its
-  // follow-up says. It is held in the second section rather than dropped, so the two
-  // sections still add up to the stage total.
-  const parked = r.stage === "dnp_other";
-  let mask = 0;
-  if (sg.form) mask |= CN2_MASK.form;
-  if (sg.score) mask |= CN2_MASK.score;
-  if (sg.fresh) mask |= CN2_MASK.fresh;
-  if (sg.intl) mask |= CN2_MASK.intl;
-  if (r.needsOwner) mask |= CN2_MASK.needs;
-  // A never-worked fresh lead has no follow-up by definition. Letting it sit in "No FU"
-  // buries the staged leads that genuinely lost their next step, which is the number a
-  // manager needs. It gets its own bucket.
-  const isFresh = r.stage === "__fresh" && nofu;
-  return {
-    stage: r.stage,
-    sec: (!parked && (due || over || nofu)) ? "n" : "a",
-    t: due ? "due" : (over ? "over" : (isFresh ? "newlead" : (nofu ? "nofu" : "sched"))),
-    mask: mask,
-    owner: r.owner || "",
-    creator: r.creator || ""
-  };
+// Fixtures let the whole page be driven locally. Never set this in Railway.
+const CN2_FIXTURES = String(process.env.CN2_FIXTURES || "") === "1";
+let CN2_FIXTURE_DATA = null;
+if (CN2_FIXTURES) {
+  try { CN2_FIXTURE_DATA = require("./fixtures/make.js"); console.log("Call Now v2 running on fixtures"); }
+  catch (e) { console.error("fixture load failed: " + e.message); }
 }
-function cn2Pack(c){ return [c.stage, c.sec, c.t, c.mask, c.owner, c.creator].join("|"); }
-function cn2Unpack(v){
-  const a = String(v).split("|");
-  return { stage: a[0], sec: a[1], t: a[2], mask: parseInt(a[3], 10) || 0, owner: a[4] || "", creator: a[5] || "" };
+function cn2Now(){ return CN2_FIXTURE_DATA ? CN2_FIXTURE_DATA.now : Date.now(); }
+function cn2Teams(){
+  if (CN2_FIXTURE_DATA) return CN2_FIXTURE_DATA.teams;
+  return (typeof ORG !== "undefined" && ORG.teams) || [];
 }
-function cn2Hit(c, seg){
-  if (seg === "all") return true;
-  if (seg === "any") return !!(c.mask & (CN2_MASK.form | CN2_MASK.score | CN2_MASK.fresh | CN2_MASK.intl));
-  return !!(c.mask & (CN2_MASK[seg] || 0));
+function cn2OwnerName(id){
+  if (CN2_FIXTURE_DATA) {
+    const a = CN2_FIXTURE_DATA.agents.filter(function(x){ return x.id === String(id); })[0];
+    return a ? a.name : (id ? "Owner " + id : "(unassigned)");
+  }
+  const o = CACHE.owners[id] || {};
+  return o.name || (id ? "Owner " + id : "(unassigned)");
 }
 
-/* The denominator has to be the one that stood at the start of the day. Freezing counts
-   alone is not enough: a lead called at noon can change stage or have its follow-up moved,
-   and would then be counted as worked against a different cell from the one it was in at
-   the bell. So the classification of every lead is frozen by id, once, and progress is
-   measured against that. Kept for the current day only, written once. */
+/* The v2 population. Every lead in the working stages, plus leads in the closed stages
+   only when they have refilled the form or are an IFC that has come due. */
+function cn2Qualifies(r, day){
+  // Working stages are in wholesale. Closed stages only enter when the lead has asked
+  // again, or is an IFC that has come due, otherwise ghosted alone would swamp the page.
+  if (CN2_STAGES.indexOf(r.stage) < 0) return false;
+  if (CN2_EXTRA_STAGES.indexOf(r.stage) < 0) return true;
+  if (CN2.isRefill(r)) return true;
+  if (r.stage === "IFC") {
+    const t = CN2.timingOf(r, day, CN2_WORK);
+    return t === "due" || t === "over";
+  }
+  return false;
+}
+function cn2Rows(){
+  const day = CN2.dayBoundsFor(cn2Now());
+  const src = CN2_FIXTURE_DATA ? CN2_FIXTURE_DATA.rows
+    : cnFilter({ scope: "tracked", stages: CN2_STAGES.join(",") }).map(function(r){
+        // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
+        if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
+        return r;
+      }).filter(function(r){ return ownerCounted(r.owner); });
+  return src.filter(function(r){ return cn2Qualifies(r, day); });
+}
+
 function cn2Store(){
   if (typeof ORG === "undefined") return null;
-  if (!ORG.cn2open || typeof ORG.cn2open !== "object") ORG.cn2open = { date: "", at: null, rows: {} };
-  return ORG.cn2open;
+  if (!ORG.cn2base || typeof ORG.cn2base !== "object") ORG.cn2base = { date: "", at: null, rows: {} };
+  return ORG.cn2base;
 }
 function cn2Freeze(force){
   const st = cn2Store();
   if (!st) return null;
-  /* Freezing against a pool that is still loading is worse than not freezing at all: the
-     denominator is wrong for the rest of the day and looks authoritative. Every source
-     that feeds callnowPool has to have landed first, and the result has to be in the same
-     league as the last good freeze. */
-  if (!CACHE.loadedAt || CACHE.syncing) return null;
-  if (!PFRESH.loadedAt || PFRESH.syncing) return null;
-  if (!UNOWNED.loadedAt) return null;
-  const date = istParts(new Date()).date;
+  /* Freezing against a pool that is still loading is worse than not freezing: the
+     denominator is wrong all day and looks authoritative. Everything feeding the pool
+     has to have landed, and the result has to be in the same league as last time. */
+  if (!CN2_FIXTURE_DATA) {
+    if (!CACHE.loadedAt || CACHE.syncing) return null;
+    if (!PFRESH.loadedAt || PFRESH.syncing) return null;
+    if (!UNOWNED.loadedAt) return null;
+  }
+  const date = istParts(new Date(cn2Now())).date;
   if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
-  const day = istDayBounds();
+  const day = CN2.dayBoundsFor(cn2Now());
   const rows = {};
   let n = 0;
-  cnFilter({ scope: "tracked" }).forEach(function(r){
-    if (!ownerCounted(r.owner)) return;
-    rows[r.id] = cn2Pack(cn2Classify(r, day));
+  cn2Rows().forEach(function(r){
+    rows[r.id] = CN2.pack(CN2.classify(r, day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN }));
     n++;
   });
   if (!n) return null;
   const wasN = st.lastGood || 0;
   if (!force && wasN && n < wasN * 0.6) {
-    console.error("Call Now v2 freeze refused: " + n + " leads against a usual " + wasN +
-      ". The pool looks incomplete, retrying on the next pass.");
+    console.error("Call Now v2 base refused: " + n + " leads against a usual " + wasN +
+      ", the pool looks incomplete. Retrying on the next pass.");
     return null;
   }
-  ORG.cn2open = { date: date, at: new Date().toISOString(), rows: rows,
+  ORG.cn2base = { date: date, at: new Date().toISOString(), rows: rows,
     lastGood: Math.max(n, st.lastGood || 0) };
-  if (typeof orgSave === "function") orgSave("cn2.freeze", date + ":" + n, "system");
-  console.log("Call Now v2 frozen for " + date + ": " + n + " leads");
-  return ORG.cn2open;
+  if (typeof orgSave === "function") orgSave("cn2.base", date + ":" + n, "system");
+  console.log("Call Now v2 base frozen for " + date + ": " + n + " leads");
+  return ORG.cn2base;
 }
 function cn2FreezeDue(){
   const st = cn2Store();
   if (!st) return;
-  const date = istParts(new Date()).date;
+  const date = istParts(new Date(cn2Now())).date;
   if (st.date === date) return;
-  if (istParts(new Date()).hm < CN2_OPEN_HM) return;
+  if (istParts(new Date(cn2Now())).hm < CN2_FREEZE_HM) return;
   cn2Freeze(false);
 }
 
-function cn2Cell(){
-  const c = {};
-  CN2_TIMING.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
-  CN2_SEGMENTS.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
-  return c;
-}
-function cn2Add(cell, c, worked){
-  CN2_SEGMENTS.forEach(function(k){
-    if (!cn2Hit(c, k)) return;
-    cell[k]++;
-    if (worked) cell[k + "W"]++;
-  });
-}
+// One place that decides which leads a v2 request is about, so the matrix, the agent
+// table and the drill down can never disagree with each other.
+function cn2Context(req){
+  const day = CN2.dayBoundsFor(cn2Now());
+  const store = cn2Store();
+  const today = istParts(new Date(cn2Now())).date;
+  const frozen = !!(store && store.date === today && store.rows && Object.keys(store.rows).length);
+  const rows = cn2Rows();
+  const live = {};
+  rows.forEach(function(r){ live[r.id] = r; });
 
-// One place that decides which leads a v2 request is about, so the matrix and the drill
-// down can never disagree with each other.
-function cn2Set(req){
-  const day = istDayBounds();
-  const frozen = cn2Store();
-  const isFrozen = !!(frozen && frozen.date === istParts(new Date()).date && frozen.rows &&
-    Object.keys(frozen.rows).length);
-  const pool = {};
-  cnFilter({ scope: "tracked" }).forEach(function(r){ pool[r.id] = r; });
+  let base = {};
+  if (frozen) base = store.rows;
+  else rows.forEach(function(r){ base[r.id] = CN2.pack(CN2.classify(r, day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN })); });
 
+  // Filters are applied to the base, not the live pool, so the denominator a manager
+  // sees is the same one the totals were built from.
   const wantAgent = String(req.query.agent || "");
   const wantTeam = String(req.query.team || "");
   const wantCreator = String(req.query.creator || "");
-  const wantIntl = String(req.query.intl || "");
   let teamAgents = null;
-  if (wantTeam && typeof ORG !== "undefined") {
-    const tt = (ORG.teams || []).filter(function(t){ return t.id === wantTeam; })[0];
+  if (wantTeam) {
+    const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
     if (tt) teamAgents = (tt.agentIds || []).map(String);
   }
-
-  const out = [];
-  const push = function(id, c){
-    if (wantAgent && String(c.owner) !== wantAgent) return;
-    if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
-    if (wantCreator && c.creator !== wantCreator) return;
-    if (wantIntl === "yes" && !(c.mask & CN2_MASK.intl)) return;
-    if (wantIntl === "no" && (c.mask & CN2_MASK.intl)) return;
-    const live = pool[id] || null;
-    const nowC = live ? cn2Classify(live, day) : null;
-    out.push({ id: id, c: c, live: live, now: nowC,
-      worked: !!(live && live.last >= day.start && live.last < day.end),
-      gone: !live,
-      movedStage: !!(nowC && nowC.stage !== c.stage),
-      movedFu: !!(nowC && nowC.t !== c.t),
-      movedOwner: !!(nowC && nowC.owner !== c.owner) });
-  };
-
-  if (isFrozen) {
-    Object.keys(frozen.rows).forEach(function(id){ push(id, cn2Unpack(frozen.rows[id])); });
-  } else {
-    Object.keys(pool).forEach(function(id){
-      const r = pool[id];
-      if (!ownerCounted(r.owner)) return;
-      push(id, cn2Classify(r, day));
+  if (wantAgent || teamAgents || wantCreator) {
+    const kept = {};
+    Object.keys(base).forEach(function(id){
+      const c = CN2.unpack(base[id]);
+      if (wantAgent && String(c.owner) !== wantAgent) return;
+      if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
+      if (wantCreator && c.creator !== wantCreator) return;
+      kept[id] = base[id];
     });
+    base = kept;
   }
-  return { rows: out, frozen: isFrozen, frozenAt: isFrozen ? frozen.at : null, day: day };
+  return { day: day, base: base, live: live, rows: rows, frozen: frozen,
+    frozenAt: frozen ? store.at : null };
+}
+
+function cn2StageOrder(base){
+  const seen = {};
+  Object.keys(base).forEach(function(id){ seen[CN2.unpack(base[id]).stage] = 1; });
+  const order = CN2_STAGES.filter(function(s){ return seen[s]; });
+  Object.keys(seen).forEach(function(s){ if (order.indexOf(s) < 0) order.push(s); });
+  return order;
 }
 
 app.get("/api/callnow2", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  const set = cn2Set(req);
-  const order = String(req.query.stages || "").split(",").map(function(x){ return x.trim(); }).filter(Boolean);
-  const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
+  const ctx = cn2Context(req);
+  const order = cn2StageOrder(ctx.base);
+  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
+  const off = CN2.offBase(ctx.base, ctx.rows, ctx.day);
 
-  const now = {}, ahead = {}, totals = { now: cn2Cell(), ahead: cn2Cell() };
-  stageOrder.forEach(function(s){ now[s] = cn2Cell(); ahead[s] = cn2Cell(); });
-  let gone = 0;
-  set.rows.forEach(function(x){
-    if (!now[x.c.stage]) return;
-    if (x.gone) gone++;
-    const cell = x.c.sec === "n" ? now[x.c.stage] : ahead[x.c.stage];
-    const tot = x.c.sec === "n" ? totals.now : totals.ahead;
-    cell[x.c.t]++; tot[x.c.t]++;
-    if (x.worked) { cell[x.c.t + "W"]++; tot[x.c.t + "W"]++; }
-    cn2Add(cell, x.c, x.worked);
-    cn2Add(tot, x.c, x.worked);
-  });
-
-  // Filter options come from the frozen set so they cannot offer an agent with no rows.
   const agents = {}, creators = {};
-  const move = { called: 0, stage: 0, fu: 0, owner: 0, gone: 0, still: 0 };
-  set.rows.forEach(function(x){
-    if (x.c.owner) agents[x.c.owner] = (agents[x.c.owner] || 0) + 1;
-    if (x.c.creator) creators[x.c.creator] = (creators[x.c.creator] || 0) + 1;
-    if (x.worked) move.called++;
-    if (x.movedStage) move.stage++;
-    if (x.movedFu) move.fu++;
-    if (x.movedOwner) move.owner++;
-    if (x.gone) move.gone++;
-    if (!x.worked && !x.movedStage && !x.movedFu && !x.gone) move.still++;
+  Object.keys(ctx.base).forEach(function(id){
+    const c = CN2.unpack(ctx.base[id]);
+    const a = c.owner || "none";
+    agents[a] = (agents[a] || 0) + 1;
+    if (c.creator) creators[c.creator] = (creators[c.creator] || 0) + 1;
   });
 
   res.json({
-    stages: stageOrder.map(function(s){
-      return { stage: s, label: CN_STAGE_LABELS[s] || s, now: now[s], ahead: ahead[s] };
+    stages: order.map(function(s){
+      return { stage: s, label: CN_STAGE_LABELS[s] || s,
+        n: agg.sections.n[s], a: agg.sections.a[s], d: agg.sections.d[s] };
     }),
-    totals: totals, segments: CN2_SEGMENTS, timing: CN2_TIMING,
-    frozen: set.frozen, frozenAt: set.frozenAt, freezeHour: CN2_OPEN_HM, gone: gone,
-    movement: move,
+    totals: agg.totals, movement: agg.movement,
+    offBase: { leads: off.length, calls: off.length },
+    timing: CN2.TIMING, columns: CN2.COLUMNS,
+    frozen: ctx.frozen, frozenAt: ctx.frozenAt, freezeHour: CN2_FREEZE_HM, workDays: CN2_WORK_DAYS,
+    baseSize: Object.keys(ctx.base).length,
     agentOptions: Object.keys(agents).map(function(id){
-      const o = CACHE.owners[id] || {};
-      return { id: id, name: o.name || ("Owner " + id), n: agents[id], active: o.active !== false };
+      return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
     creatorOptions: Object.keys(creators).map(function(u){ return { u: u, n: creators[u] }; })
       .sort(function(a, b){ return b.n - a.n; }),
-    teamOptions: ((typeof ORG !== "undefined" && ORG.teams) || []).map(function(t){
-      return { id: t.id, name: t.name || "(unnamed)" };
-    }),
-    scoreMin: CONV_SCORE_MIN, loadedAt: CACHE.loadedAt, syncing: CACHE.syncing
+    teamOptions: cn2Teams().map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; }),
+    scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
+    fixtures: !!CN2_FIXTURE_DATA
   });
 });
 
-// Drill down. Same lead shape the original Call Now uses, so the row reads identically.
+/* Agent and manager rollup. Same buckets, one row per agent, so "100 due today, 60
+   worked" reads at every level without a second definition anywhere. */
+app.get("/api/callnow2/agents", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  const ctx = cn2Context(req);
+  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
+  const teamOf = {}, teamName = {};
+  cn2Teams().forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const off = {};
+  CN2.offBase(ctx.base, ctx.rows, ctx.day).forEach(function(r){
+    const a = String(r.owner || "none");
+    off[a] = (off[a] || 0) + 1;
+  });
+  const rows = Object.keys(agg.byAgent).map(function(id){
+    const tid = teamOf[id];
+    return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id),
+      team: tid ? teamName[tid] : "", teamId: tid || "",
+      n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
+      offBase: off[id] || 0 };
+  }).sort(function(x, y){ return y.n.all - x.n.all; });
+  const teams = {};
+  rows.forEach(function(r){
+    const k = r.teamId || "";
+    if (!teams[k]) teams[k] = { id: k, name: r.team || "Unmapped", n: CN2.cell(), a: CN2.cell(), d: CN2.cell(), offBase: 0, agents: 0 };
+    ["n", "a", "d"].forEach(function(sec){
+      Object.keys(teams[k][sec]).forEach(function(key){ teams[k][sec][key] += r[sec][key]; });
+    });
+    teams[k].offBase += r.offBase; teams[k].agents++;
+  });
+  res.json({ agents: rows, teams: Object.keys(teams).map(function(k){ return teams[k]; })
+    .sort(function(x, y){ return y.n.all - x.n.all; }),
+    frozen: ctx.frozen, frozenAt: ctx.frozenAt, timing: CN2.TIMING, columns: CN2.COLUMNS });
+});
+
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  const set = cn2Set(req);
-  const stage = String(req.query.stage || "");
-  const sec = String(req.query.sec || "");
-  const seg = String(req.query.seg || "all");
-  const t = String(req.query.t || "");
-  const worked = String(req.query.worked || "");
+  const ctx = cn2Context(req);
+  const stage = String(req.query.stage || ""), sec = String(req.query.sec || "");
+  const col = String(req.query.col || "all"), t = String(req.query.t || "");
+  const worked = String(req.query.worked || ""), moved = String(req.query.moved || "");
   const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
 
-  let rows = set.rows.filter(function(x){
-    if (stage && x.c.stage !== stage) return false;
-    if (sec && x.c.sec !== sec) return false;
-    if (t && x.c.t !== t) return false;
-    if (worked === "1" && !x.worked) return false;
-    if (worked === "0" && x.worked) return false;
-    const mv = String(req.query.moved || "");
-    if (mv === "stage" && !x.movedStage) return false;
-    if (mv === "fu" && !x.movedFu) return false;
-    if (mv === "owner" && !x.movedOwner) return false;
-    if (mv === "gone" && !x.gone) return false;
-    if (mv === "still" && (x.worked || x.movedStage || x.movedFu || x.gone)) return false;
-    return cn2Hit(x.c, seg);
+  const picked = [];
+  Object.keys(ctx.base).forEach(function(id){
+    const c = CN2.unpack(ctx.base[id]);
+    if (stage && c.stage !== stage) return;
+    if (sec && c.sec !== sec) return;
+    if (t && c.t !== t) return;
+    if (!CN2.hit(c, col)) return;
+    const cur = ctx.live[id] || null;
+    const isWorked = !!(cur && cur.last >= ctx.day.start && cur.last < ctx.day.end);
+    if (worked === "1" && !isWorked) return;
+    if (worked === "0" && isWorked) return;
+    const nowC = cur ? CN2.classify(cur, ctx.day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN }) : null;
+    if (moved === "stage" && !(nowC && nowC.stage !== c.stage)) return;
+    if (moved === "fu" && !(nowC && nowC.t !== c.t)) return;
+    if (moved === "owner" && !(nowC && nowC.owner !== c.owner)) return;
+    if (moved === "gone" && cur) return;
+    if (moved === "still" && (isWorked || !cur || nowC.stage !== c.stage || nowC.t !== c.t)) return;
+    picked.push({ id: id, c: c, cur: cur, now: nowC, worked: isWorked });
   });
-  const total = rows.length;
-  rows = rows.sort(function(a, b){
-    if (a.worked !== b.worked) return a.worked ? 1 : -1;   // unworked first, that is the job
-    const af = a.live ? a.live.fu : 0, bf = b.live ? b.live.fu : 0;
+  const total = picked.length;
+  const out = picked.sort(function(a, b){
+    if (a.worked !== b.worked) return a.worked ? 1 : -1;
+    const af = a.cur ? a.cur.fu : 0, bf = b.cur ? b.cur.fu : 0;
     return (af || Infinity) - (bf || Infinity);
   }).slice(0, limit);
 
   res.json({
-    total: total, shown: rows.length, frozen: set.frozen,
-    rows: rows.map(function(x){
-      const r = x.live;
-      const o = CACHE.owners[x.c.owner] || {};
+    total: total, shown: out.length, frozen: ctx.frozen,
+    rows: out.map(function(x){
+      const r = x.cur || {};
       return {
-        id: x.id, worked: x.worked, gone: x.gone,
-        openStage: x.c.stage, openTiming: x.c.t, section: x.c.sec,
-        movedStage: x.movedStage, movedFu: x.movedFu, movedOwner: x.movedOwner,
+        id: x.id, worked: x.worked, gone: !x.cur,
+        name: r.name || "(no longer in the pool)",
+        openStage: x.c.stage, openTiming: x.c.t, section: x.c.sec, why: x.c.why,
         nowStage: x.now ? x.now.stage : "", nowTiming: x.now ? x.now.t : "",
-        name: r ? r.name : "(no longer in the pool)",
-        stage: r ? r.stage : x.c.stage,
-        ownerName: r ? r.ownerName : (o.name || (x.c.owner ? "Owner " + x.c.owner : "(unassigned)")),
-        creator: x.c.creator,
-        phone: r ? r.phone : "",
-        last: r ? r.last : 0, fu: r ? r.fu : 0,
-        calls: r ? r.calls : 0, own: r ? r.own : 0,
-        score: r ? r.score : 0, intl: !!(x.c.mask & CN2_MASK.intl),
-        forms: r ? r.forms : [], needsOwner: !!(x.c.mask & CN2_MASK.needs),
-        why: r ? r.why : "", outcome: r ? r.outcome : ""
+        movedStage: !!(x.now && x.now.stage !== x.c.stage),
+        movedFu: !!(x.now && x.now.t !== x.c.t),
+        movedOwner: !!(x.now && x.now.owner !== x.c.owner),
+        ownerName: cn2OwnerName(x.c.owner), creator: x.c.creator,
+        phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
+        calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
+        entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
+        whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner
       };
     }),
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
@@ -3711,6 +3725,37 @@ app.get("/api/reconcile/calls", async function(req, res){
     RECON.running = false; RECON.error = e.message;
     res.status(500).json({ error: e.message });
   }
+});
+
+/* A second Railway service gets its own disk, so teams, mapping and targets start empty
+   there. These two let the whole org store be copied across in one download and one
+   paste, rather than retyping twenty-eight mappings. Read-only export, and an import that
+   refuses anything that is not shaped like an org store. */
+app.get("/api/org/export", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  res.setHeader("Content-Disposition", "attachment; filename=org-export.json");
+  res.json({
+    exportedAt: new Date().toISOString(),
+    teams: ORG.teams || [], targets: ORG.targets || {}, benchmarks: ORG.benchmarks || {},
+    creators: ORG.creators || []
+  });
+});
+
+app.post("/api/org/import", express.json({ limit: "4mb" }), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  const b = req.body || {};
+  if (!Array.isArray(b.teams)) return res.status(400).json({ error: "that file has no teams in it" });
+  // Only the setup travels. Daily snapshots and coaching sessions belong to whichever
+  // service produced them and must not be overwritten by a copy from somewhere else.
+  ORG.teams = b.teams;
+  if (b.targets && typeof b.targets === "object") ORG.targets = b.targets;
+  if (b.benchmarks && typeof b.benchmarks === "object") ORG.benchmarks = b.benchmarks;
+  if (Array.isArray(b.creators) && b.creators.length) {
+    ORG.creators = b.creators;
+    if (typeof adoptStoredCreators === "function") adoptStoredCreators();
+  }
+  if (typeof orgSave === "function") orgSave("org.import", String(b.teams.length) + " teams", whoami(req));
+  res.json({ ok: true, teams: ORG.teams.length, creators: (ORG.creators || []).length });
 });
 
 app.get("/api/vp/daily", function(req, res){

@@ -1,350 +1,242 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Call Now v2</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:#F4F7FA;color:#0A2540;-webkit-font-smoothing:antialiased}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#F4F7FA;color:#0A2540;-webkit-font-smoothing:antialiased}
 .hdr{background:#0A2540;color:#fff;padding:15px 22px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
 .hdr h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.02em}
-.hdr .tag{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
-  background:#1E3A5F;color:#93C5FD;padding:3px 9px;border-radius:5px}
-.hdr p{margin:0;font-size:12.5px;color:#93A7BC;flex:1 1 260px}
+.hdr .tag{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;background:#1E3A5F;color:#93C5FD;padding:3px 9px;border-radius:5px}
+.hdr .tag.fx{background:#5B3A1E;color:#FBBF77}
+.hdr p{margin:0;font-size:12.5px;color:#93A7BC;flex:1 1 240px}
 .hdr a{color:#7DD3FC;text-decoration:none;font-size:12px;font-weight:600}
-.wrap{max-width:1760px;margin:0 auto;padding:18px 22px 60px}
-.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
-select,input{border:1px solid #DCE4EC;border-radius:6px;padding:6px 10px;font-size:13px;background:#fff;
-  font-family:inherit;color:#0A2540}
-select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #DCEDF6}
-.btn{border:1px solid #DCE4EC;background:#fff;border-radius:6px;padding:6px 13px;font-size:12.5px;
-  font-weight:600;cursor:pointer;color:#37475A}
+.wrap{max-width:1880px;margin:0 auto;padding:18px 22px 70px}
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:13px}
+select{border:1px solid #DCE4EC;border-radius:6px;padding:6px 10px;font-size:13px;background:#fff;font-family:inherit;color:#0A2540}
+select:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #DCEDF6}
+.btn{border:1px solid #DCE4EC;background:#fff;border-radius:6px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;color:#37475A}
 .btn:hover{background:#EDF2F7}
-.sec{background:#fff;border:1px solid #E3E9EF;border-radius:12px;padding:15px 17px 6px;margin-bottom:16px;
-  box-shadow:0 1px 2px rgba(10,37,64,.04)}
-.sec h2{margin:0 0 2px;font-size:15.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:baseline;gap:9px}
+.btn.mv{font-weight:400;color:#4A5A6A}.btn.mv b{color:#0A2540;font-variant-numeric:tabular-nums}
+.btn.mv.on{background:#0A2540;color:#93A7BC;border-color:#0A2540}.btn.mv.on b{color:#fff}
+.mvbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+.mvl{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8B99A8;margin-right:2px}
+.sec{background:#fff;border:1px solid #E3E9EF;border-radius:12px;padding:15px 17px 8px;margin-bottom:16px;box-shadow:0 1px 2px rgba(10,37,64,.04)}
+.sec h2{margin:0 0 2px;font-size:15.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
 .sec .sub{font-size:12.5px;color:#6B7A8A;margin:0 0 11px;line-height:1.55}
-.spine{display:inline-block;width:4px;height:15px;border-radius:2px;vertical-align:-2px}
-.spine.now{background:#B4553A}.spine.ahead{background:#4F7FA8}
+.spine{display:inline-block;width:4px;height:15px;border-radius:2px}
+.spine.n{background:#B4553A}.spine.a{background:#4F7FA8}.spine.d{background:#8B99A8}.spine.t{background:#3F8C77}
 .tw{border:1px solid #E3E9EF;border-radius:9px;overflow:auto}
 table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
-th{background:#F4F7FA;padding:8px 10px;font-size:10.5px;font-weight:700;color:#5A6B7D;letter-spacing:.05em;
-  text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #DCE4EC;text-align:right;vertical-align:bottom}
+th{background:#F4F7FA;padding:8px 9px;font-size:10.5px;font-weight:700;color:#5A6B7D;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #DCE4EC;text-align:right;vertical-align:bottom}
 th:first-child{text-align:left}
 th.grp{text-align:center;border-bottom:none;padding-bottom:2px;color:#8B99A8;letter-spacing:.09em}
-td{padding:8px 10px;border-bottom:1px solid #F0F4F8;white-space:nowrap;text-align:right;
-  font-variant-numeric:tabular-nums}
+td{padding:7px 9px;border-bottom:1px solid #F0F4F8;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
 td:first-child{text-align:left}
 tbody tr:hover td{background:#FAFCFE}
-tr:last-child td{border-bottom:none}
 th.sep,td.sep{border-left:1px solid #E3E9EF}
-.pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block;white-space:nowrap}
-.z{color:#C3CDD7}
-.hot{font-weight:600}
-tfoot td{background:#0A2540;color:#fff;font-weight:600;border-bottom:none;padding:10px}
-tfoot td:first-child{border-radius:0 0 0 8px}
-tfoot td:last-child{border-radius:0 0 8px 0}
-tfoot .w{display:block;font-size:11px;font-weight:400;color:#93A7BC;margin-top:2px}
-.note{font-size:11.5px;color:#6B7A8A;line-height:1.6;margin:9px 2px 4px}
-.note a,.sub a{color:#0091AE;font-weight:600;text-decoration:none}
 td.clik{cursor:pointer}
 td.clik:hover{background:#EDF6FA !important;box-shadow:inset 0 0 0 1px #B6DCE8}
 td.sel{background:#DCEDF6 !important;box-shadow:inset 0 0 0 2px #0091AE}
 .tt{display:block;font-weight:600}
-.pg{display:block;font-size:10.5px;font-weight:600;margin-top:2px;letter-spacing:.01em}
+.pg{display:block;font-size:10.5px;font-weight:600;margin-top:1px}
 .pg.g{color:#0A5346}.pg.a{color:#7A4A08}.pg.r{color:#A9573A}
-tbody tr.done td{background:#F5FAF8}
+.z{color:#C3CDD7}
+tfoot td{background:#0A2540;color:#fff;font-weight:600;border-bottom:none;padding:9px}
+tfoot tr.sub td{background:#1E3A5F}
+tfoot tr:last-child td:first-child{border-radius:0 0 0 8px}
+tfoot tr:last-child td:last-child{border-radius:0 0 8px 0}
+tfoot .w{display:block;font-size:10.5px;font-weight:400;color:#93A7BC;margin-top:1px}
+.note{font-size:11.5px;color:#6B7A8A;line-height:1.6;margin:9px 2px 4px}
+.note a{color:#0091AE;font-weight:600;text-decoration:none}
+.warn{background:#FBF3E4;border:1px solid #E8D7B4;color:#6B5320;border-radius:8px;padding:10px 13px;font-size:12.5px;line-height:1.55;margin-bottom:14px}
+.load{padding:56px;text-align:center;color:#6B7A8A;font-size:13.5px}
+.spin{width:22px;height:22px;border:2.5px solid #DCE4EC;border-top-color:#0091AE;border-radius:50%;margin:0 auto 12px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.pill{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;display:inline-block;white-space:nowrap}
+.pill.g{background:#DDEFEA;color:#0A5346}.pill.r{background:#FBE2D8;color:#8C2D12}.pill.a{background:#FAEBD7;color:#7A4A08}
+.pill.f{background:#E8E4FB;color:#3B2E7E}.pill.s{background:#DCEDF6;color:#0B4A66}.pill.i{background:#E2F0E9;color:#1D5E48}
 .mut{color:#8B99A8;font-size:11.5px;font-weight:400}
 td a{color:#0091AE;text-decoration:none;font-weight:600}
 td a:hover{text-decoration:underline}
-.pill.g{background:#DDEFEA;color:#0A5346}.pill.r{background:#FBE2D8;color:#8C2D12}
-.pill.a{background:#FAEBD7;color:#7A4A08}.pill.f{background:#E8E4FB;color:#3B2E7E}
-.pill.s{background:#DCEDF6;color:#0B4A66}.pill.i{background:#E2F0E9;color:#1D5E48}
-.sec h2 .btn{font-size:11.5px;padding:3px 9px}
-.mvbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
-.mvl{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8B99A8;margin-right:2px}
-.btn.mv{font-weight:400;color:#4A5A6A}
-.btn.mv b{color:#0A2540;font-variant-numeric:tabular-nums}
-.btn.mv.on{background:#0A2540;color:#93A7BC;border-color:#0A2540}
-.btn.mv.on b{color:#fff}
-tfoot tr.sub td{background:#1E3A5F}
-tfoot tr td{border-radius:0}
-tfoot tr:last-child td:first-child{border-radius:0 0 0 8px}
-tfoot tr:last-child td:last-child{border-radius:0 0 8px 0}
-.load{padding:60px;text-align:center;color:#6B7A8A;font-size:13.5px}
-.spin{width:22px;height:22px;border:2.5px solid #DCE4EC;border-top-color:#0091AE;border-radius:50%;
-  margin:0 auto 12px;animation:sp .8s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-.warn{background:#FBF3E4;border:1px solid #E8D7B4;color:#6B5320;border-radius:8px;padding:10px 13px;
-  font-size:12.5px;line-height:1.55;margin-bottom:14px}
-</style>
-</head>
-<body>
+tbody tr.done td{background:#F5FAF8}
+</style></head><body>
 <div class="hdr">
-  <h1>Call Now v2</h1>
-  <span class="tag">private</span>
-  <p>Every lead in exactly one section, so the two add up to the stage total in every column.</p>
-  <a href="/callnow.html">Call Now &nearr;</a>
-  <a href="/vp.html">Revenue command &nearr;</a>
+  <h1>Call Now v2</h1><span class="tag">private</span><span id="fxtag"></span>
+  <p>Today's calling list is locked at midnight and does not change during the day. Every lead sits in exactly one of the three groups below, so the three always add up to the stage total.</p>
+  <a href="/callnow.html">Call Now &nearr;</a><a href="/vp.html">Revenue command &nearr;</a>
 </div>
-<div class="wrap">
-  <div id="app"><div class="load"><div class="spin"></div>Loading</div></div>
-</div>
+<div class="wrap"><div id="app"><div class="load"><div class="spin"></div>Loading</div></div></div>
 <script>
-var J = null, L = null, LOADING = false, LEADS_LOADING = false;
-var Q = { creator: "", agent: "", team: "", intl: "" };
-var PICK = null;
-function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
-function fmt(n){ return (n || 0).toLocaleString("en-IN"); }
-function asJson(r){
-  return r.text().then(function(t){
-    try { return JSON.parse(t); }
-    catch (e) {
-      if (r.status === 403) throw new Error("This page is restricted.");
-      if (r.status === 502 || r.status === 504 || /upstream/i.test(t)) {
-        throw new Error("The server took too long to answer. Give it a minute and reload.");
-      }
-      throw new Error("Server returned " + r.status + ": " + String(t).slice(0, 160));
-    }
-  });
-}
-function qs(extra){
-  var o = Object.assign({}, Q, extra || {});
-  return Object.keys(o).filter(function(k){ return o[k] !== "" && o[k] != null; })
-    .map(function(k){ return k + "=" + encodeURIComponent(o[k]); }).join("&");
-}
-function load(){
-  LOADING = true; draw();
-  fetch("/api/callnow2?" + qs()).then(asJson)
-    .then(function(j){ LOADING = false; J = j; draw(); if (PICK) loadLeads(); })
-    .catch(function(e){ LOADING = false; J = { error: e.message }; draw(); });
-}
-function loadLeads(){
-  if (!PICK) return;
-  LEADS_LOADING = true; draw();
-  fetch("/api/callnow2/leads?" + qs(PICK)).then(asJson)
-    .then(function(j){ LEADS_LOADING = false; L = j; draw(); })
-    .catch(function(e){ LEADS_LOADING = false; L = { error: e.message }; draw(); });
-}
-function pick(stage, sec, seg, t, worked, moved){
-  PICK = { stage: stage || "", sec: sec || "", seg: seg || "all", t: t || "",
-    worked: worked == null ? "" : worked, moved: moved || "" };
-  if (moved === "" && arguments.length === 6) PICK.worked = "1";
-  L = null; loadLeads();
-  setTimeout(function(){
-    var el = document.getElementById("drill");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 60);
-}
-function unpick(){ PICK = null; L = null; draw(); }
-function refreeze(){
-  if (!confirm("Re-freeze the denominator to the pool as it stands right now? Today's progress will be measured from this moment instead of the morning.")) return;
-  fetch("/api/callnow2/refreeze", { method: "POST" }).then(asJson).then(function(){ load(); })
-    .catch(function(e){ alert(e.message); });
-}
+var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null;
+var Q={team:"",agent:"",creator:""};
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
+function fmt(n){return (n||0).toLocaleString("en-IN");}
+function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}catch(e){
+  if(r.status===403)throw new Error("This page is restricted.");
+  if(r.status===502||r.status===504||/upstream/i.test(t))throw new Error("The server took too long to answer. Give it a minute and reload.");
+  throw new Error("Server returned "+r.status+": "+String(t).slice(0,160));}});}
+function qs(extra){var o=Object.assign({},Q,extra||{});
+  return Object.keys(o).filter(function(k){return o[k]!==""&&o[k]!=null;})
+    .map(function(k){return k+"="+encodeURIComponent(o[k]);}).join("&");}
+function load(){LOADING=true;draw();
+  Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),fetch("/api/callnow2/agents?"+qs()).then(asJson)])
+    .then(function(r){LOADING=false;J=r[0];A=r[1];draw();if(PICK)loadLeads();})
+    .catch(function(e){LOADING=false;J={error:e.message};draw();});}
+function loadLeads(){if(!PICK)return;LEADS=true;draw();
+  fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
+    .then(function(j){LEADS=false;L=j;draw();})
+    .catch(function(e){LEADS=false;L={error:e.message};draw();});}
+function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:""},o);L=null;loadLeads();
+  setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
+function unpick(){PICK=null;L=null;draw();}
+function refreeze(){if(!confirm("Lock the list again using the leads as they are right now? Today's progress will then be measured from this moment instead of from midnight."))return;
+  fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(){load();}).catch(function(e){alert(e.message);});}
 
-var TIMING = [["due","Due today"],["over","Overdue"],["nofu","No FU"],
-  ["newlead","Fresh / never worked"],["sched","Scheduled"]];
-var SEGS = [["form","Form leads"],["score","Score &ge;6"],["fresh","Fresh / never called"],
-  ["intl","International"],["any","Any priority"],["needs","Needs owner"],["all","All in stage"]];
-function head(){
-  var h = "<thead><tr><th rowspan='2'>Stage</th>" +
-    "<th class='grp sep' colspan='" + TIMING.length + "'>Follow-up timing</th>" +
-    "<th class='grp sep' colspan='" + SEGS.length + "'>Called today, against the pool at open</th></tr><tr>";
-  TIMING.forEach(function(c, i){ h += "<th class='" + (i === 0 ? "sep" : "") + "'>" + c[1] + "</th>"; });
-  SEGS.forEach(function(c, i){ h += "<th class='" + (i === 0 ? "sep" : "") + "'>" + c[1] + "</th>"; });
-  return h + "</tr></thead>";
-}
-// Total first, then the progress against it. A bare percentage hides how big the job was.
-function prog(worked, total, on){
-  if (!total) return "<span class='z'>0</span>";
-  var pc = Math.round(100 * worked / total);
-  var cls = pc >= 60 ? "g" : (pc > 0 ? "a" : "r");
-  return "<span class='tt" + (on ? " lk" : "") + "'>" + fmt(total) + "</span>" +
-    "<span class='pg " + cls + "'>" + fmt(worked) + " · " + pc + "%</span>";
-}
-function cellOn(stage, sec, seg){
-  return PICK && PICK.stage === stage && PICK.sec === sec && PICK.seg === seg && !PICK.t;
-}
-function bodyFor(which){
-  var sec = which === "now" ? "n" : "a";
-  var out = J.stages.map(function(s){
-    var c = s[which];
-    if (!c.all) return "";
-    var h = "<tr><td>" + esc(s.label) + "</td>";
-    TIMING.forEach(function(t, i){
-      var on = PICK && PICK.stage === s.stage && PICK.sec === sec && PICK.t === t[0];
-      h += "<td class='" + (i === 0 ? "sep " : "") + "clik" + (on ? " sel" : "") + "' onclick=\"pick('" +
-        s.stage + "','" + sec + "','all','" + t[0] + "')\">" +
-        (c[t[0]] ? "<span class='" + (t[0] === "over" ? "hot" : "") + "'>" + fmt(c[t[0]]) + "</span>" : "<span class='z'>0</span>") + "</td>";
-    });
-    SEGS.forEach(function(t, i){
-      h += "<td class='" + (i === 0 ? "sep " : "") + "clik" + (cellOn(s.stage, sec, t[0]) ? " sel" : "") +
-        "' onclick=\"pick('" + s.stage + "','" + sec + "','" + t[0] + "')\">" +
-        prog(c[t[0] + "W"], c[t[0]]) + "</td>";
-    });
-    return h + "</tr>";
-  }).join("");
-  return out || "<tr><td colspan='" + (1 + TIMING.length + SEGS.length) + "' class='z'>Nothing here.</td></tr>";
-}
-// Subtotal under each section, then the grand total under the second one. Both use the
-// same shape so the eye can add the two subtotals and land on the total.
-function footRow(label, cells, cls){
-  var h = "<tr class='" + (cls || "") + "'><td>" + label + "</td>";
-  // Coverage under every column, timing and segment alike. A subtotal without it is just
-  // a pile size, which is the thing that was never the question.
-  var col = function(keys, i){
-    var tot = cells.reduce(function(a, c){ return a + c[keys]; }, 0);
-    var w = cells.reduce(function(a, c){ return a + (c[keys + "W"] || 0); }, 0);
-    return "<td class='" + (i === 0 ? "sep" : "") + "'>" +
-      (tot ? fmt(tot) : "<span class='z'>0</span>") +
-      "<span class='w'>" + fmt(w) + " called · " + (tot ? Math.round(100 * w / tot) : 0) + "%</span></td>";
-  };
-  TIMING.forEach(function(t, i){ h += col(t[0], i); });
-  SEGS.forEach(function(t, i){ h += col(t[0], i); });
-  return h + "</tr>";
-}
-function subFoot(which){
-  return "<tfoot>" + footRow(which === "now" ? "Needs action today" : "Not due today",
-    [J.totals[which]], "sub") + "</tfoot>";
-}
-function foot(){
-  return "<tfoot>" + footRow("Not due today", [J.totals.ahead], "sub") +
-    footRow("Total, both sections", [J.totals.now, J.totals.ahead]) + "</tfoot>";
-}
-function sel(id, label, opts, val){
-  var h = "<select onchange=\"Q." + id + "=this.value;load()\"><option value=''>" + label + "</option>";
-  opts.forEach(function(o){
-    h += "<option value='" + esc(o.v) + "'" + (String(val) === String(o.v) ? " selected" : "") + ">" +
-      esc(o.l) + "</option>";
-  });
-  return h + "</select>";
-}
-function bar(){
-  var h = "<div class='bar'>";
-  h += sel("team", "All teams", (J.teamOptions || []).map(function(t){ return { v: t.id, l: t.name }; }), Q.team);
-  h += sel("agent", "All agents", (J.agentOptions || []).map(function(a){
-    return { v: a.id, l: a.name + " · " + fmt(a.n) + (a.active ? "" : " (inactive)") }; }), Q.agent);
-  h += sel("creator", "All creators", (J.creatorOptions || []).map(function(c){
-    return { v: c.u, l: c.u + " · " + fmt(c.n) }; }), Q.creator);
-  h += sel("intl", "National and international", [{ v: "yes", l: "International only" }, { v: "no", l: "National only" }], Q.intl);
-  h += "<button class='btn' onclick='load()'>Reload</button>";
-  if (Q.team || Q.agent || Q.creator || Q.intl) {
-    h += "<button class='btn' onclick=\"Q={creator:'',agent:'',team:'',intl:''};load()\">Clear</button>";
-  }
-  h += "<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>" +
-    (J.loadedAt ? "leads synced " + new Date(J.loadedAt).toLocaleString("en-IN") : "") + "</span>";
-  return h + "</div>";
-}
-// The reason the ids are kept rather than the counts: what has happened to this
-// morning's list since the bell.
+var TIMING=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"],["sched","Later date"]];
+var COLS=[["form","Filled form"],["score","Score 6 or more"],["intl","International"],["fresh","Fresh"],
+  ["refill","Refilled form"],["ifc","IFC due"],["any","Any reason at all"],["all","Every lead in stage"]];
+var SECS=[["n","Call today","n","These leads need a call today. Either the follow-up is due today, or it was due on an earlier working day and nobody called, or no follow-up was ever set, or the lead is brand new, or they filled the form again since the last call, or the IFC date they asked for has arrived. Click any number to see the leads behind it."],
+  ["a","Booked for a later date","a","The next call is set for a future day, so nothing is owed today. If someone calls them anyway it still shows here, so no work goes missing."],
+  ["d","Did not pick up, nothing to act on today","d","These people did not answer and have no reason to be called today: no form, no high score, not international, not new. Kept separate so they never make the call-today list look bigger than it is. Calls on them still count here."]];
+
+function head(){var h="<thead><tr><th rowspan='2'>Stage</th>"+
+  "<th class='grp sep' colspan='"+TIMING.length+"'>When the next call was due</th>"+
+  "<th class='grp sep' colspan='"+COLS.length+"'>Reason to call &middot; count at midnight, then how many were called</th></tr><tr>";
+  TIMING.forEach(function(c,i){h+="<th class='"+(i===0?"sep":"")+"'>"+c[1]+"</th>";});
+  COLS.forEach(function(c,i){h+="<th class='"+(i===0?"sep":"")+"'>"+c[1]+"</th>";});
+  return h+"</tr></thead>";}
+function prog(w,t){if(!t)return "<span class='z'>0</span>";
+  var p=Math.round(100*w/t),cls=p>=60?"g":(p>0?"a":"r");
+  return "<span class='tt'>"+fmt(t)+"</span><span class='pg "+cls+"'>"+fmt(w)+" · "+p+"%</span>;"
+    .replace(";","");}
+function cellHtml(c,key,sec,stage,isTiming,i){
+  var on=PICK&&PICK.stage===stage&&PICK.sec===sec&&(isTiming?PICK.t===key:(PICK.col===key&&!PICK.t));
+  var arg=isTiming?{stage:stage,sec:sec,t:key}:{stage:stage,sec:sec,col:key};
+  return "<td class='"+(i===0?"sep ":"")+"clik"+(on?" sel":"")+"' onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'>"+
+    prog(c[key+"W"],c[key])+"</td>";}
+function body(sec){
+  var rows=J.stages.filter(function(s){return s[sec].all>0;});
+  if(!rows.length)return "<tr><td colspan='"+(1+TIMING.length+COLS.length)+"' class='z'>Nothing here.</td></tr>";
+  return rows.map(function(s){
+    var c=s[sec],h="<tr><td>"+esc(s.label)+"</td>";
+    TIMING.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,true,i);});
+    COLS.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,false,i);});
+    return h+"</tr>";}).join("");}
+function footRow(label,cells,cls){
+  var h="<tr class='"+(cls||"")+"'><td>"+label+"</td>";
+  var col=function(k,i){var t=cells.reduce(function(a,c){return a+c[k];},0),
+    w=cells.reduce(function(a,c){return a+(c[k+"W"]||0);},0);
+    return "<td class='"+(i===0?"sep":"")+"'>"+(t?fmt(t):"<span class='z'>0</span>")+
+      "<span class='w'>"+fmt(w)+" called · "+(t?Math.round(100*w/t):0)+"%</span></td>";};
+  TIMING.forEach(function(t,i){h+=col(t[0],i);});
+  COLS.forEach(function(t,i){h+=col(t[0],i);});
+  return h+"</tr>";}
 function movement(){
-  var m = J.movement;
-  if (!J.frozen || !m) return "";
-  var chip = function(k, n, label, tip){
-    return "<button class='btn mv" + (PICK && PICK.moved === k ? " on" : "") + "' title='" + tip +
-      "' onclick=\"pick('','','all','','', '" + k + "')\"><b>" + fmt(n) + "</b> " + label + "</button>";
-  };
-  return "<div class='mvbar'><span class='mvl'>Since open</span>" +
-    chip("", m.called, "called", "Last call falls today") +
-    chip("stage", m.stage, "changed stage", "In a different stage now from the one they were in at open") +
-    chip("fu", m.fu, "follow-up moved", "Their follow-up timing has changed since open") +
-    chip("owner", m.owner, "reassigned", "A different agent owns them now") +
-    chip("gone", m.gone, "left the pool", "No longer in the tracked pool at all") +
-    chip("still", m.still, "untouched", "Not called, not moved, not reassigned") +
-    "</div>";
-}
-function frozenNote(){
-  if (!J.frozen) {
-    return "<div class='warn'>The denominator is not frozen yet today, so these totals are live and will drift as leads move. " +
-      "It freezes automatically at " + esc(J.freezeHour) + " IST.</div>";
-  }
-  return "<div class='note' style='margin:0 0 13px'><b>Denominator frozen at " +
-    new Date(J.frozenAt).toLocaleString("en-IN") + "</b>, so a lead that changes stage or has its follow-up moved " +
-    "still counts against the cell it was in this morning. Progress is the share of those leads whose last call is today." +
-    (J.gone ? " " + fmt(J.gone) + " have since left the pool and can no longer be checked." : "") +
-    " <a href='#' onclick='refreeze();return false' style='color:#0091AE'>Re-freeze to now</a></div>";
-}
-function tm(ms){
-  if (!ms) return "<span class='z'>never</span>";
-  var d = new Date(ms);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " +
-    d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-}
-function hs(id){
-  var p = (L && L.portal) || {};
-  return "https://" + (p.uiDomain || "app.hubspot.com") + "/contacts/" + (p.portalId || "") + "/contact/" + id;
-}
+  var m=J.movement;if(!m)return "";
+  var chip=function(k,n,label){return "<button class='btn mv"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
+    "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'><b>"+fmt(n)+"</b> "+label+"</button>";};
+  return "<div class='mvbar'><span class='mvl'>What changed today</span>"+
+    chip("",m.called,"called")+chip("stage",m.stage,"moved to a new stage")+chip("fu",m.fu,"next call date changed")+
+    chip("owner",m.owner,"given to another agent")+chip("gone",m.gone,"no longer in the list")+chip("still",m.still,"nothing happened")+
+    (J.offBase&&J.offBase.leads?"<span class='mvl' style='margin-left:8px'>Extra</span>"+
+      "<button class='btn mv' title='Called today but not on today\u2019s calling list at all'><b>"+fmt(J.offBase.leads)+"</b> called but not on today's calling list</button>":"")+
+    "</div>";}
+function baseNote(){
+  if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
+  return "<div class='note' style='margin:0 0 12px'><b>Today's calling list locked at "+new Date(J.frozenAt).toLocaleString("en-IN")+
+    "</b> with "+fmt(J.baseSize)+" leads. If a lead changes stage, gets a new follow-up date, or is moved to another agent during the day, it still counts where it started this morning and against the agent who had it this morning. A follow-up only counts as late once a full working day has passed. <a href='#' onclick='refreeze();return false'>Lock again using right now</a></div>";}
+function sel(id,label,opts,val){
+  var h="<select onchange='Q."+id+"=this.value;load()'><option value=''>"+label+"</option>";
+  opts.forEach(function(o){h+="<option value='"+esc(o.v)+"'"+(String(val)===String(o.v)?" selected":"")+">"+esc(o.l)+"</option>";});
+  return h+"</select>";}
+function bar(){
+  var h="<div class='bar'>";
+  h+=sel("team","All teams",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
+  h+=sel("agent","All agents",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
+  h+=sel("creator","All creators",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
+  h+="<button class='btn' onclick='load()'>Reload</button>";
+  if(Q.team||Q.agent||Q.creator)h+="<button class='btn' onclick='Q={team:\"\",agent:\"\",creator:\"\"};load()'>Clear</button>";
+  h+="<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>"+(J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+"</span>";
+  return h+"</div>";}
+function agentTable(){
+  if(!A||!A.agents)return "";
+  var pc=function(c){return c.all?Math.round(100*c.allW/c.all):0;};
+  var h="<div class='sec'><h2><span class='spine t'></span>By manager and agent</h2>"+
+    "<div class='sub'>The same calling list, one row per agent. The lead counts against whoever had it this morning, so moving leads around in the afternoon cannot make anyone look better.</div>"+
+    "<div class='tw'><table><thead><tr><th>Agent</th><th>Team</th>"+
+    "<th class='n sep'>Due today</th><th>Overdue</th><th>No FU</th><th>Fresh</th>"+
+    "<th class='sep'>Call today</th><th>Booked later</th><th>Did not pick up</th><th>Extra calls</th></tr></thead><tbody>";
+  var cel=function(c,k){return "<td>"+(c[k]?fmt(c[k])+"<span class='pg "+(c[k]&&c[k+"W"]/c[k]>=.6?"g":(c[k+"W"]?"a":"r"))+"'>"+fmt(c[k+"W"])+" · "+Math.round(100*c[k+"W"]/c[k])+"%</span>":"<span class='z'>0</span>")+"</td>";};
+  A.teams.forEach(function(t){
+    h+="<tr style='background:#F4F7FA'><td colspan='2'><b>"+esc(t.name)+"</b> <span class='mut'>"+t.agents+" agents</span></td>"+
+      cel(t.n,"due")+cel(t.n,"over")+cel(t.n,"nofu")+cel(t.n,"newlead")+
+      "<td><b>"+fmt(t.n.all)+"</b><span class='pg "+(pc(t.n)>=60?"g":(pc(t.n)?"a":"r"))+"'>"+fmt(t.n.allW)+" · "+pc(t.n)+"%</span></td>"+
+      cel(t.a,"all")+cel(t.d,"all")+"<td>"+fmt(t.offBase)+"</td></tr>";
+    A.agents.filter(function(a){return (a.teamId||"")===(t.id||"");}).forEach(function(a){
+      h+="<tr><td style='padding-left:22px'>"+esc(a.name)+"</td><td class='mut'>"+esc(a.team||"unmapped")+"</td>"+
+        cel(a.n,"due")+cel(a.n,"over")+cel(a.n,"nofu")+cel(a.n,"newlead")+
+        "<td><b>"+fmt(a.n.all)+"</b><span class='pg "+(pc(a.n)>=60?"g":(pc(a.n)?"a":"r"))+"'>"+fmt(a.n.allW)+" · "+pc(a.n)+"%</span></td>"+
+        cel(a.a,"all")+cel(a.d,"all")+"<td>"+fmt(a.offBase)+"</td></tr>";});});
+  return h+"</tbody></table></div></div>";}
+function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
+  return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
+function hsl(id){var p=(L&&L.portal)||{};return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
 function drill(){
-  if (!PICK) return "";
-  var title = "";
-  var st = (J.stages.filter(function(s){ return s.stage === PICK.stage; })[0] || {}).label || PICK.stage;
-  var segLabel = (SEGS.filter(function(x){ return x[0] === PICK.seg; })[0] || ["", PICK.seg])[1];
-  var tLabel = PICK.t ? (TIMING.filter(function(x){ return x[0] === PICK.t; })[0] || ["", PICK.t])[1] : "";
-  var MVL = { stage: "Changed stage since open", fu: "Follow-up moved since open",
-    owner: "Reassigned since open", gone: "Left the pool since open", still: "Untouched since open" };
-  if (PICK.moved || (!PICK.stage && PICK.worked === "1")) {
-    title = PICK.moved ? MVL[PICK.moved] : "Called today";
-  } else {
-    title = esc(st) + " · " + (PICK.sec === "n" ? "needs action today" : "not due today") +
-      (tLabel ? " · " + tLabel : " · " + segLabel);
-  }
-  var h = "<div class='sec' id='drill'><h2><span class='spine now'></span>" + title +
-    "<button class='btn' style='margin-left:auto' onclick='unpick()'>Close</button></h2>";
-  if (LEADS_LOADING) return h + "<div class='load'><div class='spin'></div>Loading leads</div></div>";
-  if (!L) return h + "</div>";
-  if (L.error) return h + "<div class='warn'>" + esc(L.error) + "</div></div>";
-  var wk = L.rows.filter(function(r){ return r.worked; }).length;
-  h += "<div class='sub'>" + fmt(L.total) + " leads were in this cell at open · <b>" + fmt(wk) +
-    "</b> called today · " + fmt(L.total - wk) + " not yet" +
-    (L.shown < L.total ? " · showing the first " + fmt(L.shown) : "") +
-    " &nbsp; <button class='btn' onclick=\"PICK.worked='0';loadLeads()\">Only not called</button>" +
-    " <button class='btn' onclick=\"PICK.worked='';loadLeads()\">All</button></div>";
-  h += "<div class='tw'><table><thead><tr><th>Lead</th><th>Owner</th><th>Creator</th>" +
-    "<th>Last call</th><th>Follow-up</th><th class='n'>Calls</th><th>Why</th><th>Today</th></tr></thead><tbody>";
-  h += L.rows.map(function(r){
-    var why = [];
-    if (r.forms && r.forms.length) why.push("<span class='pill f'>form</span>");
-    if (r.score) why.push("<span class='pill s'>score " + r.score + "</span>");
-    if (r.intl) why.push("<span class='pill i'>intl</span>");
-    if (r.needsOwner) why.push("<span class='pill r'>needs owner</span>");
-    return "<tr" + (r.worked ? " class='done'" : "") + "><td style='text-align:left'>" +
-      "<a href='" + hs(r.id) + "' target='_blank' rel='noopener'>" + esc(r.name) + " &nearr;</a>" +
-      (r.phone ? "<div class='mut'><a href='https://wa.me/" + esc(String(r.phone).replace(/[^0-9]/g, "")) +
-        "' target='_blank' rel='noopener'>" + esc(r.phone) + "</a></div>" : "") + "</td>" +
-      "<td style='text-align:left'>" + esc(r.ownerName) + "</td>" +
-      "<td style='text-align:left'>" + esc(r.creator || "–") + "</td>" +
-      "<td style='text-align:left'>" + tm(r.last) + "</td>" +
-      "<td style='text-align:left'>" + tm(r.fu) + "</td>" +
-      "<td>" + fmt(r.calls) + (r.own && r.own !== r.calls ? "<span class='mut'> / " + fmt(r.own) + " own</span>" : "") + "</td>" +
-      "<td style='text-align:left'>" + (why.join(" ") || "<span class='z'>–</span>") +
-        (r.movedStage ? "<div class='mut'>was " + esc(r.openStage) + ", now " + esc(r.nowStage) + "</div>" : "") +
-        (r.movedFu && !r.movedStage ? "<div class='mut'>timing was " + esc(r.openTiming) + ", now " + esc(r.nowTiming) + "</div>" : "") + "</td>" +
-      "<td style='text-align:left'>" + (r.worked ? "<span class='pill g'>called</span>" :
-        (r.gone ? "<span class='pill a'>left the pool</span>" : "<span class='pill r'>not yet</span>")) + "</td></tr>";
+  if(!PICK)return "";
+  var h="<div class='sec' id='drill'><h2><span class='spine n'></span>Leads<button class='btn' style='margin-left:auto' onclick='unpick()'>Close</button></h2>";
+  if(LEADS)return h+"<div class='load'><div class='spin'></div>Loading leads</div></div>";
+  if(!L)return h+"</div>";
+  if(L.error)return h+"<div class='warn'>"+esc(L.error)+"</div></div>";
+  var wk=L.rows.filter(function(r){return r.worked;}).length;
+  h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight · <b>"+fmt(wk)+"</b> called today · "+
+    fmt(L.total-wk)+" not yet"+(L.shown<L.total?" · showing the first "+fmt(L.shown):"")+
+    " &nbsp; <button class='btn' onclick='PICK.worked=\"0\";loadLeads()'>Only not called</button>"+
+    " <button class='btn' onclick='PICK.worked=\"\";loadLeads()'>All</button></div>";
+  h+="<div class='tw'><table><thead><tr><th>Lead</th><th>Agent this morning</th><th>Creator</th><th>Stage</th>"+
+    "<th>Last call</th><th>Next call due</th><th>Calls</th><th>Reason to call</th><th>Today</th></tr></thead><tbody>";
+  h+=L.rows.map(function(r){
+    var why=[];
+    if(r.why.form)why.push("<span class='pill f'>form</span>");
+    if(r.why.refill)why.push("<span class='pill f'>refilled form "+(r.formLast?tm(r.formLast).replace(/<[^>]+>/g,""):"")+"</span>");
+    if(r.why.score)why.push("<span class='pill s'>score "+r.score+"</span>");
+    if(r.why.intl)why.push("<span class='pill i'>intl</span>");
+    if(r.why.ifc)why.push("<span class='pill a'>IFC due</span>");
+    if(r.why.fresh)why.push("<span class='pill a'>fresh</span>");
+    if(r.needsOwner)why.push("<span class='pill r'>needs owner</span>");
+    var moved="";
+    if(r.movedStage)moved="<div class='mut'>was "+esc(r.openStage)+", now "+esc(r.nowStage)+"</div>";
+    else if(r.movedFu)moved="<div class='mut'>next call date changed today</div>";
+    return "<tr"+(r.worked?" class='done'":"")+"><td><a href='"+hsl(r.id)+"' target='_blank' rel='noopener'>"+esc(r.name)+" &nearr;</a>"+
+      (r.phone?"<div class='mut'><a href='https://wa.me/"+esc(String(r.phone).replace(/[^0-9]/g,""))+"' target='_blank' rel='noopener'>"+esc(r.phone)+"</a></div>":"")+"</td>"+
+      "<td>"+esc(r.ownerName)+(r.movedOwner?"<div class='mut'>moved to another agent since</div>":"")+"</td>"+
+      "<td>"+esc(r.creator||"–")+"</td>"+
+      "<td>"+esc(r.openStage)+moved+"</td>"+
+      "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
+      "<td style='text-align:right'>"+fmt(r.calls)+(r.own&&r.own!==r.calls?"<span class='mut'> / "+fmt(r.own)+" own</span>":"")+"</td>"+
+      "<td>"+(why.join(" ")||"<span class='z'>–</span>")+
+        (r.outcome?"<div class='mut'>"+esc(r.outcome)+"</div>":"")+
+        (r.aiSummary?"<div class='mut'>"+esc(String(r.aiSummary).slice(0,90))+"</div>":"")+"</td>"+
+      "<td>"+(r.worked?"<span class='pill g'>called</span>":(r.gone?"<span class='pill a'>gone from list</span>":"<span class='pill r'>not yet</span>"))+"</td></tr>";
   }).join("");
-  return h + "</tbody></table></div></div>";
-}
+  return h+"</tbody></table></div></div>";}
 function draw(){
-  var el = document.getElementById("app");
-  if (LOADING) { el.innerHTML = "<div class='load'><div class='spin'></div>Loading</div>"; return; }
-  if (!J) return;
-  if (J.error) { el.innerHTML = "<div class='warn'>" + esc(J.error) + "</div>"; return; }
-  var h = bar() + frozenNote() + movement();
-  h += "<div class='sec'><h2><span class='spine now'></span>Needs action today</h2>" +
-    "<div class='sub'>Due today, overdue, or carrying no follow-up at all. A DNP lead with no priority signal is never here, whatever its follow-up says. Click any cell for the leads behind it.</div>" +
-    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("now") + "</tbody>" + subFoot("now") + "</table></div></div>";
-  h += "<div class='sec'><h2><span class='spine ahead'></span>Not due today</h2>" +
-    "<div class='sub'>Follow-up set for a future date, plus the parked DNP leads held out of today's work. Same columns, so each one adds to the section above to give the stage total.</div>" +
-    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("ahead") + "</tbody>" + foot() + "</table></div>" +
-    "<div class='note'><b>Overdue</b> means a whole day has passed. A follow-up set for 11pm tonight is due today until midnight and becomes overdue tomorrow, never at 11:01.</div></div>";
-  h += drill();
-  el.innerHTML = h;
-}
+  var el=document.getElementById("app");
+  if(LOADING){el.innerHTML="<div class='load'><div class='spin'></div>Loading</div>";return;}
+  if(!J)return;
+  if(J.error){el.innerHTML="<div class='warn'>"+esc(J.error)+"</div>";return;}
+  var fx=document.getElementById("fxtag");
+  if(fx)fx.innerHTML=J.fixtures?"<span class='tag fx'>test data, not real</span>":"";
+  var h=bar()+baseNote()+movement();
+  SECS.forEach(function(s,idx){
+    var last=idx===SECS.length-1;
+    h+="<div class='sec'><h2><span class='spine "+s[2]+"'></span>"+s[1]+"</h2><div class='sub'>"+s[3]+"</div>"+
+      "<div class='tw'><table>"+head()+"<tbody>"+body(s[0])+"</tbody><tfoot>"+
+      footRow(s[1],[J.totals[s[0]]],"sub")+
+      (last?footRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d]):"")+
+      "</tfoot></table></div></div>";});
+  h+=agentTable()+drill();
+  el.innerHTML=h;}
 load();
-setInterval(function(){ if (!LOADING && !LEADS_LOADING) load(); }, 10 * 60 * 1000);
-</script>
-</body>
-</html>
+setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);
+</script></body></html>
