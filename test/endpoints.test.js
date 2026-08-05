@@ -58,7 +58,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2/leads?sec=n&col=refill", "drill: refilled the form"],
       ["/api/callnow2/leads?sec=n&t=over&worked=0", "drill: overdue and not called"],
       ["/api/callnow2/leads?sec=d&col=all", "drill: did not pick up"],
-      ["/api/callnow2/leads?moved=still", "drill: nothing happened to them"]
+      ["/api/callnow2/leads?moved=still", "drill: nothing happened to them"],
+      ["/api/callnow2/agents", "the agent table"],
+      ["/api/callnow2/agents?team=t1", "the agent table filtered by manager"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -78,6 +80,12 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("the three groups add up to the whole list",
       b.totals && (b.totals.n.all + b.totals.a.all + b.totals.d.all) === b.baseSize,
       b.totals ? (b.totals.n.all + " + " + b.totals.a.all + " + " + b.totals.d.all + " vs " + b.baseSize) : "no totals");
+
+    const ag = await get("/api/callnow2/agents");
+    ok("the agent table returns rows", ag.body && Array.isArray(ag.body.agents) && ag.body.agents.length > 0,
+      ag.raw);
+    ok("each agent row carries the three groups",
+      ag.body && ag.body.agents.every(function(a){ return a.n && a.a && a.d; }));
 
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,

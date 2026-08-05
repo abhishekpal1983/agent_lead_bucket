@@ -2554,6 +2554,35 @@ app.get("/api/callnow2", function(req, res){
   });
 });
 
+/* Per agent, same locked list. It is the filter as much as a table: clicking a row
+   scopes the page to that agent, which is how the v1 page behaves. */
+app.get("/api/callnow2/agents", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!cn2Ready()) return res.json({ notReady: true });
+  const ctx = cn2Context(req);
+  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
+  const teamOf = {}, teamName = {};
+  cn2Teams().forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const off = {};
+  CN2.offBase(ctx.base, ctx.rows, ctx.day).forEach(function(r){
+    const a = String(r.owner || "none");
+    off[a] = (off[a] || 0) + 1;
+  });
+  const rows = Object.keys(agg.byAgent).map(function(id){
+    const tid = teamOf[id];
+    const o = CN2_FIXTURE_DATA ? {} : (CACHE.owners[id] || {});
+    return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id),
+      team: tid ? teamName[tid] : "", teamId: tid || "",
+      active: o.active !== false, counted: ownerCounted(id === "none" ? "" : id),
+      n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
+      offBase: off[id] || 0 };
+  }).sort(function(x, y){ return y.n.all - x.n.all; });
+  res.json({ agents: rows, frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS });
+});
+
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true,
