@@ -215,6 +215,11 @@ async function fetchFreshForOwner(ownerId){
   return out;
 }
 
+/* Progress, so a ten minute wait after a restart is something you can watch rather than
+   something you have to trust. The cache is only published at the end of the loop, which
+   is why every page is empty until then. */
+let SYNC_PROGRESS = { owners: 0, done: 0, contacts: 0, startedAt: null, at: null };
+
 async function sync(){
   if (!TOKEN) { CACHE.error = "HUBSPOT_TOKEN (or HUBSPOT_ACCESS_TOKEN) env var is not set"; return; }
   if (CACHE.syncing) return;
@@ -226,11 +231,16 @@ async function sync(){
     const contacts = [];
     const fresh = {};
     let freshTotal = 0;
+    SYNC_PROGRESS = { owners: ids.length, done: 0, contacts: 0,
+      startedAt: new Date().toISOString(), at: new Date().toISOString() };
     for (const id of ids) {
       try { const rows = await fetchContactsForOwner(id); contacts.push(...rows); }
       catch (e) { console.error("owner " + id + " sync failed: " + e.message); }
       try { const fr = await fetchFreshForOwner(id); if (fr.length) { fresh[id] = fr; freshTotal += fr.length; } }
       catch (e) { console.error("owner " + id + " fresh sync failed: " + e.message); }
+      SYNC_PROGRESS.done++;
+      SYNC_PROGRESS.contacts = contacts.length + freshTotal;
+      SYNC_PROGRESS.at = new Date().toISOString();
     }
     CACHE = { contacts, owners, fresh, loadedAt: new Date().toISOString(), syncing: false, error: null };
     console.log("Synced " + contacts.length + " staged contacts + " + freshTotal + " fresh (no stage) across " + ids.length + " owners");
@@ -803,7 +813,10 @@ app.get("/api/health", function(req, res){
           builtAt: CN2_POOL.at, buildMs: CN2_POOL.ms, lastError: CN2_POOL.lastError || null,
           src: { cache: !!CACHE.loadedAt, pfresh: !!PFRESH.loadedAt, unowned: !!UNOWNED.loadedAt,
                  forms: !!FORMS.loadedAt, poolSize: (CACHE.contacts || []).length,
-                 trackedCreators: PFRESH_LIST.length } };
+                 trackedCreators: PFRESH_LIST.length },
+          sync: { running: !!CACHE.syncing, error: CACHE.error || null,
+                  agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
+                  leadsSoFar: SYNC_PROGRESS.contacts, startedAt: SYNC_PROGRESS.startedAt } };
       } catch (e) { return { error: (e && e.message) || String(e) }; }
     })() });
 });
@@ -2372,7 +2385,12 @@ function cn2StageOrder(base){
 
 app.get("/api/callnow2", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true,
+    error: CACHE.loadedAt
+      ? "Leads are loaded, building today's calling list now."
+      : "Loading leads from HubSpot after a restart. This takes several minutes because every agent's bucket is fetched one at a time.",
+    progress: { agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
+      leadsSoFar: SYNC_PROGRESS.contacts, running: !!CACHE.syncing, syncError: CACHE.error || null } });
   const ctx = cn2Context(req);
   const order = cn2StageOrder(ctx.base);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
@@ -2412,7 +2430,12 @@ app.get("/api/callnow2", function(req, res){
    worked" reads at every level without a second definition anywhere. */
 app.get("/api/callnow2/agents", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true,
+    error: CACHE.loadedAt
+      ? "Leads are loaded, building today's calling list now."
+      : "Loading leads from HubSpot after a restart. This takes several minutes because every agent's bucket is fetched one at a time.",
+    progress: { agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
+      leadsSoFar: SYNC_PROGRESS.contacts, running: !!CACHE.syncing, syncError: CACHE.error || null } });
   const ctx = cn2Context(req);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
   const teamOf = {}, teamName = {};
@@ -2448,7 +2471,12 @@ app.get("/api/callnow2/agents", function(req, res){
 
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true, error: "Still building today's calling list from HubSpot. This takes a minute or two after a deploy." });
+  if (!cn2Ready()) return res.json({ notReady: true,
+    error: CACHE.loadedAt
+      ? "Leads are loaded, building today's calling list now."
+      : "Loading leads from HubSpot after a restart. This takes several minutes because every agent's bucket is fetched one at a time.",
+    progress: { agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
+      leadsSoFar: SYNC_PROGRESS.contacts, running: !!CACHE.syncing, syncError: CACHE.error || null } });
   const ctx = cn2Context(req);
   const stage = String(req.query.stage || ""), sec = String(req.query.sec || "");
   const col = String(req.query.col || "all"), t = String(req.query.t || "");
