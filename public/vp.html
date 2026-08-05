@@ -430,7 +430,7 @@ function renderDaily(){
     "<select onchange='loadDaily(this.value)'>" +
     (j.dates || []).map(function(d){ return "<option value='" + d + "'" + (d === j.date ? " selected" : "") + ">" + d + (d === j.today ? " (today, still moving)" : "") + "</option>"; }).join("") +
     "</select>" +
-    "<button class='btn' onclick='dailyCsv()'>Download CSV</button>" +
+    (DAILY && DAILY.isVP ? "<button class='btn' onclick='dailyCsv()'>Download CSV</button>" : "") +
     "<button class='btn' onclick='window.print()'>Print</button>" +
     (sn ? "<span class='mut' style='font-size:12px'>captured " + new Date(sn.at).toLocaleString('en-IN') + "</span>" : "") +
     "</div>";
@@ -487,6 +487,7 @@ function pcTxt(done, total){ if (total == null || done == null) return "<span st
 function dailyCsv(){
   var sn = DAILY && DAILY.snapshot;
   if (!sn) return;
+  if (!DAILY.isVP) return;
   var head = ["Level","Name","Team","Source","Pool","PoolWorked","Form","FormWorked","Score","ScoreWorked",
     "Intl","IntlWorked","NeedsOwner","NeedsOwnerWorked","Due","DueDone","Missed","Overdue","OverdueWorked",
     "NeverCalled","NeverCalledWorked","Counsellings","Revenue","Enrolments","Audits","AuditTarget"];

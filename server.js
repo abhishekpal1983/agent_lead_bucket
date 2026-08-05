@@ -2857,6 +2857,10 @@ app.post("/api/callnow/drop-creator", (req, res) => {
 });
 
 app.get("/api/callnow/leads", (req, res) => {
+  // Bulk lead export is VP only, so hiding the button is not the only thing stopping it.
+  if (String(req.query.all || "") === "1" && !isVP(req)) {
+    return res.status(403).json({ error: "full list export is restricted" });
+  }
   const seg = String(req.query.seg || "any");
   const limit = Math.min(parseInt(req.query.limit || "500", 10) || 500, 3000);
   const allowL = scopeFor(req);
@@ -3036,8 +3040,10 @@ app.get("/auth/logout", function(req, res){
 app.get("/api/me", function(req, res){
   const s = sessionOf(req);
   if (!s) return res.status(401).json({ error: "not signed in" });
+  // Role alone cannot tell a manager from a VP, since both carry role "manager".
+  // Pages that gate a control need the distinction, so say it plainly.
   res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON,
-    domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS });
+    isVP: isVP(req), domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS });
 });
 
 // Gate every page and API call. Agents are forced onto their own owner id, so a

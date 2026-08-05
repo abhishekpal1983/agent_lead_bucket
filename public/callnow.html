@@ -638,7 +638,8 @@ function drawLeadsInner(segName){
   h += "<button class='chipb" + (S.fu === "today" ? " on" : "") + "' onclick=\"setFu('today')\">FU today</button>";
   h += "<button class='chipb" + (S.fu === "none" ? " on" : "") + "' onclick=\"setFu('none')\">No FU set</button>";
   h += "<input type='search' placeholder='search name / creator / agent' value='" + esc(S.q) + "' oninput=\"S.q=this.value;draw()\" style='min-width:210px'>";
-  h += "<button class='btn p' onclick='exportCsv()'>Export CSV</button>";
+  // Exporting the lead list is a VP action. Agents and managers work the queue in place.
+  if (WHO && WHO.isVP) h += "<button class='btn p' onclick='exportCsv()'>Export CSV</button>";
   h += "</div>";
   h += "<div class='tw'><table><thead><tr><th>#</th><th>Lead</th><th>Phone</th><th>Stage</th><th>Why call</th><th>Agent</th><th>Creator</th><th>Last call</th><th>Follow-up</th><th style='text-align:right'>Calls in stage</th><th style='text-align:right'>By owner</th><th style='text-align:right'>Days in stage</th><th>HubSpot</th></tr></thead><tbody>";
   rows.forEach(function(r, i){
@@ -676,6 +677,7 @@ function drawLeadsInner(segName){
 
 function exportCsv(){
   if (!L || !L.rows) return;
+  if (!(WHO && WHO.isVP)) return;
   var head = ["Name","Phone","Stage","Forms","Form submissions","Conversion score","International","Student or professional","Agent","Owner state","Creator","Last call","Follow up","Calls in stage","Calls by owner","Days in stage","HubSpot URL"];
   var lines = [head.join(",")];
   L.rows.forEach(function(r){
