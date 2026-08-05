@@ -21,8 +21,15 @@
 
 Nothing in v2 touches the live Call Now page or its endpoint. Work on the `v2` branch.
 
-## Run the model tests, no network, no token
-    node test/cn2.test.js
+## Run every test before pushing, no network, no token
+    node test/cn2.test.js        # the model: overdue rules, sections, the frozen base
+    node test/pool.test.js       # the concurrency helper used by the boot sync
+    node test/sync.test.js       # the two phase boot sync, same output, much faster
+    node test/endpoints.test.js  # boots the real server on fixtures and calls every endpoint
+
+The last one is the important one. `node --check` only finds syntax errors, so a missing
+variable declaration sails straight past it and reaches production as a 500. Calling the
+endpoint for real cannot miss it.
 
 ## Run the whole app on fixtures, no HubSpot token needed
     CN2_FIXTURES=1 PORT=3999 DATA_DIR=/tmp/cn2data node server.js

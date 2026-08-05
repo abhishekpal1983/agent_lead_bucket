@@ -2517,12 +2517,14 @@ app.get("/api/callnow2", function(req, res){
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
   const off = CN2.offBase(ctx.base, ctx.rows, ctx.day);
 
-  const agents = {}, creators = {};
+  const agents = {}, creators = {}, sources = {};
   Object.keys(ctx.base).forEach(function(id){
     const c = CN2.unpack(ctx.base[id]);
     const a = c.owner || "none";
     agents[a] = (agents[a] || 0) + 1;
     if (c.creator) creators[c.creator] = (creators[c.creator] || 0) + 1;
+    const src = c.source || "(not set)";
+    sources[src] = (sources[src] || 0) + 1;
   });
 
   res.json({
