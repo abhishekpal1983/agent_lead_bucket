@@ -139,6 +139,20 @@ tfoot td .sub3{color:#93A7BC}
 tfoot tr:first-child td{background:#12304F}
 tfoot tr:first-child td:first-child{background:#12304F}
 .chips{margin-bottom:2px}
+/* The two column groups are different questions, so they get a hard divider and their
+   own ground colour. Without it the eye runs straight from a timing count into a reason
+   count and reads them as one row of the same thing. */
+th.gA,td.gA{background:#F7FAFC}
+th.gB,td.gB{background:#fff}
+th.edge,td.edge{border-left:2px solid #C7D5E2}
+th.hdr{text-align:center;border-bottom:none;padding-bottom:3px;font-size:10px;letter-spacing:.09em;color:#6B7A8A}
+th.gA.hdr{background:#EDF3F8}
+th.gB.hdr{background:#F4F7FA}
+tbody tr:hover td.gA{background:#EAF2F8}
+tfoot td.gA{background:#12304F}
+tfoot td.gB{background:#0A2540}
+tfoot td.edge{border-left:2px solid #35506E}
+.st{margin:0}
 .det td{white-space:normal}
 .fsub{margin:2px 0 10px}
 .fhd{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#566575;margin-bottom:7px}
@@ -206,39 +220,71 @@ var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fres
   ["refill","Refilled form"],["ifc","IFC due"],["any","Any priority"],["all","All in stage"]];
 var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
   ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
-  ["d","Did not pick up, nothing to act on today","No form, no score of 6 or more, not international, not fresh. Kept apart so they never make the call-today list look bigger."]];
+  ["d","DNP, nothing to act on today","No form, no score of 6 or more, not international, not fresh. Kept apart so they never make the call-today list look bigger."]];
 
+// Lifted from the v1 page so the two cannot drift apart.
+var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",discovery:"#DCEDF6|#0B4A66",
+  pricing_pitched:"#DCEDF6|#0B4A66","Follow up":"#FAEBD7|#7A4A08",FU_DNP:"#FAEBD7|#7A4A08",FU_RCB:"#FAEBD7|#7A4A08",
+  payment_prospect:"#EDE9FE|#4B2E9E",rcb_requested_callback:"#DDEFEA|#0A5346",
+  __fresh:"#EAEFF4|#3F5163",IFC:"#EAEFF4|#3F5163",dnp_other:"#EAEFF4|#3F5163",
+  dnp_did_not_pick:"#FBE2D8|#8C2D12",ghosted:"#FBE2D8|#8C2D12",ni_not_interested:"#FBE2D8|#8C2D12",
+  disqualified:"#FADFDA|#99301C",deal_won:"#DFEFE6|#15613F"};
+var STAGE_LABEL={counselled:"Counselled",program_pitched:"Program pitched",discovery:"Discovery",
+  pricing_pitched:"Pricing pitched","Follow up":"Follow up",payment_prospect:"Payment prospect",
+  FU_DNP:"FU - DNP",FU_RCB:"FU - RCB",rcb_requested_callback:"RCB - Requested callback",
+  dnp_did_not_pick:"DNP (form or score)",dnp_other:"DNP (everything else)",__fresh:"Fresh leads",
+  IFC:"Interested in future",ghosted:"Ghosted",ni_not_interested:"NI - Not interested",
+  disqualified:"Disqualified",deal_won:"Deal won"};
+function chip(stage,label){
+  var c=(STAGE_CHIP[stage]||"#F2F2F4|#525252").split("|");
+  return "<span class='st' style='background:"+c[0]+";color:"+c[1]+"'>"+esc(label||STAGE_LABEL[stage]||stage)+"</span>";
+}
+// Same shading v1 uses, so a big number reads as a big number at a glance.
+function heats(rows,keys,sec){
+  var mx={};
+  keys.forEach(function(k){
+    var m=0;
+    rows.forEach(function(r){ var v=r[sec][k]||0; if(v>m)m=v; });
+    mx[k]=m;
+  });
+  return mx;
+}
 function head(){
   var h="<thead><tr><th rowspan='2'>Stage</th>"+
-    "<th class='n' colspan='"+TIMING.length+"' style='text-align:center'>Next call was due</th>"+
-    "<th class='n' colspan='"+COLS.length+"' style='text-align:center'>Reason to call &middot; count, then called</th></tr><tr>";
-  TIMING.forEach(function(c){h+="<th class='n'>"+c[1]+"</th>";});
-  COLS.forEach(function(c){h+="<th class='n'>"+c[1]+"</th>";});
+    "<th class='n gA hdr' colspan='"+TIMING.length+"'>Next call was due</th>"+
+    "<th class='n gB hdr' colspan='"+COLS.length+"'>Reason to call &middot; count, then called</th></tr><tr>";
+  TIMING.forEach(function(c,i){h+="<th class='n gA"+(i===0?" edge":"")+"'>"+c[1]+"</th>";});
+  COLS.forEach(function(c,i){h+="<th class='n gB"+(i===0?" edge":"")+"'>"+c[1]+"</th>";});
   return h+"</tr></thead>";}
-function cellHtml(c,key,sec,stage,isT){
+function cellHtml(c,key,sec,stage,isT,i,mx){
   var on=PICK&&PICK.stage===stage&&PICK.sec===sec&&(isT?PICK.t===key:(PICK.col===key&&!PICK.t));
   var arg=isT?{stage:stage,sec:sec,t:key}:{stage:stage,sec:sec,col:key};
+  var cls="cell "+(isT?"gA":"gB")+(i===0?" edge":"")+(on?" sel":"");
   var tot=c[key],w=c[key+"W"];
-  if(!tot)return "<td class='cell z"+(on?" sel":"")+"' onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'>0</td>";
+  if(!tot)return "<td class='"+cls+" z' onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'>0</td>";
+  var heat=mx&&mx[key]?Math.sqrt(tot/mx[key]):0;
+  var bg=(!on&&heat>0)?" style='background:rgba(0,87,184,"+(0.04+0.22*heat).toFixed(3)+")'":"";
   var p=Math.round(100*w/tot);
-  return "<td class='cell"+(on?" sel":"")+"' onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'>"+
+  return "<td class='"+cls+"'"+bg+" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'>"+
     fmt(tot)+"<div class='sub3'><b class='"+(p>=60?"c":(p>0?"d":"m"))+"'>"+fmt(w)+"</b> called &middot; "+p+"%</div></td>";}
 function body(sec){
   var rows=J.stages.filter(function(s){return s[sec].all>0;});
   if(!rows.length)return "<tr><td colspan='"+(1+TIMING.length+COLS.length)+"' class='z'>Nothing here.</td></tr>";
+  var mx=heats(rows,TIMING.map(function(t){return t[0];}).concat(COLS.map(function(t){return t[0];})),sec);
   return rows.map(function(s){
-    var c=s[sec],h="<tr><td>"+esc(s.label)+"</td>";
-    TIMING.forEach(function(t){h+=cellHtml(c,t[0],sec,s.stage,true);});
-    COLS.forEach(function(t){h+=cellHtml(c,t[0],sec,s.stage,false);});
+    var c=s[sec],h="<tr><td>"+chip(s.stage,s.label)+"</td>";
+    TIMING.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,true,i,mx);});
+    COLS.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,false,i,mx);});
     return h+"</tr>";}).join("");}
 function footRow(label,cells,cls){
   var h="<tr class='"+(cls||"")+"'><td><b>"+label+"</b></td>";
-  var col=function(k){var t=cells.reduce(function(a,c){return a+c[k];},0),
+  var col=function(k,g,i){var t=cells.reduce(function(a,c){return a+c[k];},0),
     w=cells.reduce(function(a,c){return a+(c[k+"W"]||0);},0);
-    if(!t)return "<td class='n z'>0</td>";
-    return "<td class='n'><b>"+fmt(t)+"</b><div class='sub3'>"+fmt(w)+" called &middot; "+Math.round(100*w/t)+"%</div></td>";};
-  TIMING.forEach(function(t){h+=col(t[0]);});
-  COLS.forEach(function(t){h+=col(t[0]);});
+    var cls="n "+g+(i===0?" edge":"");
+    if(!t)return "<td class='"+cls+" z'>0</td>";
+    return "<td class='"+cls+"'><b>"+fmt(t)+"</b><div class='sub3'>"+fmt(w)+" called &middot; "+Math.round(100*w/t)+"%</div></td>";};
+  TIMING.forEach(function(t,i){h+=col(t[0],"gA",i);});
+  COLS.forEach(function(t,i){h+=col(t[0],"gB",i);});
   return h+"</tr>";}
 function movement(){
   var m=J.movement;if(!m)return "";
@@ -339,14 +385,14 @@ function drill(){
     if(r.source)tags.push("<span class='tag src'>"+esc(srcLabel(r.source))+"</span>");
     if(r.bookTitle)tags.push("<span class='tag src'>"+esc(String(r.bookTitle).slice(0,34))+"</span>");
     var moved="";
-    if(r.movedStage)moved="<div class='sub3'>was "+esc(r.openStage)+", now "+esc(r.nowStage)+"</div>";
+    if(r.movedStage)moved="<div class='sub3'>was "+esc(STAGE_LABEL[r.openStage]||r.openStage)+", now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>";
     else if(r.movedFu)moved="<div class='sub3'>next call date changed today</div>";
     h+="<tr class='rowlink'><td class='exp' onclick=\"toggleDet('"+r.id+"')\">"+(OPEN[r.id]?"&minus;":"+")+"</td>"+
       "<td><a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener'>"+esc(r.name)+" &nearr;</a>"+
       (r.phone?"<div class='sub3 ph'><a class='a2' href='https://wa.me/"+esc(String(r.phone).replace(/[^0-9]/g,""))+"' target='_blank' rel='noopener'>"+esc(r.phone)+"</a></div>":"")+"</td>"+
       "<td>"+esc(r.ownerName)+(r.movedOwner?"<div class='sub3'>moved to another agent since</div>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
-      "<td>"+esc(r.openStage)+moved+"</td>"+
+      "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
       "<td class='n'>"+fmt(r.calls)+(r.own&&r.own!==r.calls?"<div class='sub3'>"+fmt(r.own)+" by this agent</div>":"")+"</td>"+
       "<td>"+(tags.join(" ")||"<span class='z'>–</span>")+"</td>"+
