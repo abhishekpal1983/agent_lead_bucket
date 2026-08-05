@@ -109,12 +109,32 @@ async function syncSheet(){
 }
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+const HS_TIMEOUT_MS = parseInt(process.env.HS_TIMEOUT_MS || "30000", 10);
 async function hs(path, opts, attempt){
   attempt = attempt || 0;
-  const res = await fetch(HS + path, Object.assign({
-    headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }
-  }, opts || {}));
+  let res;
+  try {
+    // Without a timeout a hung socket stalls a sync forever. Without catching the throw,
+    // a single transient "fetch failed" kills an eighty page walk, because undici raises
+    // before there is any status to inspect and the 429 branch never sees it.
+    const ac = new AbortController();
+    const timer = setTimeout(function(){ ac.abort(); }, HS_TIMEOUT_MS);
+    try {
+      res = await fetch(HS + path, Object.assign({
+        signal: ac.signal,
+        headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }
+      }, opts || {}));
+    } finally { clearTimeout(timer); }
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    if (attempt < 4) {
+      await sleep(800 * Math.pow(2, attempt));
+      return hs(path, opts, attempt + 1);
+    }
+    throw new Error("HubSpot unreachable on " + path + " after " + (attempt + 1) + " tries: " + msg);
+  }
   if (res.status === 429 && attempt < 5) { await sleep(1200); return hs(path, opts, attempt + 1); }
+  if (res.status >= 500 && attempt < 4) { await sleep(800 * Math.pow(2, attempt)); return hs(path, opts, attempt + 1); }
   if (!res.ok) throw new Error("HubSpot " + res.status + " on " + path + ": " + (await res.text()).slice(0, 300));
   return res.json();
 }
@@ -4037,75 +4057,129 @@ let COACH = { calls: [], byOwner: {}, loadedAt: null, syncedTo: 0, syncing: fals
 async function syncCoachCalls(){
   if (!TOKEN || COACH.syncing) return;
   COACH.syncing = true;
+  const started = Date.now();
   try {
     const now = Date.now();
     const floor = now - COACH_MAX_HOURS * 3600000;
     const full = !COACH.syncedTo;
     const from = full ? floor : Math.max(floor, COACH.syncedTo - 3600000);
-    const filters = [{ propertyName: "hs_timestamp", operator: "GTE", value: String(from) }];
-    const props = ["hs_timestamp", "hubspot_owner_id", "hs_call_duration", "hs_call_disposition",
-      "hs_call_recording_url", "hs_call_title", "hs_call_direction"];
-    let after, pages = 0;
-    const raw = [];
-    do {
-      const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
-        filterGroups: [{ filters: filters }], properties: props,
-        sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }], limit: 100, after: after }) });
-      (j.results || []).forEach(function(r){ raw.push({ id: r.id, p: r.properties || {} }); });
-      after = j.paging && j.paging.next && j.paging.next.after;
-      await sleep(120);
-      pages++;
-    } while (after && pages < 80);
 
-    /* Search will not return associations, so the contact link is a second pass.
-       Without it a call cannot be tied to a lead and the review has no subject. */
-    const link = {};
-    for (let i = 0; i < raw.length; i += 100) {
-      const inputs = raw.slice(i, i + 100).map(function(r){ return { id: r.id }; });
-      try {
-        const a = await hs("/crm/v4/associations/calls/contacts/batch/read", { method: "POST",
-          body: JSON.stringify({ inputs: inputs }) });
-        (a.results || []).forEach(function(r){
-          const to = (r.to || [])[0];
-          if (to) link[String(r.from && r.from.id)] = String(to.toObjectId || to.id);
-        });
-      } catch (e) { console.error("coach assoc: " + e.message); }
-      await sleep(120);
+    /* The first pass is the fragile one: five days is roughly eighty search pages plus
+       eighty association batches, and until it finishes the page shows nothing at all.
+       So it is walked one day at a time, newest first, and each day is merged as soon as
+       it lands. A failure on day four now leaves days one to three usable instead of
+       leaving the coaching page permanently empty. */
+    const windows = [];
+    if (full) {
+      for (let hi = now; hi > floor; hi -= 86400000) windows.push([Math.max(floor, hi - 86400000), hi]);
+    } else {
+      windows.push([from, now]);
     }
 
-    const fresh = raw.map(function(r){
-      const p = r.p;
-      return {
-        id: r.id,
-        at: ts(p.hs_timestamp),
-        ownerId: String(p.hubspot_owner_id || ""),
-        seconds: Math.round(num(p.hs_call_duration) / 1000),
-        disposition: COACH_DISPO(p.hs_call_disposition),
-        recording: p.hs_call_recording_url || "",
-        title: clip(p.hs_call_title, 80),
-        contactId: link[r.id] || ""
-      };
-    });
-
-    // Merge by id, then drop anything that has aged out of the window.
+    let fetched = 0, failedWindows = 0, lastErr = null;
     const byId = {};
     (full ? [] : COACH.calls).forEach(function(c){ byId[c.id] = c; });
-    fresh.forEach(function(c){ byId[c.id] = c; });
-    const calls = Object.keys(byId).map(function(k){ return byId[k]; })
-      .filter(function(c){ return c.at >= floor; })
-      .sort(function(a, b){ return b.at - a.at; });
 
+    for (const w of windows) {
+      let raw = [];
+      try {
+        raw = await coachFetchWindow(w[0], w[1]);
+      } catch (e) {
+        failedWindows++; lastErr = (e && e.message) || String(e);
+        console.error("coach window " + new Date(w[0]).toISOString() + " failed: " + lastErr);
+        continue; // keep the windows that did work
+      }
+      let link = {};
+      try { link = await coachLinkContacts(raw); }
+      catch (e) { lastErr = (e && e.message) || String(e); console.error("coach assoc: " + lastErr); }
+      raw.forEach(function(r){
+        const p = r.p;
+        byId[r.id] = {
+          id: r.id,
+          at: ts(p.hs_timestamp),
+          ownerId: String(p.hubspot_owner_id || ""),
+          seconds: Math.round(num(p.hs_call_duration) / 1000),
+          disposition: COACH_DISPO(p.hs_call_disposition),
+          recording: p.hs_call_recording_url || "",
+          title: clip(p.hs_call_title, 80),
+          contactId: link[r.id] || ""
+        };
+      });
+      fetched += raw.length;
+      // Publish after every window so the page fills in progressively.
+      COACH.calls = Object.keys(byId).map(function(k){ return byId[k]; })
+        .filter(function(c){ return c.at >= floor; })
+        .sort(function(a, b){ return b.at - a.at; });
+    }
+
+    const calls = COACH.calls;
     const byOwner = {};
     calls.forEach(function(c){ if (c.ownerId) (byOwner[c.ownerId] = byOwner[c.ownerId] || []).push(c); });
-    COACH = { calls: calls, byOwner: byOwner, loadedAt: new Date().toISOString(),
-      syncedTo: now, syncing: false, error: null };
-    console.log("Coach calls " + (full ? "full load" : "delta") + ": " + fresh.length + " fetched, " +
-      calls.length + " held over " + COACH_MAX_HOURS + "h across " + Object.keys(byOwner).length + " owners");
+
+    const gotSomething = calls.length > 0 || fetched > 0;
+    COACH = {
+      calls: calls, byOwner: byOwner,
+      loadedAt: gotSomething ? new Date().toISOString() : COACH.loadedAt,
+      // Only claim the newest edge is covered if the newest window actually succeeded,
+      // otherwise the next delta would skip over calls we never fetched.
+      syncedTo: (failedWindows < windows.length) ? now : COACH.syncedTo,
+      syncing: false,
+      partial: failedWindows > 0,
+      error: failedWindows > 0
+        ? (failedWindows + " of " + windows.length + " windows could not be fetched: " + lastErr)
+        : null
+    };
+    console.log("Coach calls " + (full ? "full load" : "delta") + ": " + fetched + " fetched, " +
+      calls.length + " held over " + COACH_MAX_HOURS + "h across " + Object.keys(byOwner).length +
+      " owners, " + failedWindows + " windows failed, " + (Date.now() - started) + "ms");
   } catch (e) {
-    COACH.syncing = false; COACH.error = e.message;
-    console.error("Coach call sync failed: " + e.message);
+    COACH.syncing = false;
+    COACH.error = (e && e.message) || String(e);
+    console.error("Coach call sync failed: " + COACH.error);
   }
 }
+
+async function coachFetchWindow(fromMs, toMs){
+  const filters = [
+    { propertyName: "hs_timestamp", operator: "GTE", value: String(fromMs) },
+    { propertyName: "hs_timestamp", operator: "LT", value: String(toMs) }
+  ];
+  const props = ["hs_timestamp", "hubspot_owner_id", "hs_call_duration", "hs_call_disposition",
+    "hs_call_recording_url", "hs_call_title", "hs_call_direction"];
+  const raw = [];
+  let after, pages = 0;
+  do {
+    const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: filters }], properties: props,
+      sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }], limit: 100, after: after }) });
+    (j.results || []).forEach(function(r){ raw.push({ id: r.id, p: r.properties || {} }); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+    pages++;
+  } while (after && pages < 40);
+  return raw;
+}
+
+/* Search will not return associations, so the contact link is a second pass. Without it
+   a call cannot be tied to a lead and the review has no subject. A failed batch loses
+   only its own hundred calls, not the window. */
+async function coachLinkContacts(raw){
+  const link = {};
+  for (let i = 0; i < raw.length; i += 100) {
+    const inputs = raw.slice(i, i + 100).map(function(r){ return { id: r.id }; });
+    try {
+      const a = await hs("/crm/v4/associations/calls/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ inputs: inputs }) });
+      (a.results || []).forEach(function(r){
+        const to = (r.to || [])[0];
+        if (to) link[String(r.from && r.from.id)] = String(to.toObjectId || to.id);
+      });
+    } catch (e) { console.error("coach assoc batch: " + ((e && e.message) || e)); }
+    await sleep(120);
+  }
+  return link;
+}
+
 function COACH_DISPO(id){
   if (!id) return "";
   return (CALLS.dispositions && CALLS.dispositions[id]) || String(id);
@@ -4239,6 +4313,7 @@ app.get("/api/coaching/today", function(req, res){
     teams: isVP(req) ? (ORG.teams || []).map(function(t){ return { id: t.id, name: t.name }; }) : [],
     items: COACH_ITEMS, rows: rows,
     callsLoadedAt: COACH.loadedAt, callsSyncing: COACH.syncing, callsError: COACH.error,
+    callsPartial: !!COACH.partial, callsHeld: (COACH.calls || []).length,
     persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS,
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
@@ -4412,6 +4487,13 @@ function coachDayDetail(date){
   return { teams: teams, agents: agents };
 }
 
+app.post("/api/coaching/resync", function(req, res){
+  if (COACH.syncing) return res.json({ ok: true, running: true });
+  // Independent of the Revenue command refresh on purpose: nothing here touches CACHE.
+  guard("coachCallsManual", syncCoachCalls)();
+  res.status(202).json({ ok: true, running: true });
+});
+
 app.get("/api/coaching/summary", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
   const store = coachStore();
@@ -4523,8 +4605,18 @@ SERVER = app.listen(PORT, () => {
   setTimeout(guard("backfill", function(){ return snapBackfill(yesterdayKey()); }), 9 * 60 * 1000);
   setInterval(guard("backfill", function(){ return snapBackfill(yesterdayKey()); }), 3600 * 1000);
   setInterval(guard("calls", syncCalls), COHORT_MINUTES * 60 * 1000);
-  setTimeout(guard("coachCalls", syncCoachCalls), 120 * 1000);
+  /* Coaching runs on its own clock and its own state. It shares nothing with the lead
+     sync behind Revenue command, so a failure on either side leaves the other alone.
+     Offset from the lead syncs so the two are not competing for the same rate limit at
+     the same second, and retried in five minutes rather than an hour when it fails. */
+  setTimeout(guard("coachCalls", syncCoachCalls), 200 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);
+  setInterval(guard("coachRetry", function(){
+    if (COACH.syncing) return;
+    if (!COACH.error && COACH.loadedAt) return;
+    console.log("Coach calls: retrying after " + (COACH.error ? "error" : "no data yet"));
+    return syncCoachCalls();
+  }), 5 * 60 * 1000);
   setInterval(guard("leadsToday", maybeRunLeadsTodayCheckpoint), 60 * 1000);
   guard("leadsTodayBoot", bootstrapLeadsTodayOnBoot)();
   guard("backupPool", syncBackupPool)();

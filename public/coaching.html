@@ -325,16 +325,33 @@ function render(){
     }).join("") + '</select>';
   }
   h += '<button class="btn" onclick="go()">Go</button>';
-  h += '<span class="sync">Calls synced ' + (j.callsLoadedAt ? tm(j.callsLoadedAt) : "not yet") + '</span>';
+  h += '<span class="sync">' + (j.callsSyncing ? "Pulling calls..."
+    : (j.callsLoadedAt ? fmt(j.callsHeld || 0) + " calls held, synced " + tm(j.callsLoadedAt) : "Calls not synced yet")) + '</span>';
+  if (!j.callsSyncing) h += '<button class="btn" style="font-size:11.5px;padding:3px 9px" onclick="resync(this)">Retry call sync</button>';
   h += '</div>';
 
   if (!j.persistent) h += '<div class="warn">The org store is not persistent, so these reviews will be lost on the next deploy. Attach a Railway volume at /data.</div>';
-  if (j.callsError) h += '<div class="warn">Call sync error: ' + esc(j.callsError) + '</div>';
+  // A partial pull still gives a usable page, so it must not read like a dead page.
+  if (j.callsError && j.callsPartial && j.callsHeld) {
+    h += '<div class="warn">Some of the call history could not be pulled from HubSpot, so a few agents may show no call to review. ' +
+      fmt(j.callsHeld) + ' calls are loaded and the rest is retried every five minutes. This is separate from the Revenue command sync and does not affect it. ' +
+      '<span class="mut">' + esc(j.callsError) + '</span></div>';
+  } else if (j.callsError) {
+    h += '<div class="warn">Call sync error: ' + esc(j.callsError) + '. Retrying every five minutes. This is separate from the Revenue command sync.</div>';
+  }
 
   h += j.rows.map(card).join("");
   app.innerHTML = h;
 }
 
+function fmt(n){ return (n || 0).toLocaleString("en-IN"); }
+function resync(btn){
+  btn.disabled = true; btn.textContent = "Pulling...";
+  fetch("/api/coaching/resync", { method: "POST" })
+    .then(asJson)
+    .then(function(){ setTimeout(function(){ load(); }, 4000); })
+    .catch(function(e){ btn.disabled = false; btn.textContent = "Retry call sync"; alert(e.message); });
+}
 function card(row){
   var st = STATE[row.agentId];
   var j = DATA;
