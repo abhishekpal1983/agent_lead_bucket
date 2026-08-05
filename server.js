@@ -3251,24 +3251,45 @@ function creatorsAll(){
 // Manual refresh. Delta is cheap and open to managers; a full rebuild costs hundreds of
 // API calls and takes minutes, so it stays with VPs.
 let LAST_MANUAL = 0;
-app.post("/api/sync/leads", async function(req, res){
+/* A full rebuild takes minutes. Holding the HTTP request open for that long means
+   Railway's proxy gives up first and answers with a plain-text "upstream error", which
+   the page then tries to parse as JSON. So the request only starts the work and returns,
+   and the page follows progress on /api/sync/status. */
+let MANUAL = { running: false, mode: "", startedAt: null, finishedAt: null, ms: 0, error: null, changed: 0 };
+app.post("/api/sync/leads", function(req, res){
   const mode = String(req.query.mode || "delta");
   if (mode === "full" && !isVP(req)) return res.status(403).json({ error: "full rebuild is VP only" });
+  if (MANUAL.running) {
+    return res.status(202).json({ ok: true, running: true, mode: MANUAL.mode, startedAt: MANUAL.startedAt });
+  }
   if (Date.now() - LAST_MANUAL < 20000) return res.json({ ok: true, skipped: "another refresh just ran" });
   LAST_MANUAL = Date.now();
+  MANUAL = { running: true, mode: mode, startedAt: new Date().toISOString(),
+    finishedAt: null, ms: 0, error: null, changed: 0 };
   const t0 = Date.now();
-  try {
-    if (mode === "full") {
-      await sync();
-      await syncCounsel();
-    } else {
-      if (!CACHE.loadedAt) await sync(); else await syncDelta();
+  (async function(){
+    try {
+      if (mode === "full") { await sync(); await syncCounsel(); }
+      else if (!CACHE.loadedAt) await sync();
+      else await syncDelta();
+      MANUAL.changed = DELTA.lastCount || 0;
+    } catch (e) {
+      MANUAL.error = (e && e.message) || String(e);
+      console.error("manual " + mode + " failed: " + MANUAL.error);
     }
-    res.json({ ok: true, mode: mode, ms: Date.now() - t0, changed: DELTA.lastCount,
-      leads: CACHE.contacts.length, at: DELTA.at || CACHE.loadedAt });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    MANUAL.running = false;
+    MANUAL.ms = Date.now() - t0;
+    MANUAL.finishedAt = new Date().toISOString();
+  })();
+  res.status(202).json({ ok: true, running: true, mode: mode, startedAt: MANUAL.startedAt });
+});
+
+app.get("/api/sync/status", function(req, res){
+  res.json(Object.assign({}, MANUAL, {
+    leads: CACHE.contacts.length,
+    at: (DELTA && DELTA.at) || CACHE.loadedAt,
+    syncing: !!CACHE.syncing
+  }));
 });
 
 app.get("/api/vp/daily", function(req, res){

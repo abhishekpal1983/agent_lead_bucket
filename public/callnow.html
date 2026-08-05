@@ -176,6 +176,19 @@ var S = {
 };
 var J = null, L = null, LOADING = false, SYNCING_OWNER = false, OWNER_MSG = "", SCROLL = false;
 
+function asJson(r){
+  // Railway answers with plain text when it gives up on a slow request. Parsing that as
+  // JSON produces "Unexpected token u", which tells nobody anything.
+  return r.text().then(function(t){
+    try { return JSON.parse(t); }
+    catch (e) {
+      if (r.status === 502 || r.status === 504 || /upstream/i.test(t)) {
+        throw new Error("The server took too long to answer. The sync is still running in the background, give it a minute and reload.");
+      }
+      throw new Error("Server returned " + r.status + ": " + String(t).slice(0, 160));
+    }
+  });
+}
 function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function fmt(n){ return Math.round(n || 0).toLocaleString("en-IN"); }
 function dt(x){ return x ? new Date(x).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "–"; }
@@ -217,7 +230,7 @@ function refreshOwner(id, then){
   SYNCING_OWNER = true; OWNER_MSG = "Pulling the latest leads for this agent from HubSpot...";
   if (J) draw();
   fetch("/api/callnow/refresh-owner/" + encodeURIComponent(id), { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){
       SYNCING_OWNER = false;
       OWNER_MSG = j && j.error ? ("Could not refresh this agent: " + j.error)
@@ -231,9 +244,8 @@ function load(){
   LOADING = true;
   fetch("/api/callnow?" + qsStr()).then(function(r){
     if (r.status === 401) { location.href = "/login.html"; return null; }
-    if (r.status === 403) return r.json().then(function(x){ throw new Error(x.error || "access denied"); });
-    if (!r.ok) throw new Error("server returned " + r.status);
-    return r.json();
+    if (r.status === 403) return asJson(r).then(function(x){ throw new Error(x.error || "access denied"); });
+    return asJson(r);
   }).then(function(j){
     if (!j) return;
     J = j;
@@ -279,8 +291,7 @@ function loadLeads(){
   draw();
   fetch(u).then(function(r){
     if (r.status === 401) { location.href = "/login.html"; return null; }
-    if (!r.ok) throw new Error("server returned " + r.status);
-    return r.json();
+    return asJson(r);
   }).then(function(j){
     if (!j) return;
     L = j;
@@ -314,7 +325,7 @@ function syncCreator(){
   SYNCING_OWNER = true; OWNER_MSG = "Pulling fresh leads for " + c + " from HubSpot...";
   draw();
   fetch("/api/callnow/sync-creator?creator=" + encodeURIComponent(c), { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){
       SYNCING_OWNER = false;
       OWNER_MSG = j.error ? ("Creator sync failed: " + j.error) : (c + " synced: " + j.added + " fresh leads, " + j.creators.length + " creators tracked");
@@ -327,7 +338,7 @@ function dropCreator(c){
   SYNCING_OWNER = true; OWNER_MSG = "Removing " + c + "...";
   draw();
   fetch("/api/callnow/drop-creator?creator=" + encodeURIComponent(c), { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(){ SYNCING_OWNER = false; OWNER_MSG = c + " removed from creator fresh sync"; load(); })
     .catch(function(e){ SYNCING_OWNER = false; OWNER_MSG = e.message; draw(); });
 }
@@ -748,7 +759,7 @@ function showNav(role){
     if (el) el.style.display = mgr ? "flex" : "none";
   });
 }
-fetch("/api/me").then(function(r){ return r.json(); }).then(function(j){
+fetch("/api/me").then(asJson).then(function(j){
   WHO = j;
   showNav(j && j.authOn ? (j.role || "agent") : "manager");
   if (j && j.role === "agent" && j.ownerId) ME = j.ownerId;

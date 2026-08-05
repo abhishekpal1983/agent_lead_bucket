@@ -253,7 +253,7 @@ function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
 function inr(v){ v = Math.round(v||0); return v>=1e7 ? "₹"+(v/1e7).toFixed(2)+"Cr" : v>=1e5 ? "₹"+(v/1e5).toFixed(1)+"L" : "₹"+fmt(v); }
 function post(url, body){
   return fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body||{}) })
-    .then(function(r){ return r.json(); });
+    .then(asJson);
 }
 function fail(msg){
   document.getElementById("loading").innerHTML =
@@ -285,17 +285,43 @@ var SYNCOPEN = false;
 function agoMin(at){ return at ? Math.round((Date.now() - Date.parse(at)) / 60000) : null; }
 function toggleSync(){ SYNCOPEN = !SYNCOPEN; draw(); }
 var REFRESHING = false;
+// Railway answers with plain text when it gives up on a slow request, and JSON.parse on
+// "upstream error" produces a message nobody can act on. Read the body once and say what
+// actually happened.
+function asJson(r){
+  return r.text().then(function(t){
+    try { return JSON.parse(t); }
+    catch (e) {
+      if (r.status === 502 || r.status === 504 || /upstream/i.test(t)) {
+        throw new Error("The server took too long to answer. The sync is still running in the background, give it a minute and reload.");
+      }
+      throw new Error("Server returned " + r.status + ": " + String(t).slice(0, 160));
+    }
+  });
+}
 function hardRefresh(mode){
   if (REFRESHING) return;
   REFRESHING = true; draw();
   fetch("/api/sync/leads?mode=" + mode, { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){
-      REFRESHING = false;
-      if (j && j.error) { alert(j.error); draw(); return; }
-      load(J.month);
+      if (j && j.error) { REFRESHING = false; alert(j.error); draw(); return; }
+      if (j && j.skipped) { REFRESHING = false; load(J.month); return; }
+      pollSync(0);
     })
     .catch(function(e){ REFRESHING = false; alert(e.message); draw(); });
+}
+// The work now runs past the end of the request, so follow it rather than assume.
+function pollSync(n){
+  if (n > 240) { REFRESHING = false; draw(); return; }
+  setTimeout(function(){
+    fetch("/api/sync/status").then(asJson).then(function(j){
+      if (j && j.running) return pollSync(n + 1);
+      REFRESHING = false;
+      if (j && j.error) alert("Refresh failed: " + j.error);
+      load(J.month);
+    }).catch(function(){ pollSync(n + 1); });
+  }, 3000);
 }
 function drawSync(){
   var sy = J.syncs || {};
@@ -334,7 +360,7 @@ function syncPanel(){
 var DAILY = null, DAILY_DATE = "";
 function loadDaily(d){
   fetch("/api/vp/daily" + (d ? "?date=" + encodeURIComponent(d) : ""))
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){ DAILY = j; DAILY_DATE = j.date; renderDaily(); })
     .catch(function(e){
       var el = document.getElementById("dailywrap");
@@ -1024,7 +1050,7 @@ function addCreatorByName(){
   var prev = el.placeholder;
   el.placeholder = "syncing " + u + "...";
   fetch("/api/callnow/sync-creator?creator=" + encodeURIComponent(u), { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){
       el.disabled = false; el.placeholder = prev;
       if (j && j.error) { alert(j.error); return; }
@@ -1040,7 +1066,7 @@ function toggleMain(u, isOn, btn){
   btn.textContent = isOn ? "Removing..." : "Syncing...";
   var url = isOn ? "/api/callnow/drop-creator?creator=" : "/api/callnow/sync-creator?creator=";
   fetch(url + encodeURIComponent(u), { method: "POST" })
-    .then(function(r){ return r.json(); })
+    .then(asJson)
     .then(function(j){
       if (j && j.error) { alert(j.error); btn.disabled = false; btn.textContent = isOn ? "Remove" : "Add to main list"; return; }
       load(J.month);

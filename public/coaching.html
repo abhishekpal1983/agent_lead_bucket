@@ -221,6 +221,19 @@ a{color:var(--ind)}
   <div id="app" style="display:none"></div>
 </div>
 <script>
+function asJson(r){
+  // Railway answers with plain text when it gives up on a slow request. Parsing that as
+  // JSON produces "Unexpected token u", which tells nobody anything.
+  return r.text().then(function(t){
+    try { return JSON.parse(t); }
+    catch (e) {
+      if (r.status === 502 || r.status === 504 || /upstream/i.test(t)) {
+        throw new Error("The server took too long to answer. The sync is still running in the background, give it a minute and reload.");
+      }
+      throw new Error("Server returned " + r.status + ": " + String(t).slice(0, 160));
+    }
+  });
+}
 var DATA = null, STATE = {}, IS_VP = false;
 
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
@@ -259,7 +272,7 @@ function donut(pct, yes, of){
 function load(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/today?" + q.toString(), {credentials:"same-origin"})
-    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(r){ return asJson(r).then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
     .then(function(j){
       DATA = j; STATE = {}; IS_VP = !!j.isVP;
       j.rows.forEach(function(row){
@@ -426,7 +439,7 @@ function submit(agentId){
   };
   fetch("/api/coaching/session", { method:"POST", credentials:"same-origin",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) })
-    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(r){ return asJson(r).then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
     .then(function(j){ st.saved = true; st.err = ""; if (!j.persistent) st.err = "Saved to memory only, the volume is not writable."; render(); })
     .catch(function(e){ st.err = e.message; render(); });
 }
@@ -435,7 +448,7 @@ function submit(agentId){
 function loadProgress(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/progress?" + q.toString(), {credentials:"same-origin"})
-    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(r){ return asJson(r).then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
     .then(function(j){ DATA = j; IS_VP = !!j.isVP; renderProgress(); })
     .catch(function(e){ document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
@@ -546,7 +559,7 @@ function pickTeam(id){
 function loadManagers(){
   var q = new URLSearchParams(location.search);
   fetch("/api/coaching/summary?" + q.toString(), {credentials:"same-origin"})
-    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
+    .then(function(r){ return asJson(r).then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
     .then(function(j){ DATA = j; IS_VP = true; renderManagers(); })
     .catch(function(e){ document.getElementById("loading").innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
