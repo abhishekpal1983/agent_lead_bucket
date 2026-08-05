@@ -2626,7 +2626,8 @@ function orgDrift(){
    org store on the volume, 90 days kept. */
 function snapCounters(){
   return { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0, calls: 0,
-    formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0, counsellings: 0,
+    formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0,
+    needs: 0, needsC: 0, uncalled: 0, uncalledC: 0, counsellings: 0,
     revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
 function snapAdd(o, r, sg, called, day){
@@ -2636,6 +2637,12 @@ function snapAdd(o, r, sg, called, day){
   if (sg.score) { o.score++; if (called) o.scoreC++; }
   if (sg.intl) { o.intl++; if (called) o.intlC++; }
   if (sg.fresh) { o.fresh++; if (called) o.freshC++; }
+  if (r.needsOwner) { o.needs++; if (called) o.needsC++; }
+  // Never-called is the one bucket the act of calling destroys: once someone dials, the
+  // lead leaves it. So the count is who is still uncalled, and the worked figure is who
+  // was dialled today for what the stage counter says was the first time.
+  if (!r.last) o.uncalled++;
+  else if (called && r.calls <= 1) o.uncalledC++;
   if (r.fu && r.fu < Date.now()) { o.overdue++; if (called) o.overdueC++; }
   if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
 }
@@ -2716,11 +2723,13 @@ function snapshotToday(){
   const freeze = function(dst, src){
     dst.oPool = src.pool; dst.oDue = src.due; dst.oScore = src.score; dst.oForm = src.form;
     dst.oIntl = src.intl; dst.oFresh = src.fresh; dst.oOverdue = src.overdue;
+    dst.oNeeds = src.needs; dst.oUncalled = src.uncalled;
   };
   const carry = function(dst, src){
     if (!src || src.oPool == null) return false;
     dst.oPool = src.oPool; dst.oDue = src.oDue; dst.oScore = src.oScore; dst.oForm = src.oForm;
     dst.oIntl = src.oIntl; dst.oFresh = src.oFresh; dst.oOverdue = src.oOverdue;
+    dst.oNeeds = src.oNeeds; dst.oUncalled = src.oUncalled;
     return true;
   };
   let openAt = prev && prev.openAt ? prev.openAt : null;
@@ -2756,6 +2765,7 @@ function backCounters(){
   return { pool: null, form: null, score: null, intl: null, fresh: null,
     due: null, done: null, missed: null, overdue: null, overdueC: null,
     formC: null, scoreC: null, intlC: null, freshC: null, calls: null,
+    needs: null, needsC: null, uncalled: null, uncalledC: null,
     attempts: 0, connected: 0, counsellings: 0, revenue: 0, enrolments: 0,
     audits: 0, auditTarget: 0 };
 }
@@ -3254,8 +3264,8 @@ app.get("/api/vp/daily", function(req, res){
       // rebuilt day has no pool figure, and summing that to zero would be a lie.
       const SNAPKEYS = ["pool","form","score","intl","fresh","due","done","missed","calls",
         "formC","scoreC","intlC","freshC","overdue","overdueC","counsellings","revenue",
-        "enrolments","attempts","connected","audits","auditTarget",
-        "oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue"];
+        "enrolments","attempts","connected","audits","auditTarget","needs","needsC","uncalled","uncalledC",
+        "oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue","oNeeds","oUncalled"];
       const roll = {};
       SNAPKEYS.forEach(function(k){
         let any = false, sum = 0;
