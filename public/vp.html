@@ -529,6 +529,7 @@ function drawNav(){
     ["https://d1exlk6979guxa.cloudfront.net/audits/", "Quality", true]
   ];
   // The manager dashboard is a VP surface, so managers get the working tools only.
+  if (J.isVP) tools.splice(1, 0, ["/callnow2.html", "Call Now v2", false]);
   if (J.isVP) tools.push(["/", "Dashboard", false]);
   document.getElementById("tools").className = "tools";
   document.getElementById("tools").innerHTML = "<div class='lbl'>Tools</div>" + tools.map(function(t){

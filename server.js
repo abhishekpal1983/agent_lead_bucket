@@ -2110,6 +2110,90 @@ function ownerCounted(id){
   return NONCOUNT_OWNERS.indexOf(k) < 0;
 }
 
+/* ==========================================================================
+   Call Now v2. A separate endpoint on purpose: the original /api/callnow is in
+   daily use by the floor and by the manager view, and none of the definitions
+   below are safe to change underneath it.
+
+   Three things differ from v1:
+   1. Every lead lands in exactly one of two sections, so the two add up to the
+      stage total column by column, not just on the last column.
+   2. Overdue means a whole day has passed, not an hour. A follow-up set for
+      11am today is due today until midnight, never overdue at 11:01.
+   3. A DNP lead with no priority signal is never presented as work for today,
+      whatever its follow-up says. It is held in the second section instead of
+      being dropped, so the arithmetic still closes.
+   ========================================================================== */
+const CN2_SEGMENTS = ["form", "score", "fresh", "intl", "any", "needs", "all"];
+
+function cn2Cell(){
+  const c = { due: 0, over: 0, nofu: 0, sched: 0 };
+  CN2_SEGMENTS.forEach(function(k){ c[k] = 0; c[k + "W"] = 0; });
+  return c;
+}
+function cn2Add(cell, r, sg, worked){
+  const hit = { form: sg.form, score: sg.score, fresh: sg.fresh, intl: sg.intl,
+    any: !!(sg.form || sg.score || sg.intl || sg.fresh), needs: r.needsOwner, all: true };
+  CN2_SEGMENTS.forEach(function(k){
+    if (!hit[k]) return;
+    cell[k]++;
+    if (worked) cell[k + "W"]++;
+  });
+}
+
+app.get("/api/callnow2", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  const allow = scopeFor(req);
+  if (allow) req.query.__scope = allow;
+  const rows = cnFilter(req.query);
+  const order = String(req.query.stages || "").split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+  const stageOrder = order.length ? order : CN_DEFAULT_STAGES;
+  const day = istDayBounds();
+  const countedOnly = String(req.query.counted || "1") !== "0";
+
+  const now = {}, ahead = {}, totals = { now: cn2Cell(), ahead: cn2Cell() };
+  stageOrder.forEach(function(s){ now[s] = cn2Cell(); ahead[s] = cn2Cell(); });
+
+  let dropped = 0;
+  rows.forEach(function(r){
+    if (countedOnly && !ownerCounted(r.owner)) { dropped++; return; }
+    if (!now[r.stage]) return;
+    const sg = cnSegs(r);
+    const worked = r.last >= day.start && r.last < day.end;
+
+    // A whole day must pass before a follow-up is overdue.
+    const isOverdue = !!(r.fu && r.fu < day.start);
+    const isDueToday = !!(r.fu && r.fu >= day.start && r.fu < day.end);
+    const hasNoFu = !r.fu;
+    const parked = (r.stage === "dnp_other");
+
+    const actionable = !parked && (isDueToday || isOverdue || hasNoFu);
+    const cell = actionable ? now[r.stage] : ahead[r.stage];
+    const tot = actionable ? totals.now : totals.ahead;
+    // Timing is recorded in both sections. In the second it explains why a lead is
+    // sitting there: either a future follow-up, or a parked DNP whose date has lapsed.
+    if (isDueToday) { cell.due++; tot.due++; }
+    else if (isOverdue) { cell.over++; tot.over++; }
+    else if (hasNoFu) { cell.nofu++; tot.nofu++; }
+    else { cell.sched++; tot.sched++; }
+    cn2Add(cell, r, sg, worked);
+    cn2Add(tot, r, sg, worked);
+  });
+
+  res.json({
+    stages: stageOrder.map(function(s){
+      return { stage: s, label: CN_STAGE_LABELS[s] || s, now: now[s], ahead: ahead[s] };
+    }),
+    totals: totals,
+    segments: CN2_SEGMENTS,
+    dropped: dropped,
+    day: { start: day.start, end: day.end },
+    scoreMin: CONV_SCORE_MIN,
+    loadedAt: CACHE.loadedAt, syncing: CACHE.syncing,
+    stageGroups: { priority: CN_DEFAULT_STAGES, other: CN_OTHER_STAGES, labels: CN_STAGE_LABELS }
+  });
+});
+
 app.get("/api/callnow", (req, res) => {
   const allow = scopeFor(req);
   if (allow) req.query.__scope = allow;
@@ -2531,6 +2615,8 @@ function authGate(req, res, next){
     return res.redirect("/login.html");
   }
   req.session = s;
+  // Call Now v2 is a private working page, not part of the floor's toolkit.
+  if (p === "/callnow2.html" && !isVP(req)) return res.redirect("/callnow.html");
   if (s.role === "agent") {
     if (!s.ownerId && p.indexOf("/api/") === 0) {
       return res.status(403).json({ error: "no HubSpot lead owner matches " + s.email });

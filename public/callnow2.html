@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Call Now v2</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#F4F7FA;color:#0A2540;-webkit-font-smoothing:antialiased}
+.hdr{background:#0A2540;color:#fff;padding:15px 22px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.hdr h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.hdr .tag{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  background:#1E3A5F;color:#93C5FD;padding:3px 9px;border-radius:5px}
+.hdr p{margin:0;font-size:12.5px;color:#93A7BC;flex:1 1 260px}
+.hdr a{color:#7DD3FC;text-decoration:none;font-size:12px;font-weight:600}
+.wrap{max-width:1760px;margin:0 auto;padding:18px 22px 60px}
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
+select,input{border:1px solid #DCE4EC;border-radius:6px;padding:6px 10px;font-size:13px;background:#fff;
+  font-family:inherit;color:#0A2540}
+select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #DCEDF6}
+.btn{border:1px solid #DCE4EC;background:#fff;border-radius:6px;padding:6px 13px;font-size:12.5px;
+  font-weight:600;cursor:pointer;color:#37475A}
+.btn:hover{background:#EDF2F7}
+.sec{background:#fff;border:1px solid #E3E9EF;border-radius:12px;padding:15px 17px 6px;margin-bottom:16px;
+  box-shadow:0 1px 2px rgba(10,37,64,.04)}
+.sec h2{margin:0 0 2px;font-size:15.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:baseline;gap:9px}
+.sec .sub{font-size:12.5px;color:#6B7A8A;margin:0 0 11px;line-height:1.55}
+.spine{display:inline-block;width:4px;height:15px;border-radius:2px;vertical-align:-2px}
+.spine.now{background:#B4553A}.spine.ahead{background:#4F7FA8}
+.tw{border:1px solid #E3E9EF;border-radius:9px;overflow:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+th{background:#F4F7FA;padding:8px 10px;font-size:10.5px;font-weight:700;color:#5A6B7D;letter-spacing:.05em;
+  text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #DCE4EC;text-align:right;vertical-align:bottom}
+th:first-child{text-align:left}
+th.grp{text-align:center;border-bottom:none;padding-bottom:2px;color:#8B99A8;letter-spacing:.09em}
+td{padding:8px 10px;border-bottom:1px solid #F0F4F8;white-space:nowrap;text-align:right;
+  font-variant-numeric:tabular-nums}
+td:first-child{text-align:left}
+tbody tr:hover td{background:#FAFCFE}
+tr:last-child td{border-bottom:none}
+th.sep,td.sep{border-left:1px solid #E3E9EF}
+.pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block;white-space:nowrap}
+.z{color:#C3CDD7}
+.hot{font-weight:600}
+tfoot td{background:#0A2540;color:#fff;font-weight:600;border-bottom:none;padding:10px}
+tfoot td:first-child{border-radius:0 0 0 8px}
+tfoot td:last-child{border-radius:0 0 8px 0}
+tfoot .w{display:block;font-size:11px;font-weight:400;color:#93A7BC;margin-top:2px}
+.note{font-size:11.5px;color:#6B7A8A;line-height:1.6;margin:9px 2px 4px}
+.load{padding:60px;text-align:center;color:#6B7A8A;font-size:13.5px}
+.spin{width:22px;height:22px;border:2.5px solid #DCE4EC;border-top-color:#0091AE;border-radius:50%;
+  margin:0 auto 12px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.warn{background:#FBF3E4;border:1px solid #E8D7B4;color:#6B5320;border-radius:8px;padding:10px 13px;
+  font-size:12.5px;line-height:1.55;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Call Now v2</h1>
+  <span class="tag">private</span>
+  <p>Every lead in exactly one section, so the two add up to the stage total in every column.</p>
+  <a href="/callnow.html">Call Now &nearr;</a>
+  <a href="/vp.html">Revenue command &nearr;</a>
+</div>
+<div class="wrap">
+  <div id="app"><div class="load"><div class="spin"></div>Loading</div></div>
+</div>
+<script>
+var J = null, LOADING = false;
+var Q = { creator: "", agent: "", intl: "", scope: "tracked", counted: "1" };
+function esc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+function fmt(n){ return (n || 0).toLocaleString("en-IN"); }
+function asJson(r){
+  return r.text().then(function(t){
+    try { return JSON.parse(t); }
+    catch (e) {
+      if (r.status === 403) throw new Error("This page is restricted.");
+      if (r.status === 502 || r.status === 504 || /upstream/i.test(t)) {
+        throw new Error("The server took too long to answer. Give it a minute and reload.");
+      }
+      throw new Error("Server returned " + r.status + ": " + String(t).slice(0, 160));
+    }
+  });
+}
+function qs(){
+  return Object.keys(Q).filter(function(k){ return Q[k] !== ""; })
+    .map(function(k){ return k + "=" + encodeURIComponent(Q[k]); }).join("&");
+}
+function load(){
+  LOADING = true; draw();
+  fetch("/api/callnow2?" + qs()).then(asJson)
+    .then(function(j){ LOADING = false; J = j; draw(); })
+    .catch(function(e){ LOADING = false; J = { error: e.message }; draw(); });
+}
+
+// Timing first, because that is what decides which section a lead is in, then the
+// segments, which are the same set in both tables.
+var TIMING = [
+  ["due",   "Due today"],
+  ["over",  "Overdue"],
+  ["nofu",  "No FU"],
+  ["sched", "Scheduled"]
+];
+var SEGS = [
+  ["form",  "Form leads"],
+  ["score", "Score &ge;6"],
+  ["fresh", "Fresh / never called"],
+  ["intl",  "International"],
+  ["any",   "Any priority"],
+  ["needs", "Needs owner"],
+  ["all",   "All in stage"]
+];
+function head(){
+  var h = "<thead><tr><th rowspan='2'>Stage</th>" +
+    "<th class='grp sep' colspan='" + TIMING.length + "'>Follow-up timing</th>" +
+    "<th class='grp sep' colspan='" + SEGS.length + "'>Segment</th></tr><tr>";
+  TIMING.forEach(function(c, i){ h += "<th class='" + (i === 0 ? "sep" : "") + "'>" + c[1] + "</th>"; });
+  SEGS.forEach(function(c, i){ h += "<th class='" + (i === 0 ? "sep" : "") + "'>" + c[1] + "</th>"; });
+  return h + "</tr></thead>";
+}
+function num(v, cls){
+  if (!v) return "<span class='z'>0</span>";
+  return "<span class='" + (cls || "") + "'>" + fmt(v) + "</span>";
+}
+function bodyFor(which){
+  return J.stages.map(function(s){
+    var c = s[which];
+    if (!c.all) return "";
+    var h = "<tr><td>" + esc(s.label) + "</td>";
+    TIMING.forEach(function(t, i){
+      h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + num(c[t[0]], t[0] === "over" ? "hot" : "") + "</td>";
+    });
+    SEGS.forEach(function(t, i){
+      h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + num(c[t[0]]) + "</td>";
+    });
+    return h + "</tr>";
+  }).join("") || "<tr><td colspan='" + (1 + TIMING.length + SEGS.length) + "' class='z'>Nothing here.</td></tr>";
+}
+// One footer under the second table only, carrying the combined denominator and the
+// work done against it today. That is the whole bottom line.
+function foot(){
+  var n = J.totals.now, a = J.totals.ahead;
+  var h = "<tfoot><tr><td>Total</td>";
+  TIMING.forEach(function(t, i){
+    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + fmt(n[t[0]] + a[t[0]]) + "</td>";
+  });
+  SEGS.forEach(function(t, i){
+    var tot = n[t[0]] + a[t[0]], w = n[t[0] + "W"] + a[t[0] + "W"];
+    h += "<td class='" + (i === 0 ? "sep" : "") + "'>" + fmt(tot) +
+      "<span class='w'>" + fmt(w) + " worked</span></td>";
+  });
+  return h + "</tr></tfoot>";
+}
+function bar(){
+  var h = "<div class='bar'>";
+  h += "<select onchange=\"Q.scope=this.value;load()\">" +
+    "<option value='tracked'" + (Q.scope === "tracked" ? " selected" : "") + ">Tracked creators</option>" +
+    "<option value='all'" + (Q.scope === "all" ? " selected" : "") + ">Every creator</option></select>";
+  h += "<select onchange=\"Q.intl=this.value;load()\">" +
+    "<option value=''>National and international</option>" +
+    "<option value='yes'" + (Q.intl === "yes" ? " selected" : "") + ">International only</option>" +
+    "<option value='no'" + (Q.intl === "no" ? " selected" : "") + ">National only</option></select>";
+  h += "<select onchange=\"Q.counted=this.value;load()\">" +
+    "<option value='1'" + (Q.counted === "1" ? " selected" : "") + ">Exclude parking buckets</option>" +
+    "<option value='0'" + (Q.counted === "0" ? " selected" : "") + ">Include every owner</option></select>";
+  h += "<button class='btn' onclick='load()'>Reload</button>";
+  h += "<span style='margin-left:auto;font-size:11.5px;color:#6B7A8A'>" +
+    (J && J.loadedAt ? "leads synced " + new Date(J.loadedAt).toLocaleString("en-IN") : "") +
+    (J && J.dropped ? " · " + fmt(J.dropped) + " in parking buckets excluded" : "") + "</span>";
+  return h + "</div>";
+}
+function draw(){
+  var el = document.getElementById("app");
+  if (LOADING) { el.innerHTML = "<div class='load'><div class='spin'></div>Loading</div>"; return; }
+  if (!J) return;
+  if (J.error) { el.innerHTML = "<div class='warn'>" + esc(J.error) + "</div>"; return; }
+  var cols = 1 + TIMING.length + SEGS.length;
+  var h = bar();
+  h += "<div class='sec'><h2><span class='spine now'></span>Needs action today</h2>" +
+    "<div class='sub'>Due today, overdue, or carrying no follow-up at all. A DNP lead with no priority signal is never here, whatever its follow-up says.</div>" +
+    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("now") + "</tbody></table></div></div>";
+  h += "<div class='sec'><h2><span class='spine ahead'></span>Not due today</h2>" +
+    "<div class='sub'>Follow-up set for a future date, plus the parked DNP leads held out of today's work. Same columns, so each one adds to the section above to give the stage total.</div>" +
+    "<div class='tw'><table>" + head() + "<tbody>" + bodyFor("ahead") + "</tbody>" + foot() + "</table></div>" +
+    "<div class='note'><b>Overdue</b> means a whole day has passed. A follow-up set for 11pm tonight is due today until midnight and becomes overdue tomorrow, never at 11:01. " +
+    "<b>Worked</b> counts leads whose last call falls today.</div></div>";
+  el.innerHTML = h;
+}
+load();
+setInterval(function(){ if (!LOADING) load(); }, 10 * 60 * 1000);
+</script>
+</body>
+</html>
