@@ -1,4 +1,20 @@
-# Call Now v2, local development
+# Call Now v2
+
+## The words this page uses
+
+| Word on the page | What it means |
+|---|---|
+| Morning list | Every lead that needed attention when the day started. Locked at midnight and never changed during the day |
+| Call today | Leads that need a call today |
+| Booked for a later date | The next call is set for a future day, so nothing is owed today |
+| Did not pick up, nothing to act on today | People who did not answer and have no reason to be called today. Kept apart so they do not make the call-today list look bigger |
+| Late | The follow-up date has passed and a full working day has gone by without a call |
+| No date set | Nobody set a next-call date on this lead |
+| Never called | A brand new lead nobody has ever rung |
+| Called but not on the morning list | Calls made on leads that arrived after midnight. Real work, just not part of this morning's plan |
+| Test data, not real | The page is running on made-up leads so it can be checked without touching HubSpot |
+
+# Local development
 
 Nothing in v2 touches the live Call Now page or its endpoint. Work on the `v2` branch.
 
