@@ -794,7 +794,18 @@ app.get("/api/health", function(req, res){
   res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()),
     orgPersistent: typeof ORG_PERSISTENT === "undefined" ? null : ORG_PERSISTENT,
     orgTeams: (typeof ORG === "undefined" || !ORG.teams) ? 0 : ORG.teams.length,
-    dataDir: typeof DATA_DIR === "undefined" ? null : DATA_DIR });
+    dataDir: typeof DATA_DIR === "undefined" ? null : DATA_DIR,
+    // Counts only, no names. Enough to tell from outside why the v2 list is or is not
+    // ready, which beats guessing at it through a browser that can only say "loading".
+    cn2: (function(){
+      try {
+        return { ready: cn2Ready(), building: CN2_POOL.building, size: CN2_POOL.rows.length,
+          builtAt: CN2_POOL.at, buildMs: CN2_POOL.ms, lastError: CN2_POOL.lastError || null,
+          src: { cache: !!CACHE.loadedAt, pfresh: !!PFRESH.loadedAt, unowned: !!UNOWNED.loadedAt,
+                 forms: !!FORMS.loadedAt, poolSize: (CACHE.contacts || []).length,
+                 trackedCreators: PFRESH_LIST.length } };
+      } catch (e) { return { error: (e && e.message) || String(e) }; }
+    })() });
 });
 
 app.get("/api/meta", (req, res) => res.json({ loadedAt: CACHE.loadedAt, syncing: CACHE.syncing, error: CACHE.error,
@@ -2206,7 +2217,11 @@ function yieldToLoop(){ return new Promise(function(r){ setImmediate(r); }); }
 async function cn2Build(force){
   if (CN2_FIXTURE_DATA) return;
   if (CN2_POOL.building) return;
-  if (!CACHE.loadedAt || !PFRESH.loadedAt || !UNOWNED.loadedAt) return;
+  if (!CACHE.loadedAt) { CN2_POOL.lastError = "lead cache not loaded yet"; return; }
+  const partial = [];
+  if (!PFRESH.loadedAt) partial.push("fresh leads");
+  if (!UNOWNED.loadedAt) partial.push("unassigned leads");
+  if (!FORMS.loadedAt) partial.push("form submissions");
   const key = cn2PoolKey();
   if (!force && CN2_POOL.key === key && CN2_POOL.rows.length) return;
   CN2_POOL.building = true;
@@ -2230,12 +2245,14 @@ async function cn2Build(force){
       if ((i % CN2_CHUNK) === CN2_CHUNK - 1) await yieldToLoop();
     }
     CN2_POOL = { key: key, rows: out, live: live, at: new Date().toISOString(),
-      ms: Date.now() - t0, building: false };
+      ms: Date.now() - t0, building: false,
+      lastError: partial.length ? "built without " + partial.join(", ") + " yet" : null };
     console.log("Call Now v2 list built: " + out.length + " of " + src.length +
-      " leads in " + CN2_POOL.ms + "ms");
+      " leads in " + CN2_POOL.ms + "ms" + (partial.length ? " (without " + partial.join(", ") + ")" : ""));
   } catch (e) {
     CN2_POOL.building = false;
-    console.error("Call Now v2 build failed: " + ((e && e.message) || e));
+    CN2_POOL.lastError = (e && e.message) || String(e);
+    console.error("Call Now v2 build failed: " + CN2_POOL.lastError);
   }
 }
 function cn2Rows(){
@@ -2273,8 +2290,6 @@ function cn2Freeze(force){
      has to have landed, and the result has to be in the same league as last time. */
   if (!CN2_FIXTURE_DATA) {
     if (!CACHE.loadedAt || CACHE.syncing) return null;
-    if (!PFRESH.loadedAt || PFRESH.syncing) return null;
-    if (!UNOWNED.loadedAt) return null;
     if (!cn2Ready()) return null;   // never lock a list that has not finished building
   }
   const date = istParts(new Date(cn2Now())).date;
@@ -5145,8 +5160,10 @@ SERVER = app.listen(PORT, () => {
   setInterval(guard("coachLock", coachLockDue), 5 * 60 * 1000);
   // Freeze the Call Now v2 denominator at the bell, then leave it alone all day.
   // Build the v2 list in the background, never inside a request.
-  setTimeout(guard("cn2Build", function(){ return cn2Build(); }), 100 * 1000);
-  setInterval(guard("cn2Build", function(){ return cn2Build(); }), 5 * 60 * 1000);
+  // First attempt as soon as the lead cache lands, then keep trying: the early ones are
+  // no-ops until there is something to build from.
+  setTimeout(guard("cn2Build", function(){ return cn2Build(); }), 25 * 1000);
+  setInterval(guard("cn2Build", function(){ return cn2Build(); }), 60 * 1000);
   setInterval(guard("cn2Freeze", cn2FreezeDue), 5 * 60 * 1000);
   setTimeout(guard("cn2Freeze", cn2FreezeDue), 300 * 1000);
   setTimeout(guard("coachLock", coachLockDue), 260 * 1000);
