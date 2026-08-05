@@ -157,6 +157,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ind);box
 
 .empty{padding:16px 20px 20px;font-size:13px;color:var(--ink2)}
 .warn{background:var(--amb-soft);color:var(--amb-ink);border:1px solid #F7E2C2;border-radius:13px;padding:11px 15px;font-size:12.5px;margin-bottom:14px}
+.ok{display:flex;align-items:center;gap:8px;background:var(--em-soft);color:var(--em-ink);border:1px solid #C7EDDD;border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:550;margin-top:12px}
+.ok svg{width:13px;height:13px}
+.btn:disabled{opacity:.6;cursor:progress}
 .err{background:var(--rose-soft);color:var(--rose-ink);border:1px solid #FAD4D9;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px}
 .hero{background:linear-gradient(135deg,#EEEDFE 0%,#F6F5FF 60%,#FFFFFF 100%);border:1px solid #E2DFFB;border-radius:var(--r);padding:20px 22px;margin-bottom:16px}
 .hero h3{font-size:15px;font-weight:600;letter-spacing:-.018em;margin-bottom:4px}
@@ -358,7 +361,7 @@ function resync(btn){
 function card(row){
   var st = STATE[row.agentId];
   var j = DATA;
-  var h = '<div class="card' + (st.saved ? " done" : "") + '"><div class="chd">';
+  var h = '<div class="card' + (st.saved ? " done" : "") + '" id="card-' + row.agentId + '"><div class="chd">';
   h += avatar(row.agentName);
   h += '<div class="who"><h2>' + esc(row.agentName) + '</h2>';
   if (row.call) {
@@ -421,8 +424,10 @@ function card(row){
   h += donut(sc.of ? sc.yes * 100 / sc.of : 0, sc.yes, sc.of);
   h += '<input type="url" placeholder="Meet recording link" value="' + esc(st.recordingUrl) + '" oninput="setRec(\'' + row.agentId + '\',this.value)" style="width:250px">';
   if (!st.recordingUrl) h += '<span class="pill open">recording not linked</span>';
-  h += '<div class="right"><button class="btn p" onclick="submit(\'' + row.agentId + '\')">' + (st.saved ? "Update review" : "Submit review") + '</button></div>';
+  h += '<div class="right"><button class="btn p"' + (st.saving ? " disabled" : "") + ' onclick="submit(\'' + row.agentId + '\')">' +
+    (st.saving ? "Saving" : (st.saved ? "Update review" : "Submit review")) + '</button></div>';
   h += '</div>';
+  if (st.flash) h += '<div class="ok">' + tick() + ' ' + esc(st.flash) + '</div>';
   if (st.err) h += '<div class="err">' + esc(st.err) + '</div>';
   h += '</div></div>';
   return h;
@@ -437,9 +442,9 @@ function score(items){
   return { yes: yes, no: no, of: yes + no };
 }
 
-function setItem(a,k,v){ var s=STATE[a]; s.items[k] = (s.items[k]===v?"":v); if(s.items[k]!=="no") delete s.notes[k]; s.err=""; render(); }
-function setNote(a,k,v){ STATE[a].notes[k] = v; }
-function setAction(a,v){ STATE[a].actionItem = v; }
+function setItem(a,k,v){ var s=STATE[a]; s.items[k] = (s.items[k]===v?"":v); if(s.items[k]!=="no") delete s.notes[k]; s.err=""; s.flash=""; render(); }
+function setNote(a,k,v){ STATE[a].notes[k] = v; STATE[a].flash = ""; }
+function setAction(a,v){ STATE[a].actionItem = v; STATE[a].flash = ""; }
 function setRec(a,v){ STATE[a].recordingUrl = v; }
 function setPrev(a,v){ STATE[a].prevVerdict = (STATE[a].prevVerdict===v?"":v); render(); }
 function go(){
@@ -448,9 +453,15 @@ function go(){
   location.search = "?date=" + encodeURIComponent(d) + (t ? "&team=" + encodeURIComponent(t.value) : "");
 }
 
+/* A review that vanishes into a re-render with no acknowledgement feels like it failed,
+   and a manager who is not sure it saved either does it twice or stops doing it. So:
+   the button says it is saving, the card confirms with a time, and the confirmation
+   stays until they touch the card again. */
 function submit(agentId){
   var row = DATA.rows.filter(function(r){ return String(r.agentId) === String(agentId); })[0];
   var st = STATE[agentId];
+  if (st.saving) return;
+  st.saving = true; st.err = ""; st.flash = ""; render();
   var body = {
     date: DATA.date, agentId: agentId,
     callId: row.call ? row.call.id : "", call: row.call, auto: row.auto,
@@ -460,8 +471,22 @@ function submit(agentId){
   fetch("/api/coaching/session", { method:"POST", credentials:"same-origin",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) })
     .then(function(r){ return asJson(r).then(function(j){ if(!r.ok) throw new Error(j.error||"failed"); return j; }); })
-    .then(function(j){ st.saved = true; st.err = ""; if (!j.persistent) st.err = "Saved to memory only, the volume is not writable."; render(); })
-    .catch(function(e){ st.err = e.message; render(); });
+    .then(function(j){
+      st.saving = false; st.saved = true; st.err = "";
+      var at = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      st.flash = j.persistent
+        ? "Saved at " + at + ", score " + (j.session.score.yes) + " of " + (j.session.score.of) + "."
+        : "";
+      if (!j.persistent) st.err = "Saved to memory only, the volume is not writable, so this will be lost on the next deploy.";
+      render();
+      var el = document.getElementById("card-" + agentId);
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    })
+    .catch(function(e){
+      st.saving = false; st.err = e.message; render();
+      var el = document.getElementById("card-" + agentId);
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
 }
 
 /* ---------- progress ---------- */

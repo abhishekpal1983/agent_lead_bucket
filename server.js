@@ -4324,6 +4324,27 @@ function coachAgents(team){
     .filter(function(id){ return ownerCounted(id) && !coachIsManager(id); });
 }
 
+/* The full roster in today's order: the same round robin, but not truncated to five,
+   so the picker can keep walking past agents who have nothing to review. */
+function coachRotationOrder(team, dateStr){
+  const ids = coachAgents(team).sort();
+  if (!ids.length) return [];
+  const n = Math.min(COACH_PER_DAY, ids.length);
+  const start = (coachDayIndex(dateStr) * n) % ids.length;
+  const out = [];
+  for (let i = 0; i < ids.length; i++) out.push(ids[(start + i) % ids.length]);
+  return out;
+}
+
+/* Who is due today, according to the lock if one exists. Everything that counts or
+   reports compliance must read the same list the manager is looking at, or the VP is
+   told two people are outstanding while the manager sees three different names. */
+function coachDueAgents(team, dateStr){
+  const lock = coachAssignments()[coachAssignKey(dateStr, team.id)];
+  if (lock) return lock.rows.map(function(r){ return String(r.agentId); });
+  return coachPickAgents(team, dateStr);
+}
+
 function coachPickAgents(team, dateStr){
   const ids = coachAgents(team).sort();
   if (!ids.length) return [];
@@ -4645,7 +4666,10 @@ app.post("/api/coaching/session", express.json(), function(req, res){
     const n = String((b.notes || {})[it.key] || "").trim();
     if (n) notes[it.key] = n.slice(0, 600);
     if (!it.auto && items[it.key] === "") missing.push(it.label);
-    if (items[it.key] === "no" && !n) missing.push("a note against: " + it.label);
+    // Only the judged items need a note. The three derived ones are facts read out of
+    // HubSpot, and the form offers no box against them, so demanding a note for a
+    // missing follow up date made the review impossible to submit.
+    if (!it.auto && items[it.key] === "no" && !n) missing.push("a note against: " + it.label);
   });
   const action = String(b.actionItem || "").trim();
   if (!action) missing.push("one action item");
@@ -4786,7 +4810,7 @@ function coachDayDetail(date){
       if (!agents[k]) agents[k] = { due: 0, done: 0 };
       return agents[k];
     };
-    coachPickAgents(t, date).forEach(function(id){ touch(id).due = 1; });
+    coachDueAgents(t, date).forEach(function(id){ touch(id).due = 1; });
     done.forEach(function(x){ touch(x.agentId).done = 1; });
   });
   return { teams: teams, agents: agents };
@@ -4820,13 +4844,26 @@ function coachLock(date, team, who){
     .filter(function(s){ return s.date === date && s.teamId === team.id; })
     .map(function(s){ return s.callId; });
   const taken = doneCallIds.slice();
-  const rows = coachPickAgents(team, date).map(function(id){
+  /* Walk the whole roster from today's offset rather than taking the first five.
+     A manager handed three reviewable agents and two blanks does three, and a cadence
+     that quietly shrinks stops being a cadence. Agents with nothing to review are
+     skipped, keep their turn, and come round on the next cycle. */
+  const order = coachRotationOrder(team, date);
+  const rows = [];
+  const skipped = [];
+  order.forEach(function(id){
+    if (rows.length >= COACH_PER_DAY) return;
     const call = coachPickCall(id, date, taken);
-    if (call) taken.push(call.id);
-    return { agentId: String(id), callId: call ? call.id : "", call: call || null,
-      auto: call ? coachAuto(call) : {},
-      reason: call ? "" : "no call over " + COACH_MIN_SECONDS + "s in the last " +
-        Math.round(COACH_MAX_HOURS / 24) + " days" };
+    if (!call) { skipped.push(String(id)); return; }
+    taken.push(call.id);
+    rows.push({ agentId: String(id), callId: call.id, call: call, auto: coachAuto(call), reason: "" });
+  });
+  // Only if the whole roster is dry does a blank slot appear, and it says so.
+  skipped.forEach(function(id){
+    if (rows.length >= COACH_PER_DAY) return;
+    rows.push({ agentId: String(id), callId: "", call: null, auto: {},
+      reason: "no call over " + COACH_MIN_SECONDS + "s in the last " +
+        Math.round(COACH_MAX_HOURS / 24) + " days" });
   });
   all[key] = { at: new Date().toISOString(), by: who || "system", date: date,
     teamId: team.id, rows: rows };
@@ -4876,7 +4913,7 @@ app.get("/api/coaching/summary", function(req, res){
     const avg = scores.length ? Math.round(scores.reduce(function(a, b){ return a + b; }, 0) / scores.length) : null;
 
     // Today, named. Who was due, who was reviewed, and who is outstanding.
-    const dueToday = coachPickAgents(t, today);
+    const dueToday = coachDueAgents(t, today);
     const doneToday = {};
     store.sessions.forEach(function(s){
       if (s.date === today && s.teamId === t.id && s.submittedAt) doneToday[String(s.agentId)] = s;
