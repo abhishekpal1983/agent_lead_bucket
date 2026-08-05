@@ -3162,7 +3162,10 @@ function snapAdd(o, r, sg, called, day, fromU){
   if (r.fu && r.fu < day.start) { o.overdue++; if (called) o.overdueC++; }
   if (r.fu >= day.start && r.fu < day.end) { o.due++; if (called) o.done++; else o.missed++; }
 }
-const OPEN_HM = process.env.OPEN_HM || "09:30";
+/* Midnight, matching Call Now v2. A baseline taken at 09:30 quietly discards every call
+   made before the floor's official start, and it made the two pages disagree with each
+   other. The name stays OPEN_HM so an override already set in Railway still works. */
+const OPEN_HM = process.env.OPEN_HM || "00:05";
 // Bumped whenever the meaning of a counter changes. A day frozen under an older
 // definition is refrozen rather than carried forward, otherwise a denominator captured
 // under the old scope would silently poison the whole day.

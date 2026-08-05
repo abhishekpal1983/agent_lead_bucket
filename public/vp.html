@@ -453,7 +453,7 @@ function renderDaily(){
   var pool = d(sn.oPool, sn.pool), due = d(sn.oDue, sn.due);
   var pushed = (due != null && sn.done != null && sn.missed != null) ? due - (sn.done + sn.missed) : 0;
   h += "<div class='sub' style='margin:-4px 0 10px'>" +
-    (sn.openAt ? "Bucket sizes frozen at " + esc(sn.openAt) + " IST. Work counts run to close of day, so pushing a follow-up to tomorrow does not shrink the denominator."
+    (sn.openAt ? "Bucket sizes frozen at " + esc(hm24(sn.openAt)) + " IST. Work counts run to close of day, so pushing a follow-up to tomorrow does not shrink the denominator."
                : "Opening position was not captured for this day, so the bucket sizes are as they stood at the last capture.") + "</div>";
   h += "<div class='tiles' style='margin-bottom:12px'>" +
     workedTile("amber", sn.calls, pool, "Priority pool worked") +
@@ -481,6 +481,8 @@ function renderDaily(){
   h += "<h2>By agent</h2><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
   el.innerHTML = h + "</div>";
 }
+// Days captured before the midnight fix recorded the hour as 24 rather than 00.
+function hm24(t){ return String(t || "").replace(/^24:/, "00:"); }
 function pcTxt(done, total){ if (total == null || done == null) return "<span style='font-size:20px'>–</span>"; return total ? fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>" : "0"; }
 function dailyCsv(){
   var sn = DAILY && DAILY.snapshot;
