@@ -79,10 +79,20 @@ function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}ca
 function qs(extra){var o=Object.assign({},Q,extra||{});
   return Object.keys(o).filter(function(k){return o[k]!==""&&o[k]!=null;})
     .map(function(k){return k+"="+encodeURIComponent(o[k]);}).join("&");}
+// Never spin forever. If the server has not answered in a minute, say so and offer a
+// retry rather than leaving a spinner that means nothing.
+function withTimeout(p,ms){
+  return new Promise(function(res,rej){
+    var t=setTimeout(function(){rej(new Error("The server did not answer within "+Math.round(ms/1000)+" seconds. It may still be loading leads from HubSpot after a deploy."));},ms);
+    p.then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});
+  });
+}
 function load(){LOADING=true;draw();
-  Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),fetch("/api/callnow2/agents?"+qs()).then(asJson)])
-    .then(function(r){LOADING=false;J=r[0];A=r[1];draw();if(PICK)loadLeads();})
-    .catch(function(e){LOADING=false;J={error:e.message};draw();});}
+  withTimeout(Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),fetch("/api/callnow2/agents?"+qs()).then(asJson)]),60000)
+    .then(function(r){LOADING=false;
+      if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true};draw();setTimeout(load,20000);return;}
+      J=r[0];A=r[1];draw();if(PICK)loadLeads();})
+    .catch(function(e){LOADING=false;J={error:e.message,retry:true};draw();});}
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
@@ -222,9 +232,10 @@ function drill(){
   return h+"</tbody></table></div></div>";}
 function draw(){
   var el=document.getElementById("app");
-  if(LOADING){el.innerHTML="<div class='load'><div class='spin'></div>Loading</div>";return;}
+  if(LOADING){el.innerHTML="<div class='load'><div class='spin'></div>Building today's calling list. The first load after a deploy can take a minute.</div>";return;}
   if(!J)return;
-  if(J.error){el.innerHTML="<div class='warn'>"+esc(J.error)+"</div>";return;}
+  if(J.error){el.innerHTML="<div class='warn'>"+esc(J.error)+
+    (J.retry?" <button class='btn' style='margin-left:8px' onclick='load()'>Try again</button>":"")+"</div>";return;}
   var fx=document.getElementById("fxtag");
   if(fx)fx.innerHTML=J.fixtures?"<span class='tag fx'>test data, not real</span>":"";
   var h=bar()+baseNote()+movement();

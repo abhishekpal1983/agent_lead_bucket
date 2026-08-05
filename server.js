@@ -2161,27 +2161,72 @@ function cn2OwnerName(id){
 
 /* The v2 population. Every lead in the working stages, plus leads in the closed stages
    only when they have refilled the form or are an IFC that has come due. */
-function cn2Qualifies(r, day){
-  // Working stages are in wholesale. Closed stages only enter when the lead has asked
-  // again, or is an IFC that has come due, otherwise ghosted alone would swamp the page.
-  if (CN2_STAGES.indexOf(r.stage) < 0) return false;
-  if (CN2_EXTRA_STAGES.indexOf(r.stage) < 0) return true;
-  if (CN2.isRefill(r)) return true;
-  if (r.stage === "IFC") {
-    const t = CN2.timingOf(r, day, CN2_WORK);
+/* Cost control. v1 only ever walks twelve stages; v2 also has to see ghosted, NI and IFC
+   so that a refilled form can be caught wherever the lead sits. Building a full row for
+   every one of those is far too expensive to do on each request, and the page makes two.
+   So: a cheap test on the raw contact first, a full row only for survivors, and the whole
+   thing memoised until the pool actually changes. */
+function cn2CheapQualify(c, day){
+  const st = cnStage(c);
+  if (CN2_EXTRA_STAGES.indexOf(st) < 0) return CN2_STAGES.indexOf(st) >= 0;
+  if (st === "IFC") {
+    const fu = ts(c.follow_up_date_and_time);
+    if (!fu) return false;
+    const t = CN2.timingOf({ stage: st, fu: fu, last: 0 }, day, CN2_WORK);
     return t === "due" || t === "over";
   }
-  return false;
+  if (CN2.REFILL_EXCLUDED.indexOf(st) >= 0) return false;
+  const fl = formMeta(c).last;
+  if (!fl) return false;
+  const last = ts(c.last_call_date_and_time);
+  return !last || fl > last;
+}
+
+let CN2_CACHE = { key: "", rows: null, live: null };
+function cn2PoolKey(){
+  return [CACHE.loadedAt, PFRESH.loadedAt, UNOWNED.loadedAt, FORMS.loadedAt, POOL_REV,
+    istParts(new Date(cn2Now())).date].join("|");
+}
+function cn2Ready(){
+  if (CN2_FIXTURE_DATA) return true;
+  return !!(CACHE.loadedAt && PFRESH.loadedAt && UNOWNED.loadedAt);
 }
 function cn2Rows(){
   const day = CN2.dayBoundsFor(cn2Now());
-  const src = CN2_FIXTURE_DATA ? CN2_FIXTURE_DATA.rows
-    : cnFilter({ scope: "tracked", stages: CN2_STAGES.join(",") }).map(function(r){
-        // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
-        if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
-        return r;
-      }).filter(function(r){ return ownerCounted(r.owner); });
-  return src.filter(function(r){ return cn2Qualifies(r, day); });
+  if (CN2_FIXTURE_DATA) {
+    return CN2_FIXTURE_DATA.rows.filter(function(r){
+      if (CN2_STAGES.indexOf(r.stage) < 0) return false;
+      if (CN2_EXTRA_STAGES.indexOf(r.stage) < 0) return true;
+      if (CN2.isRefill(r)) return true;
+      if (r.stage === "IFC") { const t = CN2.timingOf(r, day, CN2_WORK); return t === "due" || t === "over"; }
+      return false;
+    });
+  }
+  const key = cn2PoolKey();
+  if (CN2_CACHE.key === key && CN2_CACHE.rows) return CN2_CACHE.rows;
+  const t0 = Date.now();
+  const out = [];
+  callnowPool().forEach(function(c){
+    if (!ownerCounted(c.hubspot_owner_id)) return;
+    if (PFRESH_LIST.indexOf(c.topmate_username || "") < 0) return;
+    if (!cn2CheapQualify(c, day)) return;
+    const r = cnRow(c);
+    // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
+    if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
+    out.push(r);
+  });
+  const live = {};
+  out.forEach(function(r){ live[r.id] = r; });
+  CN2_CACHE = { key: key, rows: out, live: live };
+  console.log("Call Now v2 pool built: " + out.length + " leads in " + (Date.now() - t0) + "ms");
+  return out;
+}
+function cn2Live(){
+  if (CN2_CACHE.key === cn2PoolKey() && CN2_CACHE.live) return CN2_CACHE.live;
+  const live = {};
+  cn2Rows().forEach(function(r){ live[r.id] = r; });
+  if (CN2_CACHE.rows) CN2_CACHE.live = live;
+  return live;
 }
 
 function cn2Store(){
@@ -2239,8 +2284,7 @@ function cn2Context(req){
   const today = istParts(new Date(cn2Now())).date;
   const frozen = !!(store && store.date === today && store.rows && Object.keys(store.rows).length);
   const rows = cn2Rows();
-  const live = {};
-  rows.forEach(function(r){ live[r.id] = r; });
+  const live = cn2Live();
 
   let base = {};
   if (frozen) base = store.rows;
@@ -2281,6 +2325,7 @@ function cn2StageOrder(base){
 
 app.get("/api/callnow2", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
   const ctx = cn2Context(req);
   const order = cn2StageOrder(ctx.base);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
@@ -2319,6 +2364,7 @@ app.get("/api/callnow2", function(req, res){
    worked" reads at every level without a second definition anywhere. */
 app.get("/api/callnow2/agents", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
   const ctx = cn2Context(req);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
   const teamOf = {}, teamName = {};
@@ -2354,6 +2400,7 @@ app.get("/api/callnow2/agents", function(req, res){
 
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!cn2Ready()) return res.json({ notReady: true, error: "Still loading leads from HubSpot. This takes a couple of minutes after a deploy." });
   const ctx = cn2Context(req);
   const stage = String(req.query.stage || ""), sec = String(req.query.sec || "");
   const col = String(req.query.col || "all"), t = String(req.query.t || "");
