@@ -31,7 +31,8 @@ const PROPS = [
   "engagement_stage_last_changed_at","tm_student_or_professional",
   "not_interested_reason","counselling_done","previous_engagement_stage",
   "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
-  "conversion_probability_reason","ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
+  "conversion_probability_reason","tm_last_booking_title", "tm_last_booking_type", "tm_last_booking_timestamp", "tm_total_bookings",
+  "ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
   "call_outcome","reason_for_notinteresteddisqualifiedghosted","notes_last_contacted",
   "hs_timezone","country",
   "firstname","lastname"
@@ -2026,6 +2027,14 @@ function cnRow(c){
     forms: formsOf(c),
     formN: formMeta(c).n,
     formLast: formMeta(c).last,
+    // What they actually filled in and what they last booked. A form lead with no context
+    // is a phone number; with the form name and the booking title it is a conversation.
+    convRecent: String(c.recent_conversion_event_name || "").trim(),
+    convFirst: String(c.first_conversion_event_name || "").trim(),
+    bookTitle: String(c.tm_last_booking_title || "").trim(),
+    bookType: String(c.tm_last_booking_type || "").trim(),
+    bookAt: ts(c.tm_last_booking_timestamp),
+    bookN: num(c.tm_total_bookings),
     formAfterStage: (function(){
       const m = formMeta(c);
       const st = ts(c.engagement_stage_last_changed_at);
@@ -2426,49 +2435,6 @@ app.get("/api/callnow2", function(req, res){
   });
 });
 
-/* Agent and manager rollup. Same buckets, one row per agent, so "100 due today, 60
-   worked" reads at every level without a second definition anywhere. */
-app.get("/api/callnow2/agents", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
-  if (!cn2Ready()) return res.json({ notReady: true,
-    error: CACHE.loadedAt
-      ? "Leads are loaded, building today's calling list now."
-      : "Loading leads from HubSpot after a restart. This takes several minutes because every agent's bucket is fetched one at a time.",
-    progress: { agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
-      leadsSoFar: SYNC_PROGRESS.contacts, running: !!CACHE.syncing, syncError: CACHE.error || null } });
-  const ctx = cn2Context(req);
-  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
-  const teamOf = {}, teamName = {};
-  cn2Teams().forEach(function(t){
-    teamName[t.id] = t.name || "(unnamed)";
-    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
-  });
-  const off = {};
-  CN2.offBase(ctx.base, ctx.rows, ctx.day).forEach(function(r){
-    const a = String(r.owner || "none");
-    off[a] = (off[a] || 0) + 1;
-  });
-  const rows = Object.keys(agg.byAgent).map(function(id){
-    const tid = teamOf[id];
-    return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id),
-      team: tid ? teamName[tid] : "", teamId: tid || "",
-      n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
-      offBase: off[id] || 0 };
-  }).sort(function(x, y){ return y.n.all - x.n.all; });
-  const teams = {};
-  rows.forEach(function(r){
-    const k = r.teamId || "";
-    if (!teams[k]) teams[k] = { id: k, name: r.team || "Unmapped", n: CN2.cell(), a: CN2.cell(), d: CN2.cell(), offBase: 0, agents: 0 };
-    ["n", "a", "d"].forEach(function(sec){
-      Object.keys(teams[k][sec]).forEach(function(key){ teams[k][sec][key] += r[sec][key]; });
-    });
-    teams[k].offBase += r.offBase; teams[k].agents++;
-  });
-  res.json({ agents: rows, teams: Object.keys(teams).map(function(k){ return teams[k]; })
-    .sort(function(x, y){ return y.n.all - x.n.all; }),
-    frozen: ctx.frozen, frozenAt: ctx.frozenAt, timing: CN2.TIMING, columns: CN2.COLUMNS });
-});
-
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true,
@@ -2525,7 +2491,12 @@ app.get("/api/callnow2/leads", function(req, res){
         phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
         calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
-        whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner
+        whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
+        forms: r.forms || [], formN: r.formN || 0,
+        convRecent: r.convRecent || "", convFirst: r.convFirst || "",
+        bookTitle: r.bookTitle || "", bookType: r.bookType || "",
+        bookAt: r.bookAt || 0, bookN: r.bookN || 0,
+        aiHot: r.aiHot || 0, stageEntered: r.entered || 0
       };
     }),
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
