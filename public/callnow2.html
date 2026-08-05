@@ -63,7 +63,7 @@ tbody tr.done td{background:#F5FAF8}
 </style></head><body>
 <div class="hdr">
   <h1>Call Now v2</h1><span class="tag">private</span><span id="fxtag"></span>
-  <p>The list is locked at midnight and does not change during the day. Every lead sits in exactly one of the three groups below, so the three always add up to the stage total.</p>
+  <p>Today's calling list is locked at midnight and does not change during the day. Every lead sits in exactly one of the three groups below, so the three always add up to the stage total.</p>
   <a href="/callnow.html">Call Now &nearr;</a><a href="/vp.html">Revenue command &nearr;</a>
 </div>
 <div class="wrap"><div id="app"><div class="load"><div class="spin"></div>Loading</div></div></div>
@@ -93,10 +93,10 @@ function unpick(){PICK=null;L=null;draw();}
 function refreeze(){if(!confirm("Lock the list again using the leads as they are right now? Today's progress will then be measured from this moment instead of from midnight."))return;
   fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(){load();}).catch(function(e){alert(e.message);});}
 
-var TIMING=[["due","Due today"],["over","Late"],["nofu","No date set"],["newlead","Never called"],["sched","Later date"]];
-var COLS=[["form","Filled form"],["score","Score 6 or more"],["intl","International"],["fresh","Brand new"],
-  ["refill","Filled form again"],["ifc","Said later, now due"],["any","Any reason at all"],["all","Every lead in stage"]];
-var SECS=[["n","Call today","n","These leads need a call today. Either the follow-up is due today, or it was due on an earlier working day and nobody called, or no follow-up was ever set, or the lead is brand new, or they filled the form again since the last call, or they said interested in future and that date has arrived. Click any number to see the leads behind it."],
+var TIMING=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"],["sched","Later date"]];
+var COLS=[["form","Filled form"],["score","Score 6 or more"],["intl","International"],["fresh","Fresh"],
+  ["refill","Refilled form"],["ifc","IFC due"],["any","Any reason at all"],["all","Every lead in stage"]];
+var SECS=[["n","Call today","n","These leads need a call today. Either the follow-up is due today, or it was due on an earlier working day and nobody called, or no follow-up was ever set, or the lead is brand new, or they filled the form again since the last call, or the IFC date they asked for has arrived. Click any number to see the leads behind it."],
   ["a","Booked for a later date","a","The next call is set for a future day, so nothing is owed today. If someone calls them anyway it still shows here, so no work goes missing."],
   ["d","Did not pick up, nothing to act on today","d","These people did not answer and have no reason to be called today: no form, no high score, not international, not new. Kept separate so they never make the call-today list look bigger than it is. Calls on them still count here."]];
 
@@ -140,11 +140,11 @@ function movement(){
     chip("",m.called,"called")+chip("stage",m.stage,"moved to a new stage")+chip("fu",m.fu,"next call date changed")+
     chip("owner",m.owner,"given to another agent")+chip("gone",m.gone,"no longer in the list")+chip("still",m.still,"nothing happened")+
     (J.offBase&&J.offBase.leads?"<span class='mvl' style='margin-left:8px'>Extra</span>"+
-      "<button class='btn mv' title='Called today but not on this morning list at all'><b>"+fmt(J.offBase.leads)+"</b> called but not on the morning list</button>":"")+
+      "<button class='btn mv' title='Called today but not on today\u2019s calling list at all'><b>"+fmt(J.offBase.leads)+"</b> called but not on today's calling list</button>":"")+
     "</div>";}
 function baseNote(){
-  if(!J.frozen)return "<div class='warn'>The morning list has not been locked yet today, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
-  return "<div class='note' style='margin:0 0 12px'><b>Morning list locked at "+new Date(J.frozenAt).toLocaleString("en-IN")+
+  if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
+  return "<div class='note' style='margin:0 0 12px'><b>Today's calling list locked at "+new Date(J.frozenAt).toLocaleString("en-IN")+
     "</b> with "+fmt(J.baseSize)+" leads. If a lead changes stage, gets a new follow-up date, or is moved to another agent during the day, it still counts where it started this morning and against the agent who had it this morning. A follow-up only counts as late once a full working day has passed. <a href='#' onclick='refreeze();return false'>Lock again using right now</a></div>";}
 function sel(id,label,opts,val){
   var h="<select onchange='Q."+id+"=this.value;load()'><option value=''>"+label+"</option>";
@@ -163,7 +163,7 @@ function agentTable(){
   if(!A||!A.agents)return "";
   var pc=function(c){return c.all?Math.round(100*c.allW/c.all):0;};
   var h="<div class='sec'><h2><span class='spine t'></span>By manager and agent</h2>"+
-    "<div class='sub'>The same list, one row per agent. The lead counts against whoever had it this morning, so moving leads around in the afternoon cannot make anyone look better.</div>"+
+    "<div class='sub'>The same calling list, one row per agent. The lead counts against whoever had it this morning, so moving leads around in the afternoon cannot make anyone look better.</div>"+
     "<div class='tw'><table><thead><tr><th>Agent</th><th>Team</th>"+
     "<th class='n sep'>Due today</th><th>Overdue</th><th>No FU</th><th>Fresh</th>"+
     "<th class='sep'>Call today</th><th>Booked later</th><th>Did not pick up</th><th>Extra calls</th></tr></thead><tbody>";
@@ -198,11 +198,11 @@ function drill(){
   h+=L.rows.map(function(r){
     var why=[];
     if(r.why.form)why.push("<span class='pill f'>form</span>");
-    if(r.why.refill)why.push("<span class='pill f'>filled form again "+(r.formLast?tm(r.formLast).replace(/<[^>]+>/g,""):"")+"</span>");
+    if(r.why.refill)why.push("<span class='pill f'>refilled form "+(r.formLast?tm(r.formLast).replace(/<[^>]+>/g,""):"")+"</span>");
     if(r.why.score)why.push("<span class='pill s'>score "+r.score+"</span>");
     if(r.why.intl)why.push("<span class='pill i'>intl</span>");
-    if(r.why.ifc)why.push("<span class='pill a'>said later, now due</span>");
-    if(r.why.fresh)why.push("<span class='pill a'>brand new</span>");
+    if(r.why.ifc)why.push("<span class='pill a'>IFC due</span>");
+    if(r.why.fresh)why.push("<span class='pill a'>fresh</span>");
     if(r.needsOwner)why.push("<span class='pill r'>needs owner</span>");
     var moved="";
     if(r.movedStage)moved="<div class='mut'>was "+esc(r.openStage)+", now "+esc(r.nowStage)+"</div>";
