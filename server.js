@@ -819,6 +819,20 @@ app.get("/api/health", function(req, res){
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
                   leadsSoFar: SYNC_PROGRESS.contacts, startedAt: SYNC_PROGRESS.startedAt } };
       } catch (e) { return { error: (e && e.message) || String(e) }; }
+    })(),
+    // Whether tomorrow's morning review will have anything to show. Dates and counts
+    // only, no lead data, so this stays safe on an endpoint with no login.
+    daily: (function(){
+      try {
+        const all = (typeof ORG !== "undefined" && ORG.daily) || {};
+        const dates = Object.keys(all).sort();
+        const today = istParts(new Date()).date;
+        const t = all[today] || null;
+        return { days: dates.length, first: dates[0] || null, latest: dates[dates.length - 1] || null,
+          today: t ? { capturedAt: t.at, lockedAt: t.openAt || null, pool: t.oPool == null ? t.pool : t.oPool,
+            called: t.calls, teams: Object.keys(t.teams || {}).length,
+            agents: Object.keys(t.agents || {}).length } : null };
+      } catch (e) { return { error: (e && e.message) || String(e) }; }
     })() });
 });
 
