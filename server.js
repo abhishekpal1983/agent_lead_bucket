@@ -555,7 +555,11 @@ function istParts(d){
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
   const parts = {};
   fmt.formatToParts(d).forEach(function(p){ parts[p.type] = p.value; });
-  return { date: parts.year + "-" + parts.month + "-" + parts.day, hm: parts.hour + ":" + parts.minute };
+  // Intl with hour12:false reports midnight as hour 24, not 00. Every scheduler here
+  // compares "HH:MM" as text, so "24:05" reads as later than any threshold and fires
+  // things at midnight that were meant for the morning. Normalise it.
+  const hh = parts.hour === "24" ? "00" : parts.hour;
+  return { date: parts.year + "-" + parts.month + "-" + parts.day, hm: hh + ":" + parts.minute };
 }
 
 async function fetchListMemberIds(listId){
@@ -822,6 +826,7 @@ app.get("/api/health", function(req, res){
     })(),
     // Whether tomorrow's morning review will have anything to show. Dates and counts
     // only, no lead data, so this stays safe on an endpoint with no login.
+    last500: LAST_500,
     daily: (function(){
       try {
         const all = (typeof ORG !== "undefined" && ORG.daily) || {};
@@ -5209,6 +5214,16 @@ function shutdown(sig){
 }
 process.on("SIGTERM", function(){ shutdown("SIGTERM"); });
 process.on("SIGINT", function(){ shutdown("SIGINT"); });
+
+let LAST_500 = null;
+app.use(function(err, req, res, next){
+  LAST_500 = { at: new Date().toISOString(), path: req.path,
+    message: (err && err.message) || String(err),
+    stack: String((err && err.stack) || "").split("\n").slice(0, 4).join(" | ") };
+  console.error("500 on " + req.path + ": " + LAST_500.message + " :: " + LAST_500.stack);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: LAST_500.message, path: req.path });
+});
 
 let SERVER = null;
 SERVER = app.listen(PORT, () => {
