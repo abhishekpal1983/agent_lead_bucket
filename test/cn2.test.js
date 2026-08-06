@@ -144,6 +144,28 @@ head("A lead that leaves the pool keeps its place, and keeps its call");
   eq("its stage change does not move it", withAll.sections.n.counselled.score, 1);
 }
 
+head("The two confirmed business rules (RULES.md, 8 Aug 2026)");
+{
+  // Monday to Saturday. Sunday is the only day that rolls a follow-up forward.
+  const W = cn2.workDaySet();
+  [[0, "Sunday"], [1, "Monday"], [2, "Tuesday"], [3, "Wednesday"],
+   [4, "Thursday"], [5, "Friday"], [6, "Saturday"]].forEach(function(d){
+    const isWork = !!W[d[0]];
+    ok(d[1] + (d[0] === 0 ? " is not a working day" : " is a working day"),
+      d[0] === 0 ? !isWork : isWork);
+  });
+
+  // Needs owner never joins the priority queue on its own.
+  const noOwner = cn2.classify({ id: "n1", stage: "counselled", fu: 0, last: 0, forms: [],
+    score: 0, intl: false, formLast: 0, owner: "", needsOwner: true }, day6, { work: W, scoreMin: 6 });
+  ok("a lead with no owner is flagged needs owner", noOwner.why.needs);
+  ok("but that alone does not make it any priority", !cn2.hit(noOwner, "any"));
+  ok("and it still has its own column", cn2.hit(noOwner, "needs"));
+  const scored = cn2.classify({ id: "n2", stage: "counselled", fu: 0, last: 0, forms: [],
+    score: 8, intl: false, formLast: 0, owner: "", needsOwner: true }, day6, { work: W, scoreMin: 6 });
+  ok("a needs-owner lead that also scores does count as any priority", cn2.hit(scored, "any"));
+}
+
 head("Off-base effort");
 {
   const base = { a: cn2.pack(cn2.classify({ id: "a", stage: "counselled", fu: 0, last: 0 }, day6, { work: WORK })) };
