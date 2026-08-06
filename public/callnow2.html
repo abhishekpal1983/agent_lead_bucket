@@ -590,7 +590,12 @@ function churnPanel(){
   var share=function(a){
     var e=a.effort[CHURN_BY],t=B.reduce(function(x,b){return x+e[b.key];},0);
     return t?e.low/t:0;};
-  rows=rows.slice().sort(function(x,y){ return share(y)-share(x) || y.n.all-x.n.all; });
+  // Working agents first, worst churn at the top, then parking buckets, then anyone
+  // deactivated. A deactivated agent's untouched pile is a reassignment job, not a
+  // coaching conversation, so it must not head the list.
+  var rank=function(a){ return (a.active?0:2)+(a.counted?0:1); };
+  rows=rows.slice().sort(function(x,y){
+    return rank(x)-rank(y) || share(y)-share(x) || y.n.all-x.n.all; });
   var h="<div class='sec mini'><h2>Lead churn effort</h2>"+
     "<div class='sub'>Of the leads each agent is holding that need a call today, how many have barely been tried. "+
     "Sorted worst first. <b>By the agent who holds it</b> is the accountable number; <b>by anyone</b> tells you whether "+

@@ -158,6 +158,46 @@ console.log("\nA section with a single stage does not repeat itself");
     out.indexOf("The DNP leads that do carry one are counted in Call today above") >= 0);
 }
 
+console.log("\nChurn effort ordering");
+{
+  // Worst churn should lead, but never a parking bucket or a deactivated agent.
+  const mk = function(id, name, active, counted, lowShare, pool){
+    const low = Math.round(pool * lowShare), rest = pool - low;
+    return { id: id, name: name, team: "Team Sid", teamId: "t1", active: active, counted: counted,
+      offBase: 0, n: Object.assign(CN2.cell(), { all: pool }), a: CN2.cell(), d: CN2.cell(),
+      effort: { owner: { low: low, avg: rest, bench: 0, high: 0 },
+                total: { low: low, avg: rest, bench: 0, high: 0 } } };
+  };
+  const list = [
+    mk("9", "Deactivated Dan", false, true, 0.95, 100),   // worst churn, but deactivated
+    mk("8", "Parking Pete", true, false, 0.90, 100),      // worse than anyone working
+    mk("1", "Sloppy Sam", true, true, 0.80, 100),
+    mk("2", "Tidy Tina", true, true, 0.10, 100)
+  ];
+  let out = "";
+  const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
+  const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
+  const ctx = { console: { log(){}, error(){} },
+    document: { getElementById: function(id){ return id === "app" ? app : stub; } },
+    fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+    Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+    isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+    URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+  vm.createContext(ctx); vm.runInContext(script, ctx);
+  ctx.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
+  ctx.A = { agents: list, effortBands: payload.effortBands };
+  ctx.LOADING = false; ctx.draw();
+  const churn = out.slice(out.indexOf("Lead churn effort"));
+  const seen = ["Sloppy Sam", "Tidy Tina", "Parking Pete", "Deactivated Dan"]
+    .map(function(n){ return { n: n, at: churn.indexOf(n) }; })
+    .filter(function(x){ return x.at >= 0; })
+    .sort(function(a, b){ return a.at - b.at; }).map(function(x){ return x.n; });
+  console.log("     order: " + seen.join("  ->  "));
+  ok("worst churning working agent leads", seen[0] === "Sloppy Sam");
+  ok("a parking bucket cannot head the list despite worse churn", seen.indexOf("Parking Pete") > seen.indexOf("Tidy Tina"));
+  ok("a deactivated agent is last", seen[seen.length - 1] === "Deactivated Dan");
+}
+
 console.log("\nRole specific things appear only where they should");
 {
   const vp = render(ROLES[0][1]), mgr = render(ROLES[1][1]), agent = render(ROLES[2][1]);
