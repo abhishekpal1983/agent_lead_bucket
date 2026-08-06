@@ -2551,6 +2551,10 @@ app.get("/api/callnow2", function(req, res){
   const off = CN2.offBase(ctx.base, ctx.rows, ctx.day);
 
   const agents = {}, creators = {}, sources = {};
+  // How hard the call-today leads have actually been worked, by total attempts in the
+  // current stage and by this owner's attempts. Read from the live lead, because effort
+  // is a question about now, not about midnight.
+  const effort = { total: CN2.effortCounts(), owner: CN2.effortCounts() };
   Object.keys(ctx.base).forEach(function(id){
     const c = CN2.unpack(ctx.base[id]);
     const a = c.owner || "none";
@@ -2558,6 +2562,11 @@ app.get("/api/callnow2", function(req, res){
     if (c.creator) creators[c.creator] = (creators[c.creator] || 0) + 1;
     const src = c.source || "(not set)";
     sources[src] = (sources[src] || 0) + 1;
+    if (c.counted && c.sec === "n") {
+      const lv = ctx.live[id];
+      effort.total[CN2.effortBand(lv ? lv.calls : 0).key]++;
+      effort.owner[CN2.effortBand(lv ? lv.own : 0).key]++;
+    }
   });
 
   res.json({
@@ -2566,6 +2575,8 @@ app.get("/api/callnow2", function(req, res){
         n: agg.sections.n[s], a: agg.sections.a[s], d: agg.sections.d[s] };
     }),
     totals: agg.totals, excluded: agg.excluded, movement: agg.movement,
+    effort: effort, effortBands: CN2.EFFORT_BANDS.map(function(b){
+      return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
     offBase: { leads: off.length, calls: off.length },
     timing: CN2.TIMING, columns: CN2.COLUMNS,
     frozen: ctx.frozen, frozenAt: ctx.frozenAt, freezeHour: CN2_FREEZE_HM, workDays: CN2_WORK_DAYS,
@@ -2724,6 +2735,13 @@ app.get("/api/callnow2/leads", function(req, res){
     if (sec && c.sec !== sec) return;
     if (t && c.t !== t) return;
     if (!CN2.hit(c, col)) return;
+    const band = String(req.query.band || "");
+    if (band) {
+      const by = String(req.query.bandBy || "total");
+      const lv = ctx.live[id];
+      const n = lv ? (by === "owner" ? lv.own : lv.calls) : 0;
+      if (CN2.effortBand(n).key !== band) return;
+    }
     const nc = String(req.query.notcounted || "");
     if (nc === "1" && c.counted) return;
     if (nc !== "1" && !c.counted) return;   // totals exclude them, so the drill does too
@@ -2763,7 +2781,9 @@ app.get("/api/callnow2/leads", function(req, res){
         unassigned: !x.c.owner,
         ownerInactive: !!(x.c.owner && (CACHE.owners[x.c.owner] || {}).active === false),
         phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
-        calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
+        calls: r.calls || 0, own: r.own || 0,
+        band: CN2.effortBand(r.calls || 0).key, bandOwner: CN2.effortBand(r.own || 0).key,
+        score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,

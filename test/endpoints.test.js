@@ -71,7 +71,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2?ostate=inactive", "filter: deactivated owner"],
       ["/api/callnow2?intl=yes", "filter: international only"],
       ["/api/callnow2?intl=no", "filter: national only"],
-      ["/api/callnow2?stages=counselled,discovery", "filter: a picked set of stages"]
+      ["/api/callnow2?stages=counselled,discovery", "filter: a picked set of stages"],
+      ["/api/callnow2/leads?band=low&bandBy=total&sec=n", "drill: leads barely tried"],
+      ["/api/callnow2/leads?band=high&bandBy=owner&sec=n", "drill: over-worked by this owner"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -129,6 +131,19 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     const un = await get("/api/callnow2?ostate=unassigned");
     ok("unassigned finds the leads with no owner", un.body.baseSize > 0, String(un.body.baseSize));
     ok("and it is a subset", un.body.baseSize < all.body.baseSize);
+
+    // The effort bands have to partition the call-today leads, not overlap or lose any.
+    const bands = ["low", "avg", "bench", "high"];
+    const counts = [];
+    for (const bnd of bands) counts.push((await get("/api/callnow2/leads?sec=n&bandBy=total&band=" + bnd)).body.total);
+    const allNow = (await get("/api/callnow2/leads?sec=n&col=all")).body.total;
+    ok("the four effort bands add up to every call-today lead, none double counted",
+      counts.reduce(function(a, b){ return a + b; }, 0) === allNow,
+      counts.join(" + ") + " vs " + allNow);
+    const eff = (await get("/api/callnow2")).body.effort;
+    ok("the panel's own counts agree with the drill",
+      eff && bands.every(function(b, i){ return eff.total[b] === counts[i]; }),
+      JSON.stringify(eff && eff.total) + " vs " + counts.join(","));
 
     const held = await get("/api/callnow2/leads?notcounted=1");
     const normal = await get("/api/callnow2/leads?col=all");

@@ -197,6 +197,7 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
 .wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
 .wrap .mbar{height:5px !important}
+.wrap .r{color:#8C2D12}.wrap .a{color:#7A4A08}.wrap .g{color:#0A5346}.wrap .p{color:#4B2E9E}
 /* Two columns for the header blocks, so controls and today's state cost one section of
    height between them rather than four stacked bars. */
 .wrap .top{display:grid !important;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr) !important;
@@ -254,7 +255,7 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
-function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:""},o);L=null;OPEN={};LQ="";loadLeads();
+function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
 function rebuild(btn){if(btn){btn.disabled=true;btn.textContent="Building...";}
@@ -282,7 +283,7 @@ var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",d
 var STAGE_LABEL={counselled:"Counselled",program_pitched:"Program pitched",discovery:"Discovery",
   pricing_pitched:"Pricing pitched","Follow up":"Follow up",payment_prospect:"Payment prospect",
   FU_DNP:"FU - DNP",FU_RCB:"FU - RCB",rcb_requested_callback:"RCB - Requested callback",
-  dnp_did_not_pick:"DNP (form or score)",dnp_other:"DNP (everything else)",__fresh:"Fresh leads",
+  dnp_did_not_pick:"DNP",dnp_other:"DNP",__fresh:"Fresh leads",
   IFC:"Interested in future",ghosted:"Ghosted",ni_not_interested:"NI - Not interested",
   disqualified:"Disqualified",deal_won:"Deal won"};
 function chip(stage,label){
@@ -449,6 +450,9 @@ function detRow(r,cols){
   if(r.coldReason)bits.push("<b>Reason given:</b> "+esc(r.coldReason));
   if(!h&&!bits.length)bits.push("<span class='z'>Nothing recorded on this lead beyond the basics.</span>");
   return "<tr class='det'><td colspan='"+cols+"'>"+h+bits.join("<br>")+"</td></tr>";}
+function bandOf(k){ return ((J&&J.effortBands)||[]).filter(function(b){return b.key===k;})[0]||null; }
+function bandCls(k){ var b=bandOf(k); return b?b.cls:"z"; }
+function bandTitle(k){ var b=bandOf(k); return b?esc(b.label):""; }
 function days(ms){ return ms ? Math.max(0, Math.round((Date.now()-ms)/86400000)) : ""; }
 function whyTags(r){
   // Same tag vocabulary, colours and tooltips as v1's Why call column.
@@ -506,7 +510,8 @@ function drill(){
         (r.movedOwner?"<div class='sub3'>reassigned since</div>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
       "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
-      "<td class='n'>"+fmt(r.calls)+"</td><td class='n'>"+fmt(r.own)+"</td>"+
+      "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
+      "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", this agent only'>"+fmt(r.own)+"</b></td>"+
       "<td class='n'>"+(r.stageEntered?days(r.stageEntered):"<span class='z'>–</span>")+"</td>"+
       "<td>"+(r.worked?"<span class='pill'>called</span>":(r.gone?"<span class='tag p'>gone</span>":"<span class='tag o'>not yet</span>"))+"</td></tr>";
     if(OPEN[r.id])h+=detRow(r,13);
@@ -563,6 +568,35 @@ function reconcile(){
   if(REC.shown)h+="<div class='sub' style='margin-top:9px'>"+fmt(REC.shown.notCounted)+
     " leads are shown but not counted by v2, of which "+fmt(REC.shown.unassigned)+" have no owner at all.</div>";
   return h+"</div>";}
+
+// Whether a lead has had a fair go. Two numbers, because they answer different
+// questions: attempts in the stage by anyone, and attempts by the agent who holds it now.
+function effortPanel(){
+  var e=J.effort,B=J.effortBands;
+  if(!e||!B)return "";
+  var tot=B.reduce(function(a,b){return a+e.total[b.key];},0);
+  if(!tot)return "";
+  var range=function(b){ return b.max==null?(b.min+"+"):(b.min+" to "+b.max); };
+  var row=function(by,label){
+    var src=by==="owner"?e.owner:e.total;
+    return "<tr><td>"+label+"</td>"+B.map(function(b){
+      var n=src[b.key],pc=tot?Math.round(100*n/tot):0;
+      var on=PICK&&PICK.band===b.key&&PICK.bandBy===by;
+      return "<td class='n cell"+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+        ",bandBy:"+JSON.stringify(by).replace(/"/g,"&quot;")+",sec:\"n\"})'>"+
+        "<b class='"+b.cls+"'>"+fmt(n)+"</b><div class='sub3'>"+pc+"%</div></td>";
+    }).join("")+"</tr>";};
+  var h="<div class='sec mini'><h2>Has the lead had a fair go</h2>"+
+    "<div class='sub'>Attempts on the leads that need a call today. <b>In the stage</b> counts every agent who has "+
+    "tried since the lead reached its current stage. <b>By the agent who holds it</b> counts only theirs, which is "+
+    "how you tell an inherited lead from a neglected one. Click any number for those leads.</div>"+
+    "<div class='tw'><table><thead><tr><th>Attempts</th>"+
+    B.map(function(b){return "<th class='n'>"+esc(b.label)+"<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
+    "</tr></thead><tbody>"+
+    row("total","In the stage, by anyone")+
+    row("owner","By the agent who holds it")+
+    "</tbody></table></div></div>";
+  return h;}
 
 function agentTable(){
   if(!A||!A.agents||!A.agents.length)return "";
@@ -634,10 +668,11 @@ function draw(){
     var last=i===SECS.length-1;
     h+="<div class='sec mini'><h2>"+s[1]+"</h2><div class='sub'>"+s[2]+"</div>"+
       "<div class='tw'><table>"+head()+"<tbody>"+body(s[0])+
-      totRow(s[1],[J.totals[s[0]]],s[0],"sub")+
+      (J.stages.filter(function(x){return x[s[0]].all>0;}).length>1
+        ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  h+=excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
+  h+=effortPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
   el.innerHTML=h;}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);

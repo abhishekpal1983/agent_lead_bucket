@@ -61,7 +61,10 @@ const payload = {
   creatorOptions: [{ u: "ayush_singh13", n: 40 }],
   sourceOptions: [{ u: "forms", n: 12 }, { u: "digital product", n: 8 }],
   stageOptions: STAGES.map(function(s){ return { stage: s, label: s }; }),
-  loadedAt: "fixtures", listBuiltAt: new Date(fixture.now).toISOString()
+  loadedAt: "fixtures", listBuiltAt: new Date(fixture.now).toISOString(),
+  effort: { total: { low: 40, avg: 12, bench: 5, high: 2 }, owner: { low: 50, avg: 6, bench: 2, high: 1 } },
+  effortBands: CN2.EFFORT_BANDS.map(function(b){
+    return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; })
 };
 const agents = Object.keys(agg.byAgent).map(function(id){
   return { id: id === "none" ? "" : id, name: "Agent " + id, team: "Team Sid", teamId: "t1",
@@ -78,7 +81,7 @@ const leadRows = Object.keys(base).slice(0, 3).map(function(id){
       answers: [{ q: "What is your current Role ?", a: ["Electrical Engineer"] }] }],
     bookTitle: "A course", bookType: "digital_product", bookAt: fixture.now, bookN: 1,
     convRecent: "", convFirst: "", aiSummary: "note", outcome: "Connected", whyText: "", coldReason: "",
-    needsOwner: false, unassigned: false, ownerInactive: true,
+    needsOwner: false, unassigned: false, ownerInactive: true, band: "low", bandOwner: "bench",
     stageEntered: fixture.now - 5 * 86400000 };
 });
 
@@ -125,6 +128,31 @@ ROLES.forEach(function(r){
   ok(r[0] + " actually produced a table", out.indexOf("<table") >= 0 && out.length > 3000, String(out.length));
 });
 
+console.log("\nA section with a single stage does not repeat itself");
+{
+  const one = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
+  // leave only one stage with anything in the parked group
+  const solo = JSON.parse(JSON.stringify(payload.stages));
+  solo.forEach(function(st, i){ if (i > 0) st.d = Object.assign({}, st.d, { all: 0 }); });
+  one.stages = solo;
+  let out = "";
+  const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
+  const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
+  const ctx = { console: { log(){}, error(){} },
+    document: { getElementById: function(id){ return id === "app" ? app : stub; } },
+    fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+    Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+    isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+    URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+  vm.createContext(ctx); vm.runInContext(script, ctx);
+  ctx.J = one; ctx.A = { agents: agents }; ctx.LOADING = false; ctx.draw();
+  const parked = out.slice(out.indexOf("DNP, nothing to act on today"));
+  const subtotals = (parked.match(/tot sub/g) || []).length;
+  ok("no subtotal row under a group that has only one stage in it", subtotals === 0,
+    subtotals + " subtotal rows");
+  ok("the grand total is still there", out.indexOf("Everything added up") >= 0);
+}
+
 console.log("\nRole specific things appear only where they should");
 {
   const vp = render(ROLES[0][1]), mgr = render(ROLES[1][1]), agent = render(ROLES[2][1]);
@@ -139,6 +167,13 @@ console.log("\nRole specific things appear only where they should");
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
   ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
+  ok("the effort bands are shown with their ranges",
+    vp.indexOf("Has the lead had a fair go") >= 0 && vp.indexOf("Barely tried") >= 0 &&
+    vp.indexOf("At benchmark") >= 0 && vp.indexOf("0 to 3") >= 0 && vp.indexOf("11+") >= 0);
+  ok("both attempt questions are asked separately",
+    vp.indexOf("In the stage, by anyone") >= 0 && vp.indexOf("By the agent who holds it") >= 0);
+  ok("attempt counts on a lead row are colour banded",
+    vp.indexOf("counting every agent") >= 0 && vp.indexOf("this agent only") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
   ok("the header blocks sit in two columns, not four stacked bars",
