@@ -27,6 +27,7 @@ console.log("\nDensity rules have to come after the shared theme");
   const after = html.slice(themeAt);
   [["compact header cells", "table th{padding:5px"],
    ["compact body cells", "table td{padding:4px"],
+   ["table type scaled to the rows", "table{font-size:12.5px"],
    ["tables scroll", ".tw{max-height"],
    ["two column header blocks", ".top{display:grid"]].forEach(function(r){
     ok(r[0] + " is defined after the theme", after.indexOf(r[1]) >= 0, r[1]);
