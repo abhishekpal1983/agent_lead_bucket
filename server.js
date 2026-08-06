@@ -2461,6 +2461,21 @@ function cn2FreezeDue(){
 
 // One place that decides which leads a v2 request is about, so the matrix, the agent
 // table and the drill down can never disagree with each other.
+/* Who is allowed to see what. A VP sees the floor, a manager sees the agents on their
+   teams, an agent sees only themselves. Returned as a list of owner ids, or null for
+   no restriction, so every v2 endpoint applies it the same way. */
+function cn2Scope(req){
+  if (isVP(req)) return null;
+  const s = req.session || (typeof sessionOf === "function" ? sessionOf(req) : null);
+  if (!s) return [];
+  if (s.role === "agent") return [String(s.ownerId || "")];
+  const me = String(s.email || "").toLowerCase();
+  const mine = cn2Teams().filter(function(t){ return String(t.managerEmail || "").toLowerCase() === me; });
+  if (!mine.length) return [];
+  const ids = [];
+  mine.forEach(function(t){ (t.agentIds || []).forEach(function(id){ ids.push(String(id)); }); });
+  return ids;
+}
 function cn2Context(req){
   const day = CN2.dayBoundsFor(cn2Now());
   const store = cn2Store();
@@ -2479,19 +2494,34 @@ function cn2Context(req){
   const wantTeam = String(req.query.team || "");
   const wantCreator = String(req.query.creator || "");
   const wantSource = String(req.query.source || "");
+  const wantOstate = String(req.query.ostate || "");
+  const wantIntl = String(req.query.intl || "");
+  const wantStages = String(req.query.stages || "").split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+  const allow = cn2Scope(req);
   let teamAgents = null;
   if (wantTeam) {
     const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
     if (tt) teamAgents = (tt.agentIds || []).map(String);
   }
-  if (wantAgent || teamAgents || wantCreator || wantSource) {
+  if (wantAgent || teamAgents || wantCreator || wantSource || wantOstate || wantIntl ||
+      wantStages.length || allow) {
     const kept = {};
     Object.keys(base).forEach(function(id){
       const c = CN2.unpack(base[id]);
+      if (allow && allow.indexOf(String(c.owner)) < 0) return;   // role scope, not a filter
       if (wantAgent && String(c.owner) !== wantAgent) return;
       if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
       if (wantCreator && c.creator !== wantCreator) return;
       if (wantSource && (c.source || "(not set)") !== wantSource) return;
+      if (wantStages.length && wantStages.indexOf(c.stage) < 0) return;
+      if (wantIntl === "yes" && !c.why.intl) return;
+      if (wantIntl === "no" && c.why.intl) return;
+      if (wantOstate) {
+        const o = CACHE.owners[c.owner] || {};
+        if (wantOstate === "needs" && !c.why.needs) return;
+        if (wantOstate === "unassigned" && c.owner) return;
+        if (wantOstate === "inactive" && (!c.owner || o.active !== false)) return;
+      }
       kept[id] = base[id];
     });
     base = kept;
@@ -2509,7 +2539,6 @@ function cn2StageOrder(base){
 }
 
 app.get("/api/callnow2", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true,
     error: CACHE.loadedAt
       ? "Leads are loaded, building today's calling list now."
@@ -2554,6 +2583,9 @@ app.get("/api/callnow2", function(req, res){
     // The page hides anything not meant for the reader rather than relying on the route
     // gate alone, so opening v2 to managers later cannot leak a control by accident.
     isVP: isVP(req), role: (req.session && req.session.role) || "manager",
+    scoped: !!cn2Scope(req),
+    stageOptions: cn2StageOrder(ctx.base).map(function(x){
+      return { stage: x, label: CN_STAGE_LABELS[x] || x }; }),
     listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length
   });
 });
@@ -2561,7 +2593,6 @@ app.get("/api/callnow2", function(req, res){
 /* Per agent, same locked list. It is the filter as much as a table: clicking a row
    scopes the page to that agent, which is how the v1 page behaves. */
 app.get("/api/callnow2/agents", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true });
   const ctx = cn2Context(req);
   const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
@@ -2593,7 +2624,8 @@ app.get("/api/callnow2/agents", function(req, res){
    manager meeting. Both sides are computed here from the same pool in the same request,
    so nothing can be blamed on timing. */
 app.get("/api/callnow2/reconcile", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  // Comparing the two pages is a VP question, not a floor one.
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
   if (!cn2Ready()) return res.json({ notReady: true });
   const day = istDayBounds();
   const now = Date.now();
@@ -2673,7 +2705,6 @@ app.get("/api/callnow2/reconcile", function(req, res){
 });
 
 app.get("/api/callnow2/leads", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true,
     error: CACHE.loadedAt
       ? "Leads are loaded, building today's calling list now."
@@ -3184,8 +3215,7 @@ function authGate(req, res, next){
     return res.redirect("/login.html");
   }
   req.session = s;
-  // Call Now v2 is a private working page, not part of the floor's toolkit.
-  if (p === "/callnow2.html" && !isVP(req)) return res.redirect("/callnow.html");
+  // v2 is scoped per role like v1, so an agent opening it sees their own leads only.
   if (s.role === "agent") {
     if (!s.ownerId && p.indexOf("/api/") === 0) {
       return res.status(403).json({ error: "no HubSpot lead owner matches " + s.email });
@@ -3212,7 +3242,7 @@ function authGate(req, res, next){
       }
     }
     // agents only get the call list and their own snapshot
-    const allowed = ["/callnow.html", "/agent.html", "/login.html", "/"];
+    const allowed = ["/callnow.html", "/callnow2.html", "/agent.html", "/login.html", "/"];
     if (p.indexOf("/api/") !== 0 && allowed.indexOf(p) < 0 && p.endsWith(".html")) return res.redirect("/callnow.html");
     if (p === "/") return res.redirect("/callnow.html");
   }

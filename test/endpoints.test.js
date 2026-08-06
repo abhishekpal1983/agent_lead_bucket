@@ -65,7 +65,13 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2/leads?col=all", "clicking the grand total, every stage and group"],
       ["/api/callnow2/leads?sec=a&t=sched", "clicking a timing subtotal in booked for later"],
       ["/api/callnow2/reconcile", "v1 against v2, bucket by bucket"],
-      ["/api/callnow2/leads?notcounted=1", "drill: the pile held aside"]
+      ["/api/callnow2/leads?notcounted=1", "drill: the pile held aside"],
+      ["/api/callnow2?ostate=needs", "filter: needs owner"],
+      ["/api/callnow2?ostate=unassigned", "filter: unassigned"],
+      ["/api/callnow2?ostate=inactive", "filter: deactivated owner"],
+      ["/api/callnow2?intl=yes", "filter: international only"],
+      ["/api/callnow2?intl=no", "filter: national only"],
+      ["/api/callnow2?stages=counselled,discovery", "filter: a picked set of stages"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -108,6 +114,21 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("a section subtotal opens only that section",
       secN.body && whole.body && secN.body.total < whole.body.total,
       (secN.body || {}).total + " vs " + (whole.body || {}).total);
+
+    // The ported v1 controls have to actually narrow the list, not just return 200.
+    const all = await get("/api/callnow2");
+    const twoStages = await get("/api/callnow2?stages=counselled,discovery");
+    ok("the stage picker narrows the list",
+      twoStages.body.baseSize < all.body.baseSize && twoStages.body.stages.length <= 2,
+      twoStages.body.baseSize + " of " + all.body.baseSize + " over " + twoStages.body.stages.length + " stages");
+    const intlYes = await get("/api/callnow2?intl=yes");
+    const intlNo = await get("/api/callnow2?intl=no");
+    ok("international and national split the list between them",
+      intlYes.body.baseSize + intlNo.body.baseSize === all.body.baseSize,
+      intlYes.body.baseSize + " + " + intlNo.body.baseSize + " vs " + all.body.baseSize);
+    const un = await get("/api/callnow2?ostate=unassigned");
+    ok("unassigned finds the leads with no owner", un.body.baseSize > 0, String(un.body.baseSize));
+    ok("and it is a subset", un.body.baseSize < all.body.baseSize);
 
     const held = await get("/api/callnow2/leads?notcounted=1");
     const normal = await get("/api/callnow2/leads?col=all");

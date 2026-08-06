@@ -197,7 +197,7 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 <script>
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="";
-var Q={team:"",agent:"",creator:"",source:""};
+var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function fmt(n){return (n||0).toLocaleString("en-IN");}
 function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}catch(e){
@@ -339,21 +339,45 @@ function sel(id,label,opts,val){
   return h+"</select></div>";}
 function bar(){
   var h="<div class='bar'>";
-  h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
-  h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
+  // A scoped reader has nothing to choose between, so the picker is not drawn for them.
+  if(!J.scoped){
+    h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
+    h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
+  }
   h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
   h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
+  h+=sel("intl","Number",[{v:"yes",l:"International only"},{v:"no",l:"National only"}],Q.intl);
   h+="<div style='align-self:flex-end'><button class='btn' onclick='load()'>Reload</button>";
-  if(Q.team||Q.agent||Q.creator||Q.source)h+=" <button class='btn' onclick='Q={team:\"\",agent:\"\",creator:\"\",source:\"\"};load()'>Clear</button>";
+  if(Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
+    h+=" <button class='btn' onclick='clearF()'>Clear</button>";
   h+="</div>";
   h+="<div style='margin-left:auto;align-self:flex-end;font-size:11.5px;color:#566575'>"+
     (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+
     (J.listBuiltAt?" &middot; list built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div>";
+  h+="</div>";
+  // Second row of chips, the same controls v1 puts under its dropdowns.
+  h+="<div class='bar' style='padding-top:8px;padding-bottom:8px'>";
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em'>Stages</span>"+
+    "<div class='chips'>"+
+    "<button class='chipb"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
+    (J.stageOptions||[]).map(function(o){
+      var on=String(Q.stages).split(",").indexOf(o.stage)>=0;
+      return "<button class='chipb"+(on?" on":"")+"' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
+        esc(o.label)+"</button>";}).join("")+"</div>";
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:8px'>Owner</span>"+
+    "<div class='chips'>"+
+    [["","All"],["needs","Needs owner"],["unassigned","Unassigned"],["inactive","Deactivated"]].map(function(o){
+      return "<button class='chipb"+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
+        JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
   return h+"</div>";}
-// actual_source arrives as machine values like "digital product" or "marketing webinar".
-function srcLabel(v){
-  if(!v)return "(not set)";
-  return String(v).replace(/_/g," ").replace(/^\w/,function(m){return m.toUpperCase();});
+function setF(k,v){ Q[k]=v; load(); }
+function clearF(){ Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""}; load(); }
+function setStages(v){ Q.stages=v; load(); }
+function toggleStage(st){
+  var cur=String(Q.stages||"").split(",").filter(Boolean);
+  var i=cur.indexOf(st);
+  if(i>=0)cur.splice(i,1); else cur.push(st);
+  Q.stages=cur.join(","); load();
 }
 function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
   return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
@@ -557,7 +581,10 @@ function draw(){
       (J.building&&J.isVP?" <button class='btn' onclick='rebuild(this)'>Build it now</button>":"")+bar2+"</div>";
     return;}
   var fx=document.getElementById("fxtag");
-  if(fx)fx.innerHTML=J.fixtures?"<span class='mebadge'>test data, not real</span>":"";
+  if(fx)fx.innerHTML=(J.fixtures?"<span class='mebadge'>test data, not real</span>":"")+
+    (J.scoped?"<span class='mebadge'>your leads</span>":"");
+  var sub=document.getElementById("sub");
+  if(sub&&J.scoped)sub.textContent="Your calling list, locked at midnight. It does not change during the day, so what you work against is fixed.";
   var nav=document.getElementById("vpnav");
   if(nav)nav.style.display=J.isVP?"flex":"none";
   var h=bar()+baseNote()+movement();
@@ -568,7 +595,7 @@ function draw(){
       totRow(s[1],[J.totals[s[0]]],s[0],"sub")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  h+=excludedNote()+reconcile()+agentTable()+drill();
+  h+=excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
   el.innerHTML=h;}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);

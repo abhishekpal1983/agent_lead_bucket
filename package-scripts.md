@@ -25,6 +25,7 @@ Nothing in v2 touches the live Call Now page or its endpoint. Work on the `v2` b
     node test/cn2.test.js        # the model: overdue rules, sections, the frozen base
     node test/pool.test.js       # the concurrency helper used by the boot sync
     node test/sync.test.js       # the two phase boot sync, same output, much faster
+    node test/scope.test.js      # who can see whose leads: agent, manager, VP
     node test/endpoints.test.js  # boots the real server on fixtures and calls every endpoint
 
 The last one is the important one. `node --check` only finds syntax errors, so a missing
