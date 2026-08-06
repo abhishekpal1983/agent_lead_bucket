@@ -212,6 +212,13 @@ console.log("\nRole specific things appear only where they should");
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
   ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
+  ok("the hero carries called against the pool",
+    vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
+  ok("what changed today is chips beside the hero",
+    vp.indexOf("What changed today") >= 0 && vp.indexOf("moved stage") >= 0);
+  ok("the matrix header is banded into four groups",
+    vp.indexOf("Priority signals") >= 0 && vp.indexOf("New information") >= 0 &&
+    vp.indexOf("Totals") >= 0 && vp.indexOf("class='grp'") >= 0);
   ok("churn effort is named and banded",
     vp.indexOf("Lead churn effort") >= 0 && vp.indexOf("Barely tried") >= 0 &&
     vp.indexOf("At benchmark") >= 0 && vp.indexOf("0 to 3") >= 0 && vp.indexOf("11+") >= 0);
@@ -228,9 +235,32 @@ console.log("\nRole specific things appear only where they should");
   ok("the header blocks sit in two columns, not four stacked bars",
     vp.indexOf("class='top'") >= 0 && (vp.match(/class='topcol'/g) || []).length === 2,
     String((vp.match(/class='topcol'/g) || []).length) + " columns");
-  ok("controls on the left, today's state on the right",
-    vp.indexOf("class='top'") < vp.indexOf("Manager") &&
-    vp.indexOf("What changed today") > vp.indexOf("Manager"));
+  ok("the hero leads, then the controls, then the tables",
+    vp.indexOf("Called today") < vp.indexOf("Manager") &&
+    vp.indexOf("Manager") < vp.indexOf("Call today"));
+  ok("three views, matrix first",
+    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view/g) || []).length === 3 &&
+    vp.indexOf("class='view on'") >= 0);
+  ok("the board is one of them", vp.indexOf("Board view") >= 0);
+  // With nothing picked the queue must invite a choice, not invent one.
+  {
+    let out = "";
+    const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
+    const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
+    const c2 = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ return id === "app" ? app : stub; } },
+      fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+    vm.createContext(c2); vm.runInContext(script, c2);
+    c2.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
+    c2.A = { agents: agents, effortBands: payload.effortBands };
+    c2.LOADING = false; c2.draw();
+    ok("the queue waits for a pick rather than guessing",
+      out.indexOf("Pick a number in the Matrix") >= 0);
+    ok("and no lead card exists until a lead is picked", out.indexOf("class='now'") < 0);
+  }
   ok("every table is inside a scrolling wrapper",
     (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
   ok("why-call tags carry the tooltip v1 has",

@@ -144,8 +144,15 @@ tfoot tr:first-child td:first-child{background:#12304F}
    count and reads them as one row of the same thing. */
 /* The two groups are told apart by a rule and a faint tint. Anything heavier fights the
    heatmap shading, which is the thing actually carrying meaning in these cells. */
-th.gA{background:#E7EEF5}
-td.gA{background:#FAFCFD}
+th.gA{background:#E4EDF9;color:#2A5EA8}td.gA{background:#EEF4FC}
+th.gB{background:#FAEFD8;color:#8A6414}td.gB{background:#FDF6E7}
+th.gC{background:#E3F2E9;color:#1C6B4E}td.gC{background:#EDF7F0}
+th.gD{background:#E9EEF3;color:#4A5A6A}td.gD{background:#F2F5F8}
+th.gh{background:#fff}
+thead tr.grp th{top:0;z-index:4;text-align:left;font-size:10px;letter-spacing:.09em;border-bottom:none}
+thead tr.colh th{top:23px;z-index:3}
+tr.tot td.gB{background:#F2E8D2}tr.tot td.gC{background:#DEEBE3}tr.tot td.gD{background:#D6DEE7}
+tr.tot.grand td.gB{background:#1A2E4A}tr.tot.grand td.gC{background:#14304A}tr.tot.grand td.gD{background:#152A44}
 th.edge,td.edge{border-left:2px solid #C2D2E0}
 .sec.mini th{white-space:normal;line-height:1.25;vertical-align:bottom;text-align:right}
 .sec.mini th:first-child,.sec.mini td:first-child{width:172px;text-align:left}
@@ -215,6 +222,64 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .top select{padding:4px 8px !important;font-size:12.5px !important;min-width:112px !important}
 .wrap .top .chipb{padding:2px 9px !important;font-size:11.5px !important}
 @media (max-width:1200px){ .wrap .top{grid-template-columns:1fr !important} }
+
+/* ---- view switcher, hero, board, lead card ---- */
+.seg{display:inline-flex;background:#EFECF7;border-radius:10px;padding:3px;gap:2px;margin-left:4px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:5px 17px;font-size:13px;font-weight:600;
+  color:#7C7A8C;cursor:pointer;font-family:inherit}
+.seg button.on{background:#fff;color:#1A1A2E;box-shadow:0 1px 3px rgba(20,20,45,.13)}
+.view{display:none}.view.on{display:block}
+.herorow{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:12px;margin-bottom:12px}
+.hero2{background:linear-gradient(135deg,#3B63E0,#4B3FCF 55%,#3E2FA8);border-radius:12px;padding:14px 16px;color:#fff}
+.hero2 .k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#C9D4FA;font-weight:700}
+.hero2 .pctpill{float:right;background:rgba(255,255,255,.19);border-radius:7px;padding:2px 9px;font-size:11.5px;font-weight:700}
+.hero2 .big{font-size:36px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin:5px 0 2px}
+.hero2 .of{font-size:15px;font-weight:500;color:#C9D4FA;margin-left:5px}
+.hero2 .track{height:6px;border-radius:4px;background:rgba(255,255,255,.24);margin:9px 0 7px;overflow:hidden}
+.hero2 .track i{display:block;height:6px;background:#fff;border-radius:4px}
+.hero2 .foot{font-size:11px;color:#C9D4FA}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:11px}
+.bcard{background:#fff;border:1px solid #DCE4EC;border-radius:11px;padding:12px 14px}
+.bcard:hover{border-color:#B7DEE8}
+.bcard .top{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.bcard .nm{font-weight:600;font-size:13px}
+.bcard .instage{margin-left:auto;font-size:11px;color:#7C8899}
+.bcard .h2n{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.bcard .h2n span{font-size:12px;font-weight:500;color:#7C8899;margin-left:5px}
+.stack{display:flex;height:6px;border-radius:4px;overflow:hidden;margin:9px 0;background:#EDF1F6}
+.stack i{display:block;height:6px}
+.s1{background:#2F6FE4}.s2{background:#A6357F}.s3{background:#C9D2DD}.s4{background:#1E7A5F}
+.brk{display:flex;align-items:center;gap:8px;padding:4px 6px;border-top:1px solid #F0F4F8;font-size:12px;
+  cursor:pointer;border-radius:5px}
+.brk:hover{background:#EEF3FF}.brk:hover .v{color:#2F6FE4}
+.sw{width:9px;height:9px;border-radius:2px;flex:none}
+.brk .v{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+.qrow{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
+.qrow.open{grid-template-columns:minmax(0,1fr) 320px}
+.qrow > *{min-width:0}
+[hidden]{display:none !important}
+.tick{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;
+  background:#15A34A;color:#fff;font-size:9.5px;font-weight:700;margin-right:5px;vertical-align:1px}
+tr.done td{background:#F7FBF9}
+tr.done td a{color:#4A5A6A}
+.detbox{background:#fff;border:1px solid #DCE4EC;border-left:3px solid #0091AE;border-radius:7px;
+  margin:7px 10px 9px 30px;padding:8px 11px}
+.now{background:#fff;border:1px solid #DCE4EC;border-radius:11px;padding:13px 15px;position:sticky;top:12px}
+.now .k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#7C8899;font-weight:700}
+.now .nm2{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:4px 0 1px}
+.kv{display:flex;padding:5px 0;border-top:1px solid #F0F4F8;font-size:12.5px}
+.kv .k2{color:#7C8899}.kv .v2{margin-left:auto;font-weight:600;text-align:right}
+.eff3{display:flex;gap:6px;margin-top:9px}
+.eb{flex:1;text-align:center;border:1px solid #E3E9EF;border-radius:7px;padding:5px 4px}
+.eb .n{font-size:15px;font-weight:700;line-height:1}
+.eb .l{font-size:9px;color:#7C8899;letter-spacing:.03em;text-transform:uppercase;margin-top:2px}
+.cardexp{margin-top:10px;border-top:1px solid #EFF3F7;padding-top:3px}
+.expbtn{width:100%;text-align:left;border:0;background:transparent;padding:6px 0;font-size:12.5px;
+  font-weight:600;color:#0A2540;cursor:pointer;font-family:inherit;border-bottom:1px solid #F0F4F8}
+.expbtn:hover{color:#0091AE}
+.expbtn span{color:#0091AE;font-weight:700;margin-right:6px}
+.expbody{font-size:11.5px;color:#3F5163;line-height:1.6;padding:7px 9px;margin:0 0 5px;
+  background:#F7FAFC;border-left:3px solid #0091AE;border-radius:0 6px 6px 0}
 </style>
 </head><body>
 
@@ -234,7 +299,7 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 </div>
 <script>
 
-var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="";
+var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="";
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function fmt(n){return (n||0).toLocaleString("en-IN");}
@@ -261,7 +326,8 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
-function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
+function setView(v){VIEW=v;if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
+function pick(o){VIEW="queue";SEL="";PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
 function rebuild(btn){if(btn){btn.disabled=true;btn.textContent="Building...";}
@@ -306,18 +372,25 @@ function heats(rows,keys,sec){
   });
   return mx;
 }
+// Four groups, each with its own tint and a band naming it, so timing, priority signals,
+// new information and totals are told apart instead of read as one long row.
+var GRP={due:"gA",over:"gA",nofu:"gA",newlead:"gA",sched:"gA",
+  form:"gB",score:"gB",intl:"gB",
+  fresh:"gC",refill:"gC",ifc:"gC",
+  needs:"gD",any:"gD",all:"gD"};
+var GRPHEAD=[["gA","Call today",5],["gB","Priority signals",3],["gC","New information",3],["gD","Totals",3]];
+var EDGE={due:1,form:1,fresh:1,needs:1};
 function head(){
-  // One header row, the way v1 does it. The two column groups are told apart by a rule
-  // and a tint, not by a second header row: that was stacking on itself and pushing the
-  // whole table out of shape.
-  var h="<thead><tr><th>Stage</th>";
-  TIMING.forEach(function(c,i){h+="<th class='n gA"+(i===0?" edge":"")+"'>"+c[1]+"</th>";});
-  COLS.forEach(function(c,i){h+="<th class='n gB"+(i===0?" edge":"")+"'>"+c[1]+"</th>";});
-  return h+"</tr></thead>";}
+  var g="<tr class='grp'><th class='gh'></th>";
+  GRPHEAD.forEach(function(x){ g+="<th class='gh "+x[0]+" edge' colspan='"+x[2]+"'>"+x[1]+"</th>"; });
+  var h="<tr class='colh'><th>Stage</th>";
+  TIMING.concat(COLS).forEach(function(c){
+    h+="<th class='n "+GRP[c[0]]+(EDGE[c[0]]?" edge":"")+"'>"+c[1]+"</th>";});
+  return "<thead>"+g+"</tr>"+h+"</tr></thead>";}
 function cellHtml(c,key,sec,stage,isT,i,mx){
   var on=PICK&&PICK.stage===stage&&PICK.sec===sec&&(isT?PICK.t===key:(PICK.col===key&&!PICK.t));
   var arg=isT?{stage:stage,sec:sec,t:key}:{stage:stage,sec:sec,col:key};
-  var cls="cell "+(isT?"gA":"gB")+(i===0?" edge":"")+(on?" sel":"");
+  var cls="cell "+GRP[key]+(EDGE[key]?" edge":"")+(on?" sel":"");
   var tot=c[key],w=c[key+"W"];
   var click=" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'";
   if(!tot)return "<td class='"+cls+" z'"+click+">0</td>";
@@ -354,16 +427,6 @@ function totRow(label,cells,secKey,cls){
   TIMING.forEach(function(t,i){h+=col(t[0],"gA",i,true);});
   COLS.forEach(function(t,i){h+=col(t[0],"gB",i,false);});
   return h+"</tr>";}
-function movement(){
-  var m=J.movement;if(!m)return "";
-  var chip=function(k,n,label){return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
-    "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n)+" "+label+"</button>";};
-  return "<div class='sec mini'><h2>What changed today</h2>"+
-    "<div class='chips'>"+chip("",m.called,"called")+chip("stage",m.stage,"moved stage")+
-    chip("fu",m.fu,"next call date changed")+chip("owner",m.owner,"given to another agent")+
-    chip("gone",m.gone,"no longer in the list")+chip("still",m.still,"nothing happened")+
-    (J.offBase&&J.offBase.leads?"<button class='chipb' title='Called today but not on today&#39;s calling list'>"+
-      fmt(J.offBase.leads)+" called but not on today's calling list</button>":"")+"</div></div>";}
 function baseNote(){
   if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
   return "<div class='sec mini'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
@@ -474,60 +537,108 @@ function whyTags(r){
   if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
   return t.join(" ");
 }
-function drill(){
-  if(!PICK)return "";
-  var h="<div class='sec' id='drill'><h2>Leads <button class='btn' style='float:right' onclick='unpick()'>Close</button></h2>";
-  if(LEADS)return h+"<div style='padding:34px;text-align:center;color:#566575'><div class='spin'></div>Loading leads</div></div>";
+function queueView(){
+  var h="<div class='sec'><h2 id='qtitle'>Call queue</h2>";
+  if(!PICK)return h+"<div class='sub'>Pick a number in the Matrix, or a line on a Board card, to open those leads here.</div></div>";
+  if(LEADS)return h+"<div style='padding:30px;text-align:center;color:#566575'><div class='spin'></div>Loading leads</div></div>";
   if(!L)return h+"</div>";
   if(L.error)return h+"<div class='warn'>"+esc(L.error)+"</div></div>";
   var wk=L.rows.filter(function(r){return r.worked;}).length;
   h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight &middot; <b>"+fmt(wk)+"</b> called today &middot; "+
     fmt(L.total-wk)+" not yet"+(L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
-    " &middot; ordered by not yet called, then earliest follow-up</div>";
+    " &middot; not yet called first, then earliest follow-up</div>";
   h+="<div class='chips' style='margin-bottom:9px'>"+
     "<button class='chipb"+(PICK.worked==="0"?" on":"")+"' onclick='PICK.worked=\"0\";loadLeads()'>Not called yet</button>"+
     "<button class='chipb"+(PICK.worked==="1"?" on":"")+"' onclick='PICK.worked=\"1\";loadLeads()'>Called today</button>"+
     "<button class='chipb"+(PICK.worked===""?" on":"")+"' onclick='PICK.worked=\"\";loadLeads()'>All</button>"+
-    "<input type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' oninput='LQ=this.value;draw()' style='min-width:210px'>"+
-    "</div>";
+    "<input type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' oninput='LQ=this.value;draw()' style='min-width:200px'>"+
+    "<button class='chipb' onclick='unpick()'>Close</button></div>";
   var q=String(LQ||"").toLowerCase();
   var rows=q?L.rows.filter(function(r){
-    return (r.name+" "+r.creator+" "+r.ownerName).toLowerCase().indexOf(q)>=0;}):L.rows;
-  h+="<div class='tw'><table><thead><tr><th>#</th><th>Lead</th><th>Phone</th><th>Stage</th><th>Why call</th>"+
-    "<th>Agent this morning</th><th>Creator</th><th>Last call</th><th>Follow-up</th>"+
-    "<th class='n'>Calls in stage</th><th class='n'>By owner</th><th class='n'>Days in stage</th><th>Today</th></tr></thead><tbody>";
+    return (r.name+" "+r.creator+" "+r.ownerName).toLowerCase().indexOf(q)>=0;}):L.rows.slice();
+  // Already called sinks to the bottom: the top of the list is always what is left.
+  rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
+  h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
+    "<th></th><th>#</th><th>Lead</th><th>Stage</th><th>Why call</th><th class='n'>Phone</th><th></th>"+
+    "<th>Follow-up</th><th>Last call</th><th>Agent this morning</th><th>Creator</th>"+
+    "<th class='n'>Calls</th><th class='n'>By owner</th><th class='n'>Days</th></tr></thead><tbody>";
   rows.forEach(function(r,i){
     var digits=String(r.phone||"").replace(/[^0-9]/g,"");
-    var ph=r.phone?"<span class='ph'>"+esc(r.phone)+"</span>"+
-      (digits?"<a class='ico' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' title='Open WhatsApp'>WhatsApp</a>":"")
-      :"<span class='mut'>no number</span>";
-    var moved="";
-    if(r.movedStage)moved="<div class='sub3'>now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>";
-    else if(r.movedFu)moved="<div class='sub3'>date changed today</div>";
-    h+="<tr class='rowlink'><td><span class='exp' onclick=\"toggleDet('"+r.id+"')\">"+(OPEN[r.id]?"&minus;":"+")+"</span> "+(i+1)+"</td>"+
-      "<td><a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener'>"+esc(r.name)+" &nearr;</a></td>"+
-      "<td>"+ph+"</td>"+
+    var moved=r.movedStage?"<div class='sub3'>now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>":"";
+    h+="<tr class='rowlink"+(r.worked?" done":"")+(SEL===r.id?" sel":"")+"' onclick='pickLead("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
+      "<td class='exp' onclick='event.stopPropagation();toggleDet("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
+        (OPEN[r.id]?"&minus;":"+")+"</td>"+
+      "<td class='z'>"+(i+1)+"</td>"+
+      "<td>"+(r.worked?"<span class='tick' title='Called today'>&#10003;</span>":"")+
+        "<a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>"+esc(r.name)+" &nearr;</a></td>"+
       "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
-      "<td>"+esc(r.ownerName)+
-        (r.ownerInactive?" <span class='tag o' title='This agent is deactivated in HubSpot'>INACTIVE</span>":"")+
-        (r.unassigned?" <span class='tag o'>UNASSIGNED</span>":"")+
-        (r.counted===false?" <span class='tag p' title='Parking bucket, shown but not counted'>not counted</span>":"")+
-        (r.movedOwner?"<div class='sub3'>reassigned since</div>":"")+"</td>"+
+      "<td class='n'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
+      "<td>"+(digits?"<a class='wa' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>WA</a>":"")+"</td>"+
+      "<td>"+tm(r.fu)+"</td><td>"+tm(r.last)+"</td>"+
+      "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
+        (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
-      "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
       "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
       "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", this agent only'>"+fmt(r.own)+"</b></td>"+
-      "<td class='n'>"+(r.stageEntered?days(r.stageEntered):"<span class='z'>–</span>")+"</td>"+
-      "<td>"+(r.worked?"<span class='pill'>called</span>":(r.gone?"<span class='tag p'>gone</span>":"<span class='tag o'>not yet</span>"))+"</td></tr>";
-    if(OPEN[r.id])h+=detRow(r,13);
+      "<td class='n'>"+(r.stageEntered?days(r.stageEntered)+"d":"<span class='z'>–</span>")+"</td></tr>";
+    if(OPEN[r.id])h+="<tr class='det'><td colspan='14'><div class='detbox'>"+detBody(r)+"</div></td></tr>";
   });
-  if(!rows.length)h+="<tr><td colspan='13' class='z'>Nothing matches that search.</td></tr>";
-  return h+"</tbody></table></div></div>";}
+  if(!rows.length)h+="<tr><td colspan='14' class='z'>Nothing matches that search.</td></tr>";
+  h+="</tbody></table></div></div>"+leadCard(rows)+"</div></div>";
+  return h;}
 
-// Per agent, in v1's shape. Clicking a row is the filter.
-// What is deliberately left out of every total above, and how big it is. v1 shows these
-// piles in its agent table; hiding them made real work disappear rather than be excluded.
+// The card only exists once a lead is picked, and it never sits on top of the table.
+function leadCard(rows){
+  if(!SEL)return "";
+  var r=rows.filter(function(x){return x.id===SEL;})[0];
+  if(!r)return "";
+  var b=bandOf(r.bandOwner)||{};
+  return "<div><div class='now'><div class='k'>Lead card</div>"+
+    "<div class='nm2'>"+(r.worked?"<span class='tick'>&#10003;</span>":"")+esc(r.name)+"</div>"+
+    "<div class='ph'>"+esc(r.phone||"no number")+"</div>"+
+    "<div style='margin:8px 0 9px'>"+chip(r.openStage)+" "+whyTags(r)+"</div>"+
+    "<div class='kv'><span class='k2'>Agent this morning</span><span class='v2'>"+esc(r.ownerName)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Creator</span><span class='v2'>"+esc(r.creator||"–")+"</span></div>"+
+    (r.source?"<div class='kv'><span class='k2'>Source</span><span class='v2'>"+esc(srcLabel(r.source))+"</span></div>":"")+
+    "<div class='kv'><span class='k2'>Conversion score</span><span class='v2'>"+(r.score||0)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Follow-up</span><span class='v2'>"+tm(r.fu)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Last call</span><span class='v2'>"+tm(r.last)+"</span></div>"+
+    "<div class='eff3'><div class='eb'><div class='n "+bandCls(r.band)+"'>"+fmt(r.calls)+"</div><div class='l'>In stage</div></div>"+
+    "<div class='eb'><div class='n "+bandCls(r.bandOwner)+"'>"+fmt(r.own)+"</div><div class='l'>By this agent</div></div>"+
+    "<div class='eb'><div class='n' style='font-size:11px;padding-top:3px'>"+esc(b.label||"")+"</div><div class='l'>Churn</div></div></div>"+
+    "<div class='btnrow'><button class='btn p' onclick=\"window.open('"+hsl(r.id)+"','_blank')\">Open in HubSpot</button>"+
+    "<button class='btn' onclick='closeLead()'>Close</button></div>"+
+    "<div class='cardexp'>"+
+      "<button class='expbtn' onclick='toggleCard(0)'><span id='cx0'>+</span> Why this lead can convert</button>"+
+      "<div id='cb0' hidden class='expbody'>"+whyBody(r)+"</div>"+
+      "<button class='expbtn' onclick='toggleCard(1)'><span id='cx1'>+</span> AI call summary</button>"+
+      "<div id='cb1' hidden class='expbody'>"+(r.aiSummary?esc(r.aiSummary):"<span class='z'>Nothing recorded.</span>")+"</div>"+
+    "</div></div></div>";}
+function whyBody(r){
+  var bits=[];
+  bits.push("Sitting in "+esc(STAGE_LABEL[r.openStage]||r.openStage)+
+    (r.stageEntered?" for "+days(r.stageEntered)+"d":"")+" &middot; "+fmt(r.calls)+" dial(s) in the stage, "+
+    fmt(r.own)+" by this agent");
+  if(r.formSubs&&r.formSubs.length)bits.push(formBlock(r.formSubs));
+  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", ")));
+  if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+(r.bookAt?" on "+esc(tmp(r.bookAt)):""));
+  if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
+  if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
+  return bits.join("<br>");}
+function detBody(r){
+  var h=whyBody(r);
+  if(r.aiSummary)h+="<br><b>AI call summary:</b> "+esc(r.aiSummary);
+  return h;}
+function toggleCard(i){
+  var b=document.getElementById("cb"+i), x=document.getElementById("cx"+i);
+  if(!b)return;
+  var open=!b.hasAttribute("hidden");
+  if(open)b.setAttribute("hidden",""); else b.removeAttribute("hidden");
+  x.textContent=open?"+":"−";}
+function pickLead(id){ SEL=(SEL===id?"":id); draw(); }
+function closeLead(){ SEL=""; draw(); }
+
 function excludedNote(){
   var e=J.excluded;
   if(!e)return "";
@@ -580,6 +691,64 @@ function reconcile(){
 // their team, a VP for the floor.
 var CHURN_BY="owner";
 function setChurnBy(v){ CHURN_BY=v; draw(); }
+// The one number that matters, and how the morning list has moved since midnight.
+function hero(){
+  var m=J.movement||{}, pool=J.totals?J.totals.n.all:0, done=m.called||0;
+  var p=pool?Math.round(100*done/pool):0;
+  return "<div class='herorow'><div class='hero2'>"+
+    "<span class='pctpill'>"+p+"% done</span><div class='k'>Called today</div>"+
+    "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span></div>"+
+    "<div class='track'><i style='width:"+p+"%'></i></div>"+
+    "<div class='foot'>"+(J.frozen?("List locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
+      " &middot; "+fmt(J.baseSize)+" leads"):"List not locked yet")+"</div></div>"+
+    "<div class='sec mini' style='margin:0'><h2>What changed today</h2>"+
+    "<div class='chips'>"+
+    chipOf("",m.called,"called")+chipOf("stage",m.stage,"moved stage")+
+    chipOf("fu",m.fu,"next call date changed")+chipOf("owner",m.owner,"given to another agent")+
+    chipOf("gone",m.gone,"no longer in the list")+chipOf("still",m.still,"nothing happened")+
+    (J.offBase&&J.offBase.leads?"<button class='chipb' title='Called today but not on today’s calling list'>"+
+      fmt(J.offBase.leads)+" called but not on today's list</button>":"")+
+    "</div></div></div>";}
+function chipOf(k,n,label){
+  return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
+    "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
+
+function viewTabs(){
+  return "<div class='bar' style='padding:7px 10px'><span class='seg'>"+
+    ["matrix","queue","board"].map(function(v){
+      var lbl=v.charAt(0).toUpperCase()+v.slice(1);
+      return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+"</button>";
+    }).join("")+"</span>"+
+    "<span style='margin-left:auto;font-size:11.5px;color:#566575'>"+
+    (VIEW==="matrix"?"Every stage against every reason to call":
+     VIEW==="queue"?"The leads themselves, worst first":
+     "One card per stage, click a line to open those leads")+"</span></div>";}
+
+// One card per stage. Clicking a line opens those leads in the queue.
+function boardView(){
+  var rows=J.stages.filter(function(s){return s.n.all>0;});
+  if(!rows.length)return "<div class='sec mini'><div class='z'>Nothing to call today.</div></div>";
+  var cards=rows.map(function(s){
+    var c=s.n, t=c.due+c.over+c.nofu+c.newlead||1;
+    var seg=function(k,label,cls,v){
+      return "<div class='brk' onclick='pick({stage:"+JSON.stringify(s.stage).replace(/"/g,"&quot;")+
+        ",sec:\"n\",t:"+JSON.stringify(k).replace(/"/g,"&quot;")+"})'><span class='sw "+cls+"'></span>"+
+        label+"<span class='v'>"+fmt(v)+"</span></div>";};
+    return "<div class='bcard'><div class='top'>"+chip(s.stage,s.label)+
+      "<span class='instage'>"+fmt(c.all)+" in stage</span></div>"+
+      "<div class='h2n'>"+fmt(c.any)+"<span>any priority</span></div>"+
+      "<div class='stack'><i class='s1' style='width:"+(100*c.due/t)+"%'></i>"+
+      "<i class='s2' style='width:"+(100*c.over/t)+"%'></i>"+
+      "<i class='s3' style='width:"+(100*(c.nofu+c.newlead)/t)+"%'></i></div>"+
+      seg("due","Due today","s1",c.due)+seg("over","Overdue","s2",c.over)+
+      seg("nofu","No follow-up","s3",c.nofu)+
+      "<div class='brk' onclick='pick({stage:"+JSON.stringify(s.stage).replace(/"/g,"&quot;")+
+        ",sec:\"n\",col:\"score\"})'><span class='sw s4'></span>Score &ge;6<span class='v'>"+fmt(c.score)+"</span></div>"+
+      "</div>";}).join("");
+  return "<div class='sec'><h2>Board view</h2>"+
+    "<div class='sub'>One card per stage. The bar splits what is due today, what is overdue and what has no next step. "+
+    "Click any line to open those leads.</div><div class='board'>"+cards+"</div></div>";}
+
 function churnPanel(){
   if(!A||!A.agents||!A.agents.length)return "";
   var B=A.effortBands||J.effortBands;
@@ -693,17 +862,21 @@ function draw(){
   if(nav)nav.style.display=J.isVP?"flex":"none";
   // Four full width bars stacked on top of each other pushed the tables below the fold.
   // Two columns instead: controls on the left, the state of today's list on the right.
-  var h="<div class='top'><div class='topcol'>"+bar()+"</div>"+
-        "<div class='topcol'>"+baseNote()+movement()+"</div></div>";
+  var h=hero()+"<div class='top'><div class='topcol'>"+bar()+"</div>"+
+        "<div class='topcol'>"+baseNote()+"</div></div>"+viewTabs();
+  var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;
-    h+="<div class='sec mini'><h2>"+s[1]+"</h2><div class='sub'>"+s[2]+"</div>"+
+    matrix+="<div class='sec mini'><h2>"+s[1]+"</h2><div class='sub'>"+s[2]+"</div>"+
       "<div class='tw'><table>"+head()+"<tbody>"+body(s[0])+
       (J.stages.filter(function(x){return x[s[0]].all>0;}).length>1
         ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  h+=churnPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
+  matrix+=churnPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable());
+  h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
+     "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
+     "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
   el.innerHTML=h;}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);
