@@ -2703,14 +2703,14 @@ async function cn2CallLadder(){
   const inPool = {};
   callnowPool().forEach(function(c){ inPool[c.id] = c; });
 
-  const bucket = { onList: 0, arrivedAfterMidnight: 0, untrackedCreator: 0, noCreator: 0,
-    stageNotCovered: 0, notInApp: 0 };
+  const bucket = { onList: 0, createdToday: 0, inPoolNotOnList: 0, untrackedCreator: 0,
+    noCreator: 0, stageNotCovered: 0, notInApp: 0 };
   const byCreator = {}, byStage = {};
   let total = 0, after, pages = 0;
   do {
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: filters }],
-      properties: ["topmate_username", "hubspot_owner_id", "contact_engagement_stage"],
+      properties: ["topmate_username", "hubspot_owner_id", "contact_engagement_stage", "createdate"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
       limit: 100, after: after })});
     total = j.total || total;
@@ -2718,11 +2718,16 @@ async function cn2CallLadder(){
       const p = r.properties || {};
       const u = String(p.topmate_username || "").trim();
       const st = String(p.contact_engagement_stage || "").trim() || "__fresh";
+      const madeToday = ts(p.createdate) >= day.start;
       const oid = String(p.hubspot_owner_id || "");
       const nm = oid ? ((CACHE.owners[oid] || {}).name || ("Owner " + oid)) : "(unassigned)";
 
       if (base[r.id]) { bucket.onList++; return; }
-      if (pool[r.id]) { bucket.arrivedAfterMidnight++; return; }
+      if (pool[r.id]) {
+        if (madeToday) bucket.createdToday++;
+        else bucket.inPoolNotOnList++;
+        return;
+      }
       if (!u) { bucket.noCreator++; return; }
       if (PFRESH_LIST.indexOf(u) < 0) {
         bucket.untrackedCreator++;
@@ -2755,7 +2760,8 @@ async function cn2CallLadder(){
 
   const LADDER = [
     ["onList", "On today's calling list", "Counted in the hero and in every table."],
-    ["arrivedAfterMidnight", "Arrived after the list locked", "Real work, but not part of this morning's plan. Shown as extra."],
+    ["createdToday", "Created after the list locked", "A brand new lead, called the same day. Real work, not part of this morning's plan."],
+    ["inPoolNotOnList", "In the pool but not on this morning's list", "The app holds the lead now but it was not on the list when it locked, usually because the list was locked before the lead qualified or before its bucket was included."],
     ["untrackedCreator", "Creator not on the tracked list", "Invisible to this page until the creator is tracked. Add them below."],
     ["noCreator", "No creator set on the lead", "Cannot be attributed to a creator at all."],
     ["stageNotCovered", "Stage this page does not carry", "Ghosted, not interested, disqualified, deal won, or an IFC not yet due, with no form refill to pull it back in."],
@@ -2767,7 +2773,7 @@ async function cn2CallLadder(){
     byStage: Object.keys(byStage).map(function(k){
       return { stage: k, label: CN2_STAGE_LABELS[k] || k, n: byStage[k] }; })
       .sort(function(a, b){ return b.n - a.n; }),
-    tracked: PFRESH_LIST.slice(), rows: rows,
+    tracked: PFRESH_LIST.slice(), rows: rows, poolNow: Object.keys(pool).length,
     outsideTracked: bucket.untrackedCreator, noCreator: bucket.noCreator };
 }
 

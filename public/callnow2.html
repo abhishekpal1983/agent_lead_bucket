@@ -714,6 +714,10 @@ function creatorPanel(){
     h+="<div class='sub' style='margin:11px 0 7px'><b>"+fmt(OUT.hubspotCalledToday)+
       "</b> leads were called today in HubSpot. Every one of them is accounted for below. "+
       "Checked "+new Date(OUT.at).toLocaleTimeString("en-IN")+".</div>";
+    if(J.baseSize&&OUT.poolNow&&OUT.poolNow>J.baseSize*1.5)
+      h+="<div class='warn'>Today's list was locked with "+fmt(J.baseSize)+" leads, but the app now holds "+
+        fmt(OUT.poolNow)+". The list was locked before the pool changed, so a lot of calls land in "+
+        "<b>in the pool but not on this morning's list</b>. From tomorrow's lock the two line up again.</div>";
     h+="<div class='tw' style='margin-bottom:11px'><table><thead><tr><th>Where the call went</th>"+
       "<th class='n'>Leads</th><th>What it means</th></tr></thead><tbody>"+
       (OUT.ladder||[]).map(function(r){
