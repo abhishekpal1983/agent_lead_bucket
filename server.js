@@ -850,6 +850,9 @@ app.get("/api/health", function(req, res){
           src: { cache: !!CACHE.loadedAt, pfresh: !!PFRESH.loadedAt, unowned: !!UNOWNED.loadedAt,
                  forms: !!FORMS.loadedAt, poolSize: (CACHE.contacts || []).length,
                  trackedCreators: PFRESH_LIST.length },
+          delta: (typeof DELTA === "undefined") ? null : { at: DELTA.at, running: !!DELTA.running,
+            lastCount: DELTA.lastCount, lastMs: DELTA.lastMs, error: DELTA.error || null,
+            disabled: !!DELTA.disabled, everyMinutes: DELTA_MINUTES },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
                   leadsSoFar: SYNC_PROGRESS.contacts, phase: SYNC_PROGRESS.phase,
@@ -2703,8 +2706,8 @@ async function cn2CallLadder(){
   const inPool = {};
   callnowPool().forEach(function(c){ inPool[c.id] = c; });
 
-  const bucket = { onList: 0, createdToday: 0, inPoolNotOnList: 0, untrackedCreator: 0,
-    noCreator: 0, stageNotCovered: 0, notInApp: 0 };
+  const bucket = { onList: 0, onListNeedsCall: 0, createdToday: 0, inPoolNotOnList: 0,
+    untrackedCreator: 0, noCreator: 0, stageNotCovered: 0, notInApp: 0 };
   const byCreator = {}, byStage = {};
   let total = 0, after, pages = 0;
   do {
@@ -2722,7 +2725,13 @@ async function cn2CallLadder(){
       const oid = String(p.hubspot_owner_id || "");
       const nm = oid ? ((CACHE.owners[oid] || {}).name || ("Owner " + oid)) : "(unassigned)";
 
-      if (base[r.id]) { bucket.onList++; return; }
+      if (base[r.id]) {
+        bucket.onList++;
+        // Same population the hero counts: needs a call today, parking buckets excluded.
+        const c = CN2.unpack(base[r.id]);
+        if (c.sec === "n" && c.counted) bucket.onListNeedsCall++;
+        return;
+      }
       if (pool[r.id]) {
         if (madeToday) bucket.createdToday++;
         else bucket.inPoolNotOnList++;
@@ -2774,6 +2783,10 @@ async function cn2CallLadder(){
       return { stage: k, label: CN2_STAGE_LABELS[k] || k, n: byStage[k] }; })
       .sort(function(a, b){ return b.n - a.n; }),
     tracked: PFRESH_LIST.slice(), rows: rows, poolNow: Object.keys(pool).length,
+    // What HubSpot says about the very number the hero shows, plus how stale the app's
+    // own copy of the leads is, which is the usual reason the two differ.
+    onListNeedsCall: bucket.onListNeedsCall,
+    leadsSyncedAt: (typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt,
     outsideTracked: bucket.untrackedCreator, noCreator: bucket.noCreator };
 }
 
