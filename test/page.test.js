@@ -64,6 +64,7 @@ const payload = {
   sourceOptions: [{ u: "forms", n: 12 }, { u: "digital product", n: 8 }],
   stageOptions: STAGES.map(function(s){ return { stage: s, label: s }; }),
   loadedAt: "fixtures", listBuiltAt: new Date(fixture.now).toISOString(),
+  trackedCreators: ["ayush_singh13", "simrankhokha", "Simrankhokha"],
   effort: { total: { low: 40, avg: 12, bench: 5, high: 2 }, owner: { low: 50, avg: 6, bench: 2, high: 1 } },
   effortBands: CN2.EFFORT_BANDS.map(function(b){
     return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; })
@@ -215,6 +216,12 @@ console.log("\nRole specific things appear only where they should");
   ok("the WhatsApp button rule sits after the theme so it is not plain text",
     html.slice(html.indexOf('href="/theme.css"')).indexOf("a.wa{background:#15A34A") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
+  ok("the tracked creator list can be managed from the page",
+    vp.indexOf("Tracked creators") >= 0 && vp.indexOf("Add and sync") >= 0 &&
+    vp.indexOf("Check what is outside") >= 0);
+  ok("a capitalisation clash in the tracked list is called out",
+    vp.indexOf("listed twice with different capitalisation") >= 0);
+  ok("only a VP manages the tracked list", mgr.indexOf("Add and sync") < 0 && agent.indexOf("Add and sync") < 0);
   ok("the hero carries called against the pool",
     vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
   {

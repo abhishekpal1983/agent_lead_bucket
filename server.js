@@ -2605,6 +2605,7 @@ app.get("/api/callnow2", function(req, res){
     // gate alone, so opening v2 to managers later cannot leak a control by accident.
     isVP: isVP(req), role: (req.session && req.session.role) || "manager",
     scoped: !!cn2Scope(req),
+    trackedCreators: PFRESH_LIST.slice(),
     stageOptions: cn2StageOrder(ctx.base).map(function(x){
       return { stage: x, label: CN2_STAGE_LABELS[x] || x }; }),
     listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length
@@ -2662,6 +2663,73 @@ app.get("/api/callnow2/agents", function(req, res){
    has to be a number you can see and a sentence you can read, not a surprise in a
    manager meeting. Both sides are computed here from the same pool in the same request,
    so nothing can be blamed on timing. */
+/* Which calls today landed on creators nobody is tracking.
+   The tracked list scopes this whole page, so a call on an untracked creator is real work
+   that is invisible here. This asks HubSpot directly, so it cannot be hidden by the same
+   filter it is trying to measure. */
+let CN2_OUT = { at: 0, running: false, data: null };
+async function cn2OutsideTracked(){
+  const day = istDayBounds();
+  const filters = [
+    { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
+    { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+  ];
+  const byCreator = {};
+  let after, pages = 0, total = 0, noCreator = 0;
+  do {
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: filters }],
+      properties: ["topmate_username", "hubspot_owner_id", "contact_engagement_stage"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+      limit: 100, after: after })});
+    total = j.total || total;
+    (j.results || []).forEach(function(r){
+      const p = r.properties || {};
+      const u = String(p.topmate_username || "").trim();
+      if (!u) { noCreator++; return; }
+      // Case matters: the tracked list is matched exactly, so "Simrankhokha" and
+      // "simrankhokha" are two different creators as far as this page is concerned.
+      if (PFRESH_LIST.indexOf(u) >= 0) return;
+      if (!byCreator[u]) byCreator[u] = { creator: u, leads: 0, agents: {},
+        caseClash: PFRESH_LIST.some(function(x){ return x.toLowerCase() === u.toLowerCase(); }) };
+      byCreator[u].leads++;
+      const oid = String(p.hubspot_owner_id || "");
+      const nm = oid ? ((CACHE.owners[oid] || {}).name || ("Owner " + oid)) : "(unassigned)";
+      byCreator[u].agents[nm] = (byCreator[u].agents[nm] || 0) + 1;
+    });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(120);
+    pages++;
+  } while (after && pages < 60);
+
+  const rows = Object.keys(byCreator).map(function(u){
+    const a = byCreator[u];
+    return { creator: u, leads: a.leads, caseClash: a.caseClash,
+      agents: Object.keys(a.agents).map(function(n){ return { name: n, n: a.agents[n] }; })
+        .sort(function(x, y){ return y.n - x.n; }).slice(0, 5) };
+  }).sort(function(x, y){ return y.leads - x.leads; });
+  return { at: new Date().toISOString(), hubspotCalledToday: total,
+    outsideTracked: rows.reduce(function(a, r){ return a + r.leads; }, 0),
+    noCreator: noCreator, tracked: PFRESH_LIST.slice(), rows: rows };
+}
+
+app.get("/api/callnow2/outside", async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  if (!TOKEN) return res.status(503).json({ error: "no HubSpot token configured" });
+  const force = String(req.query.force || "") === "1";
+  if (!force && CN2_OUT.data && (Date.now() - CN2_OUT.at) < 5 * 60 * 1000) return res.json(CN2_OUT.data);
+  if (CN2_OUT.running) return res.json(CN2_OUT.data || { running: true });
+  CN2_OUT.running = true;
+  try {
+    const d = await cn2OutsideTracked();
+    CN2_OUT = { at: Date.now(), running: false, data: d };
+    res.json(d);
+  } catch (e) {
+    CN2_OUT.running = false;
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/callnow2/reconcile", function(req, res){
   // Comparing the two pages is a VP question, not a floor one.
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });

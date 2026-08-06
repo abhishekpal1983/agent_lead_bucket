@@ -173,6 +173,13 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       held.body && normal.body && held.body.rows.every(function(r){ return r.counted === false; }) &&
       normal.body.rows.every(function(r){ return r.counted !== false; }));
 
+    // This one asks HubSpot directly, so on fixtures it must decline clearly rather than
+    // pretend there is nothing outside the tracked list.
+    const outside = await get("/api/callnow2/outside");
+    ok("the outside-tracked check declines cleanly with no token",
+      outside.status === 503 && outside.body && /token/i.test(outside.body.error),
+      outside.status + " " + JSON.stringify(outside.body));
+
     const rec = await get("/api/callnow2/reconcile");
     ok("reconciliation returns a row per bucket",
       rec.body && Array.isArray(rec.body.rows) && rec.body.rows.length >= 10, rec.raw);

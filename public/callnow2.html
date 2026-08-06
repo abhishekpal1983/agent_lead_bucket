@@ -664,6 +664,71 @@ function excludedNote(){
     "<button class='chipb'>"+fmt(e.n.all)+" would be call-today work</button>"+
     "</div></div>";}
 
+/* The tracked creator list scopes this whole page, so it has to be manageable from here,
+   and the calls it is hiding have to be visible. */
+var OUT=null,OUTBUSY=false,CSYNC=false;
+function loadOutside(force){
+  if(OUTBUSY)return; OUTBUSY=true; draw();
+  fetch("/api/callnow2/outside"+(force?"?force=1":"")).then(asJson)
+    .then(function(j){OUTBUSY=false;OUT=j;draw();})
+    .catch(function(e){OUTBUSY=false;OUT={error:e.message};draw();});}
+function addCreator(u,btn){
+  if(!u)return;
+  if(btn){btn.disabled=true;btn.textContent="Syncing...";}
+  CSYNC=true;
+  fetch("/api/callnow/sync-creator?creator="+encodeURIComponent(u),{method:"POST"}).then(asJson)
+    .then(function(j){
+      CSYNC=false;
+      if(j&&j.error){alert(j.error);draw();return;}
+      if(j&&j.truncated)alert("Added "+u+", but only "+fmt(j.added)+" of "+fmt(j.hubspotTotal)+
+        " leads could be pulled. HubSpot stops paging at 10,000 per query.");
+      OUT=null; load();
+    })
+    .catch(function(e){CSYNC=false;alert(e.message);draw();});}
+function dropCreator(u){
+  if(!confirm("Stop tracking "+u+"? Their leads leave this page from the next list build."))return;
+  fetch("/api/callnow/drop-creator?creator="+encodeURIComponent(u),{method:"POST"}).then(asJson)
+    .then(function(){OUT=null;load();}).catch(function(e){alert(e.message);});}
+
+function creatorPanel(){
+  if(!J.isVP)return "";
+  var list=(J.trackedCreators||[]).slice();
+  var lower={};
+  list.forEach(function(c){var k=String(c).toLowerCase();lower[k]=(lower[k]||0)+1;});
+  var dupes=Object.keys(lower).filter(function(k){return lower[k]>1;});
+  var h="<div class='sec mini'><h2>Tracked creators "+
+    "<button class='btn' style='float:right' onclick='loadOutside(1)'>"+
+    (OUTBUSY?"Checking...":"Check what is outside")+"</button></h2>"+
+    "<div class='sub'>This list scopes the whole page. A lead whose creator is not here is invisible to every "+
+    "number above. Additions are saved on the volume and survive a redeploy.</div>";
+  if(dupes.length)h+="<div class='warn'>The same creator is listed twice with different capitalisation: "+
+    esc(dupes.join(", "))+". Matching is exact, so one of the two matches nothing. Remove whichever is wrong.</div>";
+  h+="<div class='chips' style='margin-bottom:9px'>"+list.map(function(c){
+    return "<button class='chipb on' title='Stop tracking' onclick='dropCreator("+JSON.stringify(c).replace(/"/g,"&quot;")+")'>"+
+      esc(c)+" &times;</button>";}).join("")+"</div>";
+  h+="<div class='bar' style='padding:8px 10px;margin:0'>"+
+    "<input id='newcreator' type='search' placeholder='topmate_username, exactly as HubSpot has it' style='min-width:280px'>"+
+    "<button class='btn p' "+(CSYNC?"disabled":"")+" onclick=\"addCreator(document.getElementById('newcreator').value.trim(),this)\">"+
+    (CSYNC?"Syncing...":"Add and sync")+"</button></div>";
+  if(OUT&&!OUT.error){
+    h+="<div class='sub' style='margin:11px 0 7px'><b>"+fmt(OUT.hubspotCalledToday)+"</b> leads were called today in HubSpot. "+
+      "<b>"+fmt(OUT.outsideTracked)+"</b> of them belong to creators not on this list"+
+      (OUT.noCreator?", and "+fmt(OUT.noCreator)+" have no creator set at all":"")+
+      ". Checked "+new Date(OUT.at).toLocaleTimeString("en-IN")+".</div>";
+    if(!OUT.rows.length)h+="<div class='z'>Every call today was on a tracked creator.</div>";
+    else h+="<div class='tw scrolly'><table><thead><tr><th>Creator</th><th class='n'>Called today</th>"+
+      "<th>Agents doing it</th><th></th></tr></thead><tbody>"+
+      OUT.rows.map(function(r){
+        return "<tr><td>"+esc(r.creator)+
+          (r.caseClash?" <span class='tag o' title='Same name already tracked with different capitalisation'>case clash</span>":"")+
+          "</td><td class='n'><b>"+fmt(r.leads)+"</b></td>"+
+          "<td class='mut'>"+r.agents.map(function(a){return esc(a.name)+" "+a.n;}).join(", ")+"</td>"+
+          "<td><button class='btn' onclick='addCreator("+JSON.stringify(r.creator).replace(/"/g,"&quot;")+",this)'>Track and sync</button></td></tr>";
+      }).join("")+"</tbody></table></div>";
+  } else if(OUT&&OUT.error){ h+="<div class='warn'>"+esc(OUT.error)+"</div>"; }
+  else h+="<div class='z' style='margin-top:9px'>Press <b>Check what is outside</b> to ask HubSpot which of today's calls landed on creators this list is hiding.</div>";
+  return h+"</div>";}
+
 var REC=null,RECBUSY=false;
 function loadRec(){
   if(RECBUSY)return; RECBUSY=true; draw();
@@ -895,7 +960,7 @@ function draw(){
         ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  matrix+=churnPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable());
+  matrix+=churnPanel()+excludedNote()+creatorPanel()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable());
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
