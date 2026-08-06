@@ -379,6 +379,11 @@ function toggleStage(st){
   if(i>=0)cur.splice(i,1); else cur.push(st);
   Q.stages=cur.join(","); load();
 }
+// actual_source arrives as machine values like "digital product" or "marketing webinar".
+function srcLabel(v){
+  if(!v)return "(not set)";
+  return String(v).replace(/_/g," ").replace(/^\w/,function(m){return m.toUpperCase();});
+}
 function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
   return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
 function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
