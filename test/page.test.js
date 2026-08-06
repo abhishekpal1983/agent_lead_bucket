@@ -216,6 +216,33 @@ console.log("\nRole specific things appear only where they should");
   ok("the WhatsApp button rule sits after the theme so it is not plain text",
     html.slice(html.indexOf('href="/theme.css"')).indexOf("a.wa{background:#15A34A") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
+  {
+    // When HubSpot disagrees with the page, the page has to say so on the hero itself.
+    let out = "";
+    const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
+    const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
+    const c3 = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ return id === "app" ? app : stub; } },
+      fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+    vm.createContext(c3); vm.runInContext(script, c3);
+    c3.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
+    c3.A = { agents: agents, effortBands: payload.effortBands };
+    c3.LOADING = false;
+    c3.OUT = { at: new Date().toISOString(), onListNeedsCall: payload.totals.n.allW + 166,
+      leadsSyncedAt: new Date().toISOString(), ladder: [], rows: [], hubspotCalledToday: 981,
+      accountedFor: 981, byStage: [] };
+    c3.draw();
+    ok("a gap against HubSpot is stated on the hero, with the size of it",
+      out.indexOf("HubSpot says") >= 0 && out.indexOf("166 difference") >= 0,
+      out.indexOf("HubSpot says") >= 0 ? "no size" : "no statement");
+    c3.OUT.onListNeedsCall = payload.totals.n.allW;
+    c3.draw();
+    ok("and when they agree it says that instead", out.indexOf("HubSpot agrees") >= 0);
+  }
+
   ok("the tracked creator list can be managed from the page",
     vp.indexOf("Tracked creators") >= 0 && vp.indexOf("Add and sync") >= 0 &&
     vp.indexOf("Check what is outside") >= 0);

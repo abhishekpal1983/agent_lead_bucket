@@ -798,7 +798,7 @@ function hero(){
          " &middot; "+fmt(J.baseSize)+" leads on the list, "+fmt(pool)+" of them need a call today"+
          (everywhere>done?" &middot; "+fmt(everywhere)+" called across the whole list":""))
       : "List not locked yet")+"</div></div>"+
-    "<div class='sec mini' style='margin:0'><h2>What changed today</h2>"+
+    "<div class='sec mini' style='margin:0'>"+heroCheck()+"<h2>What changed today</h2>"+
     "<div class='chips'>"+
     chipOf("",m.called,"called anywhere on the list")+chipOf("stage",m.stage,"moved stage")+
     chipOf("fu",m.fu,"next call date changed")+chipOf("owner",m.owner,"given to another agent")+
@@ -810,6 +810,22 @@ function hero(){
     "HubSpot's own call count will be higher: it counts every dial on every lead, including ones "+
     "outside the tracked creators."+(J.isVP?" The v1 against v2 panel below shows where each one goes.":"")+
     "</div></div></div>";}
+/* The hero counts from the app's own copy of each lead. HubSpot is the source of truth.
+   When the two disagree it is almost always lead data this app has not caught up on, and
+   saying so beats letting someone discover it in a meeting. */
+function heroCheck(){
+  if(!OUT||OUT.error||OUT.onListNeedsCall==null)return "";
+  var mine=J.totals?J.totals.n.allW:0, theirs=OUT.onListNeedsCall;
+  if(theirs===mine)return "<div class='sub' style='color:#0A5346;margin:0 0 8px'>"+
+    "HubSpot agrees: "+fmt(theirs)+" of the leads that need a call have been called.</div>";
+  var gap=theirs-mine;
+  return "<div class='warn' style='margin:0 0 9px'>"+
+    "HubSpot says <b>"+fmt(theirs)+"</b> of the leads that need a call have been called, this page shows <b>"+
+    fmt(mine)+"</b>. "+
+    (gap>0?"The "+fmt(gap)+" difference is lead data this app has not caught up on yet"
+          :"This page is ahead of the check, taken at "+new Date(OUT.at).toLocaleTimeString("en-IN"))+
+    (OUT.leadsSyncedAt?" &middot; leads last updated "+new Date(OUT.leadsSyncedAt).toLocaleTimeString("en-IN"):"")+
+    ". Press Reload once the lead sync catches up.</div>";}
 function chipOf(k,n,label){
   return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
     "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
