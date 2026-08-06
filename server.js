@@ -2760,6 +2760,8 @@ app.get("/api/callnow2/leads", function(req, res){
         movedOwner: !!(x.now && x.now.owner !== x.c.owner),
         ownerName: cn2OwnerName(x.c.owner), creator: x.c.creator, source: x.c.source || "",
         counted: x.c.counted !== false,
+        unassigned: !x.c.owner,
+        ownerInactive: !!(x.c.owner && (CACHE.owners[x.c.owner] || {}).active === false),
         phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
         calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",

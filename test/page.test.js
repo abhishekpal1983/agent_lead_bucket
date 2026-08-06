@@ -58,7 +58,8 @@ const leadRows = Object.keys(base).slice(0, 3).map(function(id){
       answers: [{ q: "What is your current Role ?", a: ["Electrical Engineer"] }] }],
     bookTitle: "A course", bookType: "digital_product", bookAt: fixture.now, bookN: 1,
     convRecent: "", convFirst: "", aiSummary: "note", outcome: "Connected", whyText: "", coldReason: "",
-    needsOwner: false, stageEntered: fixture.now - 5 * 86400000 };
+    needsOwner: false, unassigned: false, ownerInactive: true,
+    stageEntered: fixture.now - 5 * 86400000 };
 });
 
 function render(role){
@@ -116,7 +117,15 @@ console.log("\nRole specific things appear only where they should");
   ok("everyone still gets the stage and owner controls",
     agent.indexOf("All stages") >= 0 && agent.indexOf("Needs owner") >= 0);
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
+  ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
+  ok("a manager still gets the agent table, only the agent loses it",
+    mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
+  ok("every table is inside a scrolling wrapper",
+    (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
+  ok("why-call tags carry the tooltip v1 has",
+    vp.indexOf("title='Filled the form again since the last call'") >= 0 ||
+    vp.indexOf("title='Submitted this waitlist form'") >= 0);
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

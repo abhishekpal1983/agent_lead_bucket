@@ -162,10 +162,18 @@ tr.tot.grand .sub3,tr.tot.grand .sub3 b{color:#AFC3D6}
 tr.tot.grand td.z{color:#5C728A}
 tr.tot td.cell:hover{box-shadow:inset 0 0 0 2px #0091AE}
 tr.tot .sub3{font-weight:400}
-/* Long lists scroll inside the card instead of pushing the page down forever. */
-.tw.scrolly{max-height:420px}
-.sec.mini .tw.scrolly td{padding:6px 12px}
-.sec.mini .tw.scrolly .sub3{font-size:10.5px}
+/* Every table scrolls inside its own card rather than pushing the page down forever, and
+   the rows are tight enough to see a floor's worth of work without scrolling at all. */
+.tw{max-height:56vh}
+.tw.scrolly{max-height:340px}
+td{padding:5px 10px}
+th{padding:6px 10px}
+.sec.mini td{padding:5px 10px}
+.sec.mini th{padding:6px 10px}
+.sub3{line-height:1.25}
+.sec.mini .sub3{font-size:10.5px}
+.st,.tag{padding:1px 7px;font-size:11.5px}
+tr.det td{padding:8px 12px}
 .st{margin:0}
 tr.rowlink.on td{background:#DCEDF6}
 tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
@@ -420,16 +428,17 @@ function detRow(r,cols){
   return "<tr class='det'><td colspan='"+cols+"'>"+h+bits.join("<br>")+"</td></tr>";}
 function days(ms){ return ms ? Math.max(0, Math.round((Date.now()-ms)/86400000)) : ""; }
 function whyTags(r){
-  // Same tag vocabulary and colours as v1's Why call column.
+  // Same tag vocabulary, colours and tooltips as v1's Why call column.
   var t=[];
-  (r.forms||[]).forEach(function(f){ t.push("<span class='tag f'>"+esc(f)+"</span>"); });
-  if(r.why.refill)t.push("<span class='tag rf'>Refilled</span>");
-  if(r.why.score)t.push("<span class='tag s'>Score "+(r.score||"")+"</span>");
-  if(r.why.intl)t.push("<span class='tag i'>INTL</span>");
-  if(r.why.ifc)t.push("<span class='tag p'>IFC due</span>");
-  if(r.why.fresh)t.push("<span class='tag p'>Fresh</span>");
-  if(r.source)t.push("<span class='tag src'>"+esc(srcLabel(r.source))+"</span>");
-  if(r.bookTitle)t.push("<span class='tag src'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
+  (r.forms||[]).forEach(function(f){
+    t.push("<span class='tag f' title='Submitted this waitlist form'>"+esc(f)+"</span>"); });
+  if(r.why.refill)t.push("<span class='tag rf' title='Filled the form again since the last call'>Refilled</span>");
+  if(r.why.score)t.push("<span class='tag s' title='Conversion score "+(r.score||"")+"'>Score "+(r.score||"")+"</span>");
+  if(r.why.intl)t.push("<span class='tag i' title='International number'>INTL</span>");
+  if(r.why.ifc)t.push("<span class='tag p' title='Said interested in future and that date has arrived'>IFC due</span>");
+  if(r.why.fresh)t.push("<span class='tag p' title='Brand new, nobody has worked it'>Fresh</span>");
+  if(r.source)t.push("<span class='tag src' title='Lead source'>"+esc(srcLabel(r.source))+"</span>");
+  if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
   return t.join(" ");
 }
 function drill(){
@@ -467,8 +476,10 @@ function drill(){
       "<td>"+ph+"</td>"+
       "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
-      "<td>"+esc(r.ownerName)+(r.needsOwner?" <span class='tag o'>NEEDS OWNER</span>":"")+
-        (r.counted===false?" <span class='tag p'>not counted</span>":"")+
+      "<td>"+esc(r.ownerName)+
+        (r.ownerInactive?" <span class='tag o' title='This agent is deactivated in HubSpot'>INACTIVE</span>":"")+
+        (r.unassigned?" <span class='tag o'>UNASSIGNED</span>":"")+
+        (r.counted===false?" <span class='tag p' title='Parking bucket, shown but not counted'>not counted</span>":"")+
         (r.movedOwner?"<div class='sub3'>reassigned since</div>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
       "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
