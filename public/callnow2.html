@@ -781,6 +781,50 @@ function reconcile(){
 var CHURN_BY="owner";
 function setChurnBy(v){ CHURN_BY=v; draw(); }
 // The one number that matters, and how the morning list has moved since midnight.
+/* Data quality, stated on the page rather than hidden in a log. Two different questions:
+   is this page consistent with itself, and is it consistent with HubSpot. */
+function quality(){
+  var c=J.checks, d=J.drift;
+  if(!c&&!d)return "";
+  var bad=c?c.checks.filter(function(x){return !x.ok;}):[];
+  var h="";
+  if(bad.length){
+    h+="<div class='warn' style='border-color:#D98080;background:#FDECEA;color:#8C2D12'>"+
+      "<b>These numbers do not add up.</b> "+fmt(bad.length)+" internal check"+(bad.length>1?"s":"")+" failed, so "+
+      "treat this page as broken until it is fixed:<ul style='margin:6px 0 0 18px;padding:0'>"+
+      bad.map(function(x){return "<li>"+esc(x.label)+(x.detail?" &mdash; "+esc(x.detail):"")+"</li>";}).join("")+
+      "</ul></div>";
+  }
+  if(d&&d.level!=="ok"){
+    h+="<div class='warn'>HubSpot has <b>"+fmt(d.hubspot)+"</b> leads called today, this app can see <b>"+
+      fmt(d.ours)+"</b>, a gap of "+d.pct+"%. Some gap is expected, this page only holds tracked creators and "+
+      "certain stages, but "+(d.level==="bad"?"this is large enough to be worth checking":"it is drifting")+
+      ". Checked "+new Date(d.at).toLocaleTimeString("en-IN")+
+      (d.leadsSyncedAt?" &middot; leads last updated "+new Date(d.leadsSyncedAt).toLocaleTimeString("en-IN"):"")+".</div>";
+  }
+  return h;}
+function qualityPanel(){
+  var c=J.checks;
+  if(!c)return "";
+  var d=J.drift;
+  var h="<div class='sec mini'><h2>Data quality "+
+    "<span class='tag "+(c.ok?"s":"o")+"' style='margin-left:6px'>"+(c.ok?"all clear":"failing")+"</span></h2>"+
+    "<div class='sub'>These run on every build of this page, not when someone remembers to check. "+
+    "A number that is quietly wrong is worse than a page that is visibly broken.</div>"+
+    "<div class='tw'><table><thead><tr><th></th><th>What is checked</th><th>Detail</th></tr></thead><tbody>"+
+    c.checks.map(function(x){
+      return "<tr><td style='width:26px'>"+(x.ok?"<span class='tick'>&#10003;</span>":
+        "<span class='tag o'>fail</span>")+"</td><td>"+esc(x.label)+"</td>"+
+        "<td class='mut' style='white-space:normal'>"+esc(x.detail||"")+"</td></tr>";}).join("")+
+    (d?"<tr><td style='width:26px'>"+(d.level==="ok"?"<span class='tick'>&#10003;</span>":"<span class='tag o'>"+d.pct+"%</span>")+
+      "</td><td>Agrees with HubSpot on how many were called today</td>"+
+      "<td class='mut' style='white-space:normal'>HubSpot "+fmt(d.hubspot)+", this app "+fmt(d.ours)+
+      ". Checked "+new Date(d.at).toLocaleTimeString("en-IN")+"</td></tr>":"")+
+    "</tbody></table></div>"+
+    "<div class='sub' style='margin-top:8px'>Checked at "+new Date(c.at).toLocaleTimeString("en-IN")+
+    ". For the full accounting of every call HubSpot logged today, use <b>Check what is outside</b> above.</div></div>";
+  return h;}
+
 function hero(){
   // Numerator and denominator must come from the same population or the percentage is
   // meaningless. Both are the call-today group, parking buckets excluded, which is the
@@ -979,7 +1023,7 @@ function draw(){
   if(nav)nav.style.display=J.isVP?"flex":"none";
   // Four full width bars stacked on top of each other pushed the tables below the fold.
   // Two columns instead: controls on the left, the state of today's list on the right.
-  var h=hero()+"<div class='top'><div class='topcol'>"+bar()+"</div>"+
+  var h=quality()+hero()+"<div class='top'><div class='topcol'>"+bar()+"</div>"+
         "<div class='topcol'>"+baseNote()+"</div></div>"+viewTabs();
   var matrix="";
   SECS.forEach(function(s,i){
@@ -990,7 +1034,7 @@ function draw(){
         ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  matrix+=churnPanel()+excludedNote()+creatorPanel()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable());
+  matrix+=churnPanel()+excludedNote()+creatorPanel()+(J.isVP?reconcile():"")+qualityPanel()+(J.scoped&&J.role==="agent"?"":agentTable());
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";

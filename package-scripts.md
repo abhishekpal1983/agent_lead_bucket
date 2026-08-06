@@ -17,6 +17,30 @@
 | Called but not on today's calling list | Calls made on leads that arrived after midnight. Real work, just not part of today's plan |
 | Test data, not real | The page is running on made-up leads so it can be checked without touching HubSpot |
 
+## How this stays correct
+
+Three layers, deliberately, because each catches what the others cannot.
+
+**1. Invariants, on every request.** `lib/checks.js` runs eight rules every time the page is
+built: every lead is counted or held aside, stage rows add to their section, each lead has
+exactly one timing, "any priority" is deduplicated rather than summed, called never exceeds
+the population it is measured against, the headline divides one population by itself,
+effort bands cover every lead exactly once, and agent rows account for the same leads the
+floor does. If one fails the page says so at the top, above the numbers, and names the
+check. A number that is quietly wrong is worse than a page that is visibly broken.
+
+**2. Drift against HubSpot, on a timer.** The invariants only prove the page agrees with
+itself. Every twenty minutes the app asks HubSpot how many leads were called today and
+compares. Some gap is expected, this page holds only tracked creators and certain stages,
+so the check watches the size of the gap rather than demanding zero. Over 20% it warns,
+over 40% it says so on the page and in the logs.
+
+**3. The full accounting, on demand.** "Check what is outside" asks HubSpot for every lead
+called today and sorts each into why it does or does not appear here: on the list, created
+after the lock, in the pool but not on the list, untracked creator, no creator, a stage
+this page does not carry, or never pulled at all. The bottom row states whether the parts
+add back to HubSpot's total, and says plainly if they do not.
+
 # Local development
 
 Nothing in v2 touches the live Call Now page or its endpoint. Work on the `v2` branch.

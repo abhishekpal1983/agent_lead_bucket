@@ -862,6 +862,7 @@ app.get("/api/health", function(req, res){
     // Whether tomorrow's morning review will have anything to show. Dates and counts
     // only, no lead data, so this stays safe on an endpoint with no login.
     last500: LAST_500,
+    cn2Drift: CN2_DRIFT.at ? CN2_DRIFT : null,
     daily: (function(){
       try {
         const all = (typeof ORG !== "undefined" && ORG.daily) || {};
@@ -2276,6 +2277,7 @@ function ownerCounted(id){
    plumbing. v1 is untouched on purpose, the floor uses it every day.
    ========================================================================== */
 const CN2 = require("./lib/cn2");
+const CHECKS = require("./lib/checks");
 const CN2_WORK_DAYS = process.env.WORK_DAYS || CN2.DEFAULT_WORK_DAYS;
 const CN2_WORK = CN2.workDaySet(CN2_WORK_DAYS);
 // Midnight, so a call made at 09:00 counts. Nothing the base needs is unknown at 00:05.
@@ -2624,6 +2626,13 @@ app.get("/api/callnow2", function(req, res){
     sourceOptions: Object.keys(sources).map(function(u){ return { u: u, n: sources[u] }; })
       .sort(function(a, b){ return b.n - a.n; }),
     teamOptions: cn2Teams().map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; }),
+    checks: CHECKS.runChecks({
+      totals: agg.totals, excluded: agg.excluded, columns: CN2.COLUMNS, timing: CN2.TIMING,
+      effort: effort,
+      stages: order.map(function(x){ return { stage: x, n: agg.sections.n[x], a: agg.sections.a[x], d: agg.sections.d[x] }; })
+    }, { baseSize: Object.keys(ctx.base).length,
+         agents: Object.keys(agg.byAgent).map(function(k){ return agg.byAgent[k]; }) }),
+    drift: CN2_DRIFT.at ? CN2_DRIFT : null,
     scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
     fixtures: !!CN2_FIXTURE_DATA,
     // The page hides anything not meant for the reader rather than relying on the route
@@ -2788,6 +2797,39 @@ async function cn2CallLadder(){
     onListNeedsCall: bucket.onListNeedsCall,
     leadsSyncedAt: (typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt,
     outsideTracked: bucket.untrackedCreator, noCreator: bucket.noCreator };
+}
+
+/* A standing check against HubSpot.
+   Every invariant above only proves this page is consistent with itself. This is the one
+   that proves it is consistent with reality: HubSpot's own count of leads called today
+   against ours, on a timer, so drift is found by the app rather than reported by a person
+   in a meeting. One search a run, count only, so it costs nothing worth measuring. */
+let CN2_DRIFT = { at: null, hubspot: 0, ours: 0, gap: 0, pct: 0, level: "ok", error: null, leadsSyncedAt: null };
+async function cn2DriftCheck(){
+  if (!TOKEN || CN2_FIXTURE_DATA) return;
+  if (!cn2Ready()) return;
+  const day = istDayBounds();
+  try {
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
+        { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+      ]}], properties: ["hs_object_id"], limit: 1 })});
+    const theirs = j.total || 0;
+    let ours = 0;
+    cn2Rows().forEach(function(r){ if (r.last >= day.start && r.last < day.end) ours++; });
+    const gap = theirs - ours;
+    const pct = theirs ? Math.round(1000 * Math.abs(gap) / theirs) / 10 : 0;
+    // Ours is always a subset: this page only holds tracked creators and certain stages.
+    // What matters is whether the gap is drifting beyond what those rules explain.
+    CN2_DRIFT = { at: new Date().toISOString(), hubspot: theirs, ours: ours, gap: gap, pct: pct,
+      level: pct >= 40 ? "bad" : (pct >= 20 ? "warn" : "ok"), error: null,
+      leadsSyncedAt: (typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt };
+    if (pct >= 20) console.error("Call Now v2 drift: HubSpot " + theirs + ", app " + ours + " (" + pct + "%)");
+  } catch (e) {
+    CN2_DRIFT = Object.assign({}, CN2_DRIFT, { error: (e && e.message) || String(e) });
+    console.error("drift check failed: " + CN2_DRIFT.error);
+  }
 }
 
 app.get("/api/callnow2/outside", async function(req, res){
@@ -5654,6 +5696,9 @@ SERVER = app.listen(PORT, () => {
   setTimeout(guard("cn2Build", function(){ return cn2Build(); }), 25 * 1000);
   setInterval(guard("cn2Build", function(){ return cn2Build(); }), 60 * 1000);
   setInterval(guard("cn2Freeze", cn2FreezeDue), 5 * 60 * 1000);
+  // Compare ourselves to HubSpot on a timer rather than on request.
+  setTimeout(guard("cn2Drift", cn2DriftCheck), 6 * 60 * 1000);
+  setInterval(guard("cn2Drift", cn2DriftCheck), 20 * 60 * 1000);
   setTimeout(guard("cn2Freeze", cn2FreezeDue), 300 * 1000);
   setTimeout(guard("coachLock", coachLockDue), 260 * 1000);
   setInterval(guard("coachCalls", syncCoachCalls), 60 * 60 * 1000);

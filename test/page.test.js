@@ -65,6 +65,8 @@ const payload = {
   stageOptions: STAGES.map(function(s){ return { stage: s, label: s }; }),
   loadedAt: "fixtures", listBuiltAt: new Date(fixture.now).toISOString(),
   trackedCreators: ["ayush_singh13", "simrankhokha", "Simrankhokha"],
+  checks: { at: new Date().toISOString(), ok: true,
+    checks: [{ key: "total", label: "Every lead is either counted or held aside", ok: true, detail: "" }] },
   effort: { total: { low: 40, avg: 12, bench: 5, high: 2 }, owner: { low: 50, avg: 6, bench: 2, high: 1 } },
   effortBands: CN2.EFFORT_BANDS.map(function(b){
     return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; })
@@ -241,6 +243,32 @@ console.log("\nRole specific things appear only where they should");
     c3.OUT.onListNeedsCall = payload.totals.n.allW;
     c3.draw();
     ok("and when they agree it says that instead", out.indexOf("HubSpot agrees") >= 0);
+  }
+
+  ok("data quality is stated on the page", vp.indexOf("Data quality") >= 0 && vp.indexOf("all clear") >= 0);
+  {
+    // A failing invariant must shout at the top of the page, not sit in a panel below.
+    let out = "";
+    const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
+    const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
+    const c4 = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ return id === "app" ? app : stub; } },
+      fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+    vm.createContext(c4); vm.runInContext(script, c4);
+    c4.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager",
+      checks: { at: new Date().toISOString(), ok: false, checks: [
+        { key: "total", label: "Every lead is either counted or held aside", ok: false, detail: "10 vs 11" }] },
+      drift: { at: new Date().toISOString(), hubspot: 981, ours: 400, gap: 581, pct: 59.2, level: "bad" } });
+    c4.A = { agents: agents, effortBands: payload.effortBands };
+    c4.LOADING = false; c4.draw();
+    ok("a failed invariant is shouted at the top", out.indexOf("These numbers do not add up") >= 0);
+    ok("and it names the check that failed", out.indexOf("10 vs 11") >= 0);
+    ok("drift against HubSpot is shown too", out.indexOf("a gap of 59.2%") >= 0);
+    ok("the banner comes before the headline number",
+      out.indexOf("These numbers do not add up") < out.indexOf("Called today"));
   }
 
   ok("the tracked creator list can be managed from the page",

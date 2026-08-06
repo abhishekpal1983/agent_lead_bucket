@@ -92,7 +92,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ok("the hero numerator matches the leads actually called", workedDrill === M.totals.n.allW,
       `${workedDrill} vs ${M.totals.n.allW}`);
 
-    console.log("\n8. Filtering must scope the extra calls too");
+    console.log("\n8. The page checks itself on every build");
+    {
+      ok("the response carries its own check results", M.checks && Array.isArray(M.checks.checks));
+      ok("and they all pass", M.checks && M.checks.ok,
+        M.checks ? JSON.stringify(M.checks.checks.filter(c => !c.ok)) : "none");
+      // Under every filter too, not just unfiltered.
+      for (const q of ["?agent=201", "?ostate=active", "?intl=yes", "?stages=counselled"]) {
+        const r = await get("/api/callnow2" + q);
+        ok("checks still pass with " + q, r.checks && r.checks.ok,
+          r.checks ? JSON.stringify(r.checks.checks.filter(c => !c.ok)) : "none");
+      }
+    }
+
+    console.log("\n9. Filtering must scope the extra calls too");
     {
       // Off-base was measured against the whole floor even when the page was filtered,
       // which credited one manager with everyone else's calls.
@@ -108,7 +121,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         a1.offBase.leads + " + " + a2.offBase.leads + " vs " + all2.offBase.leads);
     }
 
-    console.log("\n9. Per agent against the floor");
+    console.log("\n10. Per agent against the floor");
     const A = await get("/api/callnow2/agents");
     const agentSum = A.agents.reduce((a, x) => a + x.n.all, 0);
     ok("agent rows account for every call-today lead, held-aside included",
