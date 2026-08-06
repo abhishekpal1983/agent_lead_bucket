@@ -16,6 +16,25 @@ function ok(name, cond, extra){
 }
 
 const html = fs.readFileSync(path.join(__dirname, "..", "public", "callnow2.html"), "utf8");
+
+/* theme.css loads after the page's own styles and sets its rules with !important, so any
+   density rule written before that link silently loses. This is not a detail: it is why a
+   whole round of "make the rows tighter" looked like it had never shipped. */
+console.log("\nDensity rules have to come after the shared theme");
+{
+  const themeAt = html.indexOf('href="/theme.css"');
+  ok("the theme is linked", themeAt > 0);
+  const after = html.slice(themeAt);
+  [["compact header cells", "table th{padding:5px"],
+   ["compact body cells", "table td{padding:4px"],
+   ["tables scroll", ".tw{max-height"],
+   ["two column header blocks", ".top{display:grid"]].forEach(function(r){
+    ok(r[0] + " is defined after the theme", after.indexOf(r[1]) >= 0, r[1]);
+  });
+  const before = html.slice(0, themeAt);
+  ok("and the theme cannot override them",
+    after.indexOf("!important") > 0 && before.indexOf(".tw{max-height:56vh}") < 0);
+}
 const script = (html.match(/<script>([\s\S]*?)<\/script>/g) || [])
   .map(function(b){ return b.replace(/^<script>/, "").replace(/<\/script>$/, ""); }).join("\n");
 
@@ -121,6 +140,12 @@ console.log("\nRole specific things appear only where they should");
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
+  ok("the header blocks sit in two columns, not four stacked bars",
+    vp.indexOf("class='top'") >= 0 && (vp.match(/class='topcol'/g) || []).length === 2,
+    String((vp.match(/class='topcol'/g) || []).length) + " columns");
+  ok("controls on the left, today's state on the right",
+    vp.indexOf("class='top'") < vp.indexOf("Manager") &&
+    vp.indexOf("What changed today") > vp.indexOf("Manager"));
   ok("every table is inside a scrolling wrapper",
     (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
   ok("why-call tags carry the tooltip v1 has",
