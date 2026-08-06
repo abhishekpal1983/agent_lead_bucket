@@ -731,9 +731,10 @@ function creatorPanel(){
       "</td></tr></tbody></table></div>";
     if((OUT.byStage||[]).length)h+="<div class='sub' style='margin:0 0 7px'>Stages this page does not carry: "+
       OUT.byStage.map(function(x){return esc(x.label)+" "+fmt(x.n);}).join(", ")+
-      (OUT.stageMovedOutToday?". <b>"+fmt(OUT.stageMovedOutToday)+"</b> of those were moved into that stage today, "+
-        "so they were probably called and then marked, which is work that has since fallen out of view.":
-        ". None of those moved stage today, so they were already out of scope this morning.")+"</div>";
+      (OUT.stageMovedOutToday?". <b>"+fmt(OUT.stageMovedOutToday)+"</b> of those moved stage today, but none of them "+
+        "were on this morning's list either way: a lead that was on the list keeps its place all day, whatever "+
+        "happens to its stage.":
+        ". None of those moved stage today. Either way they were not on this morning's list.")+"</div>";
     if(OUT.onList!=null&&OUT.onListNeedsCall!=null)
       h+="<div class='sub' style='margin:0 0 9px'><b>"+fmt(OUT.onList)+"</b> calls landed on today's list, but only "+
         "<b>"+fmt(OUT.onListNeedsCall)+"</b> of those are leads the list actually asked for. The rest were booked "+

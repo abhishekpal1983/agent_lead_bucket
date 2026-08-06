@@ -2494,7 +2494,25 @@ function cn2Context(req){
   const today = istParts(new Date(cn2Now())).date;
   const frozen = !!(store && store.date === today && store.rows && Object.keys(store.rows).length);
   const rows = cn2Rows();
-  const live = cn2Live();
+  /* Two maps, deliberately.
+     `live` is the qualifying pool, which is what the page is about.
+     `liveAll` is everything the app holds, and it exists for one reason: a lead can leave
+     the qualifying pool during the day, by changing stage or losing its creator, and if we
+     only looked at `live` we would read it as "not called" even when it was called this
+     morning. The morning list keeps the lead; the call must be kept with it. */
+  const live = {};
+  const liveAll = {};
+  if (CN2_FIXTURE_DATA) {
+    rows.forEach(function(r){ live[r.id] = r; liveAll[r.id] = r; });
+  } else {
+    rows.forEach(function(r){ live[r.id] = r; });
+    callnowPool().forEach(function(c){
+      if (live[c.id]) { liveAll[c.id] = live[c.id]; return; }
+      liveAll[c.id] = { id: c.id, last: ts(c.last_call_date_and_time),
+        stage: cnStage(c), owner: String(c.hubspot_owner_id || ""),
+        creator: c.topmate_username || "", name: ((c.firstname || "") + " " + (c.lastname || "")).trim() };
+    });
+  }
 
   let base = {};
   if (frozen) base = store.rows;
@@ -2562,7 +2580,7 @@ function cn2Context(req){
       return true;
     });
   }
-  return { day: day, base: base, live: live, rows: scopedRows, allRows: rows, frozen: frozen,
+  return { day: day, base: base, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
     names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
 }
@@ -2584,7 +2602,7 @@ app.get("/api/callnow2", function(req, res){
       leadsSoFar: SYNC_PROGRESS.contacts, running: !!CACHE.syncing, syncError: CACHE.error || null } });
   const ctx = cn2Context(req);
   const order = cn2StageOrder(ctx.base);
-  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order);
+  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, order, ctx.liveAll);
   const off = CN2.offBase(ctx.base, ctx.rows, ctx.day);
 
   const agents = {}, creators = {}, sources = {};
@@ -2651,7 +2669,7 @@ app.get("/api/callnow2", function(req, res){
 app.get("/api/callnow2/agents", function(req, res){
   if (!cn2Ready()) return res.json({ notReady: true });
   const ctx = cn2Context(req);
-  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base));
+  const agg = CN2.aggregate(ctx.base, ctx.live, ctx.day, cn2StageOrder(ctx.base), ctx.liveAll);
   const teamOf = {}, teamName = {};
   cn2Teams().forEach(function(t){
     teamName[t.id] = t.name || "(unnamed)";
@@ -2975,7 +2993,8 @@ app.get("/api/callnow2/leads", function(req, res){
     if (nc === "1" && c.counted) return;
     if (nc !== "1" && !c.counted) return;   // totals exclude them, so the drill does too
     const cur = ctx.live[id] || null;
-    const isWorked = !!(cur && cur.last >= ctx.day.start && cur.last < ctx.day.end);
+    const seen = cur || ctx.liveAll[id] || null;      // a lead that left the pool was still called
+    const isWorked = !!(seen && seen.last >= ctx.day.start && seen.last < ctx.day.end);
     if (worked === "1" && !isWorked) return;
     if (worked === "0" && isWorked) return;
     const nowC = cur ? CN2.classify(cur, ctx.day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN }) : null;

@@ -129,6 +129,21 @@ head("The base does not move when the lead does");
   eq("and counts as not called", gone.sections.n.counselled.scoreW, 0);
 }
 
+head("A lead that leaves the pool keeps its place, and keeps its call");
+{
+  const r = { id: "z", stage: "counselled", fu: 0, last: 0, score: 8, forms: [], intl: false,
+    formLast: 0, owner: "1", creator: "c", counted: true };
+  const base = { z: cn2.pack(cn2.classify(r, day6, { work: WORK, scoreMin: 6 })) };
+  // Called at 10am, then moved to a stage this page does not carry, so it leaves the pool.
+  const gone = { id: "z", last: day6.start + 36000000, stage: "ghosted", owner: "1" };
+  const without = cn2.aggregate(base, {}, day6, ["counselled"]);
+  const withAll = cn2.aggregate(base, {}, day6, ["counselled"], { z: gone });
+  eq("it stays in the cell it was in this morning", withAll.sections.n.counselled.all, 1);
+  eq("and the call is not lost", withAll.sections.n.counselled.allW, 1);
+  eq("without the wider pool the call would vanish", without.sections.n.counselled.allW, 0);
+  eq("its stage change does not move it", withAll.sections.n.counselled.score, 1);
+}
+
 head("Off-base effort");
 {
   const base = { a: cn2.pack(cn2.classify({ id: "a", stage: "counselled", fu: 0, last: 0 }, day6, { work: WORK })) };

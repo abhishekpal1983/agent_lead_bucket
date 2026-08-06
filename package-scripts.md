@@ -1,5 +1,9 @@
 # Call Now v2
 
+**The rules live in [RULES.md](RULES.md).** That file is the contract: entry, exit,
+timings, what counts as called, and what resets when. If the code and that file disagree,
+one of them is a bug.
+
 ## The words this page uses
 
 | Word on the page | What it means |
