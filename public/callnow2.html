@@ -198,6 +198,12 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
 .wrap .mbar{height:5px !important}
 .wrap .r{color:#8C2D12}.wrap .a{color:#7A4A08}.wrap .g{color:#0A5346}.wrap .p{color:#4B2E9E}
+/* theme.css sets td colour with !important, which turned the navy total row into dark
+   text on a dark fill. These have to come after it and shout just as loudly. */
+.wrap tr.tot.grand td,.wrap tr.tot.grand td b{color:#fff !important}
+.wrap tr.tot.grand td .sub3,.wrap tr.tot.grand td .sub3 b{color:#AFC3D6 !important}
+.wrap tr.tot.grand td.z{color:#5C728A !important}
+.wrap td.cell.sel,.wrap td.cell.sel *{color:#fff !important}
 /* Two columns for the header blocks, so controls and today's state cost one section of
    height between them rather than four stacked bars. */
 .wrap .top{display:grid !important;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr) !important;
@@ -271,7 +277,7 @@ var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fres
   ["any","Any priority"],["all","All in stage"]];
 var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
   ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
-  ["d","DNP, nothing to act on today","No form, no score of 6 or more, not international, not fresh. Kept apart so they never make the call-today list look bigger."]];
+  ["d","DNP, nothing to act on today","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."]];
 
 // Lifted from the v1 page so the two cannot drift apart.
 var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",discovery:"#DCEDF6|#0B4A66",

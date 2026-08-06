@@ -28,6 +28,7 @@ console.log("\nDensity rules have to come after the shared theme");
   [["compact header cells", "table th{padding:5px"],
    ["compact body cells", "table td{padding:4px"],
    ["table type scaled to the rows", "table{font-size:12.5px"],
+   ["the navy total row stays legible", "tr.tot.grand td,.wrap tr.tot.grand td b{color:#fff"],
    ["tables scroll", ".tw{max-height"],
    ["two column header blocks", ".top{display:grid"]].forEach(function(r){
     ok(r[0] + " is defined after the theme", after.indexOf(r[1]) >= 0, r[1]);
@@ -153,6 +154,8 @@ console.log("\nA section with a single stage does not repeat itself");
   ok("no subtotal row under a group that has only one stage in it", subtotals === 0,
     subtotals + " subtotal rows");
   ok("the grand total is still there", out.indexOf("Everything added up") >= 0);
+  ok("the DNP group says which DNP leads it holds and which it does not",
+    out.indexOf("The DNP leads that do carry one are counted in Call today above") >= 0);
 }
 
 console.log("\nRole specific things appear only where they should");

@@ -2279,6 +2279,10 @@ const CN2_WORK = CN2.workDaySet(CN2_WORK_DAYS);
 const CN2_FREEZE_HM = process.env.CN2_FREEZE_HM || "00:05";
 // Leads in these stages only enter v2 when they qualify, otherwise ghosted would swamp it.
 const CN2_EXTRA_STAGES = ["IFC", "ghosted", "ni_not_interested"];
+/* v1 splits DNP into two rows, "form or score" and "everything else". v2 splits it by
+   group instead: the ones worth calling sit in Call today, the rest in their own group.
+   So the row label must not claim either kind, or it contradicts the group it is in. */
+const CN2_STAGE_LABELS = Object.assign({}, CN_STAGE_LABELS, { dnp_did_not_pick: "DNP", dnp_other: "DNP" });
 const CN2_STAGES = CN_DEFAULT_STAGES.filter(function(s){ return s !== "dnp_other"; }).concat(CN2_EXTRA_STAGES);
 
 // Fixtures let the whole page be driven locally. Never set this in Railway.
@@ -2571,7 +2575,7 @@ app.get("/api/callnow2", function(req, res){
 
   res.json({
     stages: order.map(function(s){
-      return { stage: s, label: CN_STAGE_LABELS[s] || s,
+      return { stage: s, label: CN2_STAGE_LABELS[s] || s,
         n: agg.sections.n[s], a: agg.sections.a[s], d: agg.sections.d[s] };
     }),
     totals: agg.totals, excluded: agg.excluded, movement: agg.movement,
@@ -2596,7 +2600,7 @@ app.get("/api/callnow2", function(req, res){
     isVP: isVP(req), role: (req.session && req.session.role) || "manager",
     scoped: !!cn2Scope(req),
     stageOptions: cn2StageOrder(ctx.base).map(function(x){
-      return { stage: x, label: CN_STAGE_LABELS[x] || x }; }),
+      return { stage: x, label: CN2_STAGE_LABELS[x] || x }; }),
     listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length
   });
 });
