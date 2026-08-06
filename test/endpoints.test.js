@@ -140,6 +140,18 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("the four effort bands add up to every call-today lead, none double counted",
       counts.reduce(function(a, b){ return a + b; }, 0) === allNow,
       counts.join(" + ") + " vs " + allNow);
+    const perAgent = (await get("/api/callnow2/agents")).body;
+    ok("every agent row carries its own churn effort",
+      perAgent.agents.every(function(a){ return a.effort && a.effort.owner && a.effort.total; }));
+    // The agent table shows parking buckets too, so its total is the counted call-today
+    // leads plus the ones held aside, not the counted ones alone.
+    const m2 = (await get("/api/callnow2")).body;
+    const callToday = m2.totals.n.all + m2.excluded.n.all;
+    ok("per agent churn accounts for every call-today lead, held-aside ones included",
+      perAgent.agents.reduce(function(t, a){
+        return t + a.effort.owner.low + a.effort.owner.avg + a.effort.owner.bench + a.effort.owner.high; }, 0) === callToday,
+      "agents sum vs " + callToday);
+
     const eff = (await get("/api/callnow2")).body.effort;
     ok("the panel's own counts agree with the drill",
       eff && bands.every(function(b, i){ return eff.total[b] === counts[i]; }),

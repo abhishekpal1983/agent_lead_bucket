@@ -569,34 +569,54 @@ function reconcile(){
     " leads are shown but not counted by v2, of which "+fmt(REC.shown.unassigned)+" have no owner at all.</div>";
   return h+"</div>";}
 
-// Whether a lead has had a fair go. Two numbers, because they answer different
-// questions: attempts in the stage by anyone, and attempts by the agent who holds it now.
-function effortPanel(){
-  var e=J.effort,B=J.effortBands;
-  if(!e||!B)return "";
-  var tot=B.reduce(function(a,b){return a+e.total[b.key];},0);
-  if(!tot)return "";
+// Where an agent is not churning. Of the leads they hold that need a call today, how
+// many have barely been tried. Everyone sees this: an agent for themselves, a manager for
+// their team, a VP for the floor.
+var CHURN_BY="owner";
+function setChurnBy(v){ CHURN_BY=v; draw(); }
+function churnPanel(){
+  if(!A||!A.agents||!A.agents.length)return "";
+  var B=A.effortBands||J.effortBands;
+  if(!B)return "";
+  var rows=A.agents.filter(function(a){return a.n.all>0;});
+  if(!rows.length)return "";
   var range=function(b){ return b.max==null?(b.min+"+"):(b.min+" to "+b.max); };
-  var row=function(by,label){
-    var src=by==="owner"?e.owner:e.total;
-    return "<tr><td>"+label+"</td>"+B.map(function(b){
-      var n=src[b.key],pc=tot?Math.round(100*n/tot):0;
-      var on=PICK&&PICK.band===b.key&&PICK.bandBy===by;
-      return "<td class='n cell"+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
-        ",bandBy:"+JSON.stringify(by).replace(/"/g,"&quot;")+",sec:\"n\"})'>"+
-        "<b class='"+b.cls+"'>"+fmt(n)+"</b><div class='sub3'>"+pc+"%</div></td>";
-    }).join("")+"</tr>";};
-  var h="<div class='sec mini'><h2>Has the lead had a fair go</h2>"+
-    "<div class='sub'>Attempts on the leads that need a call today. <b>In the stage</b> counts every agent who has "+
-    "tried since the lead reached its current stage. <b>By the agent who holds it</b> counts only theirs, which is "+
-    "how you tell an inherited lead from a neglected one. Click any number for those leads.</div>"+
-    "<div class='tw'><table><thead><tr><th>Attempts</th>"+
+  var share=function(a){
+    var e=a.effort[CHURN_BY],t=B.reduce(function(x,b){return x+e[b.key];},0);
+    return t?e.low/t:0;};
+  rows=rows.slice().sort(function(x,y){ return share(y)-share(x) || y.n.all-x.n.all; });
+  var h="<div class='sec mini'><h2>Lead churn effort</h2>"+
+    "<div class='sub'>Of the leads each agent is holding that need a call today, how many have barely been tried. "+
+    "Sorted worst first. <b>By the agent who holds it</b> is the accountable number; <b>by anyone</b> tells you whether "+
+    "the lead has had a go at all, which is how an inherited lead is told from a neglected one. Click any number for those leads.</div>"+
+    "<div class='chips' style='margin-bottom:9px'>"+
+    "<button class='chipb"+(CHURN_BY==="owner"?" on":"")+"' onclick='setChurnBy(\"owner\")'>By the agent who holds it</button>"+
+    "<button class='chipb"+(CHURN_BY==="total"?" on":"")+"' onclick='setChurnBy(\"total\")'>By anyone, in the stage</button>"+
+    "</div>"+
+    "<div class='tw scrolly'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
     B.map(function(b){return "<th class='n'>"+esc(b.label)+"<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
-    "</tr></thead><tbody>"+
-    row("total","In the stage, by anyone")+
-    row("owner","By the agent who holds it")+
-    "</tbody></table></div></div>";
-  return h;}
+    "<th class='n'>Barely tried</th></tr></thead><tbody>";
+  h+=rows.map(function(a){
+    var e=a.effort[CHURN_BY];
+    var t=B.reduce(function(x,b){return x+e[b.key];},0);
+    var pc=t?Math.round(100*e.low/t):0;
+    var flag=pc>=70?"m":(pc>=40?"d":"c");
+    return "<tr class='rowlink"+(Q.agent===a.id?" on":"")+"'>"+
+      "<td onclick=\"Q.agent='"+esc(a.id)+"';load()\">"+esc(a.name)+
+        (a.counted?"":" <span class='tag p'>not counted</span>")+
+        (a.active?"":" <span class='tag o'>INACTIVE</span>")+
+        (a.team?"<div class='sub3'>"+esc(a.team)+"</div>":"")+"</td>"+
+      "<td class='n'>"+fmt(a.n.all)+"</td>"+
+      B.map(function(b){
+        var n=e[b.key];
+        var on=PICK&&PICK.band===b.key&&PICK.bandBy===CHURN_BY&&PICK.agent===a.id;
+        if(!n)return "<td class='n cell z' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+          ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>0</td>";
+        return "<td class='n cell"+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+          ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>"+
+          "<b class='"+b.cls+"'>"+fmt(n)+"</b></td>";}).join("")+
+      "<td class='n'><b class='"+flag+"'>"+pc+"%</b></td></tr>";}).join("");
+  return h+"</tbody></table></div></div>";}
 
 function agentTable(){
   if(!A||!A.agents||!A.agents.length)return "";
@@ -672,7 +692,7 @@ function draw(){
         ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  h+=effortPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
+  h+=churnPanel()+excludedNote()+(J.isVP?reconcile():"")+(J.scoped&&J.role==="agent"?"":agentTable())+drill();
   el.innerHTML=h;}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);

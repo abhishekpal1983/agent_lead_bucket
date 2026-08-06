@@ -69,6 +69,8 @@ const payload = {
 const agents = Object.keys(agg.byAgent).map(function(id){
   return { id: id === "none" ? "" : id, name: "Agent " + id, team: "Team Sid", teamId: "t1",
     active: id !== "204", counted: agg.byAgent[id].counted !== false, offBase: 0,
+    effort: { total: { low: 30, avg: 8, bench: 3, high: 1 },
+              owner: { low: 38, avg: 3, bench: 1, high: 0 } },
     n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d };
 });
 const leadRows = Object.keys(base).slice(0, 3).map(function(id){
@@ -99,7 +101,7 @@ function render(role){
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   ctx.J = Object.assign({}, payload, role);
-  ctx.A = { agents: agents };
+  ctx.A = { agents: agents, effortBands: payload.effortBands };
   ctx.LOADING = false;
   ctx.draw();                                   // the matrix, filters, agent table
   ctx.PICK = { stage: "counselled", sec: "n", col: "all", t: "", worked: "", moved: "", notcounted: "" };
@@ -167,11 +169,15 @@ console.log("\nRole specific things appear only where they should");
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
   ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
-  ok("the effort bands are shown with their ranges",
-    vp.indexOf("Has the lead had a fair go") >= 0 && vp.indexOf("Barely tried") >= 0 &&
+  ok("churn effort is named and banded",
+    vp.indexOf("Lead churn effort") >= 0 && vp.indexOf("Barely tried") >= 0 &&
     vp.indexOf("At benchmark") >= 0 && vp.indexOf("0 to 3") >= 0 && vp.indexOf("11+") >= 0);
-  ok("both attempt questions are asked separately",
-    vp.indexOf("In the stage, by anyone") >= 0 && vp.indexOf("By the agent who holds it") >= 0);
+  ok("churn effort is per agent, not one summary row",
+    vp.indexOf("Lead churn effort") >= 0 && vp.indexOf("Agent 201") >= 0);
+  ok("both readings are offered",
+    vp.indexOf("By the agent who holds it") >= 0 && vp.indexOf("By anyone, in the stage") >= 0);
+  ok("an agent sees their own churn effort too",
+    agent.indexOf("Lead churn effort") >= 0);
   ok("attempt counts on a lead row are colour banded",
     vp.indexOf("counting every agent") >= 0 && vp.indexOf("this agent only") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",

@@ -2617,6 +2617,21 @@ app.get("/api/callnow2/agents", function(req, res){
     const a = String(r.owner || "none");
     off[a] = (off[a] || 0) + 1;
   });
+  /* Churn effort per agent: of the leads they are holding that need a call today, how
+     many have barely been tried. Two readings, because they answer different questions.
+     By anyone says whether the lead has had a go at all; by this agent says whether the
+     person holding it has done their share, which is the one a manager acts on. */
+  const eff = {};
+  Object.keys(ctx.base).forEach(function(id){
+    const c = CN2.unpack(ctx.base[id]);
+    if (c.sec !== "n") return;
+    const a = c.owner || "none";
+    if (!eff[a]) eff[a] = { total: CN2.effortCounts(), owner: CN2.effortCounts() };
+    const lv = ctx.live[id];
+    eff[a].total[CN2.effortBand(lv ? lv.calls : 0).key]++;
+    eff[a].owner[CN2.effortBand(lv ? lv.own : 0).key]++;
+  });
+
   const rows = Object.keys(agg.byAgent).map(function(id){
     const tid = teamOf[id];
     const o = CN2_FIXTURE_DATA ? {} : (CACHE.owners[id] || {});
@@ -2624,9 +2639,12 @@ app.get("/api/callnow2/agents", function(req, res){
       team: tid ? teamName[tid] : "", teamId: tid || "",
       active: o.active !== false, counted: ownerCounted(id === "none" ? "" : id),
       n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
+      effort: eff[id] || { total: CN2.effortCounts(), owner: CN2.effortCounts() },
       offBase: off[id] || 0 };
   }).sort(function(x, y){ return y.n.all - x.n.all; });
-  res.json({ agents: rows, frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS });
+  res.json({ agents: rows, frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS,
+    effortBands: CN2.EFFORT_BANDS.map(function(b){
+      return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }) });
 });
 
 /* Side by side with v1, bucket by bucket.
