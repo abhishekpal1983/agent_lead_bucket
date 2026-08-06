@@ -204,6 +204,9 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
 .wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
 .wrap .mbar{height:5px !important}
+.wrap a.wa{background:#15A34A !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;
+  padding:2px 7px !important;border-radius:4px !important;text-decoration:none !important;display:inline-block !important}
+.wrap a.wa:hover{background:#0E8038 !important}
 .wrap .r{color:#8C2D12}.wrap .a{color:#7A4A08}.wrap .g{color:#0A5346}.wrap .p{color:#4B2E9E}
 /* theme.css sets td colour with !important, which turned the navy total row into dark
    text on a dark fill. These have to come after it and shout just as loudly. */
@@ -565,7 +568,7 @@ function queueView(){
   // Already called sinks to the bottom: the top of the list is always what is left.
   rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
   h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
-    "<th></th><th>#</th><th>Lead</th><th>Stage</th><th>Why call</th><th class='n'>Phone</th><th></th>"+
+    "<th></th><th>#</th><th>Lead</th><th class='n'>Phone</th><th></th><th>Stage</th><th>Why call</th>"+
     "<th>Follow-up</th><th>Last call</th><th>Agent this morning</th><th>Creator</th>"+
     "<th class='n'>Calls</th><th class='n'>By owner</th><th class='n'>Days</th></tr></thead><tbody>";
   rows.forEach(function(r,i){
@@ -576,11 +579,12 @@ function queueView(){
         (OPEN[r.id]?"&minus;":"+")+"</td>"+
       "<td class='z'>"+(i+1)+"</td>"+
       "<td>"+(r.worked?"<span class='tick' title='Called today'>&#10003;</span>":"")+
-        "<a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>"+esc(r.name)+" &nearr;</a></td>"+
+        "<a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>"+esc(r.name)+" &nearr;</a>"+
+        (r.gone?" <span class='tag p' title='Was on this morning list, has since left the tracked pool'>left the list</span>":"")+"</td>"+
+      "<td class='n'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
+      "<td>"+(digits?"<a class='wa' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' title='Open WhatsApp' onclick='event.stopPropagation()'>WA</a>":"")+"</td>"+
       "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
-      "<td class='n'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
-      "<td>"+(digits?"<a class='wa' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>WA</a>":"")+"</td>"+
       "<td>"+tm(r.fu)+"</td><td>"+tm(r.last)+"</td>"+
       "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
         (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+

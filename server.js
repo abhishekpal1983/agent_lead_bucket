@@ -2435,10 +2435,13 @@ function cn2Freeze(force){
   const date = istParts(new Date(cn2Now())).date;
   if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
   const day = CN2.dayBoundsFor(cn2Now());
-  const rows = {};
+  const rows = {}, names = {};
   let n = 0;
   cn2Rows().forEach(function(r){
     rows[r.id] = CN2.pack(CN2.classify(r, day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN }));
+    // Names live in their own map rather than in the packed line, because a name can
+    // contain the separator and escaping it would be a bug waiting to happen.
+    if (r.name) names[r.id] = String(r.name).slice(0, 60);
     n++;
   });
   if (!n) return null;
@@ -2448,7 +2451,7 @@ function cn2Freeze(force){
       ", the pool looks incomplete. Retrying on the next pass.");
     return null;
   }
-  ORG.cn2base = { date: date, at: new Date().toISOString(), rows: rows,
+  ORG.cn2base = { date: date, at: new Date().toISOString(), rows: rows, names: names,
     lastGood: Math.max(n, st.lastGood || 0) };
   if (typeof orgSave === "function") orgSave("cn2.base", date + ":" + n, "system");
   console.log("Call Now v2 base frozen for " + date + ": " + n + " leads");
@@ -2533,6 +2536,7 @@ function cn2Context(req){
     base = kept;
   }
   return { day: day, base: base, live: live, rows: rows, frozen: frozen,
+    names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
 }
 
@@ -2794,7 +2798,7 @@ app.get("/api/callnow2/leads", function(req, res){
       const r = x.cur || {};
       return {
         id: x.id, worked: x.worked, gone: !x.cur,
-        name: r.name || "(no longer in the pool)",
+        name: r.name || ctx.names[x.id] || "(no longer in the list)",
         openStage: x.c.stage, openTiming: x.c.t, section: x.c.sec, why: x.c.why,
         nowStage: x.now ? x.now.stage : "", nowTiming: x.now ? x.now.t : "",
         movedStage: !!(x.now && x.now.stage !== x.c.stage),

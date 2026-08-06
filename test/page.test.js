@@ -84,7 +84,7 @@ const leadRows = Object.keys(base).slice(0, 3).map(function(id){
       answers: [{ q: "What is your current Role ?", a: ["Electrical Engineer"] }] }],
     bookTitle: "A course", bookType: "digital_product", bookAt: fixture.now, bookN: 1,
     convRecent: "", convFirst: "", aiSummary: "note", outcome: "Connected", whyText: "", coldReason: "",
-    needsOwner: false, unassigned: false, ownerInactive: true, band: "low", bandOwner: "bench",
+    needsOwner: false, unassigned: false, ownerInactive: true, band: "low", bandOwner: "bench", gone: false,
     stageEntered: fixture.now - 5 * 86400000 };
 });
 
@@ -211,6 +211,8 @@ console.log("\nRole specific things appear only where they should");
     agent.indexOf("All stages") >= 0 && agent.indexOf("Needs owner") >= 0);
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
   ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
+  ok("the WhatsApp button rule sits after the theme so it is not plain text",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf("a.wa{background:#15A34A") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
   ok("the hero carries called against the pool",
     vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
@@ -221,6 +223,16 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("rgba(47,111,228,") >= 0,
     "hues found: " + ["47,111,228","184,121,26","28,107,78","90,107,125"]
       .filter(function(c){ return vp.indexOf("rgba(" + c + ",") >= 0; }).join(" | "));
+  {
+    // Scope the check to the queue table: the matrix has a Stage column too, and comparing
+    // against that one compares two different tables.
+    const q = vp.slice(vp.indexOf("Call queue"));
+    const phone = q.indexOf("Phone"), stage = q.indexOf("<th>Stage</th>");
+    ok("in the queue, phone and WhatsApp come before the stage",
+      phone >= 0 && stage >= 0 && phone < stage, "phone " + phone + ", stage " + stage);
+  }
+  ok("WhatsApp is a styled button, not plain text",
+    vp.indexOf("class='wa'") >= 0 && vp.indexOf("wa.me/") >= 0);
   ok("active and deactivated agents can be filtered",
     vp.indexOf("Active agents") >= 0 && vp.indexOf("Deactivated agents") >= 0);
   ok("an agent gets those filters too", agent.indexOf("Active agents") >= 0);
