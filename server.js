@@ -2535,7 +2535,29 @@ function cn2Context(req){
     });
     base = kept;
   }
-  return { day: day, base: base, live: live, rows: rows, frozen: frozen,
+  /* The off-base list has to obey the same filters as the base, or filtering to one
+     manager leaves them credited with every other manager's calls. */
+  let scopedRows = rows;
+  if (wantAgent || teamAgents || wantCreator || wantSource || wantOstate || wantIntl ||
+      wantStages.length || allow) {
+    scopedRows = rows.filter(function(r){
+      const o = CACHE.owners[r.owner] || {};
+      if (allow && allow.indexOf(String(r.owner)) < 0) return false;
+      if (wantAgent && String(r.owner) !== wantAgent) return false;
+      if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) return false;
+      if (wantCreator && r.creator !== wantCreator) return false;
+      if (wantSource && ((r.source || "(not set)") !== wantSource)) return false;
+      if (wantStages.length && wantStages.indexOf(r.stage) < 0) return false;
+      if (wantIntl === "yes" && !r.intl) return false;
+      if (wantIntl === "no" && r.intl) return false;
+      if (wantOstate === "needs" && !r.needsOwner) return false;
+      if (wantOstate === "unassigned" && r.owner) return false;
+      if (wantOstate === "inactive" && (!r.owner || o.active !== false)) return false;
+      if (wantOstate === "active" && (!r.owner || o.active === false)) return false;
+      return true;
+    });
+  }
+  return { day: day, base: base, live: live, rows: scopedRows, allRows: rows, frozen: frozen,
     names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
 }
@@ -2663,19 +2685,28 @@ app.get("/api/callnow2/agents", function(req, res){
    has to be a number you can see and a sentence you can read, not a surprise in a
    manager meeting. Both sides are computed here from the same pool in the same request,
    so nothing can be blamed on timing. */
-/* Which calls today landed on creators nobody is tracking.
-   The tracked list scopes this whole page, so a call on an untracked creator is real work
-   that is invisible here. This asks HubSpot directly, so it cannot be hidden by the same
-   filter it is trying to measure. */
+/* Where every call today went.
+   HubSpot knows the true number. This page shows a filtered subset of it, and until now
+   the difference was a mystery. This asks HubSpot for every lead called today and sorts
+   each one into the reason it does or does not appear here, so the whole count is
+   accounted for rather than argued about. */
 let CN2_OUT = { at: 0, running: false, data: null };
-async function cn2OutsideTracked(){
+async function cn2CallLadder(){
   const day = istDayBounds();
   const filters = [
     { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
     { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
   ];
-  const byCreator = {};
-  let after, pages = 0, total = 0, noCreator = 0;
+  const base = (cn2Store() || {}).rows || {};
+  const pool = {};
+  cn2Rows().forEach(function(r){ pool[r.id] = r; });
+  const inPool = {};
+  callnowPool().forEach(function(c){ inPool[c.id] = c; });
+
+  const bucket = { onList: 0, arrivedAfterMidnight: 0, untrackedCreator: 0, noCreator: 0,
+    stageNotCovered: 0, notInApp: 0 };
+  const byCreator = {}, byStage = {};
+  let total = 0, after, pages = 0;
   do {
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: filters }],
@@ -2686,16 +2717,29 @@ async function cn2OutsideTracked(){
     (j.results || []).forEach(function(r){
       const p = r.properties || {};
       const u = String(p.topmate_username || "").trim();
-      if (!u) { noCreator++; return; }
-      // Case matters: the tracked list is matched exactly, so "Simrankhokha" and
-      // "simrankhokha" are two different creators as far as this page is concerned.
-      if (PFRESH_LIST.indexOf(u) >= 0) return;
-      if (!byCreator[u]) byCreator[u] = { creator: u, leads: 0, agents: {},
-        caseClash: PFRESH_LIST.some(function(x){ return x.toLowerCase() === u.toLowerCase(); }) };
-      byCreator[u].leads++;
+      const st = String(p.contact_engagement_stage || "").trim() || "__fresh";
       const oid = String(p.hubspot_owner_id || "");
       const nm = oid ? ((CACHE.owners[oid] || {}).name || ("Owner " + oid)) : "(unassigned)";
-      byCreator[u].agents[nm] = (byCreator[u].agents[nm] || 0) + 1;
+
+      if (base[r.id]) { bucket.onList++; return; }
+      if (pool[r.id]) { bucket.arrivedAfterMidnight++; return; }
+      if (!u) { bucket.noCreator++; return; }
+      if (PFRESH_LIST.indexOf(u) < 0) {
+        bucket.untrackedCreator++;
+        if (!byCreator[u]) byCreator[u] = { creator: u, leads: 0, agents: {},
+          caseClash: PFRESH_LIST.some(function(x){ return x.toLowerCase() === u.toLowerCase(); }) };
+        byCreator[u].leads++;
+        byCreator[u].agents[nm] = (byCreator[u].agents[nm] || 0) + 1;
+        return;
+      }
+      // Tracked creator, but the stage is one v2 does not carry, or it carries it only
+      // when the lead qualifies and this one does not.
+      if (inPool[r.id]) {
+        bucket.stageNotCovered++;
+        byStage[st] = (byStage[st] || 0) + 1;
+        return;
+      }
+      bucket.notInApp++;
     });
     after = j.paging && j.paging.next && j.paging.next.after;
     await sleep(120);
@@ -2708,9 +2752,23 @@ async function cn2OutsideTracked(){
       agents: Object.keys(a.agents).map(function(n){ return { name: n, n: a.agents[n] }; })
         .sort(function(x, y){ return y.n - x.n; }).slice(0, 5) };
   }).sort(function(x, y){ return y.leads - x.leads; });
+
+  const LADDER = [
+    ["onList", "On today's calling list", "Counted in the hero and in every table."],
+    ["arrivedAfterMidnight", "Arrived after the list locked", "Real work, but not part of this morning's plan. Shown as extra."],
+    ["untrackedCreator", "Creator not on the tracked list", "Invisible to this page until the creator is tracked. Add them below."],
+    ["noCreator", "No creator set on the lead", "Cannot be attributed to a creator at all."],
+    ["stageNotCovered", "Stage this page does not carry", "Ghosted, not interested, disqualified, deal won, or an IFC not yet due, with no form refill to pull it back in."],
+    ["notInApp", "Not held by the app at all", "The lead has never been pulled: an owner outside the sync, or a bucket past the ten thousand cap."]
+  ];
   return { at: new Date().toISOString(), hubspotCalledToday: total,
-    outsideTracked: rows.reduce(function(a, r){ return a + r.leads; }, 0),
-    noCreator: noCreator, tracked: PFRESH_LIST.slice(), rows: rows };
+    accountedFor: LADDER.reduce(function(a, x){ return a + bucket[x[0]]; }, 0),
+    ladder: LADDER.map(function(x){ return { key: x[0], label: x[1], n: bucket[x[0]], why: x[2] }; }),
+    byStage: Object.keys(byStage).map(function(k){
+      return { stage: k, label: CN2_STAGE_LABELS[k] || k, n: byStage[k] }; })
+      .sort(function(a, b){ return b.n - a.n; }),
+    tracked: PFRESH_LIST.slice(), rows: rows,
+    outsideTracked: bucket.untrackedCreator, noCreator: bucket.noCreator };
 }
 
 app.get("/api/callnow2/outside", async function(req, res){
@@ -2721,7 +2779,7 @@ app.get("/api/callnow2/outside", async function(req, res){
   if (CN2_OUT.running) return res.json(CN2_OUT.data || { running: true });
   CN2_OUT.running = true;
   try {
-    const d = await cn2OutsideTracked();
+    const d = await cn2CallLadder();
     CN2_OUT = { at: Date.now(), running: false, data: d };
     res.json(d);
   } catch (e) {

@@ -92,7 +92,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ok("the hero numerator matches the leads actually called", workedDrill === M.totals.n.allW,
       `${workedDrill} vs ${M.totals.n.allW}`);
 
-    console.log("\n8. Per agent against the floor");
+    console.log("\n8. Filtering must scope the extra calls too");
+    {
+      // Off-base was measured against the whole floor even when the page was filtered,
+      // which credited one manager with everyone else's calls.
+      const one = await get("/api/callnow2?agent=201");
+      const all2 = await get("/api/callnow2");
+      ok("filtering to one agent cannot report more extra calls than the floor has",
+        one.offBase.leads <= all2.offBase.leads,
+        one.offBase.leads + " vs " + all2.offBase.leads);
+      const a1 = await get("/api/callnow2?agent=201");
+      const a2 = await get("/api/callnow2?agent=202");
+      ok("two agents' extra calls do not exceed the floor's",
+        a1.offBase.leads + a2.offBase.leads <= all2.offBase.leads,
+        a1.offBase.leads + " + " + a2.offBase.leads + " vs " + all2.offBase.leads);
+    }
+
+    console.log("\n9. Per agent against the floor");
     const A = await get("/api/callnow2/agents");
     const agentSum = A.agents.reduce((a, x) => a + x.n.all, 0);
     ok("agent rows account for every call-today lead, held-aside included",

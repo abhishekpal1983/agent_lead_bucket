@@ -711,11 +711,21 @@ function creatorPanel(){
     "<button class='btn p' "+(CSYNC?"disabled":"")+" onclick=\"addCreator(document.getElementById('newcreator').value.trim(),this)\">"+
     (CSYNC?"Syncing...":"Add and sync")+"</button></div>";
   if(OUT&&!OUT.error){
-    h+="<div class='sub' style='margin:11px 0 7px'><b>"+fmt(OUT.hubspotCalledToday)+"</b> leads were called today in HubSpot. "+
-      "<b>"+fmt(OUT.outsideTracked)+"</b> of them belong to creators not on this list"+
-      (OUT.noCreator?", and "+fmt(OUT.noCreator)+" have no creator set at all":"")+
-      ". Checked "+new Date(OUT.at).toLocaleTimeString("en-IN")+".</div>";
-    if(!OUT.rows.length)h+="<div class='z'>Every call today was on a tracked creator.</div>";
+    h+="<div class='sub' style='margin:11px 0 7px'><b>"+fmt(OUT.hubspotCalledToday)+
+      "</b> leads were called today in HubSpot. Every one of them is accounted for below. "+
+      "Checked "+new Date(OUT.at).toLocaleTimeString("en-IN")+".</div>";
+    h+="<div class='tw' style='margin-bottom:11px'><table><thead><tr><th>Where the call went</th>"+
+      "<th class='n'>Leads</th><th>What it means</th></tr></thead><tbody>"+
+      (OUT.ladder||[]).map(function(r){
+        return "<tr><td><b>"+esc(r.label)+"</b></td><td class='n'><b>"+fmt(r.n)+"</b></td>"+
+          "<td class='mut' style='white-space:normal'>"+esc(r.why)+"</td></tr>";}).join("")+
+      "<tr class='tot'><td><b>Accounted for</b></td><td class='n'><b>"+fmt(OUT.accountedFor)+
+      "</b></td><td class='mut'>"+(OUT.accountedFor===OUT.hubspotCalledToday
+        ? "Matches HubSpot exactly." : "Does not match HubSpot's "+fmt(OUT.hubspotCalledToday)+", which is a bug worth reporting.")+
+      "</td></tr></tbody></table></div>";
+    if((OUT.byStage||[]).length)h+="<div class='sub' style='margin:0 0 7px'>Stages this page does not carry: "+
+      OUT.byStage.map(function(x){return esc(x.label)+" "+fmt(x.n);}).join(", ")+"</div>";
+    if(!OUT.rows.length)h+="<div class='z'>No calls today on untracked creators.</div>";
     else h+="<div class='tw scrolly'><table><thead><tr><th>Creator</th><th class='n'>Called today</th>"+
       "<th>Agents doing it</th><th></th></tr></thead><tbody>"+
       OUT.rows.map(function(r){
