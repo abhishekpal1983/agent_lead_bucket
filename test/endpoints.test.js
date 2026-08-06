@@ -63,7 +63,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2/agents?team=t1", "the agent table filtered by manager"],
       ["/api/callnow2/leads?sec=n&col=score", "clicking a section subtotal, every stage"],
       ["/api/callnow2/leads?col=all", "clicking the grand total, every stage and group"],
-      ["/api/callnow2/leads?sec=a&t=sched", "clicking a timing subtotal in booked for later"]
+      ["/api/callnow2/leads?sec=a&t=sched", "clicking a timing subtotal in booked for later"],
+      ["/api/callnow2/reconcile", "v1 against v2, bucket by bucket"],
+      ["/api/callnow2/leads?notcounted=1", "drill: the pile held aside"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -80,9 +82,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       JSON.stringify(Object.keys(b).filter(function(k){ return /Options$/.test(k); })));
     ok("source options are not empty", (b.sourceOptions || []).length > 0,
       JSON.stringify(b.sourceOptions));
-    ok("the three groups add up to the whole list",
-      b.totals && (b.totals.n.all + b.totals.a.all + b.totals.d.all) === b.baseSize,
-      b.totals ? (b.totals.n.all + " + " + b.totals.a.all + " + " + b.totals.d.all + " vs " + b.baseSize) : "no totals");
+    // Counted plus shown-but-not-counted has to equal the whole list, or leads are
+    // being dropped somewhere rather than excluded on purpose.
+    const counted = b.totals ? (b.totals.n.all + b.totals.a.all + b.totals.d.all) : 0;
+    const shown = b.excluded ? (b.excluded.n.all + b.excluded.a.all + b.excluded.d.all) : 0;
+    ok("counted plus not-counted accounts for every lead",
+      b.baseSize === counted + shown,
+      counted + " counted + " + shown + " not counted vs " + b.baseSize + " in the list");
+    ok("parking buckets and unassigned leads are visible, not dropped", shown > 0, String(shown));
+    ok("and they stay out of the headline totals", counted < b.baseSize);
 
     const ag = await get("/api/callnow2/agents");
     ok("the agent table returns rows", ag.body && Array.isArray(ag.body.agents) && ag.body.agents.length > 0,
@@ -100,6 +108,24 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("a section subtotal opens only that section",
       secN.body && whole.body && secN.body.total < whole.body.total,
       (secN.body || {}).total + " vs " + (whole.body || {}).total);
+
+    const held = await get("/api/callnow2/leads?notcounted=1");
+    const normal = await get("/api/callnow2/leads?col=all");
+    ok("the held-aside pile can be opened", held.body && held.body.total > 0, held.raw);
+    ok("and it is not mixed into the normal lists",
+      held.body && normal.body && held.body.rows.every(function(r){ return r.counted === false; }) &&
+      normal.body.rows.every(function(r){ return r.counted !== false; }));
+
+    const rec = await get("/api/callnow2/reconcile");
+    ok("reconciliation returns a row per bucket",
+      rec.body && Array.isArray(rec.body.rows) && rec.body.rows.length >= 10, rec.raw);
+    ok("every row carries both sides, the gap and the reason",
+      rec.body && rec.body.rows.every(function(r){
+        return typeof r.v1 === "number" && typeof r.v2 === "number" &&
+               r.delta === r.v2 - r.v1 && r.why && r.why.length > 20; }));
+    ok("it reports how many leads are shown but not counted",
+      rec.body && rec.body.shown && rec.body.shown.notCounted > 0,
+      JSON.stringify(rec.body && rec.body.shown));
 
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,

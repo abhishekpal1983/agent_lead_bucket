@@ -223,7 +223,7 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
-function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:""},o);L=null;OPEN={};LQ="";loadLeads();
+function pick(o){PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
 function rebuild(btn){if(btn){btn.disabled=true;btn.textContent="Building...";}
@@ -235,7 +235,8 @@ function refreeze(){
 
 var TIMING=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"],["sched","Later date"]];
 var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fresh"],
-  ["refill","Refilled form"],["ifc","IFC due"],["any","Any priority"],["all","All in stage"]];
+  ["refill","Refilled form"],["ifc","IFC due"],["needs","Needs owner"],
+  ["any","Any priority"],["all","All in stage"]];
 var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
   ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
   ["d","DNP, nothing to act on today","No form, no score of 6 or more, not international, not fresh. Kept apart so they never make the call-today list look bigger."]];
@@ -438,6 +439,7 @@ function drill(){
       "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
       "<td>"+esc(r.ownerName)+(r.needsOwner?" <span class='tag o'>NEEDS OWNER</span>":"")+
+        (r.counted===false?" <span class='tag p'>not counted</span>":"")+
         (r.movedOwner?"<div class='sub3'>reassigned since</div>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
       "<td>"+tm(r.last)+"</td><td>"+tm(r.fu)+"</td>"+
@@ -450,6 +452,55 @@ function drill(){
   return h+"</tbody></table></div></div>";}
 
 // Per agent, in v1's shape. Clicking a row is the filter.
+// What is deliberately left out of every total above, and how big it is. v1 shows these
+// piles in its agent table; hiding them made real work disappear rather than be excluded.
+function excludedNote(){
+  var e=J.excluded;
+  if(!e)return "";
+  var tot=e.n.all+e.a.all+e.d.all;
+  if(!tot)return "";
+  var w=e.n.allW+e.a.allW+e.d.allW;
+  return "<div class='sec mini'><h2>Shown but not counted</h2>"+
+    "<div class='sub'>Parking buckets and unassigned leads. They appear per agent below so the pile stays visible, "+
+    "and they are kept out of every total above so one bucket cannot swamp the floor. Same treatment as the v1 page.</div>"+
+    "<div class='chips'>"+
+    "<button class='chipb' onclick='pick({sec:\"\",col:\"all\",notcounted:\"1\"})'>"+fmt(tot)+" leads held aside</button>"+
+    "<button class='chipb'>"+fmt(w)+" of them called today</button>"+
+    "<button class='chipb'>"+fmt(e.n.all)+" would be call-today work</button>"+
+    "</div></div>";}
+
+var REC=null,RECBUSY=false;
+function loadRec(){
+  if(RECBUSY)return; RECBUSY=true; draw();
+  fetch("/api/callnow2/reconcile?"+qs()).then(asJson)
+    .then(function(j){RECBUSY=false;REC=j;draw();})
+    .catch(function(e){RECBUSY=false;REC={error:e.message};draw();});}
+// Every difference between the two pages, as a number and a sentence, before anyone's
+// targets depend on it.
+function reconcile(){
+  var h="<div class='sec mini'><h2>Call Now v1 against v2 "+
+    "<button class='btn' style='float:right' onclick='loadRec()'>"+
+    (RECBUSY?"Checking...":(REC?"Re-check":"Compare now"))+"</button></h2>"+
+    "<div class='sub'>Both sides counted from the same pool in the same request, so no gap can be blamed on timing. "+
+    "Run this for a fortnight before moving any target onto v2.</div>";
+  if(!REC)return h+"<div class='z' style='padding:6px 2px'>Not compared yet.</div></div>";
+  if(REC.error)return h+"<div class='warn'>"+esc(REC.error)+"</div></div>";
+  if(REC.fixtures)h+="<div class='warn'>Running on test data, so the v1 side reads zero. This is only meaningful against real leads.</div>";
+  h+="<div class='tw'><table><thead><tr><th>Bucket</th><th class='n'>v1, live</th><th class='n'>v2, locked list</th>"+
+    "<th class='n'>Difference</th><th>Why they differ</th></tr></thead><tbody>";
+  h+=REC.rows.map(function(r){
+    var cls=r.delta===0?"z":(r.delta>0?"c":"m");
+    var sign=r.delta>0?"+":"";
+    return "<tr><td><b>"+esc(r.label)+"</b></td>"+
+      "<td class='n'>"+fmt(r.v1)+"</td><td class='n'>"+fmt(r.v2)+"</td>"+
+      "<td class='n'><b class='"+cls+"'>"+(r.delta===0?"same":sign+fmt(r.delta))+"</b></td>"+
+      "<td style='white-space:normal;font-size:12.5px;color:#566575;line-height:1.5'>"+esc(r.why)+"</td></tr>";
+  }).join("");
+  h+="</tbody></table></div>";
+  if(REC.shown)h+="<div class='sub' style='margin-top:9px'>"+fmt(REC.shown.notCounted)+
+    " leads are shown but not counted by v2, of which "+fmt(REC.shown.unassigned)+" have no owner at all.</div>";
+  return h+"</div>";}
+
 function agentTable(){
   if(!A||!A.agents||!A.agents.length)return "";
   var mx=0; A.agents.forEach(function(a){ if(a.n.all>mx)mx=a.n.all; });
@@ -517,7 +568,7 @@ function draw(){
       totRow(s[1],[J.totals[s[0]]],s[0],"sub")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  h+=agentTable()+drill();
+  h+=excludedNote()+reconcile()+agentTable()+drill();
   el.innerHTML=h;}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);

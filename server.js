@@ -2364,12 +2364,13 @@ async function cn2Build(force){
     const out = [], live = {};
     for (let i = 0; i < src.length; i++) {
       const c = src[i];
-      if (ownerCounted(c.hubspot_owner_id) &&
-          PFRESH_LIST.indexOf(c.topmate_username || "") >= 0 &&
-          cn2CheapQualify(c, day)) {
+      if (PFRESH_LIST.indexOf(c.topmate_username || "") >= 0 && cn2CheapQualify(c, day)) {
         const r = cnRow(c);
         // v1 splits DNP into two pseudo stages; v2 does its own parking, so put it back.
         if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
+        // Shown but not counted, exactly as v1 treats them. Filtering them out entirely
+        // made unassigned leads and every parking bucket invisible rather than excluded.
+        r.counted = ownerCounted(r.owner);
         out.push(r); live[r.id] = r;
       }
       // Hand the process back often enough that health checks and every other page
@@ -2390,7 +2391,10 @@ async function cn2Build(force){
 function cn2Rows(){
   if (CN2_FIXTURE_DATA) {
     const day = CN2.dayBoundsFor(cn2Now());
-    return CN2_FIXTURE_DATA.rows.filter(function(r){
+    return CN2_FIXTURE_DATA.rows.map(function(r){
+      if (r.counted === undefined) r.counted = ownerCounted(r.owner);
+      return r;
+    }).filter(function(r){
       if (CN2_STAGES.indexOf(r.stage) < 0) return false;
       if (CN2_EXTRA_STAGES.indexOf(r.stage) < 0) return true;
       if (CN2.isRefill(r)) return true;
@@ -2532,7 +2536,7 @@ app.get("/api/callnow2", function(req, res){
       return { stage: s, label: CN_STAGE_LABELS[s] || s,
         n: agg.sections.n[s], a: agg.sections.a[s], d: agg.sections.d[s] };
     }),
-    totals: agg.totals, movement: agg.movement,
+    totals: agg.totals, excluded: agg.excluded, movement: agg.movement,
     offBase: { leads: off.length, calls: off.length },
     timing: CN2.TIMING, columns: CN2.COLUMNS,
     frozen: ctx.frozen, frozenAt: ctx.frozenAt, freezeHour: CN2_FREEZE_HM, workDays: CN2_WORK_DAYS,
@@ -2583,6 +2587,91 @@ app.get("/api/callnow2/agents", function(req, res){
   res.json({ agents: rows, frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS });
 });
 
+/* Side by side with v1, bucket by bucket.
+   Before anyone's targets move onto v2's definitions, every difference between the two
+   has to be a number you can see and a sentence you can read, not a surprise in a
+   manager meeting. Both sides are computed here from the same pool in the same request,
+   so nothing can be blamed on timing. */
+app.get("/api/callnow2/reconcile", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!cn2Ready()) return res.json({ notReady: true });
+  const day = istDayBounds();
+  const now = Date.now();
+
+  // v1 exactly as the live page computes it.
+  const v1 = { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, needs: 0, due: 0, done: 0,
+    overdue: 0, nofu: 0, uncalled: 0 };
+  cnFilter({ scope: "tracked" }).forEach(function(r){
+    if (!ownerCounted(r.owner)) return;
+    const sg = cnSegs(r);
+    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    v1.pool++;
+    if (sg.form) v1.form++;
+    if (sg.score) v1.score++;
+    if (sg.intl) v1.intl++;
+    if (sg.fresh) v1.fresh++;
+    if (r.needsOwner) v1.needs++;
+    if (r.fu && r.fu < now) v1.overdue++;          // v1: the hour has passed
+    if (!r.fu) v1.nofu++;
+    if (!r.last) v1.uncalled++;
+    if (r.fu >= day.start && r.fu < day.end) { v1.due++; if (r.last >= day.start && r.last < day.end) v1.done++; }
+  });
+
+  // v2 from the locked list, counted leads only, which is what its totals show.
+  const ctx = cn2Context(req);
+  const v2 = { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, needs: 0, due: 0, done: 0,
+    overdue: 0, nofu: 0, uncalled: 0 };
+  let notCounted = 0, unassigned = 0;
+  Object.keys(ctx.base).forEach(function(id){
+    const c = CN2.unpack(ctx.base[id]);
+    if (!c.counted) {
+      notCounted++;
+      if (!c.owner) unassigned++;
+      return;
+    }
+    const live = ctx.live[id];
+    const worked = !!(live && live.last >= day.start && live.last < day.end);
+    if (CN2.hit(c, "any")) v2.pool++;
+    if (c.why.form) v2.form++;
+    if (c.why.score) v2.score++;
+    if (c.why.intl) v2.intl++;
+    if (c.why.fresh) v2.fresh++;
+    if (c.why.needs) v2.needs++;
+    if (c.t === "over") v2.overdue++;              // v2: a whole working day has passed
+    if (c.t === "nofu") v2.nofu++;
+    if (c.t === "newlead") v2.uncalled++;
+    if (c.t === "due") { v2.due++; if (worked) v2.done++; }
+  });
+
+  const WHY = {
+    pool: "v2 also counts a refilled form and an IFC that has come due, so it is usually larger.",
+    form: "Same rule on both. A difference here means the form sync is mid-refresh.",
+    score: "Same rule on both, conversion score of " + CONV_SCORE_MIN + " or more. Any gap is sync timing, not definition.",
+    intl: "Same rule on both, the international number flag. Any gap is sync timing, not definition.",
+    fresh: "Same rule on both, a lead with no engagement stage that nobody has worked yet.",
+    needs: "v1 counts these inside its priority pool. v2 shows them but keeps them out of its totals, so v2 reads lower here by design.",
+    due: "v1 is live, v2 is the list as it stood at midnight. A follow-up created or moved during the day changes v1 and not v2.",
+    done: "Same rule, but measured against different denominators.",
+    overdue: "The big one. v1 calls a follow-up overdue the moment its time passes. v2 waits for a whole working day, so v2 is always lower and Monday never inherits the weekend.",
+    nofu: "v2 moves a brand new lead into its own bucket, so it is not double counted here.",
+    uncalled: "v1 counts anyone never called. v2 counts brand new leads with no follow-up, which is a tighter definition."
+  };
+  const LABEL = { pool: "Priority pool", form: "Form leads", score: "Score " + CONV_SCORE_MIN + " or more",
+    intl: "International", fresh: "Fresh", needs: "Needs owner", due: "Due today",
+    done: "Due today, called", overdue: "Overdue", nofu: "No follow-up set", uncalled: "Never called" };
+
+  res.json({
+    at: new Date().toISOString(),
+    frozen: ctx.frozen, frozenAt: ctx.frozenAt,
+    // v1's side is computed from the live pool, which is empty when running on fixtures.
+    fixtures: !!CN2_FIXTURE_DATA,
+    rows: Object.keys(LABEL).map(function(k){
+      return { key: k, label: LABEL[k], v1: v1[k], v2: v2[k], delta: v2[k] - v1[k], why: WHY[k] };
+    }),
+    shown: { notCounted: notCounted, unassigned: unassigned }
+  });
+});
+
 app.get("/api/callnow2/leads", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
   if (!cn2Ready()) return res.json({ notReady: true,
@@ -2604,6 +2693,9 @@ app.get("/api/callnow2/leads", function(req, res){
     if (sec && c.sec !== sec) return;
     if (t && c.t !== t) return;
     if (!CN2.hit(c, col)) return;
+    const nc = String(req.query.notcounted || "");
+    if (nc === "1" && c.counted) return;
+    if (nc !== "1" && !c.counted) return;   // totals exclude them, so the drill does too
     const cur = ctx.live[id] || null;
     const isWorked = !!(cur && cur.last >= ctx.day.start && cur.last < ctx.day.end);
     if (worked === "1" && !isWorked) return;
@@ -2636,6 +2728,7 @@ app.get("/api/callnow2/leads", function(req, res){
         movedFu: !!(x.now && x.now.t !== x.c.t),
         movedOwner: !!(x.now && x.now.owner !== x.c.owner),
         ownerName: cn2OwnerName(x.c.owner), creator: x.c.creator, source: x.c.source || "",
+        counted: x.c.counted !== false,
         phone: r.phone || "", last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
         calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",

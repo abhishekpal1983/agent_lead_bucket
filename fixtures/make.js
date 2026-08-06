@@ -70,6 +70,13 @@ rows.push(lead({ id: "EDGE_called_today", stage: "counselled", fu: D(2026, 8, 6,
 rows.push(lead({ id: "EDGE_arrived_called", stage: "__fresh", fu: 0, last: day.start + 5400000, arrivedToday: true }));
 rows.push(lead({ id: "EDGE_arrived_called2", stage: "counselled", fu: D(2026, 8, 6, 15), last: day.start + 9000000, score: 9, arrivedToday: true }));
 rows.push(lead({ id: "EDGE_arrived_quiet", stage: "counselled", fu: D(2026, 8, 6, 15), last: 0, arrivedToday: true }));
+// Shown but never counted: an unassigned lead and a parking bucket that holds a pile.
+rows.push(lead({ id: "EDGE_unassigned", stage: "counselled", fu: D(2026, 8, 1, 11), last: 0,
+  owner: "", ownerName: "(unassigned)", needsOwner: true, counted: false, score: 8 }));
+for (let i = 0; i < 40; i++) {
+  rows.push(lead({ id: "EDGE_park_" + i, stage: "counselled", fu: D(2026, 8, 1, 11), last: 0,
+    owner: "165087274", ownerName: "Abhishek Pal", counted: false, score: 7 }));
+}
 module.exports = { rows: rows, now: TODAY, agents: AGENTS,
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202"] },
           { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"] }] };
