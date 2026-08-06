@@ -69,6 +69,7 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2?ostate=needs", "filter: needs owner"],
       ["/api/callnow2?ostate=unassigned", "filter: unassigned"],
       ["/api/callnow2?ostate=inactive", "filter: deactivated owner"],
+      ["/api/callnow2?ostate=active", "filter: active agents only"],
       ["/api/callnow2?intl=yes", "filter: international only"],
       ["/api/callnow2?intl=no", "filter: national only"],
       ["/api/callnow2?stages=counselled,discovery", "filter: a picked set of stages"],
@@ -128,6 +129,14 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("international and national split the list between them",
       intlYes.body.baseSize + intlNo.body.baseSize === all.body.baseSize,
       intlYes.body.baseSize + " + " + intlNo.body.baseSize + " vs " + all.body.baseSize);
+    // active, deactivated and unassigned must partition the list between them.
+    const act = await get("/api/callnow2?ostate=active");
+    const ina = await get("/api/callnow2?ostate=inactive");
+    const nob = await get("/api/callnow2?ostate=unassigned");
+    ok("active plus deactivated plus unassigned is the whole list",
+      act.body.baseSize + ina.body.baseSize + nob.body.baseSize === all.body.baseSize,
+      act.body.baseSize + " + " + ina.body.baseSize + " + " + nob.body.baseSize + " vs " + all.body.baseSize);
+
     const un = await get("/api/callnow2?ostate=unassigned");
     ok("unassigned finds the leads with no owner", un.body.baseSize > 0, String(un.body.baseSize));
     ok("and it is a subset", un.body.baseSize < all.body.baseSize);

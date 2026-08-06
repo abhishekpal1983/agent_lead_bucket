@@ -2525,6 +2525,8 @@ function cn2Context(req){
         if (wantOstate === "needs" && !c.why.needs) return;
         if (wantOstate === "unassigned" && c.owner) return;
         if (wantOstate === "inactive" && (!c.owner || o.active !== false)) return;
+        // Assigned to somebody who is still with us. The useful complement of the two above.
+        if (wantOstate === "active" && (!c.owner || o.active === false)) return;
       }
       kept[id] = base[id];
     });

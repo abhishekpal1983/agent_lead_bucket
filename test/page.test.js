@@ -216,6 +216,14 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
   ok("what changed today is chips beside the hero",
     vp.indexOf("What changed today") >= 0 && vp.indexOf("moved stage") >= 0);
+  ok("each group shades in its own hue, not one blue over everything",
+    vp.indexOf("rgba(184,121,26,") >= 0 && vp.indexOf("rgba(28,107,78,") >= 0 &&
+    vp.indexOf("rgba(47,111,228,") >= 0,
+    "hues found: " + ["47,111,228","184,121,26","28,107,78","90,107,125"]
+      .filter(function(c){ return vp.indexOf("rgba(" + c + ",") >= 0; }).join(" | "));
+  ok("active and deactivated agents can be filtered",
+    vp.indexOf("Active agents") >= 0 && vp.indexOf("Deactivated agents") >= 0);
+  ok("an agent gets those filters too", agent.indexOf("Active agents") >= 0);
   ok("the matrix header is banded into four groups",
     vp.indexOf("Priority signals") >= 0 && vp.indexOf("New information") >= 0 &&
     vp.indexOf("Totals") >= 0 && vp.indexOf("class='grp'") >= 0);

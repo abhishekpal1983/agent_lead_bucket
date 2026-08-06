@@ -378,6 +378,7 @@ var GRP={due:"gA",over:"gA",nofu:"gA",newlead:"gA",sched:"gA",
   form:"gB",score:"gB",intl:"gB",
   fresh:"gC",refill:"gC",ifc:"gC",
   needs:"gD",any:"gD",all:"gD"};
+var HEAT={gA:"47,111,228",gB:"184,121,26",gC:"28,107,78",gD:"90,107,125"};
 var GRPHEAD=[["gA","Call today",5],["gB","Priority signals",3],["gC","New information",3],["gD","Totals",3]];
 var EDGE={due:1,form:1,fresh:1,needs:1};
 function head(){
@@ -394,8 +395,12 @@ function cellHtml(c,key,sec,stage,isT,i,mx){
   var tot=c[key],w=c[key+"W"];
   var click=" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'";
   if(!tot)return "<td class='"+cls+" z'"+click+">0</td>";
+  // The heatmap used one fixed blue, which painted straight over the group tint and left
+  // only the empty cells showing their colour. Shade in the group's own hue instead, so
+  // the band survives the shading.
   var heat=mx&&mx[key]?Math.sqrt(tot/mx[key]):0;
-  var bg=(!on&&heat>0)?" style='background:rgba(0,87,184,"+(0.04+0.22*heat).toFixed(3)+")'":"";
+  var rgb=HEAT[GRP[key]]||HEAT.gA;
+  var bg=(!on&&heat>0)?" style='background:rgba("+rgb+","+(0.06+0.26*heat).toFixed(3)+")'":"";
   var p=Math.round(100*w/tot);
   return "<td class='"+cls+"'"+bg+click+">"+fmt(tot)+
     "<div class='sub3'><b class='"+(p>=60?"c":(p>0?"d":"m"))+"'>"+fmt(w)+"</b> called &middot; "+p+"%</div></td>";}
@@ -467,7 +472,8 @@ function bar(){
         esc(o.label)+"</button>";}).join("")+"</div>";
   h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:8px'>Owner</span>"+
     "<div class='chips'>"+
-    [["","All"],["needs","Needs owner"],["unassigned","Unassigned"],["inactive","Deactivated"]].map(function(o){
+    [["","All"],["active","Active agents"],["inactive","Deactivated agents"],
+     ["needs","Needs owner"],["unassigned","Unassigned"]].map(function(o){
       return "<button class='chipb"+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
         JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
   return h+"</div>";}
