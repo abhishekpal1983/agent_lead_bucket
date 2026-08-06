@@ -2715,14 +2715,16 @@ async function cn2CallLadder(){
   const inPool = {};
   callnowPool().forEach(function(c){ inPool[c.id] = c; });
 
-  const bucket = { onList: 0, onListNeedsCall: 0, createdToday: 0, inPoolNotOnList: 0,
-    untrackedCreator: 0, noCreator: 0, stageNotCovered: 0, notInApp: 0 };
+  const bucket = { onList: 0, onListNeedsCall: 0, onListBookedLater: 0, onListParkedDnp: 0,
+    onListHeldAside: 0, createdToday: 0, poolHeldAsideOwner: 0, inPoolNotOnList: 0,
+    untrackedCreator: 0, noCreator: 0, stageNotCovered: 0, stageMovedOutToday: 0, notInApp: 0 };
   const byCreator = {}, byStage = {};
   let total = 0, after, pages = 0;
   do {
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: filters }],
-      properties: ["topmate_username", "hubspot_owner_id", "contact_engagement_stage", "createdate"],
+      properties: ["topmate_username", "hubspot_owner_id", "contact_engagement_stage", "createdate",
+        "engagement_stage_last_changed_at"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
       limit: 100, after: after })});
     total = j.total || total;
@@ -2731,18 +2733,24 @@ async function cn2CallLadder(){
       const u = String(p.topmate_username || "").trim();
       const st = String(p.contact_engagement_stage || "").trim() || "__fresh";
       const madeToday = ts(p.createdate) >= day.start;
+      const stageMovedToday = ts(p.engagement_stage_last_changed_at) >= day.start;
       const oid = String(p.hubspot_owner_id || "");
       const nm = oid ? ((CACHE.owners[oid] || {}).name || ("Owner " + oid)) : "(unassigned)";
 
       if (base[r.id]) {
         bucket.onList++;
-        // Same population the hero counts: needs a call today, parking buckets excluded.
         const c = CN2.unpack(base[r.id]);
-        if (c.sec === "n" && c.counted) bucket.onListNeedsCall++;
+        // The hero counts one of these four. Splitting them is the difference between
+        // "the page contradicts itself" and "the page counts what it says it counts".
+        if (!c.counted) bucket.onListHeldAside++;
+        else if (c.sec === "n") bucket.onListNeedsCall++;
+        else if (c.sec === "a") bucket.onListBookedLater++;
+        else bucket.onListParkedDnp++;
         return;
       }
       if (pool[r.id]) {
         if (madeToday) bucket.createdToday++;
+        else if (!ownerCounted(oid)) bucket.poolHeldAsideOwner++;
         else bucket.inPoolNotOnList++;
         return;
       }
@@ -2759,6 +2767,7 @@ async function cn2CallLadder(){
       // when the lead qualifies and this one does not.
       if (inPool[r.id]) {
         bucket.stageNotCovered++;
+        if (stageMovedToday) bucket.stageMovedOutToday++;
         byStage[st] = (byStage[st] || 0) + 1;
         return;
       }
@@ -2777,8 +2786,12 @@ async function cn2CallLadder(){
   }).sort(function(x, y){ return y.leads - x.leads; });
 
   const LADDER = [
-    ["onList", "On today's calling list", "Counted in the hero and in every table."],
+    ["onListNeedsCall", "On the list, needs a call today", "This is the hero's numerator. Nothing else on this ladder is."],
+    ["onListBookedLater", "On the list, booked for a later date", "Called anyway. Real work, but it was not owed today."],
+    ["onListParkedDnp", "On the list, DNP with nothing to act on", "Called anyway, on a lead this page does not ask for."],
+    ["onListHeldAside", "On the list, in a parking bucket", "Shown but never counted, by design."],
     ["createdToday", "Created after the list locked", "A brand new lead, called the same day. Real work, not part of this morning's plan."],
+    ["poolHeldAsideOwner", "Held by a parking bucket, added to the pool later today", "Their owner is excluded by design, and the pool only started carrying them after the list locked."],
     ["inPoolNotOnList", "In the pool but not on this morning's list", "The app holds the lead now but it was not on the list when it locked, usually because the list was locked before the lead qualified or before its bucket was included."],
     ["untrackedCreator", "Creator not on the tracked list", "Invisible to this page until the creator is tracked. Add them below."],
     ["noCreator", "No creator set on the lead", "Cannot be attributed to a creator at all."],
@@ -2794,7 +2807,8 @@ async function cn2CallLadder(){
     tracked: PFRESH_LIST.slice(), rows: rows, poolNow: Object.keys(pool).length,
     // What HubSpot says about the very number the hero shows, plus how stale the app's
     // own copy of the leads is, which is the usual reason the two differ.
-    onListNeedsCall: bucket.onListNeedsCall,
+    onListNeedsCall: bucket.onListNeedsCall, onList: bucket.onList,
+    stageMovedOutToday: bucket.stageMovedOutToday,
     leadsSyncedAt: (typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt,
     outsideTracked: bucket.untrackedCreator, noCreator: bucket.noCreator };
 }

@@ -721,14 +721,23 @@ function creatorPanel(){
     h+="<div class='tw' style='margin-bottom:11px'><table><thead><tr><th>Where the call went</th>"+
       "<th class='n'>Leads</th><th>What it means</th></tr></thead><tbody>"+
       (OUT.ladder||[]).map(function(r){
-        return "<tr><td><b>"+esc(r.label)+"</b></td><td class='n'><b>"+fmt(r.n)+"</b></td>"+
+        var sub=r.key.indexOf("onList")===0;
+        return "<tr><td"+(sub?" style='padding-left:22px'":"")+"><b>"+esc(r.label)+"</b></td>"+
+          "<td class='n'><b>"+fmt(r.n)+"</b></td>"+
           "<td class='mut' style='white-space:normal'>"+esc(r.why)+"</td></tr>";}).join("")+
       "<tr class='tot'><td><b>Accounted for</b></td><td class='n'><b>"+fmt(OUT.accountedFor)+
       "</b></td><td class='mut'>"+(OUT.accountedFor===OUT.hubspotCalledToday
         ? "Matches HubSpot exactly." : "Does not match HubSpot's "+fmt(OUT.hubspotCalledToday)+", which is a bug worth reporting.")+
       "</td></tr></tbody></table></div>";
     if((OUT.byStage||[]).length)h+="<div class='sub' style='margin:0 0 7px'>Stages this page does not carry: "+
-      OUT.byStage.map(function(x){return esc(x.label)+" "+fmt(x.n);}).join(", ")+"</div>";
+      OUT.byStage.map(function(x){return esc(x.label)+" "+fmt(x.n);}).join(", ")+
+      (OUT.stageMovedOutToday?". <b>"+fmt(OUT.stageMovedOutToday)+"</b> of those were moved into that stage today, "+
+        "so they were probably called and then marked, which is work that has since fallen out of view.":
+        ". None of those moved stage today, so they were already out of scope this morning.")+"</div>";
+    if(OUT.onList!=null&&OUT.onListNeedsCall!=null)
+      h+="<div class='sub' style='margin:0 0 9px'><b>"+fmt(OUT.onList)+"</b> calls landed on today's list, but only "+
+        "<b>"+fmt(OUT.onListNeedsCall)+"</b> of those are leads the list actually asked for. The rest were booked "+
+        "for a later date, parked DNP, or in a parking bucket, which is why the headline is the smaller number.</div>";
     if(!OUT.rows.length)h+="<div class='z'>No calls today on untracked creators.</div>";
     else h+="<div class='tw scrolly'><table><thead><tr><th>Creator</th><th class='n'>Called today</th>"+
       "<th>Agents doing it</th><th></th></tr></thead><tbody>"+
