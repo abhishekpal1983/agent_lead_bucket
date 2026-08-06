@@ -15,6 +15,7 @@ function ok(name, cond, extra){
   else { fail++; console.log("  FAIL " + name + (extra ? "  ->  " + extra : "")); }
 }
 
+const fmtN = function(n){ return (n||0).toLocaleString('en-IN'); };
 const html = fs.readFileSync(path.join(__dirname, "..", "public", "callnow2.html"), "utf8");
 
 /* theme.css loads after the page's own styles and sets its rules with !important, so any
@@ -216,6 +217,17 @@ console.log("\nRole specific things appear only where they should");
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
   ok("the hero carries called against the pool",
     vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
+  {
+    // The percentage must divide one population by itself, not two different ones.
+    const t = payload.totals.n;
+    const want = fmtN(t.allW) + "<span class='of'>/ " + fmtN(t.all) + "</span>";
+    ok("hero numerator and denominator are both the call-today group",
+      vp.indexOf(want) >= 0, want);
+    ok("the footer says how big the whole list is as well",
+      vp.indexOf("leads on the list") >= 0 && vp.indexOf("need a call today") >= 0);
+    ok("and warns that HubSpot's own count is higher",
+      vp.indexOf("HubSpot's own call count will be higher") >= 0);
+  }
   ok("what changed today is chips beside the hero",
     vp.indexOf("What changed today") >= 0 && vp.indexOf("moved stage") >= 0);
   ok("each group shades in its own hue, not one blue over everything",

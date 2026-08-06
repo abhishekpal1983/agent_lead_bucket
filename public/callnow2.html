@@ -624,7 +624,7 @@ function leadCard(rows){
       "<div id='cb0' hidden class='expbody'>"+whyBody(r)+"</div>"+
       "<button class='expbtn' onclick='toggleCard(1)'><span id='cx1'>+</span> AI call summary</button>"+
       "<div id='cb1' hidden class='expbody'>"+(r.aiSummary?esc(r.aiSummary):"<span class='z'>Nothing recorded.</span>")+"</div>"+
-    "</div></div></div>";}
+    "</div></div>";}
 function whyBody(r){
   var bits=[];
   bits.push("Sitting in "+esc(STAGE_LABEL[r.openStage]||r.openStage)+
@@ -703,21 +703,33 @@ var CHURN_BY="owner";
 function setChurnBy(v){ CHURN_BY=v; draw(); }
 // The one number that matters, and how the morning list has moved since midnight.
 function hero(){
-  var m=J.movement||{}, pool=J.totals?J.totals.n.all:0, done=m.called||0;
+  // Numerator and denominator must come from the same population or the percentage is
+  // meaningless. Both are the call-today group, parking buckets excluded, which is the
+  // work the floor is actually being asked to do.
+  var m=J.movement||{}, t=J.totals?J.totals.n:null;
+  var pool=t?t.all:0, done=t?t.allW:0;
   var p=pool?Math.round(100*done/pool):0;
+  var everywhere=m.called||0;
   return "<div class='herorow'><div class='hero2'>"+
-    "<span class='pctpill'>"+p+"% done</span><div class='k'>Called today</div>"+
+    "<span class='pctpill'>"+p+"% done</span><div class='k'>Called today, of the leads that need a call</div>"+
     "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span></div>"+
     "<div class='track'><i style='width:"+p+"%'></i></div>"+
-    "<div class='foot'>"+(J.frozen?("List locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
-      " &middot; "+fmt(J.baseSize)+" leads"):"List not locked yet")+"</div></div>"+
+    "<div class='foot'>"+(J.frozen
+      ? ("Locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
+         " &middot; "+fmt(J.baseSize)+" leads on the list, "+fmt(pool)+" of them need a call today"+
+         (everywhere>done?" &middot; "+fmt(everywhere)+" called across the whole list":""))
+      : "List not locked yet")+"</div></div>"+
     "<div class='sec mini' style='margin:0'><h2>What changed today</h2>"+
     "<div class='chips'>"+
-    chipOf("",m.called,"called")+chipOf("stage",m.stage,"moved stage")+
+    chipOf("",m.called,"called anywhere on the list")+chipOf("stage",m.stage,"moved stage")+
     chipOf("fu",m.fu,"next call date changed")+chipOf("owner",m.owner,"given to another agent")+
     chipOf("gone",m.gone,"no longer in the list")+chipOf("still",m.still,"nothing happened")+
     (J.offBase&&J.offBase.leads?"<button class='chipb' title='Called today but not on today’s calling list'>"+
       fmt(J.offBase.leads)+" called but not on today's list</button>":"")+
+    "</div><div style='margin-top:8px;font-size:11px;color:#7C8899;line-height:1.5'>"+
+    "The list is fixed at midnight, so these move only because of what the floor did today. "+
+    "HubSpot's own call count will be higher: it counts every dial on every lead, including ones "+
+    "outside the tracked creators."+(J.isVP?" The v1 against v2 panel below shows where each one goes.":"")+
     "</div></div></div>";}
 function chipOf(k,n,label){
   return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
