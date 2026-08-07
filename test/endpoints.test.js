@@ -211,6 +211,32 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("nothing already owned by a working agent is in it",
       asg.rows.every(function(r){ return r.unassigned + r.left > 0 || r.assignedToday > 0; }));
 
+    /* Effort by stage and by creator, and the agent filter that used to fight with All. */
+    const ags = (await get("/api/callnow2/agents")).body;
+    ok("effort is summarised by stage", Array.isArray(ags.byStage) && ags.byStage.length > 0);
+    ok("and by creator", Array.isArray(ags.byCreator) && ags.byCreator.length > 0);
+    ok("a stage row splits into agents", ags.byStage.some(function(r){ return (r.agents || []).length > 0; }));
+    ok("a stage row's agents sum to the stage", ags.byStage.every(function(r){
+      return r.agents.reduce(function(a, x){ return a + x.n; }, 0) === r.n; }));
+    ok("every band adds up to the row", ags.byStage.every(function(r){
+      return ["total", "owner"].every(function(k){
+        return r.effort[k].low + r.effort[k].avg + r.effort[k].bench + r.effort[k].high === r.n; }); }));
+    ok("stage and creator cover the same population",
+      ags.byStage.reduce(function(a, r){ return a + r.n; }, 0) ===
+      ags.byCreator.reduce(function(a, r){ return a + r.n; }, 0));
+    ok("the unassigned bucket keeps a name that is not the empty string",
+      ags.agents.some(function(a){ return a.id === "none"; }),
+      JSON.stringify(ags.agents.map(function(a){ return a.id; })));
+
+    const allAgents = (await get("/api/callnow2")).body;
+    const noneOnly = (await get("/api/callnow2?agent=none")).body;
+    ok("filtering to unassigned is not the same as no filter",
+      noneOnly.baseSize < allAgents.baseSize && noneOnly.baseSize > 0,
+      noneOnly.baseSize + " of " + allAgents.baseSize);
+    ok("no agent option collides with the All option",
+      allAgents.agentOptions.every(function(o){ return String(o.id) !== ""; }),
+      JSON.stringify(allAgents.agentOptions.map(function(o){ return o.id; })));
+
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,
       nothing.raw);

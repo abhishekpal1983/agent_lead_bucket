@@ -107,6 +107,19 @@ function render(role){
   vm.runInContext(script, ctx);
   ctx.J = Object.assign({}, payload, role);
   ctx.A = { agents: agents, effortBands: payload.effortBands };
+  ctx.A.byStage = [
+    { stage: "counselled", label: "Counselled", n: 120,
+      effort: { total: { low: 70, avg: 30, bench: 15, high: 5 }, owner: { low: 90, avg: 20, bench: 8, high: 2 } },
+      agents: [{ id: "201", name: "Sid Menon", n: 80,
+        effort: { total: { low: 50, avg: 20, bench: 8, high: 2 }, owner: { low: 60, avg: 15, bench: 4, high: 1 } } }] },
+    { stage: "__fresh", label: "Fresh leads", n: 40,
+      effort: { total: { low: 40, avg: 0, bench: 0, high: 0 }, owner: { low: 40, avg: 0, bench: 0, high: 0 } },
+      agents: [] }
+  ];
+  ctx.A.byCreator = [
+    { u: "ayush_singh13", n: 90,
+      effort: { total: { low: 60, avg: 20, bench: 8, high: 2 }, owner: { low: 70, avg: 12, bench: 6, high: 2 } } }
+  ];
   ctx.ASSIGN = { allowed: true, scoped: !!role.scoped, rows: [
     { u: "ayush_singh13", unassigned: 4, left: 2, total: 6, assignedToday: 1,
       holders: [{ id: "205", name: "Gone Gita", n: 2 }] },
@@ -369,6 +382,19 @@ console.log("\nRole specific things appear only where they should");
   }
   ok("every table is inside a scrolling wrapper",
     (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
+  ok("a VP and a manager both get the effort summary",
+    vp.indexOf("Where the effort is going") >= 0 && mgr.indexOf("Where the effort is going") >= 0);
+  ok("an agent does not", agent.indexOf("Where the effort is going") < 0);
+  ok("the summary opens on stages", mgr.indexOf(">Counselled<") >= 0 && mgr.indexOf(">Fresh leads<") >= 0);
+  ok("effort band headers carry their own colour",
+    ["bd-low", "bd-avg", "bd-bench", "bd-high"].every(function(c){ return mgr.indexOf("bd " + c) >= 0; }));
+  ok("and the column beneath each header is washed the same",
+    ["bd-low", "bd-avg", "bd-bench", "bd-high"].every(function(c){ return mgr.indexOf("cell " + c) >= 0; }));
+  ok("the band tints are defined after theme.css, or they never take effect",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf("th.bd-low") >= 0);
+  ok("a VP is not shown the same card twice",
+    (vp.match(/Shown but not counted/g) || []).length === 1 &&
+    (vp.match(/>Call Now v1 against v2/g) || []).length <= 1);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);

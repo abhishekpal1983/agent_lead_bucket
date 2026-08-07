@@ -65,7 +65,7 @@ And any number of **reasons to call**, which overlap on purpose:
 form, score 6 or more, international, fresh, refilled form, IFC due, needs owner.
 **Any priority** is the deduplicated count of those. It is never a sum of them.
 
-**Needs owner is deliberately not part of any priority.** Confirmed 8 August 2026. A lead
+**Needs owner is deliberately not part of any priority.** Confirmed 7 August 2026. A lead
 with no owner, or with a deactivated owner, needs someone assigned to it. That is a routing
 job for a manager, not a call for an agent, so it never inflates the calling queue. It is
 still a column of its own, so the pile stays visible and can be worked deliberately.
@@ -80,7 +80,7 @@ A follow-up dated **6 August at 2pm** is **due today** for all of 6 August, incl
 A follow-up dated on a **non-working day** rolls forward. A Sunday follow-up reads as **due**
 on Monday, not overdue, because nobody could have called it.
 
-**Working days are Monday to Saturday.** Confirmed 8 August 2026. Sunday is the only
+**Working days are Monday to Saturday.** Confirmed 7 August 2026. Sunday is the only
 non-working day, so a Sunday follow-up is the only one that rolls forward. Set by
 `WORK_DAYS` if the floor ever changes, and changing it moves the overdue number for every
 lead, so it is not a casual edit.

@@ -2544,7 +2544,11 @@ function cn2Context(req){
 
   // Filters are applied to the base, not the live pool, so the denominator a manager
   // sees is the same one the totals were built from.
+  /* "none" is the unassigned bucket, not the empty string. An empty value already means
+     "no filter" in every select on the page, so an unassigned option carrying "" made
+     the browser match it against All: picking All redrew as (unassigned) every time. */
   const wantAgent = String(req.query.agent || "");
+  const agentKey = function(o){ return String(o || "") || "none"; };
   const wantTeam = String(req.query.team || "");
   const wantCreator = String(req.query.creator || "");
   const wantSource = String(req.query.source || "");
@@ -2563,7 +2567,7 @@ function cn2Context(req){
     Object.keys(base).forEach(function(id){
       const c = CN2.read(base[id]);
       if (allow && allow.indexOf(String(c.owner)) < 0) return;   // role scope, not a filter
-      if (wantAgent && String(c.owner) !== wantAgent) return;
+      if (wantAgent && agentKey(c.owner) !== wantAgent) return;
       if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
       if (wantCreator && c.creator !== wantCreator) return;
       if (wantSource && (c.source || "(not set)") !== wantSource) return;
@@ -2590,7 +2594,7 @@ function cn2Context(req){
     scopedRows = rows.filter(function(r){
       const o = CACHE.owners[r.owner] || {};
       if (allow && allow.indexOf(String(r.owner)) < 0) return false;
-      if (wantAgent && String(r.owner) !== wantAgent) return false;
+      if (wantAgent && agentKey(r.owner) !== wantAgent) return false;
       if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) return false;
       if (wantCreator && r.creator !== wantCreator) return false;
       if (wantSource && ((r.source || "(not set)") !== wantSource)) return false;
@@ -2665,7 +2669,7 @@ app.get("/api/callnow2", function(req, res){
     // only grow, and only by this, so it is reported rather than left to be noticed.
     promoted: ctx.promoted,
     agentOptions: Object.keys(agents).map(function(id){
-      return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
+      return { id: id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
     creatorOptions: Object.keys(creators).map(function(u){ return { u: u, n: creators[u] }; })
       .sort(function(a, b){ return b.n - a.n; }),
@@ -2713,27 +2717,65 @@ app.get("/api/callnow2/agents", function(req, res){
      By anyone says whether the lead has had a go at all; by this agent says whether the
      person holding it has done their share, which is the one a manager acts on. */
   const eff = {};
+  /* The same question asked of a stage and of a creator, not just of an agent. A stage
+     where everything has barely been tried is a process problem; one creator's leads
+     barely tried is a routing or a quality problem. Neither shows up in a per-agent list.
+
+     Counted leads only, so these tie to the headline totals. The per-agent table above
+     deliberately includes the parking buckets, which is why the two do not sum. */
+  const byStage = {}, byCreator = {}, byStageAgent = {};
+  const slot = function(m, k){
+    if (!m[k]) m[k] = { n: 0, total: CN2.effortCounts(), owner: CN2.effortCounts() };
+    return m[k];
+  };
+  const put = function(o, tb, ob){ o.n++; o.total[tb]++; o.owner[ob]++; };
+
   Object.keys(ctx.base).forEach(function(id){
     const c = CN2.read(ctx.base[id]);
     if (c.sec !== "n") return;
     const a = c.owner || "none";
     if (!eff[a]) eff[a] = { total: CN2.effortCounts(), owner: CN2.effortCounts() };
     const lv = ctx.live[id];
-    eff[a].total[CN2.effortBand(lv ? lv.calls : 0).key]++;
-    eff[a].owner[CN2.effortBand(lv ? lv.own : 0).key]++;
+    const tb = CN2.effortBand(lv ? lv.calls : 0).key;
+    const ob = CN2.effortBand(lv ? lv.own : 0).key;
+    eff[a].total[tb]++;
+    eff[a].owner[ob]++;
+    if (!c.counted) return;
+    put(slot(byStage, c.stage), tb, ob);
+    put(slot(byCreator, c.creator || "(no creator)"), tb, ob);
+    put(slot(byStageAgent, c.stage + "\u0000" + a), tb, ob);
+  });
+
+  const summarise = function(m, key) {
+    return Object.keys(m).map(function(k){
+      return Object.assign({ n: m[k].n, effort: { total: m[k].total, owner: m[k].owner } },
+        key === "stage" ? { stage: k, label: CN2_STAGE_LABELS[k] || k } : { u: k });
+    }).sort(function(x, y){ return y.n - x.n; });
+  };
+  const stageRows = summarise(byStage, "stage").map(function(r){
+    return Object.assign(r, { agents: Object.keys(byStageAgent)
+      .filter(function(k){ return k.split("\u0000")[0] === r.stage; })
+      .map(function(k){
+        const aid = k.split("\u0000")[1];
+        return { id: aid, name: cn2OwnerName(aid === "none" ? "" : aid), n: byStageAgent[k].n,
+          effort: { total: byStageAgent[k].total, owner: byStageAgent[k].owner } };
+      }).sort(function(x, y){ return y.n - x.n; }) });
   });
 
   const rows = Object.keys(agg.byAgent).map(function(id){
     const tid = teamOf[id];
     const o = CN2_FIXTURE_DATA ? {} : (CACHE.owners[id] || {});
-    return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id),
+    // Keep the "none" sentinel: the page uses this id as a filter value, and an empty
+    // string there collides with All.
+    return { id: id, name: cn2OwnerName(id === "none" ? "" : id),
       team: tid ? teamName[tid] : "", teamId: tid || "",
       active: o.active !== false, counted: ownerCounted(id === "none" ? "" : id),
       n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
       effort: eff[id] || { total: CN2.effortCounts(), owner: CN2.effortCounts() },
       offBase: off[id] || 0 };
   }).sort(function(x, y){ return y.n.all - x.n.all; });
-  res.json({ agents: rows, frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS,
+  res.json({ agents: rows, byStage: stageRows, byCreator: summarise(byCreator, "creator"),
+    frozen: ctx.frozen, timing: CN2.TIMING, columns: CN2.COLUMNS,
     effortBands: CN2.EFFORT_BANDS.map(function(b){
       return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }) });
 });

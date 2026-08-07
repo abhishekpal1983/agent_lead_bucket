@@ -199,6 +199,27 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .tw{max-height:52vh !important;overflow:auto !important}
 .wrap .tw.scrolly{max-height:300px !important}
 .wrap .sub3{font-size:10px !important;line-height:1.2 !important;margin-top:0 !important}
+/* Effort bands read as four blocks, not eight look-alike numbers. The header carries the
+   band's own colour and the column beneath it a faint wash of the same, so the eye lands
+   on the block first and the number second. Same four hues as the cells: red is barely
+   tried, amber some effort, green at benchmark, indigo over-worked. */
+.wrap th.bd{font-size:9px !important;letter-spacing:.06em !important;line-height:1.15 !important;
+  padding:5px 8px !important;border-bottom:2px solid currentColor !important}
+.wrap th.bd .sub3{font-size:9.5px !important;font-weight:700 !important;opacity:.85;color:inherit !important}
+.wrap th.bd-low{background:#FDECEA !important;color:#8C2D12 !important}
+.wrap th.bd-avg{background:#FDF3E2 !important;color:#7A4A08 !important}
+.wrap th.bd-bench{background:#E6F3EC !important;color:#0A5346 !important}
+.wrap th.bd-high{background:#EDE9FE !important;color:#4B2E9E !important}
+.wrap td.bd-low{background:#FEF7F5}
+.wrap td.bd-avg{background:#FEFAF3}
+.wrap td.bd-bench{background:#F4FAF7}
+.wrap td.bd-high{background:#F8F6FE}
+.wrap tr:hover td.bd-low{background:#FDECEA}
+.wrap tr:hover td.bd-avg{background:#FDF3E2}
+.wrap tr:hover td.bd-bench{background:#E6F3EC}
+.wrap tr:hover td.bd-high{background:#EDE9FE}
+.wrap tr.sub2 td{background:#FBFCFE}
+.wrap tr.sub2 td:first-child{padding-left:26px !important;font-size:12px !important}
 .wrap .st,.wrap .tag{padding:1px 6px !important;font-size:10.5px !important;font-weight:600 !important}
 .wrap .sec{padding:12px 14px !important}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
@@ -1080,6 +1101,87 @@ function boardView(){
     "<div class='sub'>One card per stage. The bar splits what is due today, what is overdue and what has no next step. "+
     "Click any line to open those leads.</div><div class='board'>"+cards+"</div></div>";}
 
+/* The same effort question asked of a stage and of a creator.
+
+   A per-agent list answers "who is not trying". It cannot answer "which stage is
+   everyone stalling in" or "whose leads are these", and those have different fixes: a
+   stage where everything is barely tried is a process problem, one creator's leads
+   barely tried is a routing or a lead quality problem.
+
+   Counted leads only, so this ties to the headline totals. The agent table below
+   deliberately carries the parking buckets too, which is why the two do not sum. */
+var SUMBY="stage", SUMOPEN={};
+function setSumBy(v){ SUMBY=v; SUMOPEN={}; draw(); }
+function togSum(k){ SUMOPEN[k]=!SUMOPEN[k]; draw(); }
+
+function bandCells(e,B,go){
+  var t=B.reduce(function(x,b){return x+e[b.key];},0);
+  var h=B.map(function(b){
+    var n=e[b.key];
+    return "<td class='n cell bd-"+b.key+(n?"":" z")+"' onclick='"+go(b.key)+"'>"+
+      (n?"<b class='"+b.cls+"'>"+fmt(n)+"</b>":"0")+"</td>";}).join("");
+  var pc=t?Math.round(100*e.low/t):0;
+  return h+"<td class='n'><b class='"+(pc>=70?"m":(pc>=40?"d":"c"))+"'>"+pc+"%</b></td>";}
+
+function summaryPanel(){
+  if(J.scoped&&J.role==="agent")return "";
+  if(!A)return "";
+  var B=A.effortBands||J.effortBands;
+  if(!B)return "";
+  var byStage=SUMBY==="stage";
+  var rows=((byStage?A.byStage:A.byCreator)||[]).filter(function(r){return r.n>0;});
+  if(!rows.length)return "";
+  var range=function(b){ return b.max==null?(b.min+"+"):(b.min+" to "+b.max); };
+  var q=function(o){ return "pick("+JSON.stringify(o).replace(/"/g,"&quot;")+")"; };
+  var esq=function(v){ return esc(String(v)).replace(/'/g,"\\'"); };
+
+  var h="<div class='sec mini'><h2>Where the effort is going</h2>"+
+    "<div class='sub'>Of the leads that need a call today, how hard each one has been worked. "+
+    "By stage tells you where the floor stalls; by creator tells you whose leads are being left. "+
+    (byStage?"Click a row to split it by agent. ":"Click a creator to scope the page to them. ")+
+    "Click any number for those leads. Counted leads only, so it ties to the totals above.</div>"+
+    "<div class='chips' style='margin-bottom:9px'>"+
+    "<button class='chipb"+(byStage?" on":"")+"' onclick='setSumBy(\"stage\")'>By stage</button>"+
+    "<button class='chipb"+(byStage?"":" on")+"' onclick='setSumBy(\"creator\")'>By creator</button>"+
+    "<button class='chipb"+(CHURN_BY==="owner"?" on":"")+"' onclick='setChurnBy(\"owner\")'>By the agent who holds it</button>"+
+    "<button class='chipb"+(CHURN_BY==="total"?" on":"")+"' onclick='setChurnBy(\"total\")'>By anyone, in the stage</button>"+
+    "</div>"+
+    "<div class='tw scrolly'><table><thead><tr>"+
+    "<th>"+(byStage?"Stage":"Creator")+"</th><th class='n'>Call today</th>"+
+    B.map(function(b){return "<th class='n bd bd-"+b.key+"'>"+esc(b.label)+
+      "<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
+    "<th class='n'>Barely tried</th></tr></thead><tbody>";
+
+  var tot={n:0}; B.forEach(function(b){tot[b.key]=0;});
+  rows.forEach(function(r){
+    var e=r.effort[CHURN_BY];
+    tot.n+=r.n; B.forEach(function(b){tot[b.key]+=e[b.key];});
+    var key=byStage?r.stage:r.u, open=!!SUMOPEN[key];
+    h+="<tr class='rowlink'>"+
+      "<td onclick=\""+(byStage?"togSum(&#39;"+esq(key)+"&#39;)":"Q.creator=&#39;"+esq(key)+"&#39;;load()")+"\">"+
+      (byStage?"<span class='car'>"+(open?"\u25be":"\u25b8")+"</span>":"")+
+      esc(byStage?(r.label||r.stage):r.u)+"</td>"+
+      "<td class='n'>"+fmt(r.n)+"</td>"+
+      bandCells(e,B,function(bk){
+        return byStage ? q({stage:r.stage,band:bk,bandBy:CHURN_BY,sec:"n"})
+                       : "Q.creator=&#39;"+esq(r.u)+"&#39;;load()";})+
+      "</tr>";
+    if(byStage&&open){
+      var ag=(r.agents||[]).filter(function(x){return x.n>0;});
+      if(!ag.length)h+="<tr class='sub2'><td colspan='"+(B.length+3)+"' class='mut'>No agent holds any of these.</td></tr>";
+      ag.forEach(function(x){
+        h+="<tr class='sub2'><td>"+esc(x.name)+"</td><td class='n'>"+fmt(x.n)+"</td>"+
+          bandCells(x.effort[CHURN_BY],B,function(bk){
+            return q({stage:r.stage,agent:x.id,band:bk,bandBy:CHURN_BY,sec:"n"});})+"</tr>";});
+    }
+  });
+  var tt=B.reduce(function(x,b){return x+tot[b.key];},0);
+  var tpc=tt?Math.round(100*tot.low/tt):0;
+  h+="<tr class='tot'><td><b>All "+(byStage?"stages":"creators")+"</b></td><td class='n'><b>"+fmt(tot.n)+"</b></td>"+
+    B.map(function(b){return "<td class='n bd-"+b.key+"'><b>"+fmt(tot[b.key])+"</b></td>";}).join("")+
+    "<td class='n'><b>"+tpc+"%</b></td></tr>";
+  return h+"</tbody></table></div></div>";}
+
 function churnPanel(){
   // A manager coaches on this; an agent should be working their list, not ranking
   // themselves against it. Same reason they do not get the agent table.
@@ -1108,7 +1210,8 @@ function churnPanel(){
     "<button class='chipb"+(CHURN_BY==="total"?" on":"")+"' onclick='setChurnBy(\"total\")'>By anyone, in the stage</button>"+
     "</div>"+
     "<div class='tw scrolly'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
-    B.map(function(b){return "<th class='n'>"+esc(b.label)+"<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
+    B.map(function(b){return "<th class='n bd bd-"+b.key+"'>"+esc(b.label)+
+      "<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
     "<th class='n'>Barely tried</th></tr></thead><tbody>";
   h+=rows.map(function(a){
     var e=a.effort[CHURN_BY];
@@ -1124,9 +1227,9 @@ function churnPanel(){
       B.map(function(b){
         var n=e[b.key];
         var on=PICK&&PICK.band===b.key&&PICK.bandBy===CHURN_BY&&PICK.agent===a.id;
-        if(!n)return "<td class='n cell z' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+        if(!n)return "<td class='n cell z bd-"+b.key+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
           ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>0</td>";
-        return "<td class='n cell"+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+        return "<td class='n cell bd-"+b.key+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
           ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>"+
           "<b class='"+b.cls+"'>"+fmt(n)+"</b></td>";}).join("")+
       "<td class='n'><b class='"+flag+"'>"+pc+"%</b></td></tr>";}).join("");
@@ -1241,7 +1344,10 @@ function draw(){
         ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
       (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
       "</tbody></table></div></div>";});
-  matrix+=churnPanel()+excludedNote()+creatorPanel()+(J.isVP?reconcile():"")+qualityPanel()+(J.scoped&&J.role==="agent"?"":agentTable());
+  /* Stage and creator first: a manager reads the shape of the day before the names.
+     The VP-only cards are NOT repeated here. They live in the block at the top of the
+     page, and rendering them again drew every one of them twice. */
+  matrix+=summaryPanel()+churnPanel()+(J.scoped&&J.role==="agent"?"":agentTable());
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";

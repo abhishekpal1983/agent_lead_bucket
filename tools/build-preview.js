@@ -177,9 +177,35 @@ var PREVIEW = {
       });
       tm[k].offBase += r.offBase; tm[k].agents++;
     });
+    // Effort by stage and by creator, built from the same base as the agent rows.
+    var st = {}, cr = {}, sa = {};
+    var slot = function(m, k){ if (!m[k]) m[k] = { n: 0, total: effortCounts(), owner: effortCounts() }; return m[k]; };
+    Object.keys(b).forEach(function(id){
+      var c = unpack(b[id]);
+      if (c.sec !== "n" || !c.counted) return;
+      var lv = live[id] || {};
+      var tb = effortBand(lv.calls || 0).key, ob = effortBand(lv.own || 0).key;
+      [slot(st, c.stage), slot(cr, c.creator || "(no creator)"),
+       slot(sa, c.stage + "|" + (c.owner || "none"))].forEach(function(o){
+        o.n++; o.total[tb]++; o.owner[ob]++; });
+    });
+    var stageRows = Object.keys(st).map(function(k){
+      return { stage: k, label: PREVIEW.labels[k] || k, n: st[k].n,
+        effort: { total: st[k].total, owner: st[k].owner },
+        agents: Object.keys(sa).filter(function(x){ return x.split("|")[0] === k; }).map(function(x){
+          var aid = x.split("|")[1];
+          return { id: aid, name: nameOf(aid === "none" ? "" : aid), n: sa[x].n,
+            effort: { total: sa[x].total, owner: sa[x].owner } };
+        }).sort(function(p, q){ return q.n - p.n; }) };
+    }).sort(function(p, q){ return q.n - p.n; });
+    var creatorRows = Object.keys(cr).map(function(k){
+      return { u: k, n: cr[k].n, effort: { total: cr[k].total, owner: cr[k].owner } };
+    }).sort(function(p, q){ return q.n - p.n; });
+
     return { effortBands: EFFORT_BANDS.map(function(b){
       return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
-      agents: arows, teams: Object.keys(tm).map(function(k){ return tm[k]; })
+      agents: arows, byStage: stageRows, byCreator: creatorRows,
+      teams: Object.keys(tm).map(function(k){ return tm[k]; })
       .sort(function(x, y){ return y.n.all - x.n.all; }), frozen: true };
   }
   /* The assignment pool, built from the same fixture base. Deliberately not scoped by
