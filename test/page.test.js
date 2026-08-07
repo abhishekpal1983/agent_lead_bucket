@@ -515,5 +515,40 @@ console.log("\nA link into the page opens what the link said");
     P("?creator=" + encodeURIComponent("a b&c")).q.creator === "a b&c");
 }
 
+
+/* ---- the header, and the Daily review ---------------------------------------------
+   Static checks: these live on two different pages and neither needs a render to be
+   wrong in the way they were wrong. */
+console.log("\nThe page names itself once and links out once per destination");
+{
+  const hdr = html.slice(0, html.indexOf('<div class="wrap">'));
+  ok("it is called Call Now 2.0", hdr.indexOf("Call Now 2.0") >= 0);
+  ok("and not v2 any more", hdr.indexOf("Call Now v2") < 0);
+  ok("the private badge is gone", hdr.indexOf("PRIVATE") < 0);
+  ok("Revenue command is linked once, not twice",
+    (hdr.match(/Revenue command/g) || []).length === 1);
+  ok("and the second link goes somewhere else", hdr.indexOf("/coaching.html") >= 0);
+}
+
+console.log("\nDaily review speaks Call Now 2.0's buckets");
+{
+  const vphtml = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
+  ok("it says which page it is reviewing", vphtml.indexOf("Call Now 2.0 as it stood that day") >= 0);
+  ok("timings are named as the floor names them",
+    ["Due today, called", "Overdue, called", "No next call set, called", "Fresh leads, called"]
+      .every(function(t){ return vphtml.indexOf(t) >= 0; }));
+  ok("reasons are kept apart from timings",
+    vphtml.indexOf("Reasons to call, and how much of each was covered") >= 0);
+  ok("the two buckets the old snapshot could not answer are there now",
+    vphtml.indexOf("Refilled the form") >= 0 && vphtml.indexOf("IFC came due") >= 0);
+  ok("who missed what is its own table, sorted worst first",
+    vphtml.indexOf("function missedTable") >= 0 && vphtml.indexOf("Who missed what") >= 0 &&
+    vphtml.indexOf("the order of the rows is the order of the conversations") >= 0);
+  ok("and it subtracts rather than re-counting",
+    vphtml.indexOf("minus what they dialled") >= 0);
+  ok("the export carries the same buckets",
+    vphtml.indexOf('"NoFU","NoFUWorked"') >= 0 && vphtml.indexOf('"Refill","RefillWorked"') >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

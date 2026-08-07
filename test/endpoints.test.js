@@ -276,7 +276,7 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("the swap route is registered before express.static, or the file would win",
       src.indexOf('app.get("/callnow.html"') < src.indexOf('app.use(express.static("public"))'));
     ok("rebuilding and relocking the list stay closed to everyone but a VP",
-      (src.match(/Call Now v2 is restricted/g) || []).length === 2);
+      (src.match(/Call Now 2.0 is restricted/g) || []).length === 2);
 
     // The segment picker is a manager and VP control; the endpoint has to say so itself.
     const segs = await get("/api/callnow2/segments");

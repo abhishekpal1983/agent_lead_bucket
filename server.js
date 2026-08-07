@@ -3373,13 +3373,13 @@ app.get("/api/callnow2/leads", function(req, res){
 });
 
 app.post("/api/callnow2/rebuild", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now 2.0 is restricted" });
   guard("cn2BuildManual", function(){ return cn2Build(true); })();
   res.status(202).json({ ok: true, building: true });
 });
 
 app.post("/api/callnow2/refreeze", function(req, res){
-  if (!isVP(req)) return res.status(403).json({ error: "Call Now v2 is restricted" });
+  if (!isVP(req)) return res.status(403).json({ error: "Call Now 2.0 is restricted" });
   const st = cn2Freeze(true);
   res.json({ ok: !!st, at: st ? st.at : null, n: st ? Object.keys(st.rows).length : 0 });
 });
@@ -3928,6 +3928,9 @@ function orgDrift(){
 function snapCounters(){
   return { pool: 0, form: 0, score: 0, intl: 0, fresh: 0, due: 0, done: 0, missed: 0, calls: 0,
     formC: 0, scoreC: 0, intlC: 0, freshC: 0, overdue: 0, overdueC: 0,
+    // Call Now 2.0's own buckets, so the review speaks the floor's language: a lead with
+    // no next call date set, a form refilled since the last call, an IFC that came due.
+    nofu: 0, nofuC: 0, refill: 0, refillC: 0, ifc: 0, ifcC: 0,
     needs: 0, needsC: 0, uncalled: 0, uncalledC: 0, counsellings: 0,
     revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
@@ -3945,6 +3948,9 @@ function snapAddV2(o, b, lv, called, fromU){
   if (b.why.intl)  { o.intl++;  if (called) o.intlC++; }
   if (b.why.fresh) { o.fresh++; if (called) o.freshC++; }
   if (b.why.needs) { o.needs++; if (called) o.needsC++; }
+  if (b.why.refill) { o.refill++; if (called) o.refillC++; }
+  if (b.why.ifc) { o.ifc++; if (called) o.ifcC++; }
+  if (b.t === "nofu") { o.nofu++; if (called) o.nofuC++; }
   // Never-called is the one bucket that calling destroys: dial the lead and it leaves.
   // So the count is who is still uncalled, and the worked figure comes from the id set
   // frozen at the opening bell, which is the only exact way to answer it.
@@ -3979,7 +3985,7 @@ const OPEN_HM = process.env.OPEN_HM || "00:05";
 // Bumped whenever the meaning of a counter changes. A day frozen under an older
 // definition is refrozen rather than carried forward, otherwise a denominator captured
 // under the old scope would silently poison the whole day.
-const SNAP_VERSION = 3;
+const SNAP_VERSION = 4;
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   // Staged leads are now published before the fresh pull finishes, so "loaded" no longer
@@ -4807,7 +4813,8 @@ app.get("/api/vp/daily", function(req, res){
       // Roll up only over keys the teams actually carry, and keep null as null: a
       // rebuilt day has no pool figure, and summing that to zero would be a lie.
       const SNAPKEYS = ["pool","form","score","intl","fresh","due","done","missed","calls",
-        "formC","scoreC","intlC","freshC","overdue","overdueC","counsellings","revenue",
+        "formC","scoreC","intlC","freshC","overdue","overdueC",
+        "nofu","nofuC","refill","refillC","ifc","ifcC","counsellings","revenue",
         "enrolments","attempts","connected","audits","auditTarget","needs","needsC","uncalled","uncalledC",
         "oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue","oNeeds","oUncalled"];
       const roll = {};
