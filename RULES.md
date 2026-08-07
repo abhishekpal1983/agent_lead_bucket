@@ -1,4 +1,4 @@
-# Call Now v2: the rules, in plain English
+# Call Now: the rules, in plain English
 
 This is the contract. If the code and this file ever disagree, one of them is a bug.
 Every rule here is enforced by a test in `test/`, named so you can find it.
@@ -270,3 +270,34 @@ those leads still show, in *worked outside this morning's list*.
 The number promoted today is shown on the page, under the locked-list note and as its own
 row in *What happened to this morning's list*, so a denominator that grew is never a mystery.
 Pinned by `test/cn2.test.js`.
+
+---
+
+## 12. One model, everywhere
+
+**Confirmed 7 August 2026.** Call Now v2 is the model. It is not a second opinion.
+
+`/callnow.html` serves v2. v1 is dormant, its page parked at `/callnow-v1.html` and its
+API untouched. Which one the link serves is decided by `CALLNOW_DEFAULT` in Railway, so a
+rollback is a variable change, not a deploy.
+
+These now read the same frozen list, through the same function, `cn2Snapshot`:
+
+| Surface | What it takes from v2 |
+|---|---|
+| Call Now | The whole page |
+| Revenue Command, Overview | Queue, due, done, missed, overdue, uncalled, worked, needs owner, and the per-segment coverage |
+| Daily review | Every counter in the day's snapshot |
+| Coaching | Whether the reviewed call was on a priority lead |
+
+**What deliberately did NOT move.** Revenue, enrolments, counsellings, leads created,
+the L2C cohort, churned and worked are questions about the whole tracked pool for a
+month, not about today's calling list. Narrowing them to the day's list would quietly
+change the denominator of L2C and C2E every morning. They still read the full pool.
+
+**The one place v1 still runs** is the v1-against-v2 reconciliation, which needs both
+sides to compare. That is the point of it.
+
+Snapshot version is now 3. Days captured under version 2 were measured on v1 definitions
+and are refrozen rather than carried forward, so the Daily review never compares a day
+measured one way against a day measured another.

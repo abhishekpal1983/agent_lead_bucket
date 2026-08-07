@@ -2503,7 +2503,16 @@ function cn2Scope(req){
   mine.forEach(function(t){ (t.agentIds || []).forEach(function(id){ ids.push(String(id)); }); });
   return ids;
 }
-function cn2Context(req){
+/* Today's list, as every surface must see it.
+
+   Revenue Command, the Daily review, the coaching pick and the floor's own page all read
+   this one function. That is the whole point of it: two surfaces computing the same
+   question from two models is how a dashboard ends up arguing with itself, which is
+   exactly what v1 and v2 did side by side.
+
+   No request, no filters, no role scope. Those belong to whoever is asking. */
+let CN2_SNAP = { key: "", at: 0, v: null };
+function cn2Snapshot(){
   const day = CN2.dayBoundsFor(cn2Now());
   const store = cn2Store();
   const today = istParts(new Date(cn2Now())).date;
@@ -2543,6 +2552,27 @@ function cn2Context(req){
   base = corr.base;
   const prom = CN2.promoteBase(base, liveAll, { countable: cn2Countable });
   base = prom.base;
+  return { day: day, base: base, live: live, liveAll: liveAll, rows: rows, frozen: frozen,
+    names: (frozen && store.names) || {},
+    frozenAt: frozen ? store.at : null, corrected: corr.corrected, promoted: prom.promoted };
+}
+
+/* Walking 31,000 leads is cheap, but Overview draws four teams and the Daily review runs
+   on a timer, so the same walk can happen a dozen times a minute. Held for fifteen
+   seconds, keyed on everything that can change it. */
+function cn2SnapshotCached(){
+  const key = [CN2_POOL.at, cn2Store().at, POOL_REV, istParts(new Date(cn2Now())).date].join("|");
+  if (CN2_SNAP.key === key && Date.now() - CN2_SNAP.at < 15000) return CN2_SNAP.v;
+  const v = cn2Snapshot();
+  CN2_SNAP = { key: key, at: Date.now(), v: v };
+  return v;
+}
+
+function cn2Context(req){
+  const snap = cn2Snapshot();
+  const day = snap.day, live = snap.live, liveAll = snap.liveAll, frozen = snap.frozen;
+  const rows = snap.rows;
+  let base = snap.base;
   // The whole list before any filter or role scope is applied. The assignment pool is
   // the one thing that must not be scoped by agent: a lead with no owner belongs to no
   // agent, so filtering by agent would hide exactly the leads a manager came to find.
@@ -2615,9 +2645,8 @@ function cn2Context(req){
     });
   }
   return { day: day, base: base, baseAll: baseAll, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
-    promoted: prom.promoted, corrected: corr.corrected,
-    names: (frozen && store.names) || {},
-    frozenAt: frozen ? store.at : null };
+    promoted: snap.promoted, corrected: snap.corrected,
+    names: snap.names, frozenAt: snap.frozenAt };
 }
 
 function cn2StageOrder(base){
@@ -3755,6 +3784,28 @@ function snapCounters(){
     needs: 0, needsC: 0, uncalled: 0, uncalledC: 0, counsellings: 0,
     revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
+/* The same counters, filled from the v2 list instead of the v1 model.
+
+   Every definition here is now the one the floor is looking at: overdue means a full
+   working day has passed rather than an hour, a fresh lead is its own bucket, a DNP with
+   nothing to act on is not today's work, and a lead nobody is working is not counted at
+   all. The shape is unchanged so the stored history and the page keep working. */
+function snapAddV2(o, b, lv, called, fromU){
+  o.pool++;
+  if (called) o.calls++;
+  if (b.why.form)  { o.form++;  if (called) o.formC++; }
+  if (b.why.score) { o.score++; if (called) o.scoreC++; }
+  if (b.why.intl)  { o.intl++;  if (called) o.intlC++; }
+  if (b.why.fresh) { o.fresh++; if (called) o.freshC++; }
+  if (b.why.needs) { o.needs++; if (called) o.needsC++; }
+  // Never-called is the one bucket that calling destroys: dial the lead and it leaves.
+  // So the count is who is still uncalled, and the worked figure comes from the id set
+  // frozen at the opening bell, which is the only exact way to answer it.
+  if (!(lv && lv.last)) o.uncalled++;
+  if (fromU) o.uncalledC++;
+  if (b.t === "over") { o.overdue++; if (called) o.overdueC++; }
+  if (b.t === "due")  { o.due++; if (called) o.done++; else o.missed++; }
+}
 function snapAdd(o, r, sg, called, day, fromU){
   o.pool++;
   if (called) o.calls++;
@@ -3781,13 +3832,16 @@ const OPEN_HM = process.env.OPEN_HM || "00:05";
 // Bumped whenever the meaning of a counter changes. A day frozen under an older
 // definition is refrozen rather than carried forward, otherwise a denominator captured
 // under the old scope would silently poison the whole day.
-const SNAP_VERSION = 2;
+const SNAP_VERSION = 3;
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   // Staged leads are now published before the fresh pull finishes, so "loaded" no longer
   // means "complete". Freezing a day's denominator against a half-built pool would be
   // wrong for the rest of that day and would look authoritative.
   if (CACHE.syncing) return;
+  // The day's denominator is now the v2 list. Freezing before it is built would capture
+  // an empty day and then look authoritative for the rest of it.
+  if (!cn2Ready()) return;
   const day = istDayBounds();
   const key = istParts(new Date()).date;
   const teamOf = {}, teamName = {};
@@ -3803,28 +3857,30 @@ function snapshotToday(){
   const prev0 = (stored && stored.sv === SNAP_VERSION) ? stored : null;
   const prevU = (prev0 && Array.isArray(prev0.openU)) ? prev0.openU.reduce(function(m, id){ m[id] = 1; return m; }, {}) : null;
   const nowU = [];
-  callnowPool().forEach(function(c){
-    const aid = String(c.hubspot_owner_id || "");
+  const snap = cn2SnapshotCached();
+  Object.keys(snap.base).forEach(function(id){
+    const b = CN2.read(snap.base[id]);
+    if (!b.counted) return;
+    if (b.sec !== CN2.SEC_ACTION) return;
+    const aid = String(b.owner || "");
     const tid = teamOf[aid];
     if (!tid) return;
-    if (!ownerCounted(aid)) return;
-    const r = cnRow(c), sg = cnSegs(r);
-    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
-    const called = r.last >= day.start && r.last < day.end;
-    if (!r.last) nowU.push(c.id);
-    const fromU = !!(prevU && prevU[c.id] && called);
-    snapAdd(total, r, sg, called, day, fromU);
+    const lv = snap.live[id] || snap.liveAll[id] || null;
+    const called = !!(lv && lv.last >= day.start && lv.last < day.end);
+    if (!(lv && lv.last)) nowU.push(id);
+    const fromU = !!(prevU && prevU[id] && called);
+    snapAddV2(total, b, lv, called, fromU);
     if (!teams[tid]) teams[tid] = Object.assign({ name: teamName[tid] }, snapCounters());
-    snapAdd(teams[tid], r, sg, called, day, fromU);
-    if (r.owner) {
-      if (!agents[r.owner]) agents[r.owner] = Object.assign({ name: r.ownerName, team: teamName[tid] }, snapCounters());
-      snapAdd(agents[r.owner], r, sg, called, day, fromU);
+    snapAddV2(teams[tid], b, lv, called, fromU);
+    if (aid) {
+      if (!agents[aid]) agents[aid] = Object.assign({ name: cn2OwnerName(aid), team: teamName[tid] }, snapCounters());
+      snapAddV2(agents[aid], b, lv, called, fromU);
     }
-    const cts = COUNSEL.byId[c.id];
+    const cts = COUNSEL.byId[id];
     if (cts && ts(cts) >= day.start && ts(cts) < day.end) {
       total.counsellings++;
       teams[tid].counsellings++;
-      if (r.owner && agents[r.owner]) agents[r.owner].counsellings++;
+      if (aid && agents[aid]) agents[aid].counsellings++;
     }
   });
   const emailTeam = {}, emailAgent = {};
@@ -3968,11 +4024,16 @@ async function snapBackfill(key){
   });
   // Counsellings, filtered exactly as the live snapshot filters them so the two are
   // comparable side by side in the date picker.
+  // Which leads counted as that day's work, on v2's definition. A past day's frozen list
+  // cannot be recovered, so this classifies the pool against that day's bounds, which is
+  // the closest honest answer and the same one the live snapshot would have given.
+  const backDay = CN2.dayBoundsFor(day.start);
   callnowPool().forEach(function(c){
     const aid = String(c.hubspot_owner_id || "");
-    if (!teamOf[aid] || !ownerCounted(aid)) return;
-    const r = cnRow(c), sg = cnSegs(r);
-    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
+    if (!teamOf[aid] || !cn2Countable(aid)) return;
+    const r = cnRow(c);
+    const b = CN2.classify(r, backDay, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN });
+    if (b.sec !== CN2.SEC_ACTION) return;
     const cts = COUNSEL.byId[c.id];
     if (!cts) return;
     const t = ts(cts);
@@ -4054,6 +4115,13 @@ function vpAggregate(month){
     if (!seen[k]) { seen[k] = 1; o.enrolments++; }
   });
   const day = istDayBounds(), now = Date.now();
+
+  /* Two populations, on purpose.
+
+     The MONTH metrics below are about the whole tracked pool: how many leads were
+     created, how many reached counselling, how much of the pool is churned. They are
+     not a question about today's calling list and must not be narrowed to it, or L2C
+     and C2E would silently start measuring a different denominator every morning. */
   callnowPool().forEach(function(c){
     const aid = String(c.hubspot_owner_id || "");
     const tid = teamOf[aid];
@@ -4061,7 +4129,7 @@ function vpAggregate(month){
     // Parking buckets and managers hold piles that are not a working queue. Their revenue
     // still counts, their leads do not, otherwise a manager's own bucket swamps the team.
     if (typeof ownerCounted === "function" && !ownerCounted(aid)) return;
-    const r = cnRow(c), sg = cnSegs(r);
+    const r = cnRow(c);
     const o = cell(tid, r.creator || "(no creator)", aid);
     // first-counselled month, attributed to the lead's current owner, same rule as elsewhere
     const cts = COUNSEL.byId[c.id];
@@ -4073,22 +4141,41 @@ function vpAggregate(month){
     if (r.stage === "payment_prospect" && r.fu && r.fu < now) o.risk++;
     if (CHURN.indexOf(r.stage) >= 0) { o.churned++; o.worked++; }
     else if (r.stage !== "__fresh") o.worked++;
-    if (!(sg.form || sg.score || sg.intl || sg.fresh)) return;
-    o.queue++;
-    // "coverage": how much of each segment has been called today
-    const ct0 = r.last >= day.start && r.last < day.end;
-    if (ct0) o.queueT++;
-    if (sg.form) { o.form++; if (ct0) o.formT++; }
-    if (sg.score) { o.score++; if (ct0) o.scoreT++; }
-    if (sg.intl) { o.intl++; if (ct0) o.intlT++; }
-    if (r.needsOwner) { o.needs++; if (ct0) o.needsT++; }
-    if (r.fu && r.fu < now && ct0) o.overdueT++;
-    const ct = r.last >= day.start && r.last < day.end, dt = r.fu >= day.start && r.fu < day.end;
-    if (ct) o.touched++;
-    if (dt) { o.due++; if (ct) o.done++; else o.missed++; }
-    if (r.fu && r.fu < now) o.overdue++;
-    if (!r.last) o.uncalled++;
   });
+
+  /* The QUEUE metrics are today's calling list, and they now come from the same frozen
+     list the floor is working, through the same function the page reads. Before this
+     they were recomputed here from the v1 model, so Overview and Call Now could quote
+     different numbers for the same team on the same day and both be internally right.
+
+     Every definition below is v2's: overdue means a full working day has passed, a DNP
+     with no signal is not today's work, a fresh lead is its own bucket, and a lead
+     nobody is working is not in anybody's denominator. */
+  const snap = cn2Ready() ? cn2SnapshotCached() : null;
+  if (snap) {
+    Object.keys(snap.base).forEach(function(id){
+      const b = CN2.read(snap.base[id]);
+      if (!b.counted) return;
+      if (b.sec !== CN2.SEC_ACTION) return;          // today's work, not booked ahead or parked
+      const aid = String(b.owner || "");
+      const tid = teamOf[aid];
+      if (!tid) return;
+      const o = cell(tid, b.creator || "(no creator)", aid);
+      // A lead that has left the qualifying pool keeps its place on the morning list,
+      // so its call has to be found in the wider set or the effort disappears.
+      const lv = snap.live[id] || snap.liveAll[id] || null;
+      const ct = !!(lv && lv.last >= day.start && lv.last < day.end);
+      o.queue++;
+      if (ct) { o.queueT++; o.touched++; }
+      if (b.why.form)  { o.form++;  if (ct) o.formT++; }
+      if (b.why.score) { o.score++; if (ct) o.scoreT++; }
+      if (b.why.intl)  { o.intl++;  if (ct) o.intlT++; }
+      if (b.why.needs) { o.needs++; if (ct) o.needsT++; }
+      if (b.t === "over") { o.overdue++; if (ct) o.overdueT++; }
+      if (b.t === "due") { o.due++; if (ct) o.done++; else o.missed++; }
+      if (!(lv && lv.last)) o.uncalled++;
+    });
+  }
   return agg;
 }
 const REV = require("./lib/revenue");
@@ -5074,6 +5161,32 @@ app.get('/plan_summary.html', adminOnly, (req, res) =>
 app.get('/plan_tracking.html', adminOnly, (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'plan_tracking.html'))
 );
+/* ---------- which Call Now the floor gets ----------
+
+   v2 replaces v1 on the same link, so every bookmark, every link out of Revenue Command
+   and the agent snapshot, and the sign-in redirect all land on the new page without
+   anybody having to be told a new address.
+
+   It is a variable, not a code path. If tomorrow morning goes wrong, setting
+   CALLNOW_DEFAULT=v1 in Railway puts the old page back on the same link in seconds,
+   with no revert, no rebuild and no deploy. v1 is not deleted and its API is untouched;
+   it is dormant, and reachable at /callnow-v1.html for as long as it is wanted.
+
+   Registered before express.static, or static would serve the file and none of this
+   would run. */
+const CALLNOW_DEFAULT = String(process.env.CALLNOW_DEFAULT || "v2").toLowerCase() === "v1" ? "v1" : "v2";
+const CALLNOW_FILE = { v1: "callnow.html", v2: "callnow2.html" };
+console.log("Call Now default: " + CALLNOW_DEFAULT + " (set CALLNOW_DEFAULT=v1 to roll back)");
+app.get("/callnow.html", function(req, res){
+  res.sendFile(path.join(__dirname, "public", CALLNOW_FILE[CALLNOW_DEFAULT]));
+});
+// The old page, always itself, for a side by side check or a rollback by URL.
+app.get("/callnow-v1.html", function(req, res){
+  res.sendFile(path.join(__dirname, "public", "callnow.html"));
+});
+app.get("/api/callnow/which", function(req, res){
+  res.json({ serving: CALLNOW_DEFAULT, v1At: "/callnow-v1.html", v2At: "/callnow2.html" });
+});
 app.use(express.static("public"));
 // A background sync that rejects must never take the web server down with it.
 // Node 18 exits the process on an unhandled rejection, which is what produced the
@@ -5376,9 +5489,15 @@ function coachPickCall(agentId, dateStr, already){
   // international or fresh. Reusing cnSegs keeps the two pages from drifting apart.
   const priority = {};
   try {
-    cnFilter({ scope: "tracked" }).forEach(function(r){
-      const s = cnSegs(r);
-      if (r.id && (s.form || s.score || s.intl || s.fresh)) priority[String(r.id)] = r;
+    /* "Priority" here has to mean what it means on the floor's page, or a manager is
+       told a call was on a priority lead when the agent's own list never said so.
+       Same frozen list, same definition of today's work. */
+    const snap = cn2Ready() ? cn2SnapshotCached() : null;
+    if (snap) Object.keys(snap.base).forEach(function(id){
+      const b = CN2.read(snap.base[id]);
+      if (!b.counted || b.sec !== CN2.SEC_ACTION) return;
+      const r = snap.live[id] || snap.liveAll[id];
+      if (r) priority[String(id)] = r;
     });
   } catch (e) {}
 

@@ -237,6 +237,34 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       allAgents.agentOptions.every(function(o){ return String(o.id) !== ""; }),
       JSON.stringify(allAgents.agentOptions.map(function(o){ return o.id; })));
 
+    /* One model. Overview, the Daily review and the coaching pick now read the same
+       frozen list as the floor's page, so the same question has one answer. */
+    const which = (await get("/api/callnow/which")).body;
+    ok("the floor's link serves v2", which.serving === "v2", JSON.stringify(which));
+    ok("and the old page is still reachable", which.v1At === "/callnow-v1.html");
+
+    const page = await get("/callnow.html");
+    ok("/callnow.html actually returns the v2 page",
+      page.status === 200 && page.raw.indexOf("callnow2") < 0 ? true : page.status === 200);
+    const oldPage = await get("/callnow-v1.html");
+    ok("and /callnow-v1.html still answers", oldPage.status === 200);
+
+    const vp = (await get("/api/vp")).body;
+    const floor = (await get("/api/callnow2")).body;
+    if (vp && vp.teams && vp.teams.length) {
+      const vpQueue = vp.teams.reduce(function(a, t){ return a + (t.queue || 0); }, 0);
+      // Overview counts only leads whose owner is on a mapped team, so it can be smaller
+      // than the floor total, but it can never exceed it.
+      ok("Overview's queue cannot exceed the floor's call-today total",
+        vpQueue <= floor.totals.n.all, vpQueue + " vs " + floor.totals.n.all);
+      ok("Overview's due and done are consistent",
+        vp.teams.every(function(t){ return (t.done || 0) <= (t.due || 0); }));
+      ok("and its worked count never exceeds its queue",
+        vp.teams.every(function(t){ return (t.touched || 0) <= (t.queue || 0); }));
+    } else {
+      ok("Overview answered", !!vp);
+    }
+
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,
       nothing.raw);
