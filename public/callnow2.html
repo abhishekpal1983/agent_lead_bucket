@@ -1030,6 +1030,9 @@ function boardView(){
     "Click any line to open those leads.</div><div class='board'>"+cards+"</div></div>";}
 
 function churnPanel(){
+  // A manager coaches on this; an agent should be working their list, not ranking
+  // themselves against it. Same reason they do not get the agent table.
+  if(J.scoped&&J.role==="agent")return "";
   if(!A||!A.agents||!A.agents.length)return "";
   var B=A.effortBands||J.effortBands;
   if(!B)return "";

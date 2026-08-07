@@ -312,8 +312,9 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("Lead churn effort") >= 0 && vp.indexOf("Agent 201") >= 0);
   ok("both readings are offered",
     vp.indexOf("By the agent who holds it") >= 0 && vp.indexOf("By anyone, in the stage") >= 0);
-  ok("an agent sees their own churn effort too",
-    agent.indexOf("Lead churn effort") >= 0);
+  ok("a manager gets churn effort", mgr.indexOf("Lead churn effort") >= 0);
+  ok("an agent does not, same as the agent table",
+    agent.indexOf("Lead churn effort") < 0 && agent.indexOf("calling list by agent") < 0);
   ok("attempt counts on a lead row are colour banded",
     vp.indexOf("counting every agent") >= 0 && vp.indexOf("this agent only") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",
