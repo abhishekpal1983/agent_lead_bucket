@@ -263,6 +263,21 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       oldPage.body.indexOf("Where the effort is going") < 0 &&
       oldPage.body.indexOf("exportCsv") >= 0, "status " + oldPage.status);
 
+    /* Agents get the swap too, or the floor is split across two pages.
+       Auth is off under fixtures, so these assert the gate's own allow list and the
+       ordering that makes the swap route win over the static file. */
+    const src = require("fs").readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    const allowAt = src.indexOf('const allowed = ["/callnow.html"');
+    ok("an agent is allowed onto the page the swap serves", allowAt > 0);
+    ok("and the root still sends them there", src.indexOf('if (p === "/") return res.redirect("/callnow.html")') > 0);
+    ok("and so does signing in", src.indexOf('res.redirect("/callnow.html")') > 0);
+    ok("the old page is not on an agent's allow list, so they cannot land on a dead one",
+      src.slice(allowAt, allowAt + 200).indexOf("callnow-v1") < 0);
+    ok("the swap route is registered before express.static, or the file would win",
+      src.indexOf('app.get("/callnow.html"') < src.indexOf('app.use(express.static("public"))'));
+    ok("rebuilding and relocking the list stay closed to everyone but a VP",
+      (src.match(/Call Now v2 is restricted/g) || []).length === 2);
+
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;
     if (vp && vp.teams && vp.teams.length) {
