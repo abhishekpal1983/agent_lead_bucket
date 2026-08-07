@@ -134,3 +134,31 @@ this moment. It is for a list that was captured wrongly, not for daily use.
 
 Each of these appears as its own line in **Check what is outside**, so every call HubSpot
 recorded today is accounted for rather than argued about.
+
+---
+
+## 8. Who gets the revenue
+
+**A payment follows the agent, not the creator.**
+
+Revenue Command counts a payment for the manager who has that **agent** mapped under him.
+The creator mapping decides one thing only: whose **target** a creator sits against.
+
+So if an agent on Priya's team books a sale for a creator mapped to Rahul:
+
+| | Priya (owns the agent) | Rahul (owns the creator) |
+|---|---|---|
+| The money | Counted here | Not counted |
+| The creator target | Untouched | Untouched, still Rahul's |
+| Where it shows | A single **Creators mapped to another team** row at the foot of Priya's creator list, with no target and a blank gap column | Nowhere |
+
+Expanding that row shows which agent did it, and hovering it lists the creators involved.
+
+Before 7 Aug 2026 this revenue landed on nobody. The aggregate is bucketed by the agent's
+team, so it could never reach Rahul, and a filter that only kept mapped creators removed it
+from Priya. The floor total quietly undershot the payment sheet by that amount. The rule is
+now pinned by `test/revenue.test.js`.
+
+The one case that is still counted nowhere is a payment booked by an agent who belongs to no
+team at all. That is a mapping gap rather than a rule, and it is called out by name in
+**Revenue not counted** on the Revenue Command page.

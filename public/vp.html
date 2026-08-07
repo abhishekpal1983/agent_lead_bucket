@@ -108,6 +108,7 @@ table.rt td:first-child,table.rt th:first-child{text-align:left}
 tr.clik{cursor:pointer}
 tr.clik:hover td{background:#F4F7FA}
 tr.sub td{background:#FAFCFE;font-size:13px}
+tr.offmap td{background:#FFF8EC;border-top:1px solid #F0DCB8}
 tr.sub2 td{background:#F2F6FA;font-size:12.5px}
 .car{display:inline-block;width:13px;color:#6B7A8A;font-weight:600}
 .mlink{color:#0A2540;font-weight:600;text-decoration:none;border-bottom:1px dashed #9DB2C6}
@@ -1028,6 +1029,39 @@ function saveCreatorTarget(u, el){
   }).catch(function(){ el.disabled = false; });
 }
 function togc(tid, u){ var k = tid + "||" + u; OPENC[k] = !OPENC[k]; draw(); }
+/* Revenue booked by this team's agents for creators that sit on someone else's map.
+   It counts here because the agent is coached here. It has no target, because the
+   target lives with whoever the creator is mapped to, so the gap column stays blank
+   rather than inventing a shortfall. */
+function offmapRow(t, c, open){
+  var names = (c.creators || []).join(", ");
+  var h = "<tr class='sub clik offmap' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
+    "<td style='padding-left:26px'><span class='car'>" + (open ? "\u25be" : "\u25b8") + "</span>" +
+    "<span class='pill a'>off map</span> " + esc(c.u) +
+    (names ? "<div class='mut' style='font-size:11px;padding-left:14px' title='" + esc(names) + "'>" +
+      esc(names.length > 90 ? names.slice(0, 90) + "\u2026" : names) + "</div>" : "") + "</td>" +
+    "<td class='n'><b>" + inr(c.revenue) + "</b><div><span class='mut' style='font-size:12px'>counted here, target sits with the mapped team</span></div></td>" +
+    "<td class='n mut'>\u2013</td>" +
+    "<td class='n'>" + fmt(c.enrolments) + "</td>" +
+    "<td class='n'>" + fmt(c.counsellings || 0) + "</td>" +
+    "<td class='n'>" + (c.counsellings ? (Math.round(1000 * c.enrolments / c.counsellings) / 10) + "%" : "<span class='mut'>\u2013</span>") + "</td>" +
+    "<td class='n'>" + fmt(c.queue) + "</td>" + todayCell(c) + backlogCell(c) +
+    "<td class='n mut'>\u2013</td></tr>";
+  if (open) {
+    if (!c.agents.length) h += "<tr class='sub2'><td colspan='10' style='padding-left:48px' class='mut'>No agent activity.</td></tr>";
+    c.agents.forEach(function(a){
+      h += "<tr class='sub2'><td style='padding-left:48px'>" + esc(a.name) +
+        (a.active ? "" : " <span class='pill a'>inactive</span>") + "</td>" +
+        "<td class='n'>" + inr(a.revenue) + "</td><td class='n mut'>\u2013</td>" +
+        "<td class='n'>" + fmt(a.enrolments) + "</td>" +
+        "<td class='n'>" + fmt(a.counsellings || 0) + "</td>" +
+        "<td class='n'>" + (a.counsellings ? (Math.round(1000 * a.enrolments / a.counsellings) / 10) + "%" : "<span class='mut'>\u2013</span>") + "</td>" +
+        "<td class='n'>" + fmt(a.queue) + "</td>" + todayCell(a) + backlogCell(a) +
+        "<td class='n mut'>\u2013</td></tr>";
+    });
+  }
+  return h;
+}
 function creatorRows(t){
   var h = "";
   if (!t.creatorRows.length) {
@@ -1035,6 +1069,7 @@ function creatorRows(t){
   }
   t.creatorRows.forEach(function(c){
     var k = t.id + "||" + c.u, open = !!OPENC[k];
+    if (c.offmap) { h += offmapRow(t, c, open); return; }
     var gap = c.target ? Math.round(c.revenue - c.target * (J.dayOfMonth / J.daysInMonth)) : null;
     h += "<tr class='sub clik' onclick=\"togc('" + t.id + "','" + esc(c.u).replace(/'/g, "\\'") + "')\">" +
       "<td style='padding-left:26px'><span class='car'>" + (open ? "▾" : "▸") + "</span>" + esc(c.u) + "</td>" +

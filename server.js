@@ -3941,8 +3941,9 @@ function vpAggregate(month){
   });
   return agg;
 }
-function zero(){ return { revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0, churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0, form: 0, score: 0, intl: 0, needs: 0, counsToday: 0, queueT: 0, formT: 0, scoreT: 0, intlT: 0, needsT: 0, overdueT: 0 }; }
-function addInto(a, b){ Object.keys(b).forEach(function(k){ if (typeof b[k] === "number") a[k] = (a[k] || 0) + b[k]; }); return a; }
+const REV = require("./lib/revenue");
+function zero(){ return REV.zero(); }
+function addInto(a, b){ return REV.addInto(a, b); }
 
 // Revenue booked in the last 7 days against the 7 before, for the teams in scope.
 /* Last month, truncated to the same day of month.
@@ -4129,26 +4130,16 @@ app.get("/api/vp", function(req, res){
     const byCreator = agg[team.id] || {};
     const totals = zero();
     const agentTouched = {};
-    const mappedOnly = (team.creators || []);
-    const creatorRows = Object.keys(byCreator).filter(function(cu){ return mappedOnly.indexOf(cu) >= 0; }).map(function(cu){
-      const perAgent = byCreator[cu];
-      const ctot = zero();
-      const agents = Object.keys(perAgent).map(function(aid){
-        const o = CACHE.owners[aid] || {};
-        if (perAgent[aid].touched > 0) agentTouched[aid] = 1;
-        addInto(ctot, perAgent[aid]);
-        return Object.assign({ id: aid, name: o.name || ("Owner " + aid), email: o.email || "", active: o.active !== false }, perAgent[aid]);
-      }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
-      addInto(totals, ctot);
-      const ct = (t.creators || {})[cu] || {};
-      return Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: agents }, ctot);
-    }).sort(function(a, b){ return b.revenue - a.revenue || b.queue - a.queue; });
-    (team.creators || []).forEach(function(cu){
-      if (!byCreator[cu]) {
-        const ct = (t.creators || {})[cu] || {};
-        creatorRows.push(Object.assign({ u: cu, target: num(ct.revenue), mapped: true, agents: [] }, zero()));
-      }
+    const R = REV.teamRows({
+      byCreator: byCreator,
+      mapped: team.creators || [],
+      targetOf: function(cu){ return num(((t.creators || {})[cu] || {}).revenue); },
+      ownerOf: function(aid){ return CACHE.owners[aid] || {}; }
     });
+    const creatorRows = R.creatorRows;
+    addInto(totals, R.totals);
+    Object.keys(R.agentTouched).forEach(function(id){ agentTouched[id] = 1; });
+
     // one row per agent, summed across the creators in this team
     const am = {};
     creatorRows.forEach(function(c){
@@ -4175,7 +4166,7 @@ app.get("/api/vp", function(req, res){
         const o = CACHE.owners[id] || {};
         return { id: id, name: o.name || ("Owner " + id), email: o.email || "", active: o.active !== false };
       }),
-      creatorRows: creatorRows, agentRows: agentRows,
+      creatorRows: creatorRows, agentRows: agentRows, offmap: R.offmap,
       activeAgents: Object.keys(agentTouched).length,
       target: target, targetEnrolments: num(tg.enrolments), targetCounsellings: num(tg.counsellings),
       paceTarget: Math.round(paceTarget),
