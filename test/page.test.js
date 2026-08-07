@@ -281,7 +281,17 @@ console.log("\nRole specific things appear only where they should");
     // against that one compares two different tables.
     const q = vp.slice(vp.indexOf("Call queue"));
     const phone = q.indexOf("Phone"), stage = q.indexOf("<th>Stage</th>");
-    ok("in the queue, phone and WhatsApp come before the stage",
+    ok("queue columns can be sorted", vp.indexOf("class='sortable") >= 0 && vp.indexOf("sortBy(") >= 0);
+  ok("the agent table can be sorted too", vp.indexOf("aSort(") >= 0);
+  ok("churn colour is strong enough to read, not a hint",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf("tr.b-low td{background:#FBE4DE") >= 0);
+  ok("all four bands are coloured, not just the extremes",
+    ["b-low", "b-avg", "b-bench", "b-high"].every(function(c){
+      return html.indexOf("tr." + c + " td{background") >= 0; }));
+  ok("the VP block lays out in columns rather than full width stacks",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".vpblock{display:grid") >= 0);
+  ok("wide panels span both columns", vp.indexOf("sec mini span2") >= 0);
+  ok("in the queue, phone and WhatsApp come before the stage",
       phone >= 0 && stage >= 0 && phone < stage, "phone " + phone + ", stage " + stage);
   }
   ok("WhatsApp is a styled button, not plain text",

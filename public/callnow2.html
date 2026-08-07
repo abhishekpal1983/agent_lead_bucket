@@ -222,15 +222,41 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
 .wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
 .wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
-.wrap .vpblock{margin-bottom:13px}
+/* Two columns, because a short note and a six row table each taking the full width of a
+   1,880px screen is most of the page spent on nothing. The wide tables span both. */
+.wrap .vpblock{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:12px !important;align-items:start !important;margin-bottom:13px !important}
+.wrap .vpblock > *{margin-bottom:0 !important}
+.wrap .vpblock > .span2{grid-column:1 / -1 !important}
+@media (max-width:1200px){ .wrap .vpblock{grid-template-columns:1fr !important} }
+/* Filters spread across the width instead of huddling on the left. */
+.wrap .top .bar{display:grid !important;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important;
+  gap:10px !important;align-items:end !important}
+.wrap .top .bar > div{min-width:0}
+.wrap .top .bar select{width:100% !important;min-width:0 !important}
+.wrap .top .bar .chips{grid-column:1 / -1}
+.wrap .top{grid-template-columns:1fr !important}
 @media (max-width:1100px){ .wrap .herorow{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
 /* Churn band, read straight off the row: attempts in this stage by the agent holding it. */
-.wrap tr.b-low td:first-child{box-shadow:inset 3px 0 0 #C0492A}
-.wrap tr.b-avg td:first-child{box-shadow:inset 3px 0 0 #B8791A}
-.wrap tr.b-bench td:first-child{box-shadow:inset 3px 0 0 #0A7C63}
-.wrap tr.b-high td:first-child{box-shadow:inset 3px 0 0 #6D4AC4}
-.wrap tr.b-low td{background:#FEF7F5}
-.wrap tr.b-high td{background:#F8F6FD}
+/* Strong enough to read at a glance down a long list. A tint you have to look for is a
+   tint nobody uses. */
+.wrap tr.b-low td{background:#FBE4DE !important}
+.wrap tr.b-avg td{background:#FBEED6 !important}
+.wrap tr.b-bench td{background:#DCEFE6 !important}
+.wrap tr.b-high td{background:#E6DEF8 !important}
+.wrap tr.b-low td:first-child{box-shadow:inset 4px 0 0 #C0492A}
+.wrap tr.b-avg td:first-child{box-shadow:inset 4px 0 0 #B8791A}
+.wrap tr.b-bench td:first-child{box-shadow:inset 4px 0 0 #0A7C63}
+.wrap tr.b-high td:first-child{box-shadow:inset 4px 0 0 #6D4AC4}
+.wrap tr.rowlink:hover td{filter:brightness(.97)}
+.wrap tr.done td{opacity:.72}
+/* Sortable headers */
+.wrap th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.wrap th.sortable:hover{color:#0091AE !important}
+.wrap th.sortable .ar{opacity:.35;margin-left:3px;font-size:9px}
+.wrap th.sortable.on{color:#0091AE !important}
+.wrap th.sortable.on .ar{opacity:1}
 .wrap a.wa{background:#15A34A !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;
   padding:2px 7px !important;border-radius:4px !important;text-decoration:none !important;display:inline-block !important}
 .wrap a.wa:hover{background:#0E8038 !important}
@@ -329,7 +355,7 @@ tr.done td a{color:#4A5A6A}
 </div>
 <script>
 
-var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="";
+var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function fmt(n){return (n||0).toLocaleString("en-IN");}
@@ -593,16 +619,47 @@ function queueView(){
     "<button class='chipb"+(PICK.worked==="1"?" on":"")+"' onclick='PICK.worked=\"1\";loadLeads()'>Called today</button>"+
     "<button class='chipb"+(PICK.worked===""?" on":"")+"' onclick='PICK.worked=\"\";loadLeads()'>All</button>"+
     "<input type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' oninput='LQ=this.value;draw()' style='min-width:200px'>"+
+    (SORT.k?"<button class='chipb on' onclick='clearSort()'>Sorted by "+esc(SORT.k)+", clear</button>":"")+
     "<button class='chipb' onclick='unpick()'>Close</button></div>";
   var q=String(LQ||"").toLowerCase();
   var rows=q?L.rows.filter(function(r){
     return (r.name+" "+r.creator+" "+r.ownerName).toLowerCase().indexOf(q)>=0;}):L.rows.slice();
   // Already called sinks to the bottom: the top of the list is always what is left.
-  rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
+  // Sorting a column overrides that, because then you asked for a different order.
+  if(SORT.k){
+    var pick=function(r){
+      switch(SORT.k){
+        case "name": return String(r.name||"").toLowerCase();
+        case "phone": return String(r.phone||"");
+        case "stage": return String(STAGE_LABEL[r.openStage]||r.openStage||"");
+        case "owner": return String(r.ownerName||"").toLowerCase();
+        case "creator": return String(r.creator||"").toLowerCase();
+        case "fu": return r.fu||Infinity;
+        case "last": return r.last||0;
+        case "calls": return r.calls||0;
+        case "own": return r.own||0;
+        case "days": return r.stageEntered||0;
+        default: return 0;
+      }};
+    rows.sort(function(a,b){
+      var x=pick(a),y=pick(b);
+      if(x<y)return -SORT.d; if(x>y)return SORT.d; return 0;});
+  } else {
+    rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
+  }
+  var COLDEF=[["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
+    ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],
+    ["owner","Agent this morning",1],["creator","Creator",1],
+    ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
   h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
-    "<th></th><th>#</th><th>Lead</th><th class='n'>Phone</th><th></th><th>Stage</th><th>Why call</th>"+
-    "<th>Follow-up</th><th>Last call</th><th>Agent this morning</th><th>Creator</th>"+
-    "<th class='n'>Calls</th><th class='n'>By owner</th><th class='n'>Days</th></tr></thead><tbody>";
+    COLDEF.map(function(c,i){
+      var num=i>=11||i===3;
+      if(!c[2])return "<th"+(num?" class='n'":"")+">"+esc(c[1])+"</th>";
+      var on=SORT.k===c[0];
+      return "<th class='sortable"+(num?" n":"")+(on?" on":"")+"' onclick='sortBy("+
+        JSON.stringify(c[0]).replace(/"/g,"&quot;")+")'>"+esc(c[1])+
+        "<span class='ar'>"+(on?(SORT.d>0?"\u25b2":"\u25bc"):"\u21c5")+"</span></th>";
+    }).join("")+"</tr></thead><tbody>";
   rows.forEach(function(r,i){
     var digits=String(r.phone||"").replace(/[^0-9]/g,"");
     var moved=r.movedStage?"<div class='sub3'>now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>":"";
@@ -678,6 +735,10 @@ function toggleCard(i){
   var open=!b.hasAttribute("hidden");
   if(open)b.setAttribute("hidden",""); else b.removeAttribute("hidden");
   x.textContent=open?"+":"−";}
+function sortBy(k){
+  if(SORT.k===k)SORT.d=-SORT.d; else {SORT.k=k;SORT.d=1;}
+  draw();}
+function clearSort(){ SORT={k:"",d:1}; draw(); }
 function pickLead(id){ SEL=(SEL===id?"":id); draw(); }
 function closeLead(){ SEL=""; draw(); }
 
@@ -729,7 +790,7 @@ function creatorPanel(){
   var lower={};
   list.forEach(function(c){var k=String(c).toLowerCase();lower[k]=(lower[k]||0)+1;});
   var dupes=Object.keys(lower).filter(function(k){return lower[k]>1;});
-  var h="<div class='sec mini'><h2>Tracked creators "+
+  var h="<div class='sec mini span2'><h2>Tracked creators "+
     "<button class='btn' style='float:right' onclick='loadOutside(1)'>"+
     (OUTBUSY?"Checking...":"Check what is outside")+"</button></h2>"+
     "<div class='sub'>This list scopes the whole page. A lead whose creator is not here is invisible to every "+
@@ -795,7 +856,7 @@ function loadRec(){
 // Every difference between the two pages, as a number and a sentence, before anyone's
 // targets depend on it.
 function reconcile(){
-  var h="<div class='sec mini'><h2>Call Now v1 against v2 "+
+  var h="<div class='sec mini span2'><h2>Call Now v1 against v2 "+
     "<button class='btn' style='float:right' onclick='loadRec()'>"+
     (RECBUSY?"Checking...":(REC?"Re-check":"Compare now"))+"</button></h2>"+
     "<div class='sub'>Both sides counted from the same pool in the same request, so no gap can be blamed on timing. "+
@@ -881,7 +942,7 @@ function qualityPanel(){
   var c=J.checks;
   if(!c)return "";
   var d=J.drift;
-  var h="<div class='sec mini'><h2>Data quality "+
+  var h="<div class='sec mini span2'><h2>Data quality "+
     "<span class='tag "+(c.ok?"s":"o")+"' style='margin-left:6px'>"+(c.ok?"all clear":"failing")+"</span></h2>"+
     "<div class='sub'>These run on every build of this page, not when someone remembers to check. "+
     "A number that is quietly wrong is worse than a page that is visibly broken.</div>"+
@@ -1014,6 +1075,13 @@ function churnPanel(){
       "<td class='n'><b class='"+flag+"'>"+pc+"%</b></td></tr>";}).join("");
   return h+"</tbody></table></div></div>";}
 
+var ASORT={k:"",d:1};
+function aHead(k,label,cls){
+  var on=ASORT.k===k;
+  return "<th class='"+cls+" sortable"+(on?" on":"")+"' onclick='aSort("+
+    JSON.stringify(k).replace(/"/g,"&quot;")+")'>"+esc(label)+
+    "<span class='ar'>"+(on?(ASORT.d>0?"\u25b2":"\u25bc"):"\u21c5")+"</span></th>";}
+function aSort(k){ if(ASORT.k===k)ASORT.d=-ASORT.d; else {ASORT.k=k;ASORT.d=1;} draw(); }
 function agentTable(){
   if(!A||!A.agents||!A.agents.length)return "";
   var mx=0; A.agents.forEach(function(a){ if(a.n.all>mx)mx=a.n.all; });
@@ -1026,11 +1094,25 @@ function agentTable(){
   var h="<div class='sec mini'><h2>Today's calling list by agent</h2>"+
     "<div class='sub'>Every lead on today's list, split by whoever held it this morning. Click a row to scope the whole page to that agent. "+
     "Rows marked <b>not counted</b> are parking buckets, shown for visibility but left out of every total above.</div>"+
-    "<div class='tw scrolly'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
-    "<th class='n gA edge'>Due today</th><th class='n gA'>Overdue</th><th class='n gA'>No FU</th><th class='n gA'>Fresh</th>"+
-    "<th class='n gB edge'>Form</th><th class='n gB'>Score</th><th class='n gB'>Intl</th><th class='n gB'>Refilled</th>"+
-    "<th class='n'>Called</th><th class='n'>Booked later</th><th class='n'>DNP</th></tr></thead><tbody>";
+    "<div class='tw scrolly'><table><thead><tr>"+
+    aHead("name","Agent","")+aHead("all","Call today","n")+
+    aHead("due","Due today","n gA edge")+aHead("over","Overdue","n gA")+aHead("nofu","No FU","n gA")+
+    aHead("newlead","Fresh","n gA")+
+    aHead("form","Form","n gB edge")+aHead("score","Score","n gB")+aHead("intl","Intl","n gB")+
+    aHead("refill","Refilled","n gB")+
+    aHead("called","Called","n")+aHead("later","Booked later","n")+aHead("dnp","DNP","n")+
+    "</tr></thead><tbody>";
   var pill=function(v,cls){ return v?"<span class='pill"+(cls||"")+"'>"+fmt(v)+"</span>":"<span class='z'>0</span>"; };
+  if(ASORT.k){
+    var av=function(a){
+      if(ASORT.k==="name")return String(a.name||"").toLowerCase();
+      if(ASORT.k==="called")return a.n.dueW||0;
+      if(ASORT.k==="later")return a.a.all||0;
+      if(ASORT.k==="dnp")return a.d.all||0;
+      return a.n[ASORT.k]||0;};
+    list=list.slice().sort(function(x,y){
+      var p=av(x),q=av(y); if(p<q)return -ASORT.d; if(p>q)return ASORT.d; return 0;});
+  }
   list.forEach(function(a){
     var w=mx?Math.round(56*a.n.all/mx):0;
     var miss=a.n.due-a.n.dueW;
