@@ -27,6 +27,17 @@ function get(p){
     req.on("error", reject);
   });
 }
+function getText(p){
+  return new Promise(function(resolve, reject){
+    const req = http.get({ host: "127.0.0.1", port: PORT, path: p, timeout: 20000 }, function(res){
+      let d = "";
+      res.on("data", function(c){ d += c; });
+      res.on("end", function(){ resolve({ status: res.statusCode, body: d }); });
+    });
+    req.on("timeout", function(){ req.destroy(new Error("timed out")); });
+    req.on("error", reject);
+  });
+}
 const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
 
 (async function(){
@@ -243,11 +254,14 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("the floor's link serves v2", which.serving === "v2", JSON.stringify(which));
     ok("and the old page is still reachable", which.v1At === "/callnow-v1.html");
 
-    const page = await get("/callnow.html");
-    ok("/callnow.html actually returns the v2 page",
-      page.status === 200 && page.raw.indexOf("callnow2") < 0 ? true : page.status === 200);
-    const oldPage = await get("/callnow-v1.html");
-    ok("and /callnow-v1.html still answers", oldPage.status === 200);
+    // Assert on something only the new page has, not on the status code.
+    const page = await getText("/callnow.html");
+    ok("/callnow.html serves the v2 page", page.status === 200 &&
+      page.body.indexOf("Where the effort is going") >= 0, "status " + page.status);
+    const oldPage = await getText("/callnow-v1.html");
+    ok("/callnow-v1.html still serves the old one", oldPage.status === 200 &&
+      oldPage.body.indexOf("Where the effort is going") < 0 &&
+      oldPage.body.indexOf("exportCsv") >= 0, "status " + oldPage.status);
 
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;
