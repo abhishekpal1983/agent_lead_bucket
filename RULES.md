@@ -255,6 +255,13 @@ Its stage row, its group and its timing stay exactly as written at 00:05.
 its agent is deactivated at noon. A denominator that can shrink can be gamed, so it cannot
 shrink.
 
+**A list written before this rule is corrected once, on read.** Locks taken before 7 August
+2026 counted leads held by an agent who had already left. Those are put back out of the
+totals the first time the list is read, so a day captured under the old behaviour reports
+the same numbers as one captured under the new. It fires only where the morning list already
+recorded that nobody was working the lead, so it can never demote a lead whose agent was
+working at midnight. From the next lock it does nothing.
+
 **Parking buckets are not part of this.** They have a real, working owner and were never
 asking to be routed, so handing one out mid-day does not promote it. That keeps a manager
 from collapsing the floor's coverage by distributing three hundred leads at 5pm. Calls on

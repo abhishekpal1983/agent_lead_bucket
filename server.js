@@ -2392,7 +2392,9 @@ async function cn2Build(force){
         if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
         // Shown but not counted, exactly as v1 treats them. Filtering them out entirely
         // made unassigned leads and every parking bucket invisible rather than excluded.
-        r.counted = ownerCounted(r.owner);
+        // Rule 11: a parking bucket, nobody at all, or an owner who has left. All three
+        // are shown and none of them counted, because nobody is working the lead.
+        r.counted = cn2Countable(r.owner);
         out.push(r); live[r.id] = r;
       }
       // Hand the process back often enough that health checks and every other page
@@ -2414,7 +2416,7 @@ function cn2Rows(){
   if (CN2_FIXTURE_DATA) {
     const day = CN2.dayBoundsFor(cn2Now());
     return CN2_FIXTURE_DATA.rows.map(function(r){
-      if (r.counted === undefined) r.counted = ownerCounted(r.owner);
+      if (r.counted === undefined) r.counted = cn2Countable(r.owner);
       return r;
     }).filter(function(r){
       if (CN2_STAGES.indexOf(r.stage) < 0) return false;
@@ -2535,6 +2537,10 @@ function cn2Context(req){
      has left, joins the totals the moment a working agent takes it, and the credit goes
      to that agent. Applied before any filter, so the drill behind a cell always matches
      the cell. Never the other way round: nothing already counted is ever taken out. */
+  // Correct first, then promote: a lead stranded with an agent who had already left
+  // leaves the totals, and rejoins them the moment somebody working takes it.
+  const corr = CN2.correctBase(base, { countable: cn2Countable });
+  base = corr.base;
   const prom = CN2.promoteBase(base, liveAll, { countable: cn2Countable });
   base = prom.base;
   // The whole list before any filter or role scope is applied. The assignment pool is
@@ -2609,7 +2615,7 @@ function cn2Context(req){
     });
   }
   return { day: day, base: base, baseAll: baseAll, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
-    promoted: prom.promoted,
+    promoted: prom.promoted, corrected: corr.corrected,
     names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
 }
@@ -2667,7 +2673,7 @@ app.get("/api/callnow2", function(req, res){
     baseSize: Object.keys(ctx.base).length,
     // Leads routed to a working agent since the list was written. The denominator can
     // only grow, and only by this, so it is reported rather than left to be noticed.
-    promoted: ctx.promoted,
+    promoted: ctx.promoted, corrected: ctx.corrected,
     agentOptions: Object.keys(agents).map(function(id){
       return { id: id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),

@@ -395,6 +395,15 @@ console.log("\nRole specific things appear only where they should");
   ok("a VP is not shown the same card twice",
     (vp.match(/Shown but not counted/g) || []).length === 1 &&
     (vp.match(/>Call Now v1 against v2/g) || []).length <= 1);
+  ok("each card in the summary block carries its own colour",
+    ["ac-list", "ac-move", "ac-held", "ac-pool", "ac-eff", "ac-churn", "ac-agent"]
+      .every(function(c){ return html.indexOf(".wrap .sec.mini." + c + "{border-top-color") >= 0; }));
+  ok("and the cards actually wear the class", vp.indexOf("sec mini ac ac-move") >= 0 &&
+    vp.indexOf("sec mini ac ac-held") >= 0 && vp.indexOf("sec mini ac ac-pool") >= 0);
+  ok("the accents are defined after theme.css, or they never take effect",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .sec.mini.ac-pool") >= 0);
+  ok("a half width card sizes its table to its own content, so no column falls off",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .vpcol .sec.mini table{table-layout:auto") >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);

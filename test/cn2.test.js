@@ -256,5 +256,44 @@ head("Lead source survives the pack, and an older locked list still parses");
   ok("and it no longer sits in the needs-owner column", agg.totals.n.needs === 0);
 }
 
+
+/* ---- a lead stranded with an agent who has left ----------------------------------
+   Nobody is working it, so nobody can be measured on it. It leaves the totals, stays
+   visible, and comes back the moment somebody working takes it. */
+{
+  const mk = function(o){
+    return cn2.pack(Object.assign({ stage: "counselled", sec: "n", t: "nofu",
+      why: { needs: false }, owner: "10", creator: "c1", source: "", counted: true }, o));
+  };
+  const countable = function(id){ return id === "10"; };   // 98 has left, 99 is a bucket
+
+  let r = cn2.correctBase({ L: mk({ owner: "98", why: { needs: true }, counted: true }) }, { countable: countable });
+  ok("a lead left behind by a departed agent stops counting", cn2.read(r.base.L).counted === false);
+  ok("and the correction is reported", r.corrected === 1);
+  ok("it keeps its owner, so the pile is still visible", cn2.read(r.base.L).owner === "98");
+  ok("and it still asks to be routed", cn2.read(r.base.L).why.needs === true);
+
+  r = cn2.correctBase({ L: mk({ owner: "10" }) }, { countable: countable });
+  ok("a lead with a working agent is untouched", cn2.read(r.base.L).counted === true && r.corrected === 0);
+
+  // The narrow part: only where the morning list already knew nobody was working it.
+  r = cn2.correctBase({ L: mk({ owner: "98", why: { needs: false }, counted: true }) }, { countable: countable });
+  ok("an agent who was working at midnight and left at noon does not demote the lead",
+    cn2.read(r.base.L).counted === true && r.corrected === 0);
+
+  r = cn2.correctBase({ L: mk({ owner: "98", why: { needs: true }, counted: false }) }, { countable: countable });
+  ok("a lead already out of the totals is not corrected twice", r.corrected === 0);
+
+  const store = { L: mk({ owner: "98", why: { needs: true }, counted: true }) };
+  cn2.correctBase(store, { countable: countable });
+  ok("the stored list is never rewritten", typeof store.L === "string");
+
+  // Correct, then promote: stranded this morning, routed at noon, counts for the taker.
+  const c1 = cn2.correctBase({ L: mk({ owner: "98", why: { needs: true }, counted: true }) }, { countable: countable });
+  const p1 = cn2.promoteBase(c1.base, { L: { owner: "10" } }, { countable: countable });
+  ok("a stranded lead routed to a working agent counts again", cn2.read(p1.base.L).counted === true);
+  ok("and counts for the agent who took it", cn2.read(p1.base.L).owner === "10");
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

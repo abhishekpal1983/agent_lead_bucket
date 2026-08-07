@@ -220,6 +220,31 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap tr:hover td.bd-high{background:#EDE9FE}
 .wrap tr.sub2 td{background:#FBFCFE}
 .wrap tr.sub2 td:first-child{padding-left:26px !important;font-size:12px !important}
+
+/* ---- cards in the two-column block ------------------------------------------------
+   Half the width, so the fixed 200px first column and fixed table layout pushed the last
+   column off the edge and the reader lost the one that mattered. Inside a column the
+   table sizes to its own content and the long note wraps instead of scrolling away. */
+.wrap .vpcol .sec.mini table{table-layout:auto !important}
+.wrap .vpcol .sec.mini th:first-child,.wrap .vpcol .sec.mini td:first-child{width:auto !important;min-width:0 !important}
+.wrap .vpcol .sec.mini td,.wrap .vpcol .sec.mini th{padding:4px 8px !important;white-space:normal !important}
+.wrap .vpcol .sec.mini td.n,.wrap .vpcol .sec.mini th.n{white-space:nowrap !important}
+.wrap .vpcol .tw{overflow-x:hidden !important}
+
+/* ---- a colour per card ------------------------------------------------------------
+   Six cards of identical white made the block one grey wall. Each now carries a rule in
+   its own hue and a heading to match, so a manager finds the card they want by colour
+   before they read a word. The hues are the page's existing meanings, not new ones. */
+.wrap .sec.mini.ac{border-top-width:3px !important;border-top-style:solid !important}
+.wrap .sec.mini.ac h2{display:flex;align-items:center;gap:7px}
+.wrap .sec.mini.ac h2:before{content:"";width:3px;height:13px;border-radius:2px;background:currentColor;flex:0 0 auto}
+.wrap .sec.mini.ac-list{border-top-color:#3B63E0 !important}   .wrap .sec.mini.ac-list h2{color:#2B49B0 !important}
+.wrap .sec.mini.ac-move{border-top-color:#2F7DA8 !important}   .wrap .sec.mini.ac-move h2{color:#1E5B7E !important}
+.wrap .sec.mini.ac-held{border-top-color:#C98A2E !important}   .wrap .sec.mini.ac-held h2{color:#7A4A08 !important}
+.wrap .sec.mini.ac-pool{border-top-color:#2E9E7A !important}   .wrap .sec.mini.ac-pool h2{color:#0A5346 !important}
+.wrap .sec.mini.ac-eff{border-top-color:#6D4BD8 !important}    .wrap .sec.mini.ac-eff h2{color:#4B2E9E !important}
+.wrap .sec.mini.ac-churn{border-top-color:#C25A3C !important}  .wrap .sec.mini.ac-churn h2{color:#8C2D12 !important}
+.wrap .sec.mini.ac-agent{border-top-color:#7A8CA0 !important}  .wrap .sec.mini.ac-agent h2{color:#3F5163 !important}
 .wrap .st,.wrap .tag{padding:1px 6px !important;font-size:10.5px !important;font-weight:600 !important}
 .wrap .sec{padding:12px 14px !important}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
@@ -546,6 +571,31 @@ function promote(c, cur, opts){
     counted: true, owner: String(cur.owner), promoted: true,
     why: Object.assign({}, c.why, { needs: false })
   });
+}
+
+/* A lead whose owner had already left when the list was written should never have been
+   counted: nobody was working it, so nobody can be measured on it. Rule 11.
+
+   Locks written before that rule was implemented still carry `counted: true` on those
+   leads. This corrects them on read, so a list captured under the old behaviour reports
+   the same numbers as one captured under the new. From the next lock it is a no-op.
+
+   It is deliberately narrow. It fires ONLY where the morning list already recorded that
+   nobody was working the lead. A lead held by a working agent at 00:05 whose agent is
+   deactivated at noon is never demoted, because a denominator that shrinks during the
+   day for reasons outside an agent's control is worse than one that is slightly wrong. */
+function correctBase(base, opts){
+  const countable = (opts && opts.countable) || function(){ return true; };
+  const out = {};
+  let corrected = 0;
+  Object.keys(base).forEach(function(id){
+    const c = read(base[id]);
+    // needs was set at 00:05: nobody was working this lead when the list was written.
+    if (!c.counted || !c.why.needs || !c.owner || countable(c.owner)) { out[id] = base[id]; return; }
+    corrected++;
+    out[id] = Object.assign({}, c, { counted: false });
+  });
+  return { base: out, corrected: corrected };
 }
 
 /* Applied once, before anything filters or counts, so every number on the page and
@@ -1080,7 +1130,7 @@ function totRow(label,cells,secKey,cls){
   return h+"</tr>";}
 function baseNote(){
   if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
-  return "<div class='sec mini'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
+  return "<div class='sec mini ac ac-list'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
     new Date(J.frozenAt).toLocaleString("en-IN")+"</b> with "+fmt(J.baseSize)+
     " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning."+
     // The one thing allowed to move, and only upward. Stated on the page so a manager who
@@ -1343,7 +1393,7 @@ function excludedNote(){
   var tot=e.n.all+e.a.all+e.d.all;
   if(!tot)return "";
   var w=e.n.allW+e.a.allW+e.d.allW;
-  return "<div class='sec mini'><h2>Shown but not counted</h2>"+
+  return "<div class='sec mini ac ac-held'><h2>Shown but not counted</h2>"+
     "<div class='sub'>Parking buckets and unassigned leads. They appear per agent below so the pile stays visible, "+
     "and they are kept out of every total above so one bucket cannot swamp the floor. Same treatment as the v1 page.</div>"+
     "<div class='chips'>"+
@@ -1497,7 +1547,7 @@ function movementTable(){
     ["No longer in the list", gone, "Left the tracked pool during the day"],
     ["Nothing happened", still, "Not called, not moved, not reassigned"]
   ];
-  return "<div class='sec mini'><h2>What happened to this morning's list</h2>"+
+  return "<div class='sec mini ac ac-move'><h2>What happened to this morning's list</h2>"+
     "<div class='sub'>Every lead that was on the list at midnight, and what has become of it. "+
     "A lead can appear in more than one row: it can be called and also move stage.</div>"+
     "<div class='tw'><table><thead><tr><th>Since midnight</th><th class='n'>Leads</th><th>Note</th></tr></thead><tbody>"+
@@ -1523,14 +1573,14 @@ function assignPanel(){
   var t=a.totals||{unassigned:0,left:0,total:0,assignedToday:0};
   if(!t.total&&!t.assignedToday)return "";
   var rows=a.rows||[];
-  var h="<div class='sec mini'><h2>Fresh leads waiting to be assigned</h2>"+
+  var h="<div class='sec mini ac ac-pool'><h2>Fresh leads waiting to be assigned</h2>"+
     "<div class='sub'>Fresh leads on this morning's list that nobody is working: no owner at all, "+
     "or an owner who has left. They are shown everywhere but counted nowhere until somebody takes them, "+
     "so this is the pool to hand out from. Split by creator."+
     (a.scoped?" Your team's creators only.":"")+"</div>"+
-    "<div class='tw' style='max-height:340px'><table><thead><tr>"+
-    "<th>Creator</th><th class='n'>Unassigned</th><th class='n'>Owner has left</th>"+
-    "<th class='n'>To assign</th><th class='n'>Assigned today</th></tr></thead><tbody>";
+    "<div class='tw' style='max-height:300px'><table><thead><tr>"+
+    "<th>Creator</th><th class='n'>No owner</th><th class='n'>Owner left</th>"+
+    "<th class='n'>To assign</th><th class='n'>Done today</th></tr></thead><tbody>";
   rows.forEach(function(r){
     h+="<tr><td>"+esc(r.u)+
       (r.holders&&r.holders.length?"<div class='mut' style='font-size:11px' title='held by "+
@@ -1695,7 +1745,7 @@ function summaryPanel(){
   var q=function(o){ return "pick("+JSON.stringify(o).replace(/"/g,"&quot;")+")"; };
   var esq=function(v){ return esc(String(v)).replace(/'/g,"\\'"); };
 
-  var h="<div class='sec mini'><h2>Where the effort is going</h2>"+
+  var h="<div class='sec mini ac ac-eff'><h2>Where the effort is going</h2>"+
     "<div class='sub'>Of the leads that need a call today, how hard each one has been worked. "+
     "By stage tells you where the floor stalls; by creator tells you whose leads are being left. "+
     (byStage?"Click a row to split it by agent. ":"Click a creator to scope the page to them. ")+
@@ -1761,7 +1811,7 @@ function churnPanel(){
   var rank=function(a){ return (a.active?0:2)+(a.counted?0:1); };
   rows=rows.slice().sort(function(x,y){
     return rank(x)-rank(y) || share(y)-share(x) || y.n.all-x.n.all; });
-  var h="<div class='sec mini'><h2>Lead churn effort</h2>"+
+  var h="<div class='sec mini ac ac-churn'><h2>Lead churn effort</h2>"+
     "<div class='sub'>Of the leads each agent is holding that need a call today, how many have barely been tried. "+
     "Sorted worst first. <b>By the agent who holds it</b> is the accountable number; <b>by anyone</b> tells you whether "+
     "the lead has had a go at all, which is how an inherited lead is told from a neglected one. Click any number for those leads.</div>"+
@@ -1811,7 +1861,7 @@ function agentTable(){
     var rx=(x.active?0:2)+(x.counted?0:1), ry=(y.active?0:2)+(y.counted?0:1);
     return rx-ry || y.n.all-x.n.all;
   });
-  var h="<div class='sec mini'><h2>Today's calling list by agent</h2>"+
+  var h="<div class='sec mini ac ac-agent'><h2>Today's calling list by agent</h2>"+
     "<div class='sub'>Every lead on today's list, split by whoever held it this morning. Click a row to scope the whole page to that agent. "+
     "Rows marked <b>not counted</b> are parking buckets, shown for visibility but left out of every total above.</div>"+
     "<div class='tw scrolly'><table><thead><tr>"+
