@@ -204,6 +204,33 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
 .wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
 .wrap .mbar{height:5px !important}
+/* Four hero cards, one per group, sized in proportion rather than one big and one wide. */
+.wrap .herorow{display:grid !important;grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:11px !important;margin-bottom:8px !important}
+.wrap .hcard{border-radius:12px;padding:13px 15px;color:#fff}
+.wrap .hcard .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.85}
+.wrap .hcard .big{font-size:31px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:4px 0 1px;
+  display:flex;align-items:baseline;gap:5px}
+.wrap .hcard .of{font-size:14px;font-weight:500;opacity:.75}
+.wrap .hcard .pctpill{margin-left:auto;background:rgba(255,255,255,.2);border-radius:6px;
+  padding:2px 8px;font-size:11.5px;font-weight:700}
+.wrap .hcard .track{height:5px;border-radius:4px;background:rgba(255,255,255,.25);margin:8px 0 7px;overflow:hidden}
+.wrap .hcard .track i{display:block;height:5px;background:#fff;border-radius:4px}
+.wrap .hcard .foot{font-size:10.5px;opacity:.8;line-height:1.4}
+.wrap .hcard.h1{background:linear-gradient(135deg,#3B63E0,#3E2FA8)}
+.wrap .hcard.h2{background:linear-gradient(135deg,#2F7DA8,#1E5B7E)}
+.wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
+.wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
+.wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
+.wrap .vpblock{margin-bottom:13px}
+@media (max-width:1100px){ .wrap .herorow{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
+/* Churn band, read straight off the row: attempts in this stage by the agent holding it. */
+.wrap tr.b-low td:first-child{box-shadow:inset 3px 0 0 #C0492A}
+.wrap tr.b-avg td:first-child{box-shadow:inset 3px 0 0 #B8791A}
+.wrap tr.b-bench td:first-child{box-shadow:inset 3px 0 0 #0A7C63}
+.wrap tr.b-high td:first-child{box-shadow:inset 3px 0 0 #6D4AC4}
+.wrap tr.b-low td{background:#FEF7F5}
+.wrap tr.b-high td{background:#F8F6FD}
 .wrap a.wa{background:#15A34A !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;
   padding:2px 7px !important;border-radius:4px !important;text-decoration:none !important;display:inline-block !important}
 .wrap a.wa:hover{background:#0E8038 !important}
@@ -346,7 +373,7 @@ var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fres
   ["any","Any priority"],["all","All in stage"]];
 var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
   ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
-  ["d","DNP, nothing to act on today","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."]];
+  ["d","DNPs","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."]];
 
 // Lifted from the v1 page so the two cannot drift apart.
 var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",discovery:"#DCEDF6|#0B4A66",
@@ -556,6 +583,11 @@ function queueView(){
   h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight &middot; <b>"+fmt(wk)+"</b> called today &middot; "+
     fmt(L.total-wk)+" not yet"+(L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
     " &middot; not yet called first, then earliest follow-up</div>";
+  h+="<div class='sub' style='margin:0 0 7px'>Row colour is attempts in this stage by the agent holding the lead: "+
+    ((J.effortBands||[]).map(function(b){
+      return "<span class='tag' style='background:transparent;border-left:3px solid "+
+        ({low:"#C0492A",avg:"#B8791A",bench:"#0A7C63",high:"#6D4AC4"}[b.key])+";padding-left:6px;border-radius:0'>"+
+        esc(b.label)+" "+(b.max==null?(b.min+"+"):(b.min+" to "+b.max))+"</span>";}).join(" "))+"</div>";
   h+="<div class='chips' style='margin-bottom:9px'>"+
     "<button class='chipb"+(PICK.worked==="0"?" on":"")+"' onclick='PICK.worked=\"0\";loadLeads()'>Not called yet</button>"+
     "<button class='chipb"+(PICK.worked==="1"?" on":"")+"' onclick='PICK.worked=\"1\";loadLeads()'>Called today</button>"+
@@ -574,7 +606,7 @@ function queueView(){
   rows.forEach(function(r,i){
     var digits=String(r.phone||"").replace(/[^0-9]/g,"");
     var moved=r.movedStage?"<div class='sub3'>now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>":"";
-    h+="<tr class='rowlink"+(r.worked?" done":"")+(SEL===r.id?" sel":"")+"' onclick='pickLead("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
+    h+="<tr class='rowlink b-"+esc(r.bandOwner||"low")+(r.worked?" done":"")+(SEL===r.id?" sel":"")+"' onclick='pickLead("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
       "<td class='exp' onclick='event.stopPropagation();toggleDet("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
         (OPEN[r.id]?"&minus;":"+")+"</td>"+
       "<td class='z'>"+(i+1)+"</td>"+
@@ -650,6 +682,7 @@ function pickLead(id){ SEL=(SEL===id?"":id); draw(); }
 function closeLead(){ SEL=""; draw(); }
 
 function excludedNote(){
+  if(!J.isVP)return "";
   var e=J.excluded;
   if(!e)return "";
   var tot=e.n.all+e.a.all+e.d.all;
@@ -793,7 +826,37 @@ function setChurnBy(v){ CHURN_BY=v; draw(); }
 // The one number that matters, and how the morning list has moved since midnight.
 /* Data quality, stated on the page rather than hidden in a log. Two different questions:
    is this page consistent with itself, and is it consistent with HubSpot. */
+// Movement, stated so the parts add to the list. Chips that did not add to anything were
+// impossible to check and easy to misread.
+function movementTable(){
+  var m=J.movement||{}, T=J.totals||{};
+  var onList=(T.n.all||0)+(T.a.all||0)+(T.d.all||0)+
+    ((J.excluded?J.excluded.n.all+J.excluded.a.all+J.excluded.d.all:0));
+  var called=m.called||0, gone=m.gone||0, still=m.still||0;
+  var rows=[
+    ["Called today", called, "Somewhere on the list"],
+    ["Moved stage", m.stage||0, "Still counted where it started"],
+    ["Next call date changed", m.fu||0, "Still counted where it started"],
+    ["Given to another agent", m.owner||0, "Still credited to this morning's agent"],
+    ["No longer in the list", gone, "Left the tracked pool during the day"],
+    ["Nothing happened", still, "Not called, not moved, not reassigned"]
+  ];
+  return "<div class='sec mini'><h2>What happened to this morning's list</h2>"+
+    "<div class='sub'>Every lead that was on the list at midnight, and what has become of it. "+
+    "A lead can appear in more than one row: it can be called and also move stage.</div>"+
+    "<div class='tw'><table><thead><tr><th>Since midnight</th><th class='n'>Leads</th><th>Note</th></tr></thead><tbody>"+
+    rows.map(function(r){
+      return "<tr><td>"+esc(r[0])+"</td><td class='n'><b>"+fmt(r[1])+"</b></td>"+
+        "<td class='mut'>"+esc(r[2])+"</td></tr>";}).join("")+
+    "<tr class='tot'><td><b>On the list at midnight</b></td><td class='n'><b>"+fmt(onList)+
+    "</b></td><td class='mut'>Nothing joins after the lock</td></tr>"+
+    "</tbody></table></div>"+
+    (J.offBase&&J.offBase.leads?"<div class='sub' style='margin-top:8px'><b>"+fmt(J.offBase.leads)+
+      "</b> more leads were called today that were never on this list. They are in the fourth card above.</div>":"")+
+    "</div>";}
+
 function quality(){
+  if(!J.isVP)return "";
   var c=J.checks, d=J.drift;
   if(!c&&!d)return "";
   var bad=c?c.checks.filter(function(x){return !x.ok;}):[];
@@ -814,6 +877,7 @@ function quality(){
   }
   return h;}
 function qualityPanel(){
+  if(!J.isVP)return "";
   var c=J.checks;
   if(!c)return "";
   var d=J.drift;
@@ -836,50 +900,31 @@ function qualityPanel(){
   return h;}
 
 function hero(){
-  // Numerator and denominator must come from the same population or the percentage is
-  // meaningless. Both are the call-today group, parking buckets excluded, which is the
-  // work the floor is actually being asked to do.
-  var m=J.movement||{}, t=J.totals?J.totals.n:null;
-  var pool=t?t.all:0, done=t?t.allW:0;
-  var p=pool?Math.round(100*done/pool):0;
-  var everywhere=m.called||0;
-  return "<div class='herorow'><div class='hero2'>"+
-    "<span class='pctpill'>"+p+"% done</span><div class='k'>Called today, of the leads that need a call</div>"+
-    "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span></div>"+
-    "<div class='track'><i style='width:"+p+"%'></i></div>"+
-    "<div class='foot'>"+(J.frozen
-      ? ("Locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
-         " &middot; "+fmt(J.baseSize)+" leads on the list, "+fmt(pool)+" of them need a call today"+
-         (everywhere>done?" &middot; "+fmt(everywhere)+" called across the whole list":""))
-      : "List not locked yet")+"</div></div>"+
-    "<div class='sec mini' style='margin:0'>"+heroCheck()+"<h2>What changed today</h2>"+
-    "<div class='chips'>"+
-    chipOf("",m.called,"called anywhere on the list")+chipOf("stage",m.stage,"moved stage")+
-    chipOf("fu",m.fu,"next call date changed")+chipOf("owner",m.owner,"given to another agent")+
-    chipOf("gone",m.gone,"no longer in the list")+chipOf("still",m.still,"nothing happened")+
-    (J.offBase&&J.offBase.leads?"<button class='chipb' title='Called today but not on today’s calling list'>"+
-      fmt(J.offBase.leads)+" called but not on today's list</button>":"")+
-    "</div><div style='margin-top:8px;font-size:11px;color:#7C8899;line-height:1.5'>"+
-    "The list is fixed at midnight, so these move only because of what the floor did today. "+
-    "HubSpot's own call count will be higher: it counts every dial on every lead, including ones "+
-    "outside the tracked creators."+(J.isVP?" The v1 against v2 panel below shows where each one goes.":"")+
-    "</div></div></div>";}
-/* The hero counts from the app's own copy of each lead. HubSpot is the source of truth.
-   When the two disagree it is almost always lead data this app has not caught up on, and
-   saying so beats letting someone discover it in a meeting. */
-function heroCheck(){
-  if(!OUT||OUT.error||OUT.onListNeedsCall==null)return "";
-  var mine=J.totals?J.totals.n.allW:0, theirs=OUT.onListNeedsCall;
-  if(theirs===mine)return "<div class='sub' style='color:#0A5346;margin:0 0 8px'>"+
-    "HubSpot agrees: "+fmt(theirs)+" of the leads that need a call have been called.</div>";
-  var gap=theirs-mine;
-  return "<div class='warn' style='margin:0 0 9px'>"+
-    "HubSpot says <b>"+fmt(theirs)+"</b> of the leads that need a call have been called, this page shows <b>"+
-    fmt(mine)+"</b>. "+
-    (gap>0?"The "+fmt(gap)+" difference is lead data this app has not caught up on yet"
-          :"This page is ahead of the check, taken at "+new Date(OUT.at).toLocaleTimeString("en-IN"))+
-    (OUT.leadsSyncedAt?" &middot; leads last updated "+new Date(OUT.leadsSyncedAt).toLocaleTimeString("en-IN"):"")+
-    ". Press Reload once the lead sync catches up.</div>";}
+  var T=J.totals||{}, off=(J.offBase&&J.offBase.leads)||0;
+  // One card per group. Numerator is what was called today, denominator is what the list
+  // locked with. Same population top and bottom, every time.
+  var card=function(cls,label,sec,note){
+    var c=T[sec]||{}, pool=c.all||0, done=c.allW||0;
+    var p=pool?Math.round(100*done/pool):0;
+    return "<div class='hcard "+cls+"'><div class='k'>"+label+"</div>"+
+      "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span>"+
+      "<span class='pctpill'>"+p+"%</span></div>"+
+      "<div class='track'><i style='width:"+p+"%'></i></div>"+
+      "<div class='foot'>"+note+"</div></div>";};
+  var h="<div class='herorow'>"+
+    card("h1","Call today","n","Due today, overdue, no FU, fresh")+
+    card("h2","Booked for a later date","a","Called anyway, not owed today")+
+    card("h3","DNPs","d","Called anyway, nothing asked for")+
+    "<div class='hcard h4'><div class='k'>Outside the list</div>"+
+    "<div class='big'>"+fmt(off)+"</div>"+
+    "<div class='track'><i style='width:0%'></i></div>"+
+    "<div class='foot'>Calls today on leads the list did not hold</div></div>"+
+    "</div>";
+  return h+"<div class='hnote'>"+
+    (J.frozen?("Locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
+      " with "+fmt(J.baseSize)+" leads. "):"List not locked yet. ")+
+    "The list is fixed at midnight, so these move only because of what the floor did today."+
+    "</div>";}
 function chipOf(k,n,label){
   return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
     "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
@@ -1033,8 +1078,13 @@ function draw(){
   if(nav)nav.style.display=J.isVP?"flex":"none";
   // Four full width bars stacked on top of each other pushed the tables below the fold.
   // Two columns instead: controls on the left, the state of today's list on the right.
-  var h=quality()+hero()+"<div class='top'><div class='topcol'>"+bar()+"</div>"+
-        "<div class='topcol'>"+baseNote()+"</div></div>"+viewTabs();
+  // A VP gets the machinery: what the list is, what is held aside, how it compares to v1,
+  // whether it adds up, and what is outside it. A manager or agent gets the work.
+  var vpBlock = J.isVP
+    ? "<div class='vpblock'>"+baseNote()+movementTable()+excludedNote()+qualityPanel()+
+      creatorPanel()+reconcile()+"</div>"
+    : "";
+  var h=quality()+hero()+vpBlock+"<div class='top'><div class='topcol'>"+bar()+"</div></div>"+viewTabs();
   var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;

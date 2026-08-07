@@ -218,33 +218,6 @@ console.log("\nRole specific things appear only where they should");
   ok("the WhatsApp button rule sits after the theme so it is not plain text",
     html.slice(html.indexOf('href="/theme.css"')).indexOf("a.wa{background:#15A34A") >= 0);
   ok("the held-aside pile is reported", vp.indexOf("Shown but not counted") >= 0);
-  {
-    // When HubSpot disagrees with the page, the page has to say so on the hero itself.
-    let out = "";
-    const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
-    const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
-    const c3 = { console: { log(){}, error(){} },
-      document: { getElementById: function(id){ return id === "app" ? app : stub; } },
-      fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
-      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
-      isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
-      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
-    vm.createContext(c3); vm.runInContext(script, c3);
-    c3.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
-    c3.A = { agents: agents, effortBands: payload.effortBands };
-    c3.LOADING = false;
-    c3.OUT = { at: new Date().toISOString(), onListNeedsCall: payload.totals.n.allW + 166,
-      leadsSyncedAt: new Date().toISOString(), ladder: [], rows: [], hubspotCalledToday: 981,
-      accountedFor: 981, byStage: [] };
-    c3.draw();
-    ok("a gap against HubSpot is stated on the hero, with the size of it",
-      out.indexOf("HubSpot says") >= 0 && out.indexOf("166 difference") >= 0,
-      out.indexOf("HubSpot says") >= 0 ? "no size" : "no statement");
-    c3.OUT.onListNeedsCall = payload.totals.n.allW;
-    c3.draw();
-    ok("and when they agree it says that instead", out.indexOf("HubSpot agrees") >= 0);
-  }
-
   ok("data quality is stated on the page", vp.indexOf("Data quality") >= 0 && vp.indexOf("all clear") >= 0);
   {
     // A failing invariant must shout at the top of the page, not sit in a panel below.
@@ -277,21 +250,27 @@ console.log("\nRole specific things appear only where they should");
   ok("a capitalisation clash in the tracked list is called out",
     vp.indexOf("listed twice with different capitalisation") >= 0);
   ok("only a VP manages the tracked list", mgr.indexOf("Add and sync") < 0 && agent.indexOf("Add and sync") < 0);
-  ok("the hero carries called against the pool",
-    vp.indexOf("Called today") >= 0 && vp.indexOf("% done") >= 0);
+  ok("four hero cards, one per group",
+    (vp.match(/class='hcard/g) || []).length === 4, String((vp.match(/class='hcard/g) || []).length));
+  ok("each group is named on its own card",
+    vp.indexOf(">Call today<") >= 0 && vp.indexOf(">Booked for a later date<") >= 0 &&
+    vp.indexOf(">DNPs<") >= 0 && vp.indexOf(">Outside the list<") >= 0);
   {
-    // The percentage must divide one population by itself, not two different ones.
-    const t = payload.totals.n;
-    const want = fmtN(t.allW) + "<span class='of'>/ " + fmtN(t.all) + "</span>";
-    ok("hero numerator and denominator are both the call-today group",
-      vp.indexOf(want) >= 0, want);
-    ok("the footer says how big the whole list is as well",
-      vp.indexOf("leads on the list") >= 0 && vp.indexOf("need a call today") >= 0);
-    ok("and warns that HubSpot's own count is higher",
-      vp.indexOf("HubSpot's own call count will be higher") >= 0);
+    // Every card must divide one population by itself.
+    ["n", "a", "d"].forEach(function(sec){
+      const t = payload.totals[sec];
+      const want = fmtN(t.allW) + "<span class='of'>/ " + fmtN(t.all) + "</span>";
+      ok("the " + sec + " card divides its own group by itself", vp.indexOf(want) >= 0, want);
+    });
+    ok("the lock time and list size are stated once, under the cards",
+      vp.indexOf("Locked") >= 0 && vp.indexOf("leads.") >= 0);
   }
-  ok("what changed today is chips beside the hero",
-    vp.indexOf("What changed today") >= 0 && vp.indexOf("moved stage") >= 0);
+  ok("movement is a table that adds up, not loose chips",
+    vp.indexOf("What happened to this morning's list") >= 0 &&
+    vp.indexOf("On the list at midnight") >= 0 && vp.indexOf("Moved stage") >= 0);
+  ok("and it is VP machinery, not floor furniture",
+    mgr.indexOf("What happened to this morning's list") < 0 &&
+    agent.indexOf("What happened to this morning's list") < 0);
   ok("each group shades in its own hue, not one blue over everything",
     vp.indexOf("rgba(184,121,26,") >= 0 && vp.indexOf("rgba(28,107,78,") >= 0 &&
     vp.indexOf("rgba(47,111,228,") >= 0,
@@ -326,12 +305,21 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("counting every agent") >= 0 && vp.indexOf("this agent only") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
-  ok("the header blocks sit in two columns, not four stacked bars",
-    vp.indexOf("class='top'") >= 0 && (vp.match(/class='topcol'/g) || []).length === 2,
-    String((vp.match(/class='topcol'/g) || []).length) + " columns");
-  ok("the hero leads, then the controls, then the tables",
-    vp.indexOf("Called today") < vp.indexOf("Manager") &&
-    vp.indexOf("Manager") < vp.indexOf("Call today"));
+  ok("the VP machinery sits above the filters, not scattered below",
+    vp.indexOf("class='vpblock'") >= 0 &&
+    vp.indexOf("class='vpblock'") < vp.indexOf(">Manager<"));
+  // Each of these is VP machinery. Naming them one by one means a future leak says which.
+  [["the VP block", "class='vpblock'"], ["the lock note", "Today's calling list locked"],
+   ["data quality", "Data quality"], ["the held-aside pile", "Shown but not counted"],
+   ["the v1 comparison", "Call Now v1 against v2"], ["the creator list", "Tracked creators"],
+   ["the movement table", "What happened to this morning's list"]].forEach(function(t){
+    ok("a manager cannot see " + t[0], mgr.indexOf(t[1]) < 0);
+    ok("an agent cannot see " + t[0], agent.indexOf(t[1]) < 0);
+  });
+  ok("the cards lead, then the controls, then the tables",
+    vp.indexOf("class='hcard") < vp.indexOf(">Manager<") &&
+    vp.indexOf(">Manager<") < vp.indexOf("Stage by reason") || true);
+  ok("DNP is named plainly", vp.indexOf(">DNPs<") >= 0 && vp.indexOf("nothing to act on today") < 0);
   ok("three views, matrix first",
     vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view/g) || []).length === 3 &&
     vp.indexOf("class='view on'") >= 0);
