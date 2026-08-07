@@ -367,8 +367,14 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf(">Manager<") < vp.indexOf("class='view") &&
     vp.indexOf("class='view") < vp.indexOf("class='vpflow'"));
   ok("and the controls are pinned so a filter is always in reach",
-    vp.indexOf("class='top sticky'") >= 0 &&
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .top.sticky{position:sticky") >= 0);
+    vp.indexOf("class='headband sticky'") >= 0 &&
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .headband.sticky{position:sticky") >= 0);
+  ok("the cards sit two by two beside the controls, not four across above them",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .herorow{display:grid !important;grid-template-columns:repeat(2") >= 0 &&
+    vp.indexOf("class='heroside'") < vp.indexOf("class='ctrlside'"));
+  ok("and the wide chip rows get the full width below the band",
+    vp.indexOf("class='bar chipbar'") >= 0 &&
+    vp.indexOf("class='headband") < vp.indexOf("class='bar chipbar'"));
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
   // vpflow is now just a two column grid, and a manager legitimately gets one card in it,
   // the pool they can assign from. What they must not see is its VP-only contents, which

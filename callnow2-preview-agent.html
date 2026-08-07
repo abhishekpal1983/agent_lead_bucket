@@ -223,9 +223,10 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 /* ---- bands ------------------------------------------------------------------------
    Controls stay put while the table scrolls under them, so a filter is never more than
    a glance away. The shadow only appears once the bar is actually stuck. */
-.wrap .top.sticky{position:sticky;top:0;z-index:40;background:var(--canvas,#F6F7FB);
-  padding-top:6px;margin-bottom:10px;box-shadow:0 10px 12px -12px rgba(10,37,64,.28)}
-.wrap .top.sticky .sec{margin-bottom:8px !important}
+.wrap .headband.sticky{position:sticky;top:0;z-index:40;background:var(--canvas,#F6F7FB);
+  padding-top:6px;box-shadow:0 10px 12px -12px rgba(10,37,64,.28)}
+/* Wide by nature, so the stage and owner chips get the whole width under the band. */
+.wrap .bar.chipbar{padding-top:8px !important;padding-bottom:8px !important;margin-bottom:10px !important}
 
 /* Behind the numbers: one fold, not eleven loose cards. */
 .wrap .behind{margin-top:16px}
@@ -301,24 +302,38 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
 .wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
 .wrap .mbar{height:5px !important}
-/* Four hero cards, one per group, sized in proportion rather than one big and one wide. */
-.wrap .herorow{display:grid !important;grid-template-columns:repeat(4,minmax(0,1fr)) !important;
-  gap:11px !important;margin-bottom:8px !important}
-.wrap .hcard{border-radius:12px;padding:13px 15px;color:#fff}
-.wrap .hcard .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.85}
-.wrap .hcard .big{font-size:31px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:4px 0 1px;
-  display:flex;align-items:baseline;gap:5px}
-.wrap .hcard .of{font-size:14px;font-weight:500;opacity:.75}
-.wrap .hcard .pctpill{margin-left:auto;background:rgba(255,255,255,.2);border-radius:6px;
-  padding:2px 8px;font-size:11.5px;font-weight:700}
-.wrap .hcard .track{height:5px;border-radius:4px;background:rgba(255,255,255,.25);margin:8px 0 7px;overflow:hidden}
-.wrap .hcard .track i{display:block;height:5px;background:#fff;border-radius:4px}
-.wrap .hcard .foot{font-size:10.5px;opacity:.8;line-height:1.4}
+/* ---- head band --------------------------------------------------------------------
+   Four cards across the full width was a screenful of chrome for four numbers, with the
+   filters stranded underneath. Two by two on the left, controls beside them on the right,
+   and the band is about half as tall. Everything below gets that height back. */
+.wrap .headband{display:grid !important;grid-template-columns:minmax(300px,360px) 1fr !important;
+  gap:12px !important;align-items:start !important;margin-bottom:10px !important}
+.wrap .headband .heroside > .herorow{margin-bottom:6px !important}
+.wrap .headband .ctrlside > .bar{margin-bottom:8px !important}
+.wrap .headband .ctrlside > .bar:last-child{margin-bottom:0 !important}
+@media (max-width:1150px){ .wrap .headband{grid-template-columns:1fr !important} }
+
+/* Four hero cards, two by two and compact: the number still reads across the room, the
+   furniture around it does not. */
+.wrap .herorow{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:8px !important;margin-bottom:8px !important}
+.wrap .hcard{border-radius:11px;padding:9px 11px;color:#fff}
+.wrap .hcard .k{font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;opacity:.85;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wrap .hcard .big{font-size:22px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:2px 0 0;
+  display:flex;align-items:baseline;gap:4px}
+.wrap .hcard .of{font-size:11px;font-weight:500;opacity:.75}
+.wrap .hcard .pctpill{margin-left:auto;background:rgba(255,255,255,.2);border-radius:5px;
+  padding:1px 6px;font-size:10px;font-weight:700}
+.wrap .hcard .track{height:3px;border-radius:3px;background:rgba(255,255,255,.25);margin:6px 0 5px;overflow:hidden}
+.wrap .hcard .track i{display:block;height:3px;background:#fff;border-radius:3px}
+.wrap .hcard .foot{font-size:9.5px;opacity:.8;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .wrap .hcard.h1{background:linear-gradient(135deg,#3B63E0,#3E2FA8)}
 .wrap .hcard.h2{background:linear-gradient(135deg,#2F7DA8,#1E5B7E)}
 .wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
 .wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
-.wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
+.wrap .hnote{font-size:10.5px;color:#7A8CA0;margin:0;line-height:1.4}
 /* Two explicit columns rather than CSS multicol. Multicol balances by height, which
    left the third column empty whenever one card was much taller than the rest. Placing
    the cards by hand means the tall pair sits on the left, the two that belong together
@@ -1331,7 +1346,11 @@ function segNote(){
     (g.truncated?" This segment is larger than the fetch limit, so it is partial.":"")+
     " <a href='#' class='a2' onclick='segClear();return false'>Clear</a></div>";}
 
-function bar(){
+/* Two pieces, because they want different widths. The dropdowns are narrow and sit
+   beside the hero cards; the stage and owner chips are wide by nature and get the full
+   width below, where they wrap to one or two rows instead of five. */
+function bar(){ return barTop()+barChips(); }
+function barTop(){
   var h="<div class='bar'>";
   // A scoped reader has nothing to choose between, so the picker is not drawn for them.
   if(!J.scoped){
@@ -1346,9 +1365,11 @@ function bar(){
     ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages||Q.segment)
       ? " <button class='btn' onclick='clearF()'>Clear</button>" : "")+
     freshness()+"</div>";
-  h+="</div>";
-  // Second row of chips, the same controls v1 puts under its dropdowns.
-  h+="<div class='bar' style='padding-top:8px;padding-bottom:8px'>";
+  return h+"</div>";}
+
+function barChips(){
+  // The same controls v1 puts under its dropdowns.
+  var h="<div class='bar chipbar'>";
   h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;flex:0 0 auto'>Stages</span>"+
     "<div class='chips'>"+
     "<button class='chipb"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
@@ -2102,8 +2123,16 @@ function draw(){
        4  behind the numbers      every explanatory card, folded away until asked for
 
      Nothing was deleted; the cards below the fold are the same cards. */
-  var h=quality()+hero()+
-    "<div class='top sticky'><div class='topcol'>"+bar()+"</div>"+viewTabs()+"</div>"+segNote();
+  /* The head band: four cards two by two on the left, the controls beside them on the
+     right. Four cards in a row were a full screen width of chrome for four numbers, and
+     the filters sat under all of it. Side by side, the band is about half as tall and
+     everything below it gets that height back. */
+  var h=quality()+
+    "<div class='headband sticky'>"+
+      "<div class='heroside'>"+hero()+"</div>"+
+      "<div class='ctrlside'>"+barTop()+viewTabs()+"</div>"+
+    "</div>"+
+    barChips()+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;
