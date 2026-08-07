@@ -2719,6 +2719,16 @@ app.get("/api/callnow2", function(req, res){
          agents: Object.keys(agg.byAgent).map(function(k){ return agg.byAgent[k]; }) }),
     drift: CN2_DRIFT.at ? CN2_DRIFT : null,
     scoreMin: CONV_SCORE_MIN, loadedAt: CN2_FIXTURE_DATA ? "fixtures" : CACHE.loadedAt,
+    /* "Synced" used to report CACHE.loadedAt, which is only ever set by a FULL rebuild.
+       The incremental sync runs every ten minutes and does not touch it, so the page
+       claimed the leads were hours old while they were in fact minutes old, and anyone
+       following that reading would have chased a sync that was working perfectly.
+       leadsAt is the real answer: the last time lead data arrived, by either route. */
+    leadsAt: CN2_FIXTURE_DATA ? null : ((typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt),
+    fullAt: CN2_FIXTURE_DATA ? null : CACHE.loadedAt,
+    syncEvery: (typeof DELTA_MINUTES !== "undefined") ? DELTA_MINUTES : null,
+    syncOff: !!(typeof DELTA !== "undefined" && DELTA.disabled),
+    syncError: (typeof DELTA !== "undefined" && DELTA.error) || null,
     fixtures: !!CN2_FIXTURE_DATA,
     // The page hides anything not meant for the reader rather than relying on the route
     // gate alone, so opening v2 to managers later cannot leak a control by accident.

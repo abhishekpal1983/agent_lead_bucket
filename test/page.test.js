@@ -107,6 +107,12 @@ function render(role){
   vm.runInContext(script, ctx);
   ctx.J = Object.assign({}, payload, role);
   ctx.A = { agents: agents, effortBands: payload.effortBands };
+  // The fixture payload says loadedAt "fixtures", which is its own branch. Override it
+  // so the real freshness line is the one under test.
+  ctx.J = Object.assign(ctx.J, { loadedAt: new Date().toISOString(),
+    leadsAt: new Date(Date.now() - 6 * 60000).toISOString(),
+    fullAt: new Date(Date.now() - 5 * 3600000).toISOString(),
+    listBuiltAt: new Date(Date.now() - 2 * 60000).toISOString(), syncEvery: 10 });
   ctx.A.byStage = [
     { stage: "counselled", label: "Counselled", n: 120,
       effort: { total: { low: 70, avg: 30, bench: 15, high: 5 }, owner: { low: 90, avg: 20, bench: 8, high: 2 } },
@@ -404,6 +410,15 @@ console.log("\nRole specific things appear only where they should");
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .sec.mini.ac-pool") >= 0);
   ok("a half width card sizes its table to its own content, so no column falls off",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .vpcol .sec.mini table{table-layout:auto") >= 0);
+  // "synced" used to report the last full rebuild, which only happens on a restart, so a
+  // healthy ten minute sync could read as five hours stale.
+  ok("freshness reads the incremental sync, not the last full rebuild",
+    html.indexOf("J.leadsAt") >= 0 && html.indexOf('new Date(J.loadedAt).toLocaleTimeString') < 0);
+  ok("and says it in words rather than a bare timestamp",
+    vp.indexOf("leads ") >= 0 && (vp.indexOf("min ago") >= 0 || vp.indexOf("just now") >= 0 ||
+      vp.indexOf("hour") >= 0 || vp.indexOf("not synced yet") >= 0));
+  ok("a stalled or failed sync is not left looking healthy",
+    html.indexOf(".wrap .fresh.bad") >= 0 && html.indexOf(".wrap .fresh.warn") >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);

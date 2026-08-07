@@ -220,6 +220,10 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap tr:hover td.bd-high{background:#EDE9FE}
 .wrap tr.sub2 td{background:#FBFCFE}
 .wrap tr.sub2 td:first-child{padding-left:26px !important;font-size:12px !important}
+/* Freshness, stated rather than timestamped. Silent when healthy, loud when not. */
+.wrap .fresh{font-size:11px;color:#7A8CA0;margin-top:4px;white-space:nowrap;text-align:right}
+.wrap .fresh.warn{color:#7A4A08;font-weight:600}
+.wrap .fresh.bad{color:#8C2D12;font-weight:700}
 
 /* ---- cards in the two-column block ------------------------------------------------
    Half the width, so the fixed 200px first column and fixed table layout pushed the last
@@ -610,6 +614,36 @@ function sel(id,label,opts,val){
   var h="<div><label>"+label+"</label><select onchange='Q."+id+"=this.value;load()'><option value=''>All</option>";
   opts.forEach(function(o){h+="<option value='"+esc(o.v)+"'"+(String(val)===String(o.v)?" selected":"")+">"+esc(o.l)+"</option>";});
   return h+"</select></div>";}
+/* How old the numbers are, in words rather than a timestamp nobody can subtract in
+   their head. It reads the incremental sync, not the last full rebuild: the full rebuild
+   only happens on a restart, so reporting that made a perfectly healthy ten minute sync
+   look like it had been asleep for five hours.
+
+   Amber past twice the sync interval, red past four times or on an error, because at
+   that point Reload cannot help and somebody needs to be told. */
+function since(t){
+  if(!t)return null;
+  var m=Math.round((Date.now()-new Date(t).getTime())/60000);
+  if(m<1)return "just now";
+  if(m===1)return "1 min ago";
+  if(m<60)return m+" min ago";
+  var h=Math.floor(m/60);
+  return h+(h===1?" hour ":" hours ")+(m%60)+" min ago";}
+
+function freshness(){
+  if(J.loadedAt==="fixtures")return "<div class='fresh'>made-up test data</div>";
+  var every=J.syncEvery||10;
+  var mins=J.leadsAt?Math.round((Date.now()-new Date(J.leadsAt).getTime())/60000):null;
+  var cls=(J.syncError||J.syncOff||(mins!=null&&mins>every*4))?"bad":
+          ((mins!=null&&mins>every*2)?"warn":"");
+  var msg=J.syncOff?"automatic sync is off"
+    :(J.syncError?"last sync failed":(mins==null?"leads not synced yet":"leads "+since(J.leadsAt)));
+  return "<div class='fresh "+cls+"' title='"+
+    "Leads refresh every "+every+" minutes. Full rebuild "+(J.fullAt?new Date(J.fullAt).toLocaleTimeString("en-IN"):"not yet")+
+    ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
+    esc(msg)+
+    (J.listBuiltAt?" &middot; list built "+esc(since(J.listBuiltAt)):"")+"</div>";}
+
 function bar(){
   var h="<div class='bar'>";
   // A scoped reader has nothing to choose between, so the picker is not drawn for them.
@@ -623,9 +657,7 @@ function bar(){
   h+="<div><button class='btn' onclick='load()'>Reload</button>"+
     ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
       ? " <button class='btn' onclick='clearF()'>Clear</button>" : "")+
-    "<div style='font-size:11px;color:#566575;margin-top:4px;white-space:nowrap'>"+
-    (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"synced "+new Date(J.loadedAt).toLocaleTimeString("en-IN"):""))+
-    (J.listBuiltAt?" &middot; built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div></div>";
+    freshness()+"</div>";
   h+="</div>";
   // Second row of chips, the same controls v1 puts under its dropdowns.
   h+="<div class='bar' style='padding-top:8px;padding-bottom:8px'>";
