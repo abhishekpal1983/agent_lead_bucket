@@ -421,5 +421,37 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("title='Submitted this waitlist form'") >= 0);
 }
 
+
+/* ---- links into the page ----------------------------------------------------------
+   Every existing link says ?id=. When /callnow.html starts serving this page, ignoring
+   that parameter would open the whole floor under one agent's name, silently. */
+console.log("\nA link into the page opens what the link said");
+{
+  const ctx = { URLSearchParams, String, Object, Array };
+  vm.createContext(ctx);
+  // Just the function, not the whole page: the rest of the script boots and fetches.
+  const from = script.indexOf("function paramsToState");
+  vm.runInContext(script.slice(from, script.indexOf("(function(){", from)), ctx);
+  const P = ctx.paramsToState;
+
+  ok("v1's ?id= opens that agent", P("?id=51234567").q.agent === "51234567");
+  ok("and this page's own ?agent= does too", P("?agent=51234567").q.agent === "51234567");
+  ok("agent wins when a link carries both", P("?id=1&agent=2").q.agent === "2");
+  ok("no parameters means no filter", Object.keys(P("").q).length === 0);
+  ok("an empty value is not a filter", Object.keys(P("?id=").q).length === 0);
+  ok("the creator link v1 also writes still works", P("?creator=ayush_singh13").q.creator === "ayush_singh13");
+  ok("every filter the page has can be linked",
+    ["team", "creator", "source", "ostate", "intl", "stages"].every(function(k){
+      const o = {}; o[k] = "x";
+      return P("?" + k + "=x").q[k] === "x"; }));
+  ok("a stage list survives the round trip",
+    P("?stages=counselled,discovery").q.stages === "counselled,discovery");
+  ok("a view can be linked", P("?view=queue").view === "queue");
+  ok("but not an invented one", P("?view=nonsense").view === "");
+  ok("junk in the query does not become a filter", P("?nonsense=1&id=7").q.nonsense === undefined);
+  ok("a value with an ampersand or space survives",
+    P("?creator=" + encodeURIComponent("a b&c")).q.creator === "a b&c");
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

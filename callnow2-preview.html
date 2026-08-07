@@ -993,6 +993,53 @@ var PREVIEW = {
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
+
+/* ---- links into this page ---------------------------------------------------------
+
+   Revenue Command, the agent snapshot and v1's own agent table all link here as
+   /callnow.html?id=51234567, meaning "open this agent's list". v1 reads that. This page
+   read nothing at all, so the day /callnow.html starts serving v2 every one of those
+   links would quietly open the whole floor instead of one agent: no error, no empty
+   state, just the wrong list under the right heading.
+
+   So both spellings are accepted. `id` is v1's name for it and `agent` is this page's,
+   and a link written for either page opens the right list here. That is deliberate:
+   it means the existing links do not have to be rewritten in the same change as the
+   swap, so there is no window where one of them is pointing at the wrong page.
+
+   Pure and separate from the browser so it can be tested without one. */
+function paramsToState(search){
+  var out={q:{},view:""};
+  var p=new URLSearchParams(String(search||""));
+  var a=p.get("agent")||p.get("id")||"";
+  if(a)out.q.agent=String(a);
+  ["team","creator","source","ostate","intl","stages"].forEach(function(k){
+    var v=p.get(k); if(v)out.q[k]=String(v);});
+  var v=p.get("view");
+  if(v==="matrix"||v==="queue"||v==="board")out.view=v;
+  return out;}
+
+(function(){
+  try{
+    var st=paramsToState(location.search);
+    Object.keys(st.q).forEach(function(k){ if(k in Q)Q[k]=st.q[k]; });
+    if(st.view)VIEW=st.view;
+  }catch(e){}
+})();
+
+/* Keep the address bar in step with the filters, so a manager who has narrowed the page
+   down can copy the link and send it. replaceState rather than pushState: the back
+   button should leave the page, not walk back through every filter click. */
+function syncUrl(){
+  try{
+    if(typeof history==="undefined"||!history.replaceState)return;
+    var p=new URLSearchParams();
+    Object.keys(Q).forEach(function(k){ if(Q[k])p.set(k,Q[k]); });
+    if(VIEW&&VIEW!=="matrix")p.set("view",VIEW);
+    var q=p.toString();
+    history.replaceState(null,"",location.pathname+(q?"?"+q:""));
+  }catch(e){}
+}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
 function fmt(n){return (n||0).toLocaleString("en-IN");}
 function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}catch(e){
@@ -1016,13 +1063,17 @@ function load(){LOADING=true;
                            fetch("/api/callnow2/assign").then(asJson).catch(function(){return null;})]),60000)
     .then(function(r){LOADING=false;
       if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true,building:true,progress:r[0].progress};show();draw();setTimeout(load,15000);return;}
-      J=r[0];A=r[1];ASSIGN=r[2];show();draw();if(PICK)loadLeads();})
+      J=r[0];A=r[1];ASSIGN=r[2];
+      // The server pins an agent to their own owner id whatever the URL says, so this is
+      // cosmetic: it stops the page labelling their own list with another agent's filter.
+      if(J.scoped&&J.role==="agent"&&(Q.agent||Q.team)){Q.agent="";Q.team="";}
+      syncUrl();show();draw();if(PICK)loadLeads();})
     .catch(function(e){LOADING=false;J={error:e.message,retry:true};show();draw();});}
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
-function setView(v){VIEW=v;if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
+function setView(v){VIEW=v;syncUrl();if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
 function pick(o){VIEW="queue";SEL="";PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
