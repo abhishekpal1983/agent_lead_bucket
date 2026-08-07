@@ -182,6 +182,30 @@ var PREVIEW = {
       agents: arows, teams: Object.keys(tm).map(function(k){ return tm[k]; })
       .sort(function(x, y){ return y.n.all - x.n.all; }), frozen: true };
   }
+  /* The assignment pool, built from the same fixture base. Deliberately not scoped by
+     agent: these leads have no agent, which is the point of the panel. */
+  function assign(){
+    var by = {};
+    Object.keys(base).forEach(function(id){
+      var c = unpack(base[id]);
+      if (c.stage !== "__fresh") return;
+      if (!c.why.needs) return;
+      var u = c.creator || "(no creator)";
+      if (!by[u]) by[u] = { u: u, unassigned: 0, left: 0, total: 0, assignedToday: 0, owners: {} };
+      by[u].total++;
+      if (c.owner) { by[u].left++; by[u].owners[c.owner] = (by[u].owners[c.owner] || 0) + 1; }
+      else by[u].unassigned++;
+    });
+    var rows = Object.keys(by).map(function(u){
+      var r = by[u];
+      return { u: u, unassigned: r.unassigned, left: r.left, total: r.total, assignedToday: 0,
+        holders: Object.keys(r.owners).map(function(id){ return { id: id, name: nameOf(id), n: r.owners[id] }; }) };
+    }).sort(function(a, b){ return b.total - a.total; });
+    return { allowed: ROLE !== "agent", scoped: ROLE === "manager", rows: rows,
+      totals: rows.reduce(function(a, r){
+        a.unassigned += r.unassigned; a.left += r.left; a.total += r.total; return a;
+      }, { unassigned: 0, left: 0, total: 0, assignedToday: 0 }) };
+  }
   function leads(q){
     var b = scoped(q), out = [];
     Object.keys(b).forEach(function(id){
@@ -222,6 +246,7 @@ var PREVIEW = {
   window.fetch = function(url, opts){
     var q = parse(url), body;
     if (String(url).indexOf("/api/callnow2/agents") === 0) body = agents(q);
+    else if (String(url).indexOf("/api/callnow2/assign") === 0) body = assign();
     else if (String(url).indexOf("/api/callnow2/leads") === 0) body = leads(q);
     else if (String(url).indexOf("/api/callnow2/refreeze") === 0) body = { ok: true };
     else body = matrix(q);

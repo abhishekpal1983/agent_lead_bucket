@@ -9,7 +9,9 @@ const AGENTS = [
   { id: "201", name: "Sid Menon", team: "t1" },
   { id: "202", name: "Rhea Kapoor", team: "t1" },
   { id: "203", name: "Vikram Rao", team: "t2" },
-  { id: "204", name: "Neha Iyer", team: "t2" }
+  { id: "204", name: "Neha Iyer", team: "t2" },
+  // Has left. Still holding leads, which is the whole point of the assignment pool.
+  { id: "205", name: "Gone Gita", team: "t1", active: false }
 ];
 const CREATORS = ["ayush_singh13", "payalineurope", "ankita_gulati"];
 const STAGES = ["counselled", "program_pitched", "discovery", "pricing_pitched", "Follow up",
@@ -73,10 +75,24 @@ rows.push(lead({ id: "EDGE_arrived_quiet", stage: "counselled", fu: D(2026, 8, 6
 // Shown but never counted: an unassigned lead and a parking bucket that holds a pile.
 rows.push(lead({ id: "EDGE_unassigned", stage: "counselled", fu: D(2026, 8, 1, 11), last: 0,
   owner: "", ownerName: "(unassigned)", needsOwner: true, counted: false, score: 8 }));
+/* The assignment pool: fresh leads nobody is working. Some with no owner at all, some
+   still sitting with an agent who has left. Both are handed out by a manager. */
+for (let i = 0; i < 7; i++) {
+  rows.push(lead({ id: "EDGE_fresh_unassigned_" + i, stage: "__fresh", fu: 0, last: 0,
+    creator: CREATORS[i % CREATORS.length], owner: "", ownerName: "(unassigned)",
+    needsOwner: true, counted: false }));
+}
+for (let i = 0; i < 4; i++) {
+  rows.push(lead({ id: "EDGE_fresh_left_" + i, stage: "__fresh", fu: 0, last: 0,
+    creator: CREATORS[i % CREATORS.length], owner: "205", ownerName: "Gone Gita",
+    needsOwner: true, counted: false }));
+}
 for (let i = 0; i < 40; i++) {
   rows.push(lead({ id: "EDGE_park_" + i, stage: "counselled", fu: D(2026, 8, 1, 11), last: 0,
     owner: "165087274", ownerName: "Abhishek Pal", counted: false, score: 7 }));
 }
 module.exports = { rows: rows, now: TODAY, agents: AGENTS,
-  teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202"] },
-          { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"] }] };
+  teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
+            creators: ["ayush_singh13", "ankita_gulati"] },
+          { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"],
+            creators: ["payalineurope"] }] };

@@ -74,7 +74,8 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ["/api/callnow2?intl=no", "filter: national only"],
       ["/api/callnow2?stages=counselled,discovery", "filter: a picked set of stages"],
       ["/api/callnow2/leads?band=low&bandBy=total&sec=n", "drill: leads barely tried"],
-      ["/api/callnow2/leads?band=high&bandBy=owner&sec=n", "drill: over-worked by this owner"]
+      ["/api/callnow2/leads?band=high&bandBy=owner&sec=n", "drill: over-worked by this owner"],
+      ["/api/callnow2/assign", "the assignment pool"]
     ];
     for (const c of checks) {
       const r = await get(c[0]);
@@ -190,6 +191,25 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("it reports how many leads are shown but not counted",
       rec.body && rec.body.shown && rec.body.shown.notCounted > 0,
       JSON.stringify(rec.body && rec.body.shown));
+
+    /* The assignment pool: fresh leads nobody is working, split by creator. It must not
+       be scoped by agent, or the pool a manager came to find would be empty. */
+    const asg = (await get("/api/callnow2/assign")).body;
+    ok("the assignment pool is allowed for a VP", asg && asg.allowed === true, JSON.stringify(asg));
+    ok("it finds the unassigned fresh leads", asg.totals.unassigned === 7, JSON.stringify(asg.totals));
+    ok("and the ones left behind by an agent who has gone", asg.totals.left === 4, JSON.stringify(asg.totals));
+    ok("the two add up to the pool", asg.totals.total === asg.totals.unassigned + asg.totals.left);
+    ok("it is split by creator", asg.rows.length >= 3, String(asg.rows.length));
+    ok("each creator row adds up", asg.rows.every(function(r){ return r.total === r.unassigned + r.left; }));
+    ok("the rows sum to the total",
+      asg.rows.reduce(function(a, r){ return a + r.total; }, 0) === asg.totals.total);
+    ok("it names who is holding the stranded ones",
+      asg.rows.some(function(r){ return (r.holders || []).some(function(h){ return h.name === "Gone Gita"; }); }),
+      JSON.stringify(asg.rows[0]));
+    ok("an agent filter cannot empty the pool",
+      (await get("/api/callnow2/assign?agent=201")).body.totals.total === asg.totals.total);
+    ok("nothing already owned by a working agent is in it",
+      asg.rows.every(function(r){ return r.unassigned + r.left > 0 || r.assignedToday > 0; }));
 
     const nothing = await get("/api/callnow2/leads?sec=n&col=all");
     ok("the drill returns lead rows", nothing.body && Array.isArray(nothing.body.rows) && nothing.body.rows.length > 0,

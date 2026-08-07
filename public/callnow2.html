@@ -375,12 +375,16 @@ function withTimeout(p,ms){return new Promise(function(res,rej){
   p.then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});});}
 function show(){var l=document.getElementById("loading"),a=document.getElementById("app");
   if(l)l.style.display="none"; if(a)a.style.display="block";}
+var ASSIGN=null;
 function load(){LOADING=true;
   withTimeout(Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),
-                           fetch("/api/callnow2/agents?"+qs()).then(asJson)]),60000)
+                           fetch("/api/callnow2/agents?"+qs()).then(asJson),
+                           // Deliberately unfiltered by agent: a lead with no owner
+                           // belongs to no agent, so the agent filter would empty it.
+                           fetch("/api/callnow2/assign").then(asJson).catch(function(){return null;})]),60000)
     .then(function(r){LOADING=false;
       if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true,building:true,progress:r[0].progress};show();draw();setTimeout(load,15000);return;}
-      J=r[0];A=r[1];show();draw();if(PICK)loadLeads();})
+      J=r[0];A=r[1];ASSIGN=r[2];show();draw();if(PICK)loadLeads();})
     .catch(function(e){LOADING=false;J={error:e.message,retry:true};show();draw();});}
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
@@ -925,6 +929,44 @@ function movementTable(){
       "</b> more leads were called today that were never on this list. They are in the fourth card above.</div>":"")+
     "</div>";}
 
+/* The pool a manager can hand out: fresh leads nobody is working, split by creator.
+
+   Not scoped by agent, because these leads have no agent. A manager sees the creators
+   mapped to their team, a VP sees the floor, an agent sees nothing: assigning is not
+   their job and the list would only be noise to them. */
+function assignPanel(){
+  if(J.scoped&&J.role==="agent")return "";
+  var a=ASSIGN;
+  if(!a||!a.allowed)return "";
+  var t=a.totals||{unassigned:0,left:0,total:0,assignedToday:0};
+  if(!t.total&&!t.assignedToday)return "";
+  var rows=a.rows||[];
+  var h="<div class='sec mini'><h2>Fresh leads waiting to be assigned</h2>"+
+    "<div class='sub'>Fresh leads on this morning's list that nobody is working: no owner at all, "+
+    "or an owner who has left. They are shown everywhere but counted nowhere until somebody takes them, "+
+    "so this is the pool to hand out from. Split by creator."+
+    (a.scoped?" Your team's creators only.":"")+"</div>"+
+    "<div class='tw' style='max-height:340px'><table><thead><tr>"+
+    "<th>Creator</th><th class='n'>Unassigned</th><th class='n'>Owner has left</th>"+
+    "<th class='n'>To assign</th><th class='n'>Assigned today</th></tr></thead><tbody>";
+  rows.forEach(function(r){
+    h+="<tr><td>"+esc(r.u)+
+      (r.holders&&r.holders.length?"<div class='mut' style='font-size:11px'>held by "+
+        r.holders.map(function(x){return esc(x.name)+" ("+fmt(x.n)+")";}).join(", ")+"</div>":"")+"</td>"+
+      "<td class='n'>"+fmt(r.unassigned)+"</td>"+
+      "<td class='n'>"+fmt(r.left)+"</td>"+
+      "<td class='n'><b>"+fmt(r.total)+"</b></td>"+
+      "<td class='n "+(r.assignedToday?"":"mut")+"'>"+(r.assignedToday?fmt(r.assignedToday):"\u2013")+"</td></tr>";
+  });
+  h+="<tr class='tot'><td><b>All creators</b></td><td class='n'><b>"+fmt(t.unassigned)+
+    "</b></td><td class='n'><b>"+fmt(t.left)+"</b></td><td class='n'><b>"+fmt(t.total)+
+    "</b></td><td class='n'><b>"+(t.assignedToday?fmt(t.assignedToday):"\u2013")+"</b></td></tr>";
+  h+="</tbody></table></div>"+
+    "<div class='sub' style='margin:8px 0 0'>The moment one of these is given to a working agent it "+
+    "starts counting, and the calls on it are credited to that agent. Assigned today shows how many "+
+    "have already moved.</div></div>";
+  return h;}
+
 function quality(){
   if(!J.isVP)return "";
   var c=J.checks, d=J.drift;
@@ -1178,8 +1220,10 @@ function draw(){
      one. The wide tables sit below at full width, where they belong. */
   var vpBlock = J.isVP
     ? "<div class='vpflow'>"+baseNote()+movementTable()+excludedNote()+"</div>"+
-      "<div class='vpwide'>"+qualityPanel()+creatorPanel()+reconcile()+"</div>"
-    : "";
+      "<div class='vpwide'>"+assignPanel()+qualityPanel()+creatorPanel()+reconcile()+"</div>"
+    // A manager gets none of the machinery, but the pool they can hand out is their job,
+    // so it is the one summary they do get.
+    : "<div class='vpwide'>"+assignPanel()+"</div>";
   var h=quality()+hero()+vpBlock+"<div class='top'><div class='topcol'>"+bar()+"</div></div>"+viewTabs();
   var matrix="";
   SECS.forEach(function(s,i){

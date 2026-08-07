@@ -107,6 +107,11 @@ function render(role){
   vm.runInContext(script, ctx);
   ctx.J = Object.assign({}, payload, role);
   ctx.A = { agents: agents, effortBands: payload.effortBands };
+  ctx.ASSIGN = { allowed: true, scoped: !!role.scoped, rows: [
+    { u: "ayush_singh13", unassigned: 4, left: 2, total: 6, assignedToday: 1,
+      holders: [{ id: "205", name: "Gone Gita", n: 2 }] },
+    { u: "payalineurope", unassigned: 3, left: 0, total: 3, assignedToday: 0, holders: [] }
+  ], totals: { unassigned: 7, left: 2, total: 9, assignedToday: 1 } };
   ctx.LOADING = false;
   ctx.draw();                                   // the matrix, filters, agent table
   ctx.PICK = { stage: "counselled", sec: "n", col: "all", t: "", worked: "", moved: "", notcounted: "" };
@@ -359,6 +364,16 @@ console.log("\nRole specific things appear only where they should");
   }
   ok("every table is inside a scrolling wrapper",
     (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
+  ok("a manager gets the pool they can hand out",
+    mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
+  ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);
+  ok("an agent does not, because assigning is not their job",
+    agent.indexOf("Fresh leads waiting to be assigned") < 0);
+  ok("the pool is split by creator",
+    mgr.indexOf("ayush_singh13") >= 0 && mgr.indexOf("payalineurope") >= 0);
+  ok("and names who is sitting on the stranded ones", mgr.indexOf("Gone Gita") >= 0);
+  ok("a manager is told the pool is their creators only", mgr.indexOf("Your team's creators only") >= 0);
+  ok("a VP is not", vp.indexOf("Your team's creators only") < 0);
   ok("a denominator that grew during the day says why",
     vp.indexOf("routed to an agent") >= 0 || vp.indexOf("Routed to an agent today") >= 0);
   ok("why-call tags carry the tooltip v1 has",

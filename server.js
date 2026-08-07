@@ -2257,7 +2257,10 @@ function cn2Countable(id){
   const k = String(id || "");
   if (!k) return false;
   if (!ownerCounted(k)) return false;
-  if (CN2_FIXTURE_DATA) return true;
+  if (CN2_FIXTURE_DATA) {
+    const a = CN2_FIXTURE_DATA.agents.filter(function(x){ return x.id === k; })[0];
+    return !a || a.active !== false;
+  }
   return ((CACHE.owners[k] || {}).active !== false);
 }
 function ownerCounted(id){
@@ -2534,6 +2537,10 @@ function cn2Context(req){
      the cell. Never the other way round: nothing already counted is ever taken out. */
   const prom = CN2.promoteBase(base, liveAll, { countable: cn2Countable });
   base = prom.base;
+  // The whole list before any filter or role scope is applied. The assignment pool is
+  // the one thing that must not be scoped by agent: a lead with no owner belongs to no
+  // agent, so filtering by agent would hide exactly the leads a manager came to find.
+  const baseAll = base;
 
   // Filters are applied to the base, not the live pool, so the denominator a manager
   // sees is the same one the totals were built from.
@@ -2597,7 +2604,7 @@ function cn2Context(req){
       return true;
     });
   }
-  return { day: day, base: base, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
+  return { day: day, base: base, baseAll: baseAll, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
     promoted: prom.promoted,
     names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
@@ -2884,6 +2891,80 @@ async function cn2DriftCheck(){
     console.error("drift check failed: " + CN2_DRIFT.error);
   }
 }
+
+/* The pool a manager can assign from.
+
+   Fresh leads that nobody is working: no owner at all, or an owner who has left. Split
+   by creator, because that is the unit a manager thinks in when handing work out.
+
+   Scoped by CREATOR, not by agent. A lead with no owner belongs to no agent, so the
+   normal agent scope would hide the entire pool from the manager who needs it. A
+   manager sees the creators mapped to their team; a VP sees everything; an agent sees
+   nothing, because assigning is not their job.
+
+   Read off this morning's list, like every other number on the page, so it ties to the
+   matrix. Leads assigned during the day drop out of it as they are routed, and are
+   reported on their own line so the manager can see the work they have already done. */
+function cn2CreatorScope(req){
+  if (isVP(req)) return null;
+  const s = req.session || (typeof sessionOf === "function" ? sessionOf(req) : null);
+  if (!s) return [];
+  if (s.role === "agent") return [];
+  const me = String(s.email || "").toLowerCase();
+  const out = [];
+  cn2Teams().filter(function(t){ return String(t.managerEmail || "").toLowerCase() === me; })
+    .forEach(function(t){ (t.creators || []).forEach(function(u){ if (out.indexOf(u) < 0) out.push(u); }); });
+  return out;
+}
+
+app.get("/api/callnow2/assign", function(req, res){
+  if (!cn2Ready()) return res.json({ notReady: true });
+  const role = (req.session && req.session.role) || "manager";
+  if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
+  const ctx = cn2Context(req);
+  const only = cn2CreatorScope(req);
+  const by = {};
+  const row = function(u){
+    if (!by[u]) by[u] = { u: u, unassigned: 0, left: 0, total: 0, assignedToday: 0, owners: {} };
+    return by[u];
+  };
+  Object.keys(ctx.baseAll).forEach(function(id){
+    const c = CN2.read(ctx.baseAll[id]);
+    if (c.stage !== "__fresh") return;
+    const u = c.creator || "(no creator)";
+    if (only && only.indexOf(c.creator) < 0) return;
+    // Routed to a working agent since midnight: no longer assignable, but worth showing.
+    if (c.promoted) { row(u).assignedToday++; return; }
+    if (!c.why.needs) return;
+    const r = row(u);
+    r.total++;
+    if (c.owner) {
+      r.left++;
+      r.owners[c.owner] = (r.owners[c.owner] || 0) + 1;
+    } else {
+      r.unassigned++;
+    }
+  });
+  const rows = Object.keys(by).map(function(u){
+    const r = by[u];
+    return { u: u, unassigned: r.unassigned, left: r.left, total: r.total,
+      assignedToday: r.assignedToday,
+      holders: Object.keys(r.owners).map(function(id){
+        return { id: id, name: cn2OwnerName(id), n: r.owners[id] };
+      }).sort(function(a, b){ return b.n - a.n; }) };
+  }).filter(function(r){ return r.total > 0 || r.assignedToday > 0; })
+    .sort(function(a, b){ return b.total - a.total || a.u.localeCompare(b.u); });
+
+  res.json({
+    allowed: true, scoped: !!only,
+    rows: rows,
+    totals: rows.reduce(function(a, r){
+      a.unassigned += r.unassigned; a.left += r.left; a.total += r.total;
+      a.assignedToday += r.assignedToday; return a;
+    }, { unassigned: 0, left: 0, total: 0, assignedToday: 0 }),
+    frozen: ctx.frozen, frozenAt: ctx.frozenAt
+  });
+});
 
 app.get("/api/callnow2/outside", async function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
