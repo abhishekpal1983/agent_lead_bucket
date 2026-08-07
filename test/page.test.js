@@ -294,8 +294,13 @@ console.log("\nRole specific things appear only where they should");
   ok("all four bands are coloured, not just the extremes",
     ["b-low", "b-avg", "b-bench", "b-high"].every(function(c){
       return html.indexOf("tr." + c + " td{background") >= 0; }));
-  ok("short VP cards flow in columns so none leaves a hole",
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".vpflow{column-count:3") >= 0);
+  // Multicol balanced by height and left the third column empty. Two placed columns
+  // instead, and the rule still has to sit AFTER theme.css or it never takes effect.
+  ok("the VP cards sit in two placed columns, not a balanced flow",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".vpflow{display:grid;grid-template-columns:1fr 1fr") >= 0);
+  ok("the pool to assign sits beside the pile held aside, not below it",
+    vp.indexOf("Shown but not counted") < vp.indexOf("Fresh leads waiting to be assigned") &&
+    vp.indexOf("Fresh leads waiting to be assigned") < vp.indexOf("class='vpwide'"));
   ok("and the wide tables sit below at full width",
     vp.indexOf("class='vpflow'") >= 0 && vp.indexOf("class='vpwide'") >= 0 &&
     vp.indexOf("class='vpflow'") < vp.indexOf("class='vpwide'"));

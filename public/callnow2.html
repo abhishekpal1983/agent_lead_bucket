@@ -222,15 +222,16 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
 .wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
 .wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
-/* Short cards flow in columns, so a tall card cannot leave a hole beside a short one.
-   Grid rows align to the tallest cell; columns do not, which is what this needs. */
-.wrap .vpflow{column-count:3;column-gap:12px;margin-bottom:0}
-.wrap .vpflow > *{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;
-  width:100%;margin:0 0 12px !important;vertical-align:top}
+/* Two explicit columns rather than CSS multicol. Multicol balances by height, which
+   left the third column empty whenever one card was much taller than the rest. Placing
+   the cards by hand means the tall pair sits on the left, the two that belong together
+   sit on the right, and there is no hole. */
+.wrap .vpflow{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.wrap .vpcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.wrap .vpcol > *{margin:0 !important}
 .wrap .vpwide{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:13px}
 .wrap .vpwide > *{margin:0 !important}
-@media (max-width:1500px){ .wrap .vpflow{column-count:2} }
-@media (max-width:1000px){ .wrap .vpflow{column-count:1} }
+@media (max-width:1100px){ .wrap .vpflow{grid-template-columns:1fr} }
 /* Filters as one row that uses the width, with the sync line pushed to the far right. */
 .wrap .top .bar{display:flex !important;flex-wrap:wrap !important;gap:10px !important;
   align-items:flex-end !important}
@@ -951,8 +952,10 @@ function assignPanel(){
     "<th class='n'>To assign</th><th class='n'>Assigned today</th></tr></thead><tbody>";
   rows.forEach(function(r){
     h+="<tr><td>"+esc(r.u)+
-      (r.holders&&r.holders.length?"<div class='mut' style='font-size:11px'>held by "+
-        r.holders.map(function(x){return esc(x.name)+" ("+fmt(x.n)+")";}).join(", ")+"</div>":"")+"</td>"+
+      (r.holders&&r.holders.length?"<div class='mut' style='font-size:11px' title='held by "+
+        esc(r.holders.map(function(x){return x.name+" ("+x.n+")";}).join(", "))+"'>held by "+
+        r.holders.slice(0,3).map(function(x){return esc(x.name)+" ("+fmt(x.n)+")";}).join(", ")+
+        (r.holders.length>3?" and "+fmt(r.holders.length-3)+" more":"")+"</div>":"")+"</td>"+
       "<td class='n'>"+fmt(r.unassigned)+"</td>"+
       "<td class='n'>"+fmt(r.left)+"</td>"+
       "<td class='n'><b>"+fmt(r.total)+"</b></td>"+
@@ -1218,9 +1221,13 @@ function draw(){
   // whether it adds up, and what is outside it. A manager or agent gets the work.
   /* Short cards flow in columns so a tall neighbour cannot leave a hole beside a short
      one. The wide tables sit below at full width, where they belong. */
+  /* Left: what the list is and what has happened to it, which is one long story.
+     Right: the two piles that are not in the totals, held aside and waiting to be
+     assigned, which belong beside each other and fill the space the story leaves. */
   var vpBlock = J.isVP
-    ? "<div class='vpflow'>"+baseNote()+movementTable()+excludedNote()+"</div>"+
-      "<div class='vpwide'>"+assignPanel()+qualityPanel()+creatorPanel()+reconcile()+"</div>"
+    ? "<div class='vpflow'><div class='vpcol'>"+baseNote()+movementTable()+"</div>"+
+      "<div class='vpcol'>"+excludedNote()+assignPanel()+"</div></div>"+
+      "<div class='vpwide'>"+qualityPanel()+creatorPanel()+reconcile()+"</div>"
     // A manager gets none of the machinery, but the pool they can hand out is their job,
     // so it is the one summary they do get.
     : "<div class='vpwide'>"+assignPanel()+"</div>";
