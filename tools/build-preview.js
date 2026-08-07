@@ -11,6 +11,7 @@ const model = fs.readFileSync(path.join(ROOT, "lib/cn2.js"), "utf8")
   .replace(/^"use strict";\s*/, "")
   .replace(/module\.exports\s*=\s*\{[\s\S]*?\};\s*$/m, "");
 const fixture = require(path.join(ROOT, "fixtures/make.js"));
+const ROLE = process.argv[3] || "vp";
 
 const LABELS = {
   counselled: "Counselled", program_pitched: "Program pitched", discovery: "Discovery",
@@ -24,9 +25,14 @@ const STAGES = ["counselled","program_pitched","discovery","pricing_pitched","Fo
 
 const shim = `
 <script>
-/* ---- preview harness: no server, no HubSpot, invented leads ---- */
+/* ---- preview harness: no server, no HubSpot, invented leads ----
+   Wrapped in a function on purpose. The model and the page both declare names like
+   TIMING and COLUMNS, and at global scope a const and a var of the same name is a
+   syntax error that kills the whole file. */
+(function(){
 ${model}
 var PREVIEW = {
+  role: ${JSON.stringify(ROLE)},
   rows: ${JSON.stringify(fixture.rows)},
   now: ${fixture.now},
   teams: ${JSON.stringify(fixture.teams)},
@@ -61,6 +67,11 @@ var PREVIEW = {
     var a = PREVIEW.agents.filter(function(x){ return x.id === String(id); })[0];
     return a ? a.name : (id ? "Owner " + id : "(unassigned)");
   }
+  // Role scope, exactly as the server applies it: an agent sees their own leads, a
+  // manager sees their team's, a VP sees the floor.
+  var ROLE = PREVIEW.role || "vp";
+  var ALLOW = ROLE === "agent" ? ["201"]
+    : ROLE === "manager" ? (PREVIEW.teams[0].agentIds || []).map(String) : null;
   function scoped(q){
     var out = {};
     Object.keys(base).forEach(function(id){
@@ -112,11 +123,39 @@ var PREVIEW = {
       }).sort(function(x, y){ return y.n - x.n; }),
       creatorOptions: Object.keys(cr).map(function(u){ return { u: u, n: cr[u] }; })
         .sort(function(x, y){ return y.n - x.n; }),
+      sourceOptions: [{ u: "forms", n: 12 }, { u: "digital product", n: 9 }],
+      stageOptions: order.map(function(x){ return { stage: x, label: PREVIEW.labels[x] || x }; }),
+      isVP: ROLE === "vp", scoped: ROLE !== "vp", role: ROLE === "agent" ? "agent" : "manager",
+      trackedCreators: ["ayush_singh13", "payalineurope", "ankita_gulati"],
+      effort: (function(){
+        var e = { total: effortCounts(), owner: effortCounts() };
+        Object.keys(b).forEach(function(id){
+          var c = unpack(b[id]);
+          if (c.sec !== "n" || !c.counted) return;
+          var lv = live[id];
+          e.total[effortBand(lv ? lv.calls : 0).key]++;
+          e.owner[effortBand(lv ? lv.own : 0).key]++;
+        });
+        return e;
+      })(),
+      effortBands: EFFORT_BANDS.map(function(b){
+        return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
+      excluded: { n: cell(), a: cell(), d: cell() },
       loadedAt: "fixtures"
     };
   }
   function agents(q){
     var b = scoped(q);
+    var eff = {};
+    Object.keys(b).forEach(function(id){
+      var c = unpack(b[id]);
+      if (c.sec !== "n") return;
+      var a = c.owner || "none";
+      if (!eff[a]) eff[a] = { total: effortCounts(), owner: effortCounts() };
+      var lv = live[id];
+      eff[a].total[effortBand(lv ? lv.calls : 0).key]++;
+      eff[a].owner[effortBand(lv ? lv.own : 0).key]++;
+    });
     var order = PREVIEW.stages;
     var agg = aggregate(b, live, day, order);
     var off = {};
@@ -124,7 +163,9 @@ var PREVIEW = {
     var arows = Object.keys(agg.byAgent).map(function(id){
       var tid = teamOf[id];
       return { id: id, name: nameOf(id === "none" ? "" : id), team: tid ? teamName[tid] : "",
-        teamId: tid || "", n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
+        teamId: tid || "", counted: id !== "none", active: true,
+        effort: eff[id] || { total: effortCounts(), owner: effortCounts() },
+        n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
         offBase: off[id] || 0 };
     }).sort(function(x, y){ return y.n.all - x.n.all; });
     var tm = {};
@@ -136,7 +177,9 @@ var PREVIEW = {
       });
       tm[k].offBase += r.offBase; tm[k].agents++;
     });
-    return { agents: arows, teams: Object.keys(tm).map(function(k){ return tm[k]; })
+    return { effortBands: EFFORT_BANDS.map(function(b){
+      return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
+      agents: arows, teams: Object.keys(tm).map(function(k){ return tm[k]; })
       .sort(function(x, y){ return y.n.all - x.n.all; }), frozen: true };
   }
   function leads(q){
@@ -185,9 +228,16 @@ var PREVIEW = {
     return Promise.resolve({ status: 200, ok: true, text: function(){ return Promise.resolve(JSON.stringify(body)); } });
   };
 })();
+})();
 </script>`;
 
-const out = page.replace("<script>\nvar J=null", shim + "\n<script>\nvar J=null");
+// The page gained a blank line after <script>, which silently broke this replace and
+// produced a preview with no data in it. Anchor on the variable line instead.
+const anchor = page.indexOf("var J=null");
+if (anchor < 0) throw new Error("cannot find the page's entry point");
+const tagAt = page.lastIndexOf("<script>", anchor);
+const out = page.slice(0, tagAt) + shim + "\n" + page.slice(tagAt);
+const ROLE_ARG = process.argv[3] || "vp";
 const dest = process.argv[2] || path.join(ROOT, "callnow2-preview.html");
 fs.writeFileSync(dest, out);
 console.log("wrote " + dest + " (" + Math.round(out.length / 1024) + " kB)");
