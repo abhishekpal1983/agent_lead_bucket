@@ -162,3 +162,30 @@ now pinned by `test/revenue.test.js`.
 The one case that is still counted nowhere is a payment booked by an agent who belongs to no
 team at all. That is a mapping gap rather than a rule, and it is called out by name in
 **Revenue not counted** on the Revenue Command page.
+
+---
+
+## 9. Call coaching: who is on the day's list
+
+**An audit needs a call.** Only agents who have a reviewable call go on the list.
+
+A call is reviewable when it ran past 90 seconds and is attached to a lead, within the
+last five days. The list is drawn by walking the whole team rotation and taking the first
+five agents who have one.
+
+| | What happens |
+|---|---|
+| Five or more agents have a call | Five are listed, the day owes 5 |
+| Only three do | Three are listed, the day owes 3, and compliance reads 3/3 |
+| Nobody does | The list is empty and the day owes nothing |
+| An agent has no call | Named under the list, not shown as a card, keeps their turn in the rotation |
+
+So the denominator is never a slot a manager cannot fill. 5/5 means five calls were
+actually listened to.
+
+Before 7 Aug 2026 the day was padded to five with blank cards, and the walk stopped at
+five including the blanks, which could leave a reviewable agent off the list. Locks
+written under the old rule are repaired once, on the next read, and the blanks are
+dropped. The rule is pinned by `test/coach.test.js`.
+
+The list is still locked once at 09:30 IST and honoured for the rest of the day.

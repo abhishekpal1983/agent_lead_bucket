@@ -2277,6 +2277,7 @@ function ownerCounted(id){
    plumbing. v1 is untouched on purpose, the floor uses it every day.
    ========================================================================== */
 const CN2 = require("./lib/cn2");
+const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
 const CN2_WORK_DAYS = process.env.WORK_DAYS || CN2.DEFAULT_WORK_DAYS;
 const CN2_WORK = CN2.workDaySet(CN2_WORK_DAYS);
@@ -5031,19 +5032,43 @@ function coachRotationOrder(team, dateStr){
    reports compliance must read the same list the manager is looking at, or the VP is
    told two people are outstanding while the manager sees three different names. */
 function coachDueAgents(team, dateStr){
-  const lock = coachAssignments()[coachAssignKey(dateStr, team.id)];
-  if (lock) return lock.rows.map(function(r){ return String(r.agentId); });
+  const lock = coachLockFor(dateStr, team);
+  // A lock written before this rule may still hold blank rows. Filtering on read
+  // retires them without having to rewrite the store.
+  if (lock) return lock.rows.filter(function(r){ return r.callId; }).map(function(r){ return String(r.agentId); });
   return coachPickAgents(team, dateStr);
 }
 
+/* An audit needs a call. An agent who took none is not a coaching slot, they are an
+   agent with nothing to listen to, and putting them on the list only manufactures a
+   miss that no manager can fix. So the five are drawn from agents who HAVE a call,
+   and if only three do, the day owes three. */
+function coachHasCall(agentId){
+  return (COACH.byOwner[String(agentId)] || []).some(function(c){
+    return c.seconds >= COACH_MIN_SECONDS && c.contactId;
+  });
+}
+function coachBufferReady(){ return !!(COACH.loadedAt && (COACH.calls || []).length); }
+
 function coachPickAgents(team, dateStr){
-  const ids = coachAgents(team).sort();
-  if (!ids.length) return [];
-  const n = Math.min(COACH_PER_DAY, ids.length);
-  const start = (coachDayIndex(dateStr) * n) % ids.length;
-  const out = [];
-  for (let i = 0; i < n; i++) out.push(ids[(start + i) % ids.length]);
-  return out;
+  const order = coachRotationOrder(team, dateStr);
+  if (!order.length) return [];
+  // Before any calls are held, "nobody has a call" is not a fact, it is an empty
+  // buffer. Show the roster's turn rather than an empty day.
+  if (!coachBufferReady()) return order.slice(0, Math.min(COACH_PER_DAY, order.length));
+  return COACHLIB.eligible(order, coachHasCall, COACH_PER_DAY);
+}
+
+/* What the day actually owes. Read off the lock once locked, so it cannot move under
+   a manager who is halfway through the list. */
+function coachDayTarget(team, dateStr){
+  const lock = coachLockFor(dateStr, team);
+  if (lock) return lock.rows.filter(function(r){ return r.callId; }).length;
+  // A past day with no lock cannot be recomputed: today's call buffer says nothing
+  // about who had a call three weeks ago. Fall back to the roster's cadence.
+  if (dateStr !== coachIstDate()) return Math.min(coachAgents(team).length, COACH_PER_DAY);
+  if (!coachBufferReady()) return Math.min(coachAgents(team).length, COACH_PER_DAY);
+  return coachPickAgents(team, dateStr).length;
 }
 
 /* ---------- call inventory ----------
@@ -5295,10 +5320,11 @@ app.get("/api/coaching/today", function(req, res){
   const done = store.sessions.filter(function(s){ return s.date === date && s.teamId === team.id; });
   // The day's five are locked once and then honoured. A manager arriving before the bell
   // locks it early rather than seeing a pick that could still move.
-  const lock = coachAssignments()[coachAssignKey(date, team.id)] || coachLock(date, team, whoami(req));
-  const agents = lock ? lock.rows.map(function(r){ return r.agentId; }) : coachPickAgents(team, date);
+  const lock = coachLockFor(date, team) || coachLock(date, team, whoami(req));
+  const lockRows = lock ? lock.rows.filter(function(r){ return r.callId; }) : [];
+  const agents = lock ? lockRows.map(function(r){ return r.agentId; }) : coachPickAgents(team, date);
   const lockedOf = {};
-  if (lock) lock.rows.forEach(function(r){ lockedOf[String(r.agentId)] = r; });
+  lockRows.forEach(function(r){ lockedOf[String(r.agentId)] = r; });
 
   const rows = agents.map(function(id){
     const existing = done.filter(function(s){ return String(s.agentId) === String(id); })[0];
@@ -5331,6 +5357,10 @@ app.get("/api/coaching/today", function(req, res){
     callsLoadedAt: COACH.loadedAt, callsSyncing: COACH.syncing, callsError: COACH.error,
     callsPartial: !!COACH.partial, callsHeld: (COACH.calls || []).length,
     lockedAt: lock ? lock.at : null, lockHour: COACH_LOCK_HM,
+    // Named, not listed as cards: they had no call worth reviewing and keep their turn.
+    noCall: ((lock && lock.skipped) || []).map(function(id){
+      return { id: String(id), name: (CACHE.owners[id] || {}).name || ("Owner " + id) };
+    }),
     persistent: ORG_PERSISTENT, isVP: isVP(req), minSeconds: COACH_MIN_SECONDS,
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID }
   });
@@ -5490,7 +5520,7 @@ function coachDayDetail(date){
   const store = coachStore();
   const teams = {}, agents = {};
   (ORG.teams || []).forEach(function(t){
-    const target = Math.min(coachAgents(t).length, COACH_PER_DAY);
+    const target = coachDayTarget(t, date);
     const done = store.sessions.filter(function(x){
       return x.date === date && x.teamId === t.id && x.submittedAt;
     });
@@ -5523,11 +5553,51 @@ function coachAssignments(){
   return store.assignments;
 }
 function coachAssignKey(date, teamId){ return date + "|" + teamId; }
+// Every read of a lock goes through here, so a legacy lock is repaired exactly once
+// and no caller can see the old blank-padded shape.
+function coachLockFor(date, team){
+  const lock = coachAssignments()[coachAssignKey(date, team.id)];
+  return lock ? coachRepairLock(date, team, lock) : null;
+}
+
+/* One-time repair for a lock written under the old rule.
+
+   The old lock padded the day to five with blank cards, and the walk stopped at five
+   INCLUDING those blanks, so a reviewable agent further down the rotation could be
+   left out. Dropping the blanks on read alone would leave the day short. This fills
+   the tail once, from the same rotation, and rewrites the lock in the new shape.
+   It only ever touches a lock that still has a blank row, so a correct lock is never
+   reopened and the day's five cannot drift. */
+function coachRepairLock(date, team, lock){
+  if (!COACHLIB.isLegacyLock(lock)) return lock;
+  if (!coachBufferReady()) return lock;
+  const rows = lock.rows.filter(function(r){ return r.callId; });
+  const have = {};
+  rows.forEach(function(r){ have[String(r.agentId)] = 1; });
+  const taken = rows.map(function(r){ return r.callId; }).concat(
+    coachStore().sessions.filter(function(s){ return s.date === date && s.teamId === team.id; })
+      .map(function(s){ return s.callId; }));
+  const skipped = [];
+  coachRotationOrder(team, date).forEach(function(id){
+    if (have[String(id)]) return;
+    if (rows.length >= COACH_PER_DAY) return;
+    const call = coachPickCall(id, date, taken);
+    if (!call) { skipped.push(String(id)); return; }
+    taken.push(call.id);
+    rows.push({ agentId: String(id), callId: call.id, call: call, auto: coachAuto(call), reason: "" });
+  });
+  lock.rows = rows;
+  lock.skipped = skipped;
+  lock.repairedAt = new Date().toISOString();
+  if (typeof orgSave === "function") orgSave("coach.repair", coachAssignKey(date, team.id), "system");
+  console.log("Coaching lock repaired " + coachAssignKey(date, team.id) + ": " + rows.length + " agents with a call");
+  return lock;
+}
 
 function coachLock(date, team, who){
   const all = coachAssignments();
   const key = coachAssignKey(date, team.id);
-  if (all[key]) return all[key];
+  if (all[key]) return coachRepairLock(date, team, all[key]);
   // Never lock a day against an empty or still-loading buffer: that would freeze "no call
   // to review" for everyone and there would be no way back without editing the store.
   if (!COACH.loadedAt || !(COACH.calls || []).length) return null;
@@ -5539,25 +5609,20 @@ function coachLock(date, team, who){
      A manager handed three reviewable agents and two blanks does three, and a cadence
      that quietly shrinks stops being a cadence. Agents with nothing to review are
      skipped, keep their turn, and come round on the next cycle. */
-  const order = coachRotationOrder(team, date);
-  const rows = [];
-  const skipped = [];
-  order.forEach(function(id){
-    if (rows.length >= COACH_PER_DAY) return;
-    const call = coachPickCall(id, date, taken);
-    if (!call) { skipped.push(String(id)); return; }
-    taken.push(call.id);
-    rows.push({ agentId: String(id), callId: call.id, call: call, auto: coachAuto(call), reason: "" });
+  const chosen = COACHLIB.chooseDay(coachRotationOrder(team, date), function(id, used){
+    return coachPickCall(id, date, taken.concat(used));
+  }, COACH_PER_DAY);
+  const rows = chosen.rows.map(function(r){
+    return { agentId: r.agentId, callId: r.callId, call: r.call, auto: coachAuto(r.call), reason: "" };
   });
-  // Only if the whole roster is dry does a blank slot appear, and it says so.
-  skipped.forEach(function(id){
-    if (rows.length >= COACH_PER_DAY) return;
-    rows.push({ agentId: String(id), callId: "", call: null, auto: {},
-      reason: "no call over " + COACH_MIN_SECONDS + "s in the last " +
-        Math.round(COACH_MAX_HOURS / 24) + " days" });
-  });
+  const skipped = chosen.skipped;
+  /* Agents with nothing to review are not padded into the list as blank cards.
+     Every locked row has a call, so five reviewed out of five means five calls were
+     actually listened to. A thin day locks three and owes three. The skipped agents
+     keep their place in the rotation and are named on the page, so they are visible
+     without being counted as a miss. */
   all[key] = { at: new Date().toISOString(), by: who || "system", date: date,
-    teamId: team.id, rows: rows };
+    teamId: team.id, rows: rows, skipped: skipped };
   // Assignments are only interesting while the day is open or being reviewed the morning
   // after. Thirty days is generous and keeps the store small enough to rewrite often.
   const keys = Object.keys(all).sort();
@@ -5598,6 +5663,9 @@ app.get("/api/coaching/summary", function(req, res){
     const mine = week.filter(function(s){ return s.teamId === t.id; });
     const agents = coachAgents(t);
     const expectedDaily = Math.min(agents.length, COACH_PER_DAY);
+    // Today is known exactly: only agents with a call are due. The seven day strip
+    // keeps the roster cadence, because who had a call last Tuesday is not recoverable.
+    const expectedToday = coachDayTarget(t, today);
     const covered = {};
     mine.forEach(function(s){ covered[String(s.agentId)] = 1; });
     const scores = mine.map(function(s){ return (s.score || {}).pct || 0; });
@@ -5634,7 +5702,7 @@ app.get("/api/coaching/summary", function(req, res){
       teamId: t.id, name: t.name, managerEmail: t.managerEmail,
       agents: agents.length,
       todayDone: todayRows.filter(function(r){ return r.done; }).length,
-      todayExpected: expectedDaily,
+      todayExpected: expectedToday,
       todayRows: todayRows,
       daily: daily,
       sessions7d: mine.length, expected7d: expectedDaily * 5,

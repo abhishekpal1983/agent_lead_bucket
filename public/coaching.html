@@ -156,6 +156,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ind);box
 .foot .right{margin-left:auto;display:flex;gap:10px;align-items:center}
 
 .empty{padding:16px 20px 20px;font-size:13px;color:var(--ink2)}
+.nocall{margin-top:14px;padding:11px 15px;border:1px dashed var(--line);border-radius:13px;font-size:12.5px;color:var(--ink3);background:var(--surface)}
+.nocall b{color:var(--ink2);font-weight:600}
 .warn{background:var(--amb-soft);color:var(--amb-ink);border:1px solid #F7E2C2;border-radius:13px;padding:11px 15px;font-size:12.5px;margin-bottom:14px}
 .ok{display:flex;align-items:center;gap:8px;background:var(--em-soft);color:var(--em-ink);border:1px solid #C7EDDD;border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:550;margin-top:12px}
 .ok svg{width:13px;height:13px}
@@ -320,6 +322,8 @@ function render(){
   var done = j.rows.filter(function(r){ return STATE[r.agentId] && STATE[r.agentId].saved; }).length;
   var pct = j.rows.length ? Math.round(done * 100 / j.rows.length) : 0;
   var h = '<div class="bar">';
+  // The denominator is the number of agents who actually have a call. Five of five
+  // means five calls were listened to; three of three is a thin day, not a failure.
   h += '<div class="stat"><b>' + done + '</b> of ' + j.rows.length + ' reviewed today <span class="mini"><i style="width:' + pct + '%"></i></span></div>';
   h += '<input type="text" id="dt" value="' + esc(j.date) + '" style="width:122px" title="IST date">';
   if (j.isVP && j.teams.length) {
@@ -346,7 +350,19 @@ function render(){
     h += '<div class="warn">Call sync error: ' + esc(j.callsError) + '. Retrying every five minutes. This is separate from the Revenue command sync.</div>';
   }
 
+  if (!j.rows.length) {
+    h += '<div class="warn">No agent on this team has a call worth reviewing today, so there is nothing to audit. ' +
+      'A call has to run past ' + (j.minSeconds || 90) + ' seconds and be attached to a lead.</div>';
+  }
   h += j.rows.map(card).join("");
+  // Named rather than carded. They took no reviewable call, so they are not an audit
+  // slot and not a miss. They hold their place and come round on the next cycle.
+  if (j.noCall && j.noCall.length) {
+    h += '<div class="nocall"><b>' + j.noCall.length + ' not on today\'s list</b>, no call over ' +
+      (j.minSeconds || 90) + 's to review: ' +
+      j.noCall.map(function(a){ return esc(a.name); }).join(", ") +
+      '. They keep their turn in the rotation.</div>';
+  }
   app.innerHTML = h;
 }
 
@@ -377,7 +393,9 @@ function card(row){
   h += '</div></div>';
 
   if (!row.call) {
-    h += '<div class="empty">No call to review: ' + esc(row.reason || "none found") + '. This agent rolls over to the next cycle.</div></div>';
+    // Only reachable while the call buffer is still loading. An agent with no call is
+    // named in the note below the list instead, never carded.
+    h += '<div class="empty">' + esc(row.reason || "No call to review yet") + '. Nothing is owed for this agent until a call appears.</div></div>';
     return h;
   }
 
