@@ -228,6 +228,50 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 /* Wide by nature, so the stage and owner chips get the whole width under the band. */
 .wrap .bar.chipbar{padding-top:8px !important;padding-bottom:8px !important;margin-bottom:10px !important}
 
+/* ---- the control cards ------------------------------------------------------------
+   Three white boxes with grey chips gave no clue which one did what, and none of them
+   looked like part of the same page as the tables below. Each now carries the indigo
+   rule that means "this is a control", the labels carry a tick of the same, and the
+   chips wear the meaning they filter on. Colour here is never decoration: a stage chip
+   is the colour that stage is in every table, and an owner chip is the colour that
+   owner state is everywhere else. */
+.wrap .bar.ctl{border-top:2px solid #4F46E5 !important;background:
+  linear-gradient(180deg,#FBFBFF 0%,#fff 42%) !important}
+.wrap .barlbl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  color:#4B2E9E;flex:0 0 auto;align-self:center;display:flex;align-items:center;gap:5px}
+.wrap .barlbl:before{content:"";width:3px;height:11px;border-radius:2px;background:#6D4BD8}
+.wrap .bar.chipbar .barlbl+.chips{margin-right:14px}
+
+/* Stage chips carry their own stage colour, solid when chosen. */
+.wrap .chipb.stagechip{border:1px solid transparent !important;font-weight:600 !important}
+.wrap .chipb.stagechip:hover{filter:brightness(.96)}
+.wrap .chipb.stagechip.on{font-weight:700 !important;box-shadow:0 1px 2px rgba(10,37,64,.18)}
+.wrap .chipb.all{background:#EEF0FE;color:#3B2FA8;border-color:#DDD9FA;font-weight:600}
+.wrap .chipb.all.on{background:#4F46E5;color:#fff;border-color:#4F46E5}
+
+/* Owner chips say what they mean: working, gone, needs routing, nobody. */
+.wrap .chipb.own{font-weight:600}
+.wrap .chipb.own-all{background:#EEF0FE;color:#3B2FA8;border-color:#DDD9FA}
+.wrap .chipb.own-all.on{background:#4F46E5;color:#fff;border-color:#4F46E5}
+.wrap .chipb.own-ok{background:#E6F3EC;color:#0A5346;border-color:#CBE6D9}
+.wrap .chipb.own-ok.on{background:#0A5346;color:#fff;border-color:#0A5346}
+.wrap .chipb.own-gone{background:#FBE2D8;color:#8C2D12;border-color:#F3CDBE}
+.wrap .chipb.own-gone.on{background:#8C2D12;color:#fff;border-color:#8C2D12}
+.wrap .chipb.own-route{background:#FDF3E2;color:#7A4A08;border-color:#F0DCB8}
+.wrap .chipb.own-route.on{background:#7A4A08;color:#fff;border-color:#7A4A08}
+.wrap .chipb.own-none{background:#EDF1F5;color:#3F5163;border-color:#DAE2EA}
+.wrap .chipb.own-none.on{background:#3F5163;color:#fff;border-color:#3F5163}
+
+/* The filter labels above each dropdown, tied to the same family. */
+.wrap .bar.ctl > div > label{color:#4A5A6A !important;font-weight:600 !important}
+.wrap .bar.ctl select:focus,.wrap .bar.ctl .segsearch:focus{outline:none;border-color:#4F46E5;
+  box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.wrap .bar.ctl select{border-color:#DCE4EC}
+/* A dropdown that is actually filtering something should look different from one that is not. */
+.wrap .bar.ctl select:not([data-all]){}
+.wrap .seg{background:#EEF0FE !important}
+.wrap .seg button.on{background:#4F46E5 !important;color:#fff !important}
+
 /* Behind the numbers: one fold, not eleven loose cards. */
 .wrap .behind{margin-top:16px}
 .wrap .behindbtn{width:100%;text-align:left;background:#fff;border:1px solid var(--line,#DCE4EC);
@@ -766,7 +810,7 @@ function segNote(){
    width below, where they wrap to one or two rows instead of five. */
 function bar(){ return barTop()+barChips(); }
 function barTop(){
-  var h="<div class='bar'>";
+  var h="<div class='bar ctl'>";
   // A scoped reader has nothing to choose between, so the picker is not drawn for them.
   if(!J.scoped){
     h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
@@ -784,19 +828,27 @@ function barTop(){
 
 function barChips(){
   // The same controls v1 puts under its dropdowns.
-  var h="<div class='bar chipbar'>";
-  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;flex:0 0 auto'>Stages</span>"+
+  var h="<div class='bar chipbar ctl'>";
+  h+="<span class='barlbl'>Stages</span>"+
     "<div class='chips'>"+
-    "<button class='chipb"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
+    "<button class='chipb all"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
     (J.stageOptions||[]).map(function(o){
       var on=String(Q.stages).split(",").indexOf(o.stage)>=0;
-      return "<button class='chipb"+(on?" on":"")+"' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
+      // The same hue this stage wears everywhere else on the page. A filter row that
+      // matches the table it filters is one less thing to learn.
+      var c=(STAGE_CHIP[o.stage]||"#F2F2F4|#525252").split("|");
+      var st=on?("background:"+c[1]+";color:#fff;border-color:"+c[1])
+               :("background:"+c[0]+";color:"+c[1]+";border-color:transparent");
+      return "<button class='chipb stagechip"+(on?" on":"")+"' style='"+st+
+        "' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
         esc(o.label)+"</button>";}).join("")+"</div>";
-  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:10px;flex:0 0 auto'>Owner</span>"+
+  h+="<span class='barlbl'>Owner</span>"+
     "<div class='chips'>"+
-    [["","All"],["active","Active agents"],["inactive","Deactivated agents"],
-     ["needs","Needs owner"],["unassigned","Unassigned"]].map(function(o){
-      return "<button class='chipb"+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
+    // Semantic, and the same meanings the rest of the page uses: green is somebody is
+    // working it, rust is somebody left, amber is it needs routing, slate is nobody.
+    [["","All","all"],["active","Active agents","ok"],["inactive","Deactivated agents","gone"],
+     ["needs","Needs owner","route"],["unassigned","Unassigned","none"]].map(function(o){
+      return "<button class='chipb own own-"+o[2]+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
         JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
   return h+"</div>";}
 function setF(k,v){ Q[k]=v; load(); }
@@ -1265,7 +1317,7 @@ function chipOf(k,n,label){
     "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
 
 function viewTabs(){
-  return "<div class='bar' style='padding:7px 10px'><span class='seg'>"+
+  return "<div class='bar ctl' style='padding:7px 10px'><span class='seg'>"+
     ["matrix","queue","board"].map(function(v){
       var lbl=v.charAt(0).toUpperCase()+v.slice(1);
       return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+"</button>";

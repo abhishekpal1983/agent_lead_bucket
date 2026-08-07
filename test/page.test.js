@@ -372,9 +372,18 @@ console.log("\nRole specific things appear only where they should");
   ok("the cards sit two by two beside the controls, not four across above them",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .herorow{display:grid !important;grid-template-columns:repeat(2") >= 0 &&
     vp.indexOf("class='heroside'") < vp.indexOf("class='ctrlside'"));
+  ok("a stage chip wears the colour that stage wears in the tables",
+    vp.indexOf("class='chipb stagechip'") >= 0 || vp.indexOf("chipb stagechip") >= 0);
+  ok("owner chips carry their meaning, not just a label",
+    ["own-ok", "own-gone", "own-route", "own-none"].every(function(c){ return vp.indexOf(c) >= 0; }));
+  ok("and those meanings are defined after theme.css, or they never take effect",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .chipb.own-gone") >= 0);
+  ok("the control cards are marked as controls",
+    (vp.match(/class='bar ctl/g) || []).length >= 2 &&
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .bar.ctl{border-top") >= 0);
   ok("and the wide chip rows get the full width below the band",
-    vp.indexOf("class='bar chipbar'") >= 0 &&
-    vp.indexOf("class='headband") < vp.indexOf("class='bar chipbar'"));
+    vp.indexOf("class='bar chipbar ctl'") >= 0 &&
+    vp.indexOf("class='headband") < vp.indexOf("class='bar chipbar ctl'"));
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
   // vpflow is now just a two column grid, and a manager legitimately gets one card in it,
   // the pool they can assign from. What they must not see is its VP-only contents, which
