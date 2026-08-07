@@ -15,7 +15,7 @@ one of them is a bug.
 | Due today | The follow-up date is today |
 | Overdue | The follow-up date has passed and a full working day has gone by without a call |
 | No FU | Nobody set a next-call date on this lead |
-| Fresh | A brand new lead nobody has ever rung |
+| Fresh | No engagement stage has ever been set on the lead. Not a statement about calls: see RULES.md section 10 |
 | Refilled form | They filled the form again after the last call, so they are asking a second time |
 | IFC due | They said interested in future and the date they asked for has arrived |
 | Called but not on today's calling list | Calls made on leads that arrived after midnight. Real work, just not part of today's plan |

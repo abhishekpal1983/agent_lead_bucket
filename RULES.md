@@ -21,9 +21,10 @@ written-down list is what the whole page measures against for the rest of the da
    form again since the last call. Deal won and disqualified never go on, whatever happens.
 3. That is it. There is no fourth condition.
 
-**Leads that are shown but never counted.** Unassigned leads and parking buckets go on the
-list and appear everywhere, but are excluded from every total. They are visible so the work
-does not disappear, and excluded so one bucket cannot swamp the floor.
+**Leads that are shown but not counted.** Unassigned leads, leads whose owner has left, and
+parking buckets go on the list and appear everywhere, but are excluded from every total.
+They are visible so the work does not disappear, and excluded so nobody is measured against
+leads they cannot call. Section 11 has the full table.
 
 **Nothing joins the list after 00:05.** A lead created at 11am is not on today's list, and
 never will be. It appears as *created after the list locked*, which is real work, counted
@@ -32,6 +33,10 @@ separately, and not part of this morning's plan.
 **Nothing leaves the list before midnight.** Not by changing stage, not by getting a new
 follow-up date, not by being handed to another agent, not by having its creator untracked.
 The lead was on the list this morning; it stays on the list until the list is replaced.
+
+**One thing can change during the day, and it can only add.** A lead nobody was working can
+be routed to a working agent, and from that moment it counts. Nothing that already counts is
+ever taken back out. Section 11.
 
 ---
 
@@ -52,7 +57,7 @@ Inside its group, each lead gets exactly **one timing**:
 | **Due today** | The follow-up is dated today |
 | **Overdue** | The follow-up date has passed **and** a full working day has gone by |
 | **No FU** | No next-call date was ever set |
-| **Fresh** | Brand new, nobody has ever worked it |
+| **Fresh** | No engagement stage has ever been set, and no follow-up date. See section 10 |
 | **Later date** | The follow-up is dated for a future day |
 
 And any number of **reasons to call**, which overlap on purpose:
@@ -189,3 +194,72 @@ written under the old rule are repaired once, on the next read, and the blanks a
 dropped. The rule is pinned by `test/coach.test.js`.
 
 The list is still locked once at 09:30 IST and honoured for the rest of the day.
+
+---
+
+## 10. Fresh leads
+
+**Fresh means no engagement stage has ever been set in HubSpot.** That is the whole test.
+
+Not age. Not source. Not created date. **Not call history.** A lead with four calls logged
+against it and no stage set is Fresh, because nobody recorded what happened. Confirmed
+7 August 2026. This is why the Fresh row can show calls today, and a Fresh row with a lot
+of calls on it is a stage-setting problem, not new work.
+
+**How they get on the list.** One HubSpot search per tracked creator, for contacts where
+`contact_engagement_stage` is absent. They are pulled **by creator, not by owner**, so who
+holds them, or whether anybody does, has nothing to do with whether they appear.
+
+**Where they sit.**
+
+| The lead has | Timing | Group |
+|---|---|---|
+| No follow-up date | Fresh | Call today |
+| A follow-up dated today | Due today | Call today |
+| A follow-up dated in the past | Overdue, by the normal working-day rule | Call today |
+| A follow-up dated ahead | Later date | Booked for a later date |
+
+Fresh is a **reason to call in its own right**, and it has its **own column**, so a brand
+new lead never inflates *No FU marked*. Set `FRESH_IS_PRIORITY=0` to make fresh leads need
+another signal before they enter the queue.
+
+**How they leave.** Only by somebody setting an engagement stage, at the next sync. They
+never age out and no number of calls removes them. Subject to section 1, a lead that leaves
+this way still stays on today's list until midnight.
+
+---
+
+## 11. Owner state: who is counted
+
+A lead that nobody is working is **a routing job for a manager, not a call for an agent**.
+It must be visible, and it must not sit in an agent's denominator.
+
+| Who holds the lead | On the list | In the totals | Whose job |
+|---|---|---|---|
+| A working agent | Yes | **Yes** | Call it |
+| An agent who has left | Yes | No | Manager reassigns it |
+| Nobody at all | Yes | No | Manager assigns it |
+| A parking bucket, the four named ids | Yes | No | Manager distributes it |
+
+**Routing during the day promotes a lead.** Confirmed 7 August 2026. The moment a lead with
+no owner, or an owner who has left, is given to a working agent, three things change and
+nothing else:
+
+1. It starts counting, so the denominator grows.
+2. The credit for any call on it moves to the new agent, because the morning owner was nobody.
+3. It stops appearing in the *Needs owner* column.
+
+Its stage row, its group and its timing stay exactly as written at 00:05.
+
+**It can only ever add.** A lead already counted this morning is never taken out, not even if
+its agent is deactivated at noon. A denominator that can shrink can be gamed, so it cannot
+shrink.
+
+**Parking buckets are not part of this.** They have a real, working owner and were never
+asking to be routed, so handing one out mid-day does not promote it. That keeps a manager
+from collapsing the floor's coverage by distributing three hundred leads at 5pm. Calls on
+those leads still show, in *worked outside this morning's list*.
+
+The number promoted today is shown on the page, under the locked-list note and as its own
+row in *What happened to this morning's list*, so a denominator that grew is never a mystery.
+Pinned by `test/cn2.test.js`.

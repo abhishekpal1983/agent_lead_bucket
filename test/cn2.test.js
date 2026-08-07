@@ -192,5 +192,69 @@ head("Lead source survives the pack, and an older locked list still parses");
     cn2.unpack("counselled|n|nofu|0|9|ayush_singh13").owner, "9");
 }
 
+
+/* ---- routing done during the day -------------------------------------------------
+   A lead nobody was working joins the totals the moment a working agent takes it, and
+   the credit follows them. Nothing already counted is ever taken back out. */
+{
+  const mk = function(o){
+    return cn2.pack(Object.assign({ stage: "__fresh", sec: "n", t: "newlead",
+      why: { needs: false, fresh: true }, owner: "", creator: "c1", source: "", counted: true }, o));
+  };
+  const live = function(id){ return { id: "L", owner: id, last: 0 }; };
+  const countable = function(id){ return ["10", "11"].indexOf(id) >= 0; };   // 99 is a parking bucket, 98 has left
+
+  const unowned = mk({ why: { needs: true, fresh: true }, owner: "", counted: false });
+
+  let r = cn2.promoteBase({ L: unowned }, { L: live("10") }, { countable: countable });
+  ok("a routed lead starts counting", cn2.read(r.base.L).counted === true);
+  ok("and the count of routed leads is reported", r.promoted === 1);
+  ok("credit follows the new owner", cn2.read(r.base.L).owner === "10");
+  ok("and it stops asking to be routed", cn2.read(r.base.L).why.needs === false);
+  ok("its stage row does not move", cn2.read(r.base.L).stage === "__fresh");
+  ok("its timing does not move", cn2.read(r.base.L).t === "newlead");
+  ok("its section does not move", cn2.read(r.base.L).sec === "n");
+  ok("its other reasons survive", cn2.read(r.base.L).why.fresh === true);
+
+  r = cn2.promoteBase({ L: unowned }, { L: live("99") }, { countable: countable });
+  ok("routing into a parking bucket changes nothing", cn2.read(r.base.L).counted === false && r.promoted === 0);
+
+  r = cn2.promoteBase({ L: unowned }, { L: live("98") }, { countable: countable });
+  ok("routing to someone who has also left changes nothing", r.promoted === 0);
+
+  r = cn2.promoteBase({ L: unowned }, { L: live("") }, { countable: countable });
+  ok("still nobody means still not counted", r.promoted === 0);
+
+  r = cn2.promoteBase({ L: unowned }, {}, { countable: countable });
+  ok("a lead that has left the pool is not promoted", r.promoted === 0);
+
+  // The rule can only ever add.
+  const parked = mk({ why: { needs: false, fresh: true }, owner: "165087274", counted: false });
+  r = cn2.promoteBase({ L: parked }, { L: live("10") }, { countable: countable });
+  ok("a parking bucket lead handed out is not promoted, it was never a routing case",
+    cn2.read(r.base.L).counted === false && r.promoted === 0);
+
+  const counted = mk({ owner: "10", counted: true });
+  r = cn2.promoteBase({ L: counted }, { L: live("98") }, { countable: countable });
+  ok("a counted lead whose agent leaves is never demoted", cn2.read(r.base.L).counted === true);
+  ok("and its owner is not rewritten", cn2.read(r.base.L).owner === "10");
+
+  // The stored base must not be touched: tomorrow reads it again.
+  const store = { L: unowned };
+  cn2.promoteBase(store, { L: live("10") }, { countable: countable });
+  ok("the stored list is never rewritten", store.L === unowned);
+
+  // And the promoted lead has to reach the totals, not just the base.
+  const day = cn2.dayBoundsFor(Date.UTC(2026, 7, 6, 6, 30));
+  const p2 = cn2.promoteBase({ L: unowned }, { L: live("10") }, { countable: countable });
+  const agg = cn2.aggregate(p2.base, { L: { id: "L", last: day.start + 3600000, stage: "__fresh", owner: "10" } },
+    day, ["__fresh"], null);
+  ok("a routed lead lands in the totals", agg.totals.n.all === 1);
+  ok("and out of the shown-but-not-counted block", agg.excluded.n.all === 0);
+  ok("and the call on it is credited to the new agent", !!agg.byAgent["10"] && agg.byAgent["10"].n.allW === 1);
+  ok("and not to nobody", !agg.byAgent["none"]);
+  ok("and it no longer sits in the needs-owner column", agg.totals.n.needs === 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

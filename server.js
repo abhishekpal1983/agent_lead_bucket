@@ -2251,6 +2251,15 @@ function cnFilter(q){
 // Ids: Abhishek Pal, Anand Mehta, Pawanpreet Singh, Hritika Jain, plus unassigned.
 const NONCOUNT_OWNERS = (process.env.NONCOUNT_OWNERS || "165087274,163874118,162610237,164253068,none")
   .split(",").map(function(x){ return x.trim(); }).filter(function(x){ return x !== ""; });
+/* Who a lead can be routed TO and start counting. A parking bucket is a real owner but
+   a deliberate holding pen, and someone who has left cannot call anybody. */
+function cn2Countable(id){
+  const k = String(id || "");
+  if (!k) return false;
+  if (!ownerCounted(k)) return false;
+  if (CN2_FIXTURE_DATA) return true;
+  return ((CACHE.owners[k] || {}).active !== false);
+}
 function ownerCounted(id){
   const k = String(id || "");
   if (!k) return NONCOUNT_OWNERS.indexOf("none") < 0;
@@ -2519,6 +2528,13 @@ function cn2Context(req){
   if (frozen) base = store.rows;
   else rows.forEach(function(r){ base[r.id] = CN2.pack(CN2.classify(r, day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN })); });
 
+  /* Routing done since the list was written. A lead that had no owner, or an owner who
+     has left, joins the totals the moment a working agent takes it, and the credit goes
+     to that agent. Applied before any filter, so the drill behind a cell always matches
+     the cell. Never the other way round: nothing already counted is ever taken out. */
+  const prom = CN2.promoteBase(base, liveAll, { countable: cn2Countable });
+  base = prom.base;
+
   // Filters are applied to the base, not the live pool, so the denominator a manager
   // sees is the same one the totals were built from.
   const wantAgent = String(req.query.agent || "");
@@ -2538,7 +2554,7 @@ function cn2Context(req){
       wantStages.length || allow) {
     const kept = {};
     Object.keys(base).forEach(function(id){
-      const c = CN2.unpack(base[id]);
+      const c = CN2.read(base[id]);
       if (allow && allow.indexOf(String(c.owner)) < 0) return;   // role scope, not a filter
       if (wantAgent && String(c.owner) !== wantAgent) return;
       if (teamAgents && teamAgents.indexOf(String(c.owner)) < 0) return;
@@ -2582,13 +2598,14 @@ function cn2Context(req){
     });
   }
   return { day: day, base: base, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
+    promoted: prom.promoted,
     names: (frozen && store.names) || {},
     frozenAt: frozen ? store.at : null };
 }
 
 function cn2StageOrder(base){
   const seen = {};
-  Object.keys(base).forEach(function(id){ seen[CN2.unpack(base[id]).stage] = 1; });
+  Object.keys(base).forEach(function(id){ seen[CN2.read(base[id]).stage] = 1; });
   const order = CN2_STAGES.filter(function(s){ return seen[s]; });
   Object.keys(seen).forEach(function(s){ if (order.indexOf(s) < 0) order.push(s); });
   return order;
@@ -2612,7 +2629,7 @@ app.get("/api/callnow2", function(req, res){
   // is a question about now, not about midnight.
   const effort = { total: CN2.effortCounts(), owner: CN2.effortCounts() };
   Object.keys(ctx.base).forEach(function(id){
-    const c = CN2.unpack(ctx.base[id]);
+    const c = CN2.read(ctx.base[id]);
     const a = c.owner || "none";
     agents[a] = (agents[a] || 0) + 1;
     if (c.creator) creators[c.creator] = (creators[c.creator] || 0) + 1;
@@ -2637,6 +2654,9 @@ app.get("/api/callnow2", function(req, res){
     timing: CN2.TIMING, columns: CN2.COLUMNS,
     frozen: ctx.frozen, frozenAt: ctx.frozenAt, freezeHour: CN2_FREEZE_HM, workDays: CN2_WORK_DAYS,
     baseSize: Object.keys(ctx.base).length,
+    // Leads routed to a working agent since the list was written. The denominator can
+    // only grow, and only by this, so it is reported rather than left to be noticed.
+    promoted: ctx.promoted,
     agentOptions: Object.keys(agents).map(function(id){
       return { id: id === "none" ? "" : id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
@@ -2687,7 +2707,7 @@ app.get("/api/callnow2/agents", function(req, res){
      person holding it has done their share, which is the one a manager acts on. */
   const eff = {};
   Object.keys(ctx.base).forEach(function(id){
-    const c = CN2.unpack(ctx.base[id]);
+    const c = CN2.read(ctx.base[id]);
     if (c.sec !== "n") return;
     const a = c.owner || "none";
     if (!eff[a]) eff[a] = { total: CN2.effortCounts(), owner: CN2.effortCounts() };
@@ -2758,7 +2778,7 @@ async function cn2CallLadder(){
 
       if (base[r.id]) {
         bucket.onList++;
-        const c = CN2.unpack(base[r.id]);
+        const c = CN2.read(base[r.id]);
         // The hero counts one of these four. Splitting them is the difference between
         // "the page contradicts itself" and "the page counts what it says it counts".
         if (!c.counted) bucket.onListHeldAside++;
@@ -2914,7 +2934,7 @@ app.get("/api/callnow2/reconcile", function(req, res){
     overdue: 0, nofu: 0, uncalled: 0 };
   let notCounted = 0, unassigned = 0;
   Object.keys(ctx.base).forEach(function(id){
-    const c = CN2.unpack(ctx.base[id]);
+    const c = CN2.read(ctx.base[id]);
     if (!c.counted) {
       notCounted++;
       if (!c.owner) unassigned++;
@@ -2978,7 +2998,7 @@ app.get("/api/callnow2/leads", function(req, res){
 
   const picked = [];
   Object.keys(ctx.base).forEach(function(id){
-    const c = CN2.unpack(ctx.base[id]);
+    const c = CN2.read(ctx.base[id]);
     if (stage && c.stage !== stage) return;
     if (sec && c.sec !== sec) return;
     if (t && c.t !== t) return;

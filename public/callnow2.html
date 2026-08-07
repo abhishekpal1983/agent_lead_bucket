@@ -497,6 +497,11 @@ function baseNote(){
   return "<div class='sec mini'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
     new Date(J.frozenAt).toLocaleString("en-IN")+"</b> with "+fmt(J.baseSize)+
     " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning."+
+    // The one thing allowed to move, and only upward. Stated on the page so a manager who
+    // sees the denominator grow has the reason in front of them rather than a suspicion.
+    (J.promoted?" <b>"+fmt(J.promoted)+"</b> lead"+(J.promoted>1?"s":"")+" had no working owner this morning and "+
+      (J.promoted>1?"have":"has")+" since been routed to an agent, so "+(J.promoted>1?"they are":"it is")+
+      " now counted against whoever took "+(J.promoted>1?"them":"it")+". That is the only way the total can grow during the day.":"")+
     (J.isVP?" <a href='#' class='a2' onclick='refreeze();return false'>Lock again using right now</a>":"")+
     "</div></div>";}
 function sel(id,label,opts,val){
@@ -902,6 +907,7 @@ function movementTable(){
     ["Moved stage", m.stage||0, "Still counted where it started"],
     ["Next call date changed", m.fu||0, "Still counted where it started"],
     ["Given to another agent", m.owner||0, "Still credited to this morning's agent"],
+    ["Routed to an agent today", J.promoted||0, "Nobody was working it this morning, so it now counts for whoever took it"],
     ["No longer in the list", gone, "Left the tracked pool during the day"],
     ["Nothing happened", still, "Not called, not moved, not reassigned"]
   ];

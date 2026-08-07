@@ -1,0 +1,1711 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Call Now v2</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F7FA;color:#0A2540;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.hdr{background:#0A2540;padding:13px 22px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.hdr h1{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.01em}
+.hdr p{font-size:12.5px;color:#93A7BC}
+.hdr a{color:#8FD3E4 !important}
+.hdr a:hover{color:#fff !important}
+.livebadge{background:#FF7A59;color:#fff;font-size:11.5px;font-weight:600;padding:2px 10px;border-radius:5px;letter-spacing:.02em}
+.mebadge{background:#12304F;color:#9FD9E8;font-size:11.5px;font-weight:600;padding:2px 10px;border-radius:5px}
+.wrap{max-width:1760px;margin:0 auto;padding:16px 22px 46px}
+.bar{background:#fff;border:1px solid #DCE4EC;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:13px;flex-wrap:wrap;align-items:center}
+.bar label{font-size:11px;color:#4A5A6A;font-weight:600;display:block;margin-bottom:3px;letter-spacing:.03em}
+.bar2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;border-top:1px solid #EFF3F7;padding-top:9px;margin-top:2px}
+select,input[type=search],input[type=number]{border:1px solid #DCE4EC;border-radius:7px;padding:6px 10px;font-size:13px;background:#fff;font-family:inherit;min-width:140px;color:#0A2540}
+select:hover,input:hover{border-color:#C2CFDB}
+select:focus,input:focus{outline:none;border-color:#0091AE;box-shadow:0 0 0 3px #DCEDF6}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chipb{border:1px solid #DCE4EC;background:#fff;border-radius:18px;padding:4px 12px;font-size:12.5px;font-weight:500;cursor:pointer;color:#425B76}
+.chipb:hover{background:#EDF4F8;border-color:#B7DEE8}
+.chipb.on{background:#0A2540;color:#fff;border-color:#0A2540}
+.btn{border:1px solid #DCE4EC;background:#fff;border-radius:7px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;color:#37475A}
+.btn:hover{background:#F4F7FA}
+.btn.p{background:#0091AE;color:#fff;border-color:#0091AE}
+.btn.p:hover{background:#00758C}
+.mstrip{display:grid;grid-template-columns:190px minmax(0,1fr);gap:10px;margin-bottom:12px;align-items:stretch}
+@media(max-width:960px){.mstrip{grid-template-columns:1fr}}
+.mhero{background:#0A2540;border-radius:10px;padding:13px 16px;color:#fff;cursor:pointer;display:flex;flex-direction:column;justify-content:center}
+.mhero:hover{background:#123152}
+.mhero .v{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.05}
+.mhero .l{font-size:12.5px;color:#93A7BC;margin-top:2px}
+.mhero .s{font-size:11.5px;color:#9FB6CC;margin-top:8px;border-top:1px solid #1E3D5F;padding-top:7px;line-height:1.5}
+.mgroups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
+@media(max-width:900px){.mgroups{grid-template-columns:1fr}}
+.mgroup{background:#fff;border:1px solid #DCE4EC;border-top:3px solid #0091AE;border-radius:10px;padding:10px 13px 11px;display:flex;flex-direction:column}
+.mgroup .mrow{margin-top:auto}
+.mgroup.alert{border-top-color:#FF7A59;background:#FEF8F6;border-color:#F0C0B2}
+.mgroup h4{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#3F5163;font-weight:600;margin-bottom:9px}
+.mrow{display:flex;gap:18px;flex-wrap:wrap;row-gap:10px}
+.mitem{cursor:pointer;min-width:54px;border-radius:7px;padding:2px 6px;margin:-2px -6px}
+.mitem:hover{background:#EDF4F8}
+.mitem .v{font-size:24px;font-weight:600;letter-spacing:-.02em;color:#0A2540;line-height:1.15}
+.mitem .l{font-size:12px;color:#566575;margin-top:2px}
+.mitem.z .v{color:#B7C2CD}
+.mitem.r .v{color:#8C2D12}.mitem.c .v{color:#0A5346}.mitem.a .v{color:#7A4A08}
+.prog{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.prog .big{font-size:21px;font-weight:600;color:#0A2540;letter-spacing:-.02em}
+.prog .of{font-size:12.5px;color:#566575}
+.prog .pc{margin-left:auto;font-size:12.5px;font-weight:600;color:#0A5346}
+.track{height:7px;border-radius:4px;background:#E7EEF4;overflow:hidden;margin-bottom:9px;display:flex}
+.track i{display:block;height:7px}
+.track i.done{background:#0091AE}
+.track i.miss{background:#FF7A59}
+.csync{background:#fff;border:1px solid #DCE4EC;border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:13px;color:#37475A}
+.csync summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px}
+.csync summary::-webkit-details-marker{display:none}
+.csync .cbody{margin-top:10px;padding-top:10px;border-top:1px solid #EFF3F7;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.sec{background:#fff;border:1px solid #DCE4EC;border-radius:10px;margin-bottom:13px;padding:13px 16px}
+.sec h2{font-size:15px;font-weight:600;margin-bottom:3px;color:#0A2540}
+.sec .sub{font-size:12.5px;color:#566575;margin-bottom:10px;line-height:1.55}
+.sec.hero{padding:15px 17px;border-top:3px solid #0091AE}
+.sec.mini{padding:12px 14px}
+.sec.mini .sub{font-size:12px;margin-bottom:9px}
+.sec.mini table{font-size:13.5px;table-layout:fixed;width:100%}
+.sec.mini td{padding:8px 12px;overflow:hidden;text-overflow:ellipsis}
+.sec.mini th{padding:8px 12px;white-space:normal;line-height:1.25;vertical-align:bottom;text-align:right}
+.sec.mini th:first-child,.sec.mini td:first-child{width:200px;text-align:left}
+.sec.mini th.n,.sec.mini td.n,.sec.mini td.cell{text-align:right}
+.sec.mini .sub3{white-space:nowrap;text-align:right}
+.sec.mini tbody tr:nth-child(odd) td{background:#FAFCFD}
+.sec.mini tbody tr:nth-child(odd) td:first-child{background:#FAFCFD}
+.sec.mini tbody tr:hover td{background:#EDF4F8}
+.sec.mini tbody tr:hover td:first-child{background:#EDF4F8}
+.sec.mini .sub3{font-size:11px}
+.sec.mini .tw{max-height:none}
+.tw{max-height:76vh;overflow:auto;border:1px solid #DCE4EC;border-radius:9px}
+table{border-collapse:separate;border-spacing:0;font-size:13.5px;width:100%}
+th{background:#EDF2F7;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:#3F5163;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;position:sticky;top:0;z-index:3;border-bottom:1px solid #D3DEE9}
+th:first-child{left:0;z-index:4}
+td{padding:9px 12px;border-bottom:1px solid #EFF3F7;white-space:nowrap;color:#0A2540}
+td:first-child{position:sticky;left:0;background:#fff;z-index:2;border-left:3px solid transparent}
+tr:last-child td{border-bottom:none}
+tr.tot td{background:#EDF2F7;font-weight:600;border-top:2px solid #D3DEE9;vertical-align:top}
+tr.tot td:first-child{background:#EDF2F7}
+tr.alert td:first-child{border-left-color:#FF7A59}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.cell{text-align:right;cursor:pointer;font-variant-numeric:tabular-nums}
+td.cell:hover{box-shadow:inset 0 0 0 2px #0091AE}
+td.cell.sel,.sec.mini tbody tr td.cell.sel,.sec.mini tbody tr:nth-child(odd) td.cell.sel,.sec.mini tbody tr:hover td.cell.sel{background:#0A2540 !important;color:#fff;font-weight:600}
+td.cell.sel *{color:#fff !important}
+td.z{color:#B7C2CD}
+.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}.mut{color:#6B7A8A}
+.sub3{font-size:11px;font-weight:400;color:#566575;margin-top:2px;white-space:nowrap}
+.sub3+.sub3{margin-top:1px}
+.sub3 b{font-weight:600;cursor:pointer}
+.sub3 b:hover{text-decoration:underline}
+.sub3 .d{color:#3F5163}.sub3 .c{color:#0A5346}.sub3 .m{color:#8C2D12}
+.st{font-size:12px;font-weight:500;padding:2px 9px;border-radius:6px;white-space:nowrap;display:inline-block}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap;margin-right:4px;display:inline-block}
+.tag.f{background:#EDE9FE;color:#4B2E9E}
+.tag.s{background:#DDEFEA;color:#0A5346}
+.tag.i{background:#DCEDF6;color:#0B4A66}
+.tag.o{background:#FBE2D8;color:#8C2D12}
+.tag.p{background:#EAEFF4;color:#3F5163}
+.tag.rf{background:#FF7A59;color:#fff}
+.tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
+.tag.paid{background:#0A5346;color:#fff}
+.tag.opt{background:#3F5163;color:#fff}
+.pill{background:#FF7A59;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:6px;display:inline-block;font-variant-numeric:tabular-nums}
+.pill.w{background:#B8791A}
+.ph{font-variant-numeric:tabular-nums;color:#0A2540}
+.ico{color:#0091AE;text-decoration:none;font-weight:600;margin-left:7px}
+.ico:hover{text-decoration:underline}
+.a2{color:#0091AE;text-decoration:none;font-weight:600}
+.a2:hover{text-decoration:underline}
+#loading{padding:60px;text-align:center;color:#566575}
+.spin{width:28px;height:28px;border:3px solid #DCE4EC;border-top-color:#0091AE;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.warn{background:#FDF3E7;color:#7A4A08;border:1px solid #EFD3AE;border-radius:8px;padding:10px 13px;font-size:13px;margin-bottom:12px}
+.rowlink{cursor:pointer}
+.rowlink:hover td{background:#F4F7FA}
+.rowlink:hover td:first-child{background:#F4F7FA}
+.mbar{display:inline-block;height:6px;border-radius:3px;background:#0091AE;vertical-align:middle;margin-right:7px;min-width:2px}
+tr.det td{background:#F4F7FA;white-space:normal;font-size:12.5px;color:#37475A;padding:10px 14px;line-height:1.6}
+tr.det b{color:#0A2540}
+.exp{cursor:pointer;color:#0091AE;font-weight:700;user-select:none}
+
+/* v2 only: the three group tables are wider than v1's, and the footer needs to read as a
+   summary rather than another row of data. */
+.sec.mini th:first-child,.sec.mini td:first-child{width:168px}
+tfoot td{background:#0A2540;color:#fff;border-bottom:none;position:sticky;bottom:0;z-index:3}
+tfoot td:first-child{background:#0A2540;color:#fff}
+tfoot td .sub3{color:#93A7BC}
+tfoot tr:first-child td{background:#12304F}
+tfoot tr:first-child td:first-child{background:#12304F}
+.chips{margin-bottom:2px}
+/* The two column groups are different questions, so they get a hard divider and their
+   own ground colour. Without it the eye runs straight from a timing count into a reason
+   count and reads them as one row of the same thing. */
+/* The two groups are told apart by a rule and a faint tint. Anything heavier fights the
+   heatmap shading, which is the thing actually carrying meaning in these cells. */
+th.gA{background:#E4EDF9;color:#2A5EA8}td.gA{background:#EEF4FC}
+th.gB{background:#FAEFD8;color:#8A6414}td.gB{background:#FDF6E7}
+th.gC{background:#E3F2E9;color:#1C6B4E}td.gC{background:#EDF7F0}
+th.gD{background:#E9EEF3;color:#4A5A6A}td.gD{background:#F2F5F8}
+th.gh{background:#fff}
+thead tr.grp th{top:0;z-index:4;text-align:left;font-size:10px;letter-spacing:.09em;border-bottom:none}
+thead tr.colh th{top:23px;z-index:3}
+tr.tot td.gB{background:#F2E8D2}tr.tot td.gC{background:#DEEBE3}tr.tot td.gD{background:#D6DEE7}
+tr.tot.grand td.gB{background:#1A2E4A}tr.tot.grand td.gC{background:#14304A}tr.tot.grand td.gD{background:#152A44}
+th.edge,td.edge{border-left:2px solid #C2D2E0}
+.sec.mini th{white-space:normal;line-height:1.25;vertical-align:bottom;text-align:right}
+.sec.mini th:first-child,.sec.mini td:first-child{width:172px;text-align:left}
+.sec.mini table{table-layout:auto}
+/* Subtotal and total rows carry a fill so they read as summaries rather than as one more
+   stage, and they are clickable like any other cell. */
+tr.tot.sub td{background:#DCE7F0;border-top:2px solid #B9CBDC}
+tr.tot.sub td:first-child{background:#DCE7F0}
+tr.tot.sub td.gA{background:#D2DFEC}
+tr.tot.grand td{background:#0A2540;color:#fff;border-top:2px solid #0A2540}
+tr.tot.grand td:first-child{background:#0A2540;color:#fff}
+tr.tot.grand td.gA{background:#12304F}
+tr.tot.grand .sub3,tr.tot.grand .sub3 b{color:#AFC3D6}
+tr.tot.grand td.z{color:#5C728A}
+tr.tot td.cell:hover{box-shadow:inset 0 0 0 2px #0091AE}
+tr.tot .sub3{font-weight:400}
+/* Every table scrolls inside its own card rather than pushing the page down forever, and
+   the rows are tight enough to see a floor's worth of work without scrolling at all. */
+tr.det td{padding:8px 12px}
+.st{margin:0}
+tr.rowlink.on td{background:#DCEDF6}
+tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
+.mbar{background:#0091AE}
+.det td{white-space:normal}
+.fsub{margin:2px 0 10px}
+.fhd{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#566575;margin-bottom:7px}
+.qa{margin-bottom:9px}
+.qa .q{color:#4A6785;font-size:12.5px;margin-bottom:2px}
+.qa .a{color:#0A2540;font-size:14px;font-weight:500;line-height:1.4}
+</style>
+<link rel="stylesheet" href="/theme.css">
+<style>
+/* Loaded after theme.css on purpose. The shared theme sets its rules with !important, so
+   anything density related has to come last or it silently loses. That is why the compact
+   rows and the scrolling tables looked like they had not shipped. */
+.wrap table th{padding:5px 10px !important;font-size:10px !important;letter-spacing:.05em !important}
+.wrap table{font-size:12.5px !important}
+.wrap table td{padding:4px 10px !important;line-height:1.3 !important;font-size:12.5px !important}
+.wrap table td a{font-size:12.5px !important}
+.wrap .ph{font-size:12px !important}
+.wrap .ico{font-size:11.5px !important;margin-left:6px !important}
+.wrap .exp{font-size:13px !important}
+.wrap .sec.mini td,.wrap .sec.mini th{padding:4px 10px !important}
+.wrap .tw{max-height:52vh !important;overflow:auto !important}
+.wrap .tw.scrolly{max-height:300px !important}
+.wrap .sub3{font-size:10px !important;line-height:1.2 !important;margin-top:0 !important}
+.wrap .st,.wrap .tag{padding:1px 6px !important;font-size:10.5px !important;font-weight:600 !important}
+.wrap .sec{padding:12px 14px !important}
+.wrap .sec h2{font-size:14px !important;margin-bottom:2px !important}
+.wrap .sec .sub{font-size:12px !important;margin-bottom:8px !important}
+.wrap .mbar{height:5px !important}
+/* Four hero cards, one per group, sized in proportion rather than one big and one wide. */
+.wrap .herorow{display:grid !important;grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:11px !important;margin-bottom:8px !important}
+.wrap .hcard{border-radius:12px;padding:13px 15px;color:#fff}
+.wrap .hcard .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.85}
+.wrap .hcard .big{font-size:31px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:4px 0 1px;
+  display:flex;align-items:baseline;gap:5px}
+.wrap .hcard .of{font-size:14px;font-weight:500;opacity:.75}
+.wrap .hcard .pctpill{margin-left:auto;background:rgba(255,255,255,.2);border-radius:6px;
+  padding:2px 8px;font-size:11.5px;font-weight:700}
+.wrap .hcard .track{height:5px;border-radius:4px;background:rgba(255,255,255,.25);margin:8px 0 7px;overflow:hidden}
+.wrap .hcard .track i{display:block;height:5px;background:#fff;border-radius:4px}
+.wrap .hcard .foot{font-size:10.5px;opacity:.8;line-height:1.4}
+.wrap .hcard.h1{background:linear-gradient(135deg,#3B63E0,#3E2FA8)}
+.wrap .hcard.h2{background:linear-gradient(135deg,#2F7DA8,#1E5B7E)}
+.wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
+.wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
+.wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
+/* Short cards flow in columns, so a tall card cannot leave a hole beside a short one.
+   Grid rows align to the tallest cell; columns do not, which is what this needs. */
+.wrap .vpflow{column-count:3;column-gap:12px;margin-bottom:0}
+.wrap .vpflow > *{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;
+  width:100%;margin:0 0 12px !important;vertical-align:top}
+.wrap .vpwide{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:13px}
+.wrap .vpwide > *{margin:0 !important}
+@media (max-width:1500px){ .wrap .vpflow{column-count:2} }
+@media (max-width:1000px){ .wrap .vpflow{column-count:1} }
+/* Filters as one row that uses the width, with the sync line pushed to the far right. */
+.wrap .top .bar{display:flex !important;flex-wrap:wrap !important;gap:10px !important;
+  align-items:flex-end !important}
+.wrap .top .bar > div{flex:1 1 150px;min-width:0}
+.wrap .top .bar select{width:100% !important;min-width:0 !important}
+.wrap .top .bar > div:last-child{flex:0 0 auto;margin-left:auto;text-align:right}
+.wrap .top .bar .chips{flex:1 1 100%}
+.wrap .top{grid-template-columns:1fr !important}
+/* Stage and owner chips: label and chips on one line, not stacked. */
+.wrap .top .bar:last-child{align-items:center !important}
+@media (max-width:1100px){ .wrap .herorow{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
+/* Churn band, read straight off the row: attempts in this stage by the agent holding it. */
+/* Strong enough to read at a glance down a long list. A tint you have to look for is a
+   tint nobody uses. */
+.wrap tr.b-low td{background:#FBE4DE !important}
+.wrap tr.b-avg td{background:#FBEED6 !important}
+.wrap tr.b-bench td{background:#DCEFE6 !important}
+.wrap tr.b-high td{background:#E6DEF8 !important}
+.wrap tr.b-low td:first-child{box-shadow:inset 4px 0 0 #C0492A}
+.wrap tr.b-avg td:first-child{box-shadow:inset 4px 0 0 #B8791A}
+.wrap tr.b-bench td:first-child{box-shadow:inset 4px 0 0 #0A7C63}
+.wrap tr.b-high td:first-child{box-shadow:inset 4px 0 0 #6D4AC4}
+.wrap tr.rowlink:hover td{filter:brightness(.97)}
+.wrap tr.done td{opacity:.72}
+/* Sortable headers */
+.wrap th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.wrap th.sortable:hover{color:#0091AE !important}
+.wrap th.sortable .ar{opacity:.35;margin-left:3px;font-size:9px}
+.wrap th.sortable.on{color:#0091AE !important}
+.wrap th.sortable.on .ar{opacity:1}
+.wrap a.wa{background:#15A34A !important;color:#fff !important;font-size:10px !important;font-weight:700 !important;
+  padding:2px 7px !important;border-radius:4px !important;text-decoration:none !important;display:inline-block !important}
+.wrap a.wa:hover{background:#0E8038 !important}
+.wrap .r{color:#8C2D12}.wrap .a{color:#7A4A08}.wrap .g{color:#0A5346}.wrap .p{color:#4B2E9E}
+/* theme.css sets td colour with !important, which turned the navy total row into dark
+   text on a dark fill. These have to come after it and shout just as loudly. */
+.wrap tr.tot.grand td,.wrap tr.tot.grand td b{color:#fff !important}
+.wrap tr.tot.grand td .sub3,.wrap tr.tot.grand td .sub3 b{color:#AFC3D6 !important}
+.wrap tr.tot.grand td.z{color:#5C728A !important}
+.wrap td.cell.sel,.wrap td.cell.sel *{color:#fff !important}
+/* Two columns for the header blocks, so controls and today's state cost one section of
+   height between them rather than four stacked bars. */
+.wrap .top{display:grid !important;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr) !important;
+  gap:12px !important;align-items:start !important;margin-bottom:12px !important}
+.wrap .top .bar,.wrap .top .sec{margin-bottom:9px !important}
+.wrap .top .topcol > *:last-child{margin-bottom:0 !important}
+.wrap .top .sec{padding:11px 13px !important}
+.wrap .top .bar{padding:9px 12px !important}
+.wrap .top select{padding:4px 8px !important;font-size:12.5px !important;min-width:112px !important}
+.wrap .top .chipb{padding:2px 9px !important;font-size:11.5px !important}
+@media (max-width:1200px){ .wrap .top{grid-template-columns:1fr !important} }
+
+/* ---- view switcher, hero, board, lead card ---- */
+.seg{display:inline-flex;background:#EFECF7;border-radius:10px;padding:3px;gap:2px;margin-left:4px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:5px 17px;font-size:13px;font-weight:600;
+  color:#7C7A8C;cursor:pointer;font-family:inherit}
+.seg button.on{background:#fff;color:#1A1A2E;box-shadow:0 1px 3px rgba(20,20,45,.13)}
+.view{display:none}.view.on{display:block}
+.herorow{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:12px;margin-bottom:12px}
+.hero2{background:linear-gradient(135deg,#3B63E0,#4B3FCF 55%,#3E2FA8);border-radius:12px;padding:14px 16px;color:#fff}
+.hero2 .k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#C9D4FA;font-weight:700}
+.hero2 .pctpill{float:right;background:rgba(255,255,255,.19);border-radius:7px;padding:2px 9px;font-size:11.5px;font-weight:700}
+.hero2 .big{font-size:36px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin:5px 0 2px}
+.hero2 .of{font-size:15px;font-weight:500;color:#C9D4FA;margin-left:5px}
+.hero2 .track{height:6px;border-radius:4px;background:rgba(255,255,255,.24);margin:9px 0 7px;overflow:hidden}
+.hero2 .track i{display:block;height:6px;background:#fff;border-radius:4px}
+.hero2 .foot{font-size:11px;color:#C9D4FA}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:11px}
+.bcard{background:#fff;border:1px solid #DCE4EC;border-radius:11px;padding:12px 14px}
+.bcard:hover{border-color:#B7DEE8}
+.bcard .top{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.bcard .nm{font-weight:600;font-size:13px}
+.bcard .instage{margin-left:auto;font-size:11px;color:#7C8899}
+.bcard .h2n{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.bcard .h2n span{font-size:12px;font-weight:500;color:#7C8899;margin-left:5px}
+.stack{display:flex;height:6px;border-radius:4px;overflow:hidden;margin:9px 0;background:#EDF1F6}
+.stack i{display:block;height:6px}
+.s1{background:#2F6FE4}.s2{background:#A6357F}.s3{background:#C9D2DD}.s4{background:#1E7A5F}
+.brk{display:flex;align-items:center;gap:8px;padding:4px 6px;border-top:1px solid #F0F4F8;font-size:12px;
+  cursor:pointer;border-radius:5px}
+.brk:hover{background:#EEF3FF}.brk:hover .v{color:#2F6FE4}
+.sw{width:9px;height:9px;border-radius:2px;flex:none}
+.brk .v{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+.qrow{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
+.qrow.open{grid-template-columns:minmax(0,1fr) 320px}
+.qrow > *{min-width:0}
+[hidden]{display:none !important}
+.tick{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;
+  background:#15A34A;color:#fff;font-size:9.5px;font-weight:700;margin-right:5px;vertical-align:1px}
+tr.done td{background:#F7FBF9}
+tr.done td a{color:#4A5A6A}
+.detbox{background:#fff;border:1px solid #DCE4EC;border-left:3px solid #0091AE;border-radius:7px;
+  margin:7px 10px 9px 30px;padding:8px 11px}
+.now{background:#fff;border:1px solid #DCE4EC;border-radius:11px;padding:13px 15px;position:sticky;top:12px}
+.now .k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#7C8899;font-weight:700}
+.now .nm2{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:4px 0 1px}
+.kv{display:flex;padding:5px 0;border-top:1px solid #F0F4F8;font-size:12.5px}
+.kv .k2{color:#7C8899}.kv .v2{margin-left:auto;font-weight:600;text-align:right}
+.eff3{display:flex;gap:6px;margin-top:9px}
+.eb{flex:1;text-align:center;border:1px solid #E3E9EF;border-radius:7px;padding:5px 4px}
+.eb .n{font-size:15px;font-weight:700;line-height:1}
+.eb .l{font-size:9px;color:#7C8899;letter-spacing:.03em;text-transform:uppercase;margin-top:2px}
+.cardexp{margin-top:10px;border-top:1px solid #EFF3F7;padding-top:3px}
+.expbtn{width:100%;text-align:left;border:0;background:transparent;padding:6px 0;font-size:12.5px;
+  font-weight:600;color:#0A2540;cursor:pointer;font-family:inherit;border-bottom:1px solid #F0F4F8}
+.expbtn:hover{color:#0091AE}
+.expbtn span{color:#0091AE;font-weight:700;margin-right:6px}
+.expbody{font-size:11.5px;color:#3F5163;line-height:1.6;padding:7px 9px;margin:0 0 5px;
+  background:#F7FAFC;border-left:3px solid #0091AE;border-radius:0 6px 6px 0}
+</style>
+</head><body>
+
+<div class="hdr">
+  <h1>Call Now v2</h1>
+  <span class="livebadge">PRIVATE</span>
+  <span id="fxtag"></span>
+  <p id="sub">Today's calling list is locked at midnight. Every lead sits in exactly one of the three groups, so the three always add up to the stage total.</p>
+  <span id="vpnav" style="margin-left:auto;display:none;gap:13px;align-items:center;flex-wrap:wrap">
+    <a class="ico" href="/callnow.html">Call Now &nearr;</a>
+    <a class="ico" href="/vp.html">Revenue command &nearr;</a>
+  </span>
+</div>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div>Loading</div>
+  <div id="app" style="display:none"></div>
+</div>
+
+<script>
+/* ---- preview harness: no server, no HubSpot, invented leads ----
+   Wrapped in a function on purpose. The model and the page both declare names like
+   TIMING and COLUMNS, and at global scope a const and a var of the same name is a
+   syntax error that kills the whole file. */
+(function(){
+/* Call Now v2 logic, kept as pure functions with no HubSpot and no Express in sight, so
+   the whole model can be exercised locally against fixtures before it goes anywhere.
+   server.js supplies the leads; everything below only reads plain objects. */
+
+// Sunday off by default. A follow-up that lands on a non-working day rolls forward to the
+// next working day as due, rather than being counted as a miss nobody could have made.
+const DEFAULT_WORK_DAYS = "1,2,3,4,5,6";
+const IST_OFFSET = 5.5 * 3600000;
+
+function workDaySet(spec){
+  const s = {};
+  String(spec || DEFAULT_WORK_DAYS).split(",").forEach(function(x){
+    const n = parseInt(String(x).trim(), 10);
+    if (n >= 0 && n <= 6) s[n] = true;
+  });
+  return s;
+}
+function istDayIndex(ms){ return Math.floor((ms + IST_OFFSET) / 86400000); }
+function istDayStart(idx){ return idx * 86400000 - IST_OFFSET; }
+function istWeekday(idx){
+  // 1970-01-01 was a Thursday, so day index 0 is weekday 4.
+  return (((idx + 4) % 7) + 7) % 7;
+}
+function dayBoundsFor(nowMs){
+  const idx = istDayIndex(nowMs);
+  return { idx: idx, start: istDayStart(idx), end: istDayStart(idx + 1) };
+}
+// How many working days a lead has had to be called since its follow-up fell due, not
+// counting today. Zero means it has not yet had a chance and is not overdue.
+function workDaysMissed(fuIdx, todayIdx, work){
+  let n = 0;
+  for (let i = fuIdx; i < todayIdx; i++) if (work[istWeekday(i)]) n++;
+  return n;
+}
+
+const STAGE_DNP = "dnp_did_not_pick";
+const STAGE_DNP_OTHER = "dnp_other";
+const STAGE_FRESH = "__fresh";
+const STAGE_IFC = "IFC";
+// A refill on a lead that already bought, or one that was disqualified, is noise.
+const REFILL_EXCLUDED = ["deal_won", "disqualified"];
+
+/* Has this lead filled the form again since anyone last spoke to it. That is a lead
+   asking a second time into silence, which is why it outranks the stage it is sitting in.
+   A form with no call at all also counts. */
+function isRefill(r){
+  if (!r.formLast) return false;
+  if (REFILL_EXCLUDED.indexOf(r.stage) >= 0) return false;
+  if (!r.last) return true;
+  return r.formLast > r.last;
+}
+
+function timingOf(r, day, work){
+  if (!r.fu) return r.stage === STAGE_FRESH ? "newlead" : "nofu";
+  const fuIdx = istDayIndex(r.fu);
+  if (fuIdx > day.idx) return "sched";
+  if (fuIdx === day.idx) return "due";
+  // The day itself must have crossed, and at least one working day must have passed.
+  // A 2pm follow-up on the 6th is due all of the 6th and overdue on the 7th, and a
+  // Sunday follow-up is simply due on Monday.
+  return workDaysMissed(fuIdx, day.idx, work) > 0 ? "over" : "due";
+}
+
+const REASONS = ["form", "score", "intl", "fresh", "refill", "ifc", "needs", "over", "nofu"];
+
+function reasonsOf(r, timing, opts){
+  const scoreMin = (opts && opts.scoreMin) || 6;
+  return {
+    form: !!(r.forms && r.forms.length),
+    score: (r.score || 0) >= scoreMin,
+    intl: !!r.intl,
+    fresh: r.stage === STAGE_FRESH,
+    refill: isRefill(r),
+    ifc: r.stage === STAGE_IFC && (timing === "due" || timing === "over"),
+    // Nobody is working this lead: it has no owner, or the owner is deactivated. v1 shows
+    // these and so must v2, or a whole bucket of work quietly stops existing.
+    needs: !!r.needsOwner,
+    over: timing === "over",
+    nofu: timing === "nofu"
+  };
+}
+
+const SEC_ACTION = "n";     // needs action today
+const SEC_AHEAD = "a";      // has a future follow-up
+const SEC_PARKED = "d";     // DNP with no priority signal, held apart on purpose
+
+function sectionOf(r, timing, why){
+  const priority = why.form || why.score || why.intl || why.fresh || why.refill;
+  // A DNP lead with no priority signal is never presented as today's work and never
+  // inflates overdue or no-FU. It gets its own section so the calls made on it are
+  // still visible.
+  if ((r.stage === STAGE_DNP || r.stage === STAGE_DNP_OTHER) && !priority) return SEC_PARKED;
+  if (timing === "sched") return SEC_AHEAD;
+  if (timing === "due" || timing === "over" || timing === "nofu" || timing === "newlead") {
+    if (priority || why.ifc || timing === "due" || timing === "over" || timing === "nofu" || timing === "newlead") {
+      return SEC_ACTION;
+    }
+  }
+  return SEC_AHEAD;
+}
+
+function classify(r, day, opts){
+  const work = (opts && opts.work) || workDaySet();
+  const timing = timingOf(r, day, work);
+  const why = reasonsOf(r, timing, opts);
+  return {
+    id: r.id,
+    stage: r.stage,
+    sec: sectionOf(r, timing, why),
+    t: timing,
+    why: why,
+    owner: r.owner || "",
+    creator: r.creator || "",
+    source: r.source || "",
+    // Parking buckets and unassigned leads are shown but never counted, exactly as v1
+    // treats them. Dropping them from the pool made a real pile of work invisible.
+    counted: r.counted !== false,
+    fuIdx: r.fu ? istDayIndex(r.fu) : null,
+    lateBy: r.fu ? workDaysMissed(istDayIndex(r.fu), day.idx, work) : 0
+  };
+}
+
+// ---- packing, so a day's base is a few hundred kB rather than a few MB -------------
+function pack(c){
+  let mask = 0;
+  REASONS.forEach(function(k, i){ if (c.why[k]) mask |= (1 << i); });
+  return [c.stage, c.sec, c.t, mask, c.owner, c.creator, c.source || "", c.counted === false ? "0" : "1"].join("|");
+}
+// A base entry is a packed string until something has to change it, after which it is
+// a plain object. Every reader goes through this so neither shape can surprise it.
+function read(v){ return typeof v === "string" ? unpack(v) : v; }
+
+/* ---- routing done during the day -------------------------------------------------
+
+   A lead nobody was working is shown but not counted: no owner at all, or an owner who
+   has left. That is a routing job for a manager, not a call for an agent, so it must
+   not sit in the denominator making the floor look slow.
+
+   The moment a manager routes it to a working agent, the job is done and the lead
+   becomes real work for whoever now holds it. It enters the totals, and the credit for
+   any call on it follows the new owner, because the morning owner was nobody.
+
+   This is the ONLY thing allowed to change after 00:05, and it can only ever ADD. A
+   lead counted this morning is never taken out, whatever happens to its owner later,
+   because a denominator that can shrink can be gamed. Three things change and nothing
+   else: it starts counting, the credit moves, and it stops asking to be routed. Its
+   stage row, its section and its timing are exactly as written this morning.
+
+   Parking buckets are untouched: they have a real, working owner, so they were never
+   asking to be routed and `needs` was never set on them. They stay out by design. */
+function promote(c, cur, opts){
+  if (c.counted) return c;                 // never demote
+  if (!c.why.needs) return c;              // not a routing case, so not ours to change
+  if (!cur || !cur.owner) return c;        // still nobody
+  const countable = (opts && opts.countable) || function(){ return true; };
+  if (!countable(String(cur.owner))) return c;   // routed to a parking bucket, or to someone else who has left
+  return Object.assign({}, c, {
+    counted: true, owner: String(cur.owner), promoted: true,
+    why: Object.assign({}, c.why, { needs: false })
+  });
+}
+
+/* Applied once, before anything filters or counts, so every number on the page and
+   every drill behind it sees the same set. Returns a new base, never mutating the
+   stored one, plus how many moved, which the page shows so a denominator that grew
+   during the day is visible rather than mysterious. */
+function promoteBase(base, liveAll, opts){
+  const out = {};
+  let promoted = 0;
+  Object.keys(base).forEach(function(id){
+    const c = read(base[id]);
+    if (c.counted || !c.why.needs) { out[id] = base[id]; return; }
+    const next = promote(c, (liveAll && liveAll[id]) || null, opts);
+    if (next.promoted) { promoted++; out[id] = next; } else { out[id] = base[id]; }
+  });
+  return { base: out, promoted: promoted };
+}
+
+function unpack(v){
+  const a = String(v).split("|");
+  const mask = parseInt(a[3], 10) || 0;
+  const why = {};
+  REASONS.forEach(function(k, i){ why[k] = !!(mask & (1 << i)); });
+  // a[6] is absent on a list locked by an older build, which is harmless: it reads as
+  // no source rather than throwing.
+  return { stage: a[0], sec: a[1], t: a[2], why: why, owner: a[4] || "", creator: a[5] || "",
+    source: a[6] || "", counted: a[7] !== "0" };
+}
+
+/* How hard a lead has actually been worked. Two numbers matter and they answer different
+   questions: total attempts in the current stage says whether the lead has had a fair go,
+   attempts by the current owner says whether this agent has done their share of it. */
+const EFFORT_BANDS = [
+  { key: "low",   label: "Barely tried",   min: 0,  max: 3,        cls: "r" },
+  { key: "avg",   label: "Some effort",    min: 4,  max: 6,        cls: "a" },
+  { key: "bench", label: "At benchmark",   min: 7,  max: 10,       cls: "g" },
+  { key: "high",  label: "Over-worked",    min: 11, max: Infinity, cls: "p" }
+];
+function effortBand(n){
+  const v = Math.max(0, n || 0);
+  for (let i = 0; i < EFFORT_BANDS.length; i++) {
+    if (v >= EFFORT_BANDS[i].min && v <= EFFORT_BANDS[i].max) return EFFORT_BANDS[i];
+  }
+  return EFFORT_BANDS[EFFORT_BANDS.length - 1];
+}
+function effortCounts(){
+  const o = {};
+  EFFORT_BANDS.forEach(function(b){ o[b.key] = 0; });
+  return o;
+}
+
+// ---- aggregation -------------------------------------------------------------------
+const TIMING = ["due", "over", "nofu", "newlead", "sched"];
+const COLUMNS = ["form", "score", "intl", "fresh", "refill", "ifc", "needs", "any", "all"];
+
+function hit(c, col){
+  if (col === "all") return true;
+  if (col === "any") {
+    // needsOwner is a reason to act, but on its own it is a routing job rather than a
+    // call, so it does not make a lead part of the priority queue by itself.
+    return !!(c.why.form || c.why.score || c.why.intl || c.why.fresh || c.why.refill || c.why.ifc);
+  }
+  return !!c.why[col];
+}
+function cell(){
+  const o = {};
+  TIMING.forEach(function(k){ o[k] = 0; o[k + "W"] = 0; });
+  COLUMNS.forEach(function(k){ o[k] = 0; o[k + "W"] = 0; });
+  return o;
+}
+function addTo(o, c, worked){
+  o[c.t]++; if (worked) o[c.t + "W"]++;
+  COLUMNS.forEach(function(k){
+    if (!hit(c, k)) return;
+    o[k]++; if (worked) o[k + "W"]++;
+  });
+}
+
+/* One pass over the frozen base. `live` is the current pool by id, used only to ask
+   whether the lead has been called today and where it has moved to. The base itself is
+   never rewritten, which is what keeps "100 due, 60 worked" honest through the day. */
+/* `liveAll` is optional and is the whole pool, not just the qualifying part. A lead that
+   leaves the qualifying pool during the day keeps its place on the morning list, so the
+   call made on it has to keep its place too. Without this, work disappears. */
+function aggregate(base, live, day, stageOrder, liveAll){
+  const sections = { n: {}, a: {}, d: {} };
+  const totals = { n: cell(), a: cell(), d: cell() };
+  const excluded = { n: cell(), a: cell(), d: cell() };
+  const move = { called: 0, stage: 0, fu: 0, owner: 0, gone: 0, still: 0 };
+  const byAgent = {};
+  stageOrder.forEach(function(s){
+    sections.n[s] = cell(); sections.a[s] = cell(); sections.d[s] = cell();
+  });
+
+  Object.keys(base).forEach(function(id){
+    const c = read(base[id]);
+    const cur = live[id] || null;
+    const seen = cur || (liveAll && liveAll[id]) || null;
+    const worked = !!(seen && seen.last >= day.start && seen.last < day.end);
+    if (!sections.n[c.stage]) {
+      sections.n[c.stage] = cell(); sections.a[c.stage] = cell(); sections.d[c.stage] = cell();
+    }
+    // Shown but not counted: they appear per agent so the pile is visible, and they are
+    // kept out of every headline total so one parking bucket cannot swamp the floor.
+    if (c.counted) {
+      addTo(sections[c.sec][c.stage], c, worked);
+      addTo(totals[c.sec], c, worked);
+    } else {
+      addTo(excluded[c.sec], c, worked);
+    }
+
+    // Accountability follows the morning owner. If a lead is handed over at 4pm the
+    // base does not move, so nobody's percentage improves by reshuffling.
+    const aid = c.owner || "none";
+    if (!byAgent[aid]) byAgent[aid] = { n: cell(), a: cell(), d: cell(), counted: c.counted,
+      offBase: 0, offBaseCalls: 0 };
+    byAgent[aid].counted = c.counted;
+    addTo(byAgent[aid][c.sec], c, worked);
+
+    if (worked) move.called++;
+    if (cur && cur.stage !== c.stage) move.stage++;
+    if (cur && cur.owner !== c.owner) move.owner++;
+    if (!cur) move.gone++;
+    if (cur && !worked && cur.stage === c.stage && cur.owner === c.owner) move.still++;
+  });
+
+  return { sections: sections, totals: totals, excluded: excluded, movement: move, byAgent: byAgent };
+}
+
+/* Work done today on leads that were not in this morning's list at all: created today,
+   or moved into the pool. Without this, coverage and effort never reconcile and the
+   HubSpot total always looks bigger than the dashboard. */
+function offBase(base, liveRows, day){
+  const out = [];
+  liveRows.forEach(function(r){
+    if (base[r.id]) return;
+    if (!(r.last >= day.start && r.last < day.end)) return;
+    out.push(r);
+  });
+  return out;
+}
+
+
+var PREVIEW = {
+  role: "vp",
+  rows: [{"id":"L1001","name":"Lead 1","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1002","name":"Lead 2","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1003","name":"Lead 3","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1004","name":"Lead 4","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1005","name":"Lead 5","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1006","name":"Lead 6","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785735000000,"last":1785979800000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1007","name":"Lead 7","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1008","name":"Lead 8","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1009","name":"Lead 9","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000009","needsOwner":false},{"id":"L1010","name":"Lead 10","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000000","needsOwner":false},{"id":"L1011","name":"Lead 11","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":8,"intl":false,"calls":4,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1012","name":"Lead 12","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":1785954600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1013","name":"Lead 13","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1014","name":"Lead 14","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1015","name":"Lead 15","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786005000000,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1016","name":"Lead 16","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786253400000,"last":1785976200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1017","name":"Lead 17","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1018","name":"Lead 18","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1019","name":"Lead 19","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000009","needsOwner":false},{"id":"L1020","name":"Lead 20","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785735000000,"last":1785976200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1021","name":"Lead 21","stage":"__fresh","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1022","name":"Lead 22","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":6,"intl":false,"calls":3,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1023","name":"Lead 23","stage":"program_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":1785954600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1024","name":"Lead 24","stage":"discovery","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1025","name":"Lead 25","stage":"pricing_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":0,"last":1785983400000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1026","name":"Lead 26","stage":"Follow up","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1027","name":"Lead 27","stage":"payment_prospect","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":3,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1028","name":"Lead 28","stage":"FU_DNP","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1787203800000,"last":1785965400000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1029","name":"Lead 29","stage":"FU_RCB","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1786253400000,"last":1785976200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000009","needsOwner":false},{"id":"L1030","name":"Lead 30","stage":"rcb_requested_callback","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786005000000,"last":1785969000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000000","needsOwner":false},{"id":"L1031","name":"Lead 31","stage":"dnp_did_not_pick","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785735000000,"last":1785983400000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":4,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1032","name":"Lead 32","stage":"__fresh","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1033","name":"Lead 33","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1034","name":"Lead 34","stage":"program_pitched","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1787203800000,"last":1785961800000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1035","name":"Lead 35","stage":"discovery","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":1785990600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1036","name":"Lead 36","stage":"pricing_pitched","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1037","name":"Lead 37","stage":"Follow up","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1038","name":"Lead 38","stage":"payment_prospect","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785735000000,"last":1785972600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1039","name":"Lead 39","stage":"FU_DNP","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785735000000,"last":1785990600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1040","name":"Lead 40","stage":"FU_RCB","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1041","name":"Lead 41","stage":"rcb_requested_callback","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000001","needsOwner":false},{"id":"L1042","name":"Lead 42","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":2,"phone":"+91900000002","needsOwner":false},{"id":"L1043","name":"Lead 43","stage":"__fresh","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1044","name":"Lead 44","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":4,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1045","name":"Lead 45","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":0,"last":1785961800000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":4,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1046","name":"Lead 46","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1047","name":"Lead 47","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1048","name":"Lead 48","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1049","name":"Lead 49","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1050","name":"Lead 50","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785925800000,"last":1785961800000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1051","name":"Lead 51","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":1,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1052","name":"Lead 52","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1053","name":"Lead 53","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1054","name":"Lead 54","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1055","name":"Lead 55","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1056","name":"Lead 56","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1057","name":"Lead 57","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1058","name":"Lead 58","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1059","name":"Lead 59","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1786005000000,"last":1785965400000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1060","name":"Lead 60","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":3,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1061","name":"Lead 61","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1062","name":"Lead 62","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":3,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1063","name":"Lead 63","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1064","name":"Lead 64","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1065","name":"Lead 65","stage":"__fresh","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1066","name":"Lead 66","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786253400000,"last":1785954600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1067","name":"Lead 67","stage":"program_pitched","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1068","name":"Lead 68","stage":"discovery","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":2,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1069","name":"Lead 69","stage":"pricing_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1070","name":"Lead 70","stage":"Follow up","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786005000000,"last":1785961800000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":1,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1071","name":"Lead 71","stage":"payment_prospect","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":9,"intl":true,"calls":2,"own":1,"phone":"+91900000001","needsOwner":false},{"id":"L1072","name":"Lead 72","stage":"FU_DNP","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1073","name":"Lead 73","stage":"FU_RCB","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1074","name":"Lead 74","stage":"rcb_requested_callback","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":0,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1075","name":"Lead 75","stage":"dnp_did_not_pick","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":0,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1076","name":"Lead 76","stage":"__fresh","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786005000000,"last":1785979800000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1077","name":"Lead 77","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1787203800000,"last":1785958200000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1078","name":"Lead 78","stage":"program_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1079","name":"Lead 79","stage":"discovery","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1080","name":"Lead 80","stage":"pricing_pitched","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1081","name":"Lead 81","stage":"Follow up","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1082","name":"Lead 82","stage":"payment_prospect","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786253400000,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1083","name":"Lead 83","stage":"FU_DNP","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":6,"intl":true,"calls":4,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1084","name":"Lead 84","stage":"FU_RCB","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1085","name":"Lead 85","stage":"rcb_requested_callback","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1086","name":"Lead 86","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1087","name":"Lead 87","stage":"__fresh","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1088","name":"Lead 88","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1089","name":"Lead 89","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1090","name":"Lead 90","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1091","name":"Lead 91","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1092","name":"Lead 92","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1093","name":"Lead 93","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":1785976200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1094","name":"Lead 94","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1095","name":"Lead 95","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1096","name":"Lead 96","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785735000000,"last":1785983400000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1097","name":"Lead 97","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785735000000,"last":1785969000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1098","name":"Lead 98","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1099","name":"Lead 99","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1100","name":"Lead 100","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786253400000,"last":1785987000000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":3,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1101","name":"Lead 101","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":1785961800000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":2,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1102","name":"Lead 102","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1103","name":"Lead 103","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1104","name":"Lead 104","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1105","name":"Lead 105","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":1785987000000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1106","name":"Lead 106","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786005000000,"last":1785990600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1107","name":"Lead 107","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":2,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1108","name":"Lead 108","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":2,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1109","name":"Lead 109","stage":"__fresh","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":1,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1110","name":"Lead 110","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":3,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1111","name":"Lead 111","stage":"program_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":7,"intl":false,"calls":2,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1112","name":"Lead 112","stage":"discovery","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1113","name":"Lead 113","stage":"pricing_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1786005000000,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1114","name":"Lead 114","stage":"Follow up","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1115","name":"Lead 115","stage":"payment_prospect","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":2,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1116","name":"Lead 116","stage":"FU_DNP","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1117","name":"Lead 117","stage":"FU_RCB","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1118","name":"Lead 118","stage":"rcb_requested_callback","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1119","name":"Lead 119","stage":"dnp_did_not_pick","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1120","name":"Lead 120","stage":"__fresh","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1786005000000,"last":1785965400000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1121","name":"Lead 121","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785735000000,"last":1785969000000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":1,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1122","name":"Lead 122","stage":"program_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":0,"last":1785958200000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":4,"own":2,"phone":"+91900000002","needsOwner":false},{"id":"L1123","name":"Lead 123","stage":"discovery","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":0,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1124","name":"Lead 124","stage":"pricing_pitched","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1125","name":"Lead 125","stage":"Follow up","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1126","name":"Lead 126","stage":"payment_prospect","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1127","name":"Lead 127","stage":"FU_DNP","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1128","name":"Lead 128","stage":"FU_RCB","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1129","name":"Lead 129","stage":"rcb_requested_callback","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1130","name":"Lead 130","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":3,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1131","name":"Lead 131","stage":"__fresh","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":3,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1132","name":"Lead 132","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":0,"last":1785987000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000002","needsOwner":false},{"id":"L1133","name":"Lead 133","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1134","name":"Lead 134","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":0,"last":1785990600000,"formLast":0,"forms":["waitlist"],"score":8,"intl":true,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1135","name":"Lead 135","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785925800000,"last":1785972600000,"formLast":0,"forms":[],"score":6,"intl":true,"calls":1,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1136","name":"Lead 136","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1137","name":"Lead 137","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":3,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1138","name":"Lead 138","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1139","name":"Lead 139","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":3,"own":2,"phone":"+91900000009","needsOwner":false},{"id":"L1140","name":"Lead 140","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1141","name":"Lead 141","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":6,"intl":false,"calls":1,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1142","name":"Lead 142","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1143","name":"Lead 143","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":4,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1144","name":"Lead 144","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1145","name":"Lead 145","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":1,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1146","name":"Lead 146","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1147","name":"Lead 147","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1148","name":"Lead 148","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1149","name":"Lead 149","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1150","name":"Lead 150","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":6,"intl":false,"calls":2,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"L1151","name":"Lead 151","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1787203800000,"last":1785987000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1152","name":"Lead 152","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1153","name":"Lead 153","stage":"__fresh","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":6,"intl":false,"calls":0,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1154","name":"Lead 154","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1155","name":"Lead 155","stage":"program_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000005","needsOwner":false},{"id":"L1156","name":"Lead 156","stage":"discovery","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1157","name":"Lead 157","stage":"pricing_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":3,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1158","name":"Lead 158","stage":"Follow up","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1159","name":"Lead 159","stage":"payment_prospect","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1160","name":"Lead 160","stage":"FU_DNP","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":7,"intl":false,"calls":3,"own":2,"phone":"+91900000000","needsOwner":false},{"id":"L1161","name":"Lead 161","stage":"FU_RCB","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1162","name":"Lead 162","stage":"rcb_requested_callback","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785925800000,"last":1785961800000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":2,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1163","name":"Lead 163","stage":"dnp_did_not_pick","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785925800000,"last":1785976200000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1164","name":"Lead 164","stage":"__fresh","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":3,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1165","name":"Lead 165","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1166","name":"Lead 166","stage":"program_pitched","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786253400000,"last":1785987000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1167","name":"Lead 167","stage":"discovery","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1168","name":"Lead 168","stage":"pricing_pitched","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785735000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1169","name":"Lead 169","stage":"Follow up","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1170","name":"Lead 170","stage":"payment_prospect","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1171","name":"Lead 171","stage":"FU_DNP","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":0,"last":1785954600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1172","name":"Lead 172","stage":"FU_RCB","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1173","name":"Lead 173","stage":"rcb_requested_callback","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000003","needsOwner":false},{"id":"L1174","name":"Lead 174","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"L1175","name":"Lead 175","stage":"__fresh","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1176","name":"Lead 176","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1177","name":"Lead 177","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":3,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1178","name":"Lead 178","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1179","name":"Lead 179","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1787203800000,"last":1785987000000,"formLast":0,"forms":["waitlist"],"score":7,"intl":false,"calls":1,"own":2,"phone":"+91900000009","needsOwner":false},{"id":"L1180","name":"Lead 180","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785925800000,"last":1785969000000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1181","name":"Lead 181","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785925800000,"last":1785969000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1182","name":"Lead 182","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":["waitlist"],"score":8,"intl":true,"calls":3,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1183","name":"Lead 183","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":4,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1184","name":"Lead 184","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785735000000,"last":1785990600000,"formLast":0,"forms":[],"score":6,"intl":true,"calls":4,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1185","name":"Lead 185","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":0,"last":1785965400000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1186","name":"Lead 186","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1787203800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1187","name":"Lead 187","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1786253400000,"last":1785969000000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1188","name":"Lead 188","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":6,"intl":false,"calls":1,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1189","name":"Lead 189","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1190","name":"Lead 190","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785735000000,"last":1785990600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1191","name":"Lead 191","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000001","needsOwner":false},{"id":"L1192","name":"Lead 192","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1787203800000,"last":1785979800000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1193","name":"Lead 193","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1194","name":"Lead 194","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1195","name":"Lead 195","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1196","name":"Lead 196","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785735000000,"last":1785994200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1197","name":"Lead 197","stage":"__fresh","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1198","name":"Lead 198","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":0,"last":1785958200000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":1,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1199","name":"Lead 199","stage":"program_pitched","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1785925800000,"last":1785958200000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1200","name":"Lead 200","stage":"discovery","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1201","name":"Lead 201","stage":"pricing_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":2,"phone":"+91900000001","needsOwner":false},{"id":"L1202","name":"Lead 202","stage":"Follow up","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1785735000000,"last":1785994200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":2,"phone":"+91900000002","needsOwner":false},{"id":"L1203","name":"Lead 203","stage":"payment_prospect","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":6,"intl":true,"calls":3,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1204","name":"Lead 204","stage":"FU_DNP","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":0,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1205","name":"Lead 205","stage":"FU_RCB","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1206","name":"Lead 206","stage":"rcb_requested_callback","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1207","name":"Lead 207","stage":"dnp_did_not_pick","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":3,"own":1,"phone":"+91900000007","needsOwner":false},{"id":"L1208","name":"Lead 208","stage":"__fresh","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000008","needsOwner":false},{"id":"L1209","name":"Lead 209","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1785925800000,"last":1785961800000,"formLast":0,"forms":[],"score":6,"intl":true,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1210","name":"Lead 210","stage":"program_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1211","name":"Lead 211","stage":"discovery","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":1785994200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1212","name":"Lead 212","stage":"pricing_pitched","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":4,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1213","name":"Lead 213","stage":"Follow up","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":1785958200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1214","name":"Lead 214","stage":"payment_prospect","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1215","name":"Lead 215","stage":"FU_DNP","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"L1216","name":"Lead 216","stage":"FU_RCB","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000006","needsOwner":false},{"id":"L1217","name":"Lead 217","stage":"rcb_requested_callback","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":0,"last":1785216600000,"formLast":0,"forms":[],"score":7,"intl":false,"calls":4,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1218","name":"Lead 218","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1787203800000,"last":1785972600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1219","name":"Lead 219","stage":"__fresh","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1220","name":"Lead 220","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1221","name":"Lead 221","stage":"program_pitched","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1222","name":"Lead 222","stage":"discovery","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":true,"calls":1,"own":1,"phone":"+91900000002","needsOwner":false},{"id":"L1223","name":"Lead 223","stage":"pricing_pitched","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"L1224","name":"Lead 224","stage":"Follow up","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1787203800000,"last":1785979800000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":2,"own":1,"phone":"+91900000004","needsOwner":false},{"id":"L1225","name":"Lead 225","stage":"payment_prospect","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1226","name":"Lead 226","stage":"FU_DNP","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786253400000,"last":1785987000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000006","needsOwner":false},{"id":"L1227","name":"Lead 227","stage":"FU_RCB","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1787203800000,"last":1785994200000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"L1228","name":"Lead 228","stage":"rcb_requested_callback","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785925800000,"last":1785990600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":3,"own":1,"phone":"+91900000008","needsOwner":false},{"id":"L1229","name":"Lead 229","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1787203800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":1,"phone":"+91900000009","needsOwner":false},{"id":"L1230","name":"Lead 230","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785735000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":4,"own":1,"phone":"+91900000000","needsOwner":false},{"id":"L1231","name":"Lead 231","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"L1232","name":"Lead 232","stage":"program_pitched","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":1,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"L1233","name":"Lead 233","stage":"discovery","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1787203800000,"last":1785990600000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":1,"own":1,"phone":"+91900000003","needsOwner":false},{"id":"L1234","name":"Lead 234","stage":"pricing_pitched","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":1785925800000,"last":1785216600000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":2,"phone":"+91900000004","needsOwner":false},{"id":"L1235","name":"Lead 235","stage":"Follow up","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":1,"phone":"+91900000005","needsOwner":false},{"id":"L1236","name":"Lead 236","stage":"payment_prospect","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"L1237","name":"Lead 237","stage":"FU_DNP","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":1786005000000,"last":1785216600000,"formLast":0,"forms":["waitlist"],"score":0,"intl":false,"calls":4,"own":2,"phone":"+91900000007","needsOwner":false},{"id":"L1238","name":"Lead 238","stage":"FU_RCB","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786253400000,"last":1785216600000,"formLast":0,"forms":[],"score":0,"intl":true,"calls":4,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"L1239","name":"Lead 239","stage":"rcb_requested_callback","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":0,"last":0,"formLast":0,"forms":[],"score":8,"intl":true,"calls":3,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"L1240","name":"Lead 240","stage":"dnp_did_not_pick","owner":"201","ownerName":"Sid Menon","creator":"ayush_singh13","fu":1785925800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":2,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"EDGE_dnp_parked","name":"Lead 241","stage":"dnp_did_not_pick","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"EDGE_dnp_priority","name":"Lead 242","stage":"dnp_did_not_pick","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":9,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false},{"id":"EDGE_ifc_due","name":"Lead 243","stage":"IFC","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1785994200000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"EDGE_ifc_over","name":"Lead 244","stage":"IFC","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1785648600000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false},{"id":"EDGE_ifc_ahead","name":"Lead 245","stage":"IFC","owner":"202","ownerName":"Rhea Kapoor","creator":"ankita_gulati","fu":1787635800000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false},{"id":"EDGE_refill_ghosted","name":"Lead 246","stage":"ghosted","owner":"203","ownerName":"Vikram Rao","creator":"ayush_singh13","fu":0,"last":1784518200000,"formLast":1785900600000,"forms":["waitlist"],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false},{"id":"EDGE_refill_won","name":"Lead 247","stage":"deal_won","owner":"204","ownerName":"Neha Iyer","creator":"payalineurope","fu":0,"last":1784518200000,"formLast":1785900600000,"forms":["waitlist"],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":false},{"id":"EDGE_refill_dq","name":"Lead 248","stage":"disqualified","owner":"201","ownerName":"Sid Menon","creator":"ankita_gulati","fu":0,"last":1784518200000,"formLast":1785900600000,"forms":["waitlist"],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false},{"id":"EDGE_form_before_call","name":"Lead 249","stage":"ni_not_interested","owner":"202","ownerName":"Rhea Kapoor","creator":"ayush_singh13","fu":0,"last":1785555000000,"formLast":1782876600000,"forms":["waitlist"],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false},{"id":"EDGE_2pm_today","name":"Lead 250","stage":"counselled","owner":"203","ownerName":"Vikram Rao","creator":"payalineurope","fu":1786005000000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false},{"id":"EDGE_sunday_fu","name":"Lead 251","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ankita_gulati","fu":1786253400000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false},{"id":"EDGE_needs_owner","name":"Lead 252","stage":"counselled","owner":"","ownerName":"(unassigned)","creator":"ayush_singh13","fu":0,"last":0,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":true},{"id":"EDGE_called_today","name":"Lead 253","stage":"counselled","owner":"202","ownerName":"Rhea Kapoor","creator":"payalineurope","fu":1785987000000,"last":1785961800000,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false},{"id":"EDGE_arrived_called","name":"Lead 254","stage":"__fresh","owner":"203","ownerName":"Vikram Rao","creator":"ankita_gulati","fu":0,"last":1785960000000,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false,"arrivedToday":true},{"id":"EDGE_arrived_called2","name":"Lead 255","stage":"counselled","owner":"204","ownerName":"Neha Iyer","creator":"ayush_singh13","fu":1786008600000,"last":1785963600000,"formLast":0,"forms":[],"score":9,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false,"arrivedToday":true},{"id":"EDGE_arrived_quiet","name":"Lead 256","stage":"counselled","owner":"201","ownerName":"Sid Menon","creator":"payalineurope","fu":1786008600000,"last":0,"formLast":0,"forms":[],"score":0,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false,"arrivedToday":true},{"id":"EDGE_unassigned","name":"Lead 257","stage":"counselled","owner":"","ownerName":"(unassigned)","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":8,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":true,"counted":false},{"id":"EDGE_park_0","name":"Lead 258","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false,"counted":false},{"id":"EDGE_park_1","name":"Lead 259","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false,"counted":false},{"id":"EDGE_park_2","name":"Lead 260","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false,"counted":false},{"id":"EDGE_park_3","name":"Lead 261","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false,"counted":false},{"id":"EDGE_park_4","name":"Lead 262","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false,"counted":false},{"id":"EDGE_park_5","name":"Lead 263","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false,"counted":false},{"id":"EDGE_park_6","name":"Lead 264","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false,"counted":false},{"id":"EDGE_park_7","name":"Lead 265","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false,"counted":false},{"id":"EDGE_park_8","name":"Lead 266","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false,"counted":false},{"id":"EDGE_park_9","name":"Lead 267","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":false,"counted":false},{"id":"EDGE_park_10","name":"Lead 268","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false,"counted":false},{"id":"EDGE_park_11","name":"Lead 269","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false,"counted":false},{"id":"EDGE_park_12","name":"Lead 270","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false,"counted":false},{"id":"EDGE_park_13","name":"Lead 271","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false,"counted":false},{"id":"EDGE_park_14","name":"Lead 272","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false,"counted":false},{"id":"EDGE_park_15","name":"Lead 273","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false,"counted":false},{"id":"EDGE_park_16","name":"Lead 274","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false,"counted":false},{"id":"EDGE_park_17","name":"Lead 275","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false,"counted":false},{"id":"EDGE_park_18","name":"Lead 276","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false,"counted":false},{"id":"EDGE_park_19","name":"Lead 277","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":false,"counted":false},{"id":"EDGE_park_20","name":"Lead 278","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false,"counted":false},{"id":"EDGE_park_21","name":"Lead 279","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false,"counted":false},{"id":"EDGE_park_22","name":"Lead 280","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false,"counted":false},{"id":"EDGE_park_23","name":"Lead 281","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false,"counted":false},{"id":"EDGE_park_24","name":"Lead 282","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false,"counted":false},{"id":"EDGE_park_25","name":"Lead 283","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false,"counted":false},{"id":"EDGE_park_26","name":"Lead 284","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false,"counted":false},{"id":"EDGE_park_27","name":"Lead 285","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false,"counted":false},{"id":"EDGE_park_28","name":"Lead 286","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false,"counted":false},{"id":"EDGE_park_29","name":"Lead 287","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":false,"counted":false},{"id":"EDGE_park_30","name":"Lead 288","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000008","needsOwner":false,"counted":false},{"id":"EDGE_park_31","name":"Lead 289","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000009","needsOwner":false,"counted":false},{"id":"EDGE_park_32","name":"Lead 290","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000000","needsOwner":false,"counted":false},{"id":"EDGE_park_33","name":"Lead 291","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000001","needsOwner":false,"counted":false},{"id":"EDGE_park_34","name":"Lead 292","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000002","needsOwner":false,"counted":false},{"id":"EDGE_park_35","name":"Lead 293","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000003","needsOwner":false,"counted":false},{"id":"EDGE_park_36","name":"Lead 294","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000004","needsOwner":false,"counted":false},{"id":"EDGE_park_37","name":"Lead 295","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"payalineurope","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000005","needsOwner":false,"counted":false},{"id":"EDGE_park_38","name":"Lead 296","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ankita_gulati","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000006","needsOwner":false,"counted":false},{"id":"EDGE_park_39","name":"Lead 297","stage":"counselled","owner":"165087274","ownerName":"Abhishek Pal","creator":"ayush_singh13","fu":1785562200000,"last":0,"formLast":0,"forms":[],"score":7,"intl":false,"calls":0,"own":0,"phone":"+91900000007","needsOwner":false,"counted":false}],
+  now: 1785997800000,
+  teams: [{"id":"t1","name":"Team Sid","managerEmail":"m1@topmate.io","agentIds":["201","202"]},{"id":"t2","name":"Team Vik","managerEmail":"m2@topmate.io","agentIds":["203","204"]}],
+  agents: [{"id":"201","name":"Sid Menon","team":"t1"},{"id":"202","name":"Rhea Kapoor","team":"t1"},{"id":"203","name":"Vikram Rao","team":"t2"},{"id":"204","name":"Neha Iyer","team":"t2"}],
+  labels: {"counselled":"Counselled","program_pitched":"Program pitched","discovery":"Discovery","pricing_pitched":"Pricing pitched","Follow up":"Follow up","payment_prospect":"Payment prospect","FU_DNP":"FU - DNP","FU_RCB":"FU - RCB","rcb_requested_callback":"RCB - Requested callback","dnp_did_not_pick":"DNP","__fresh":"Fresh leads","IFC":"Interested in future","ghosted":"Ghosted","ni_not_interested":"NI - Not interested"},
+  stages: ["counselled","program_pitched","discovery","pricing_pitched","Follow up","payment_prospect","FU_DNP","FU_RCB","rcb_requested_callback","dnp_did_not_pick","__fresh","IFC","ghosted","ni_not_interested"]
+};
+(function(){
+  var EXTRA = ["IFC","ghosted","ni_not_interested"];
+  var WORK = workDaySet();
+  var day = dayBoundsFor(PREVIEW.now);
+  function qualifies(r){
+    if (PREVIEW.stages.indexOf(r.stage) < 0) return false;
+    if (EXTRA.indexOf(r.stage) < 0) return true;
+    if (isRefill(r)) return true;
+    if (r.stage === "IFC") { var t = timingOf(r, day, WORK); return t === "due" || t === "over"; }
+    return false;
+  }
+  var rows = PREVIEW.rows.filter(qualifies);
+  var base = {}, live = {};
+  rows.forEach(function(r){
+    live[r.id] = r;
+    if (r.arrivedToday) return;               // arrived after the list was locked
+    base[r.id] = pack(classify(r, day, { work: WORK, scoreMin: 6 }));
+  });
+  var teamOf = {}, teamName = {};
+  PREVIEW.teams.forEach(function(t){
+    teamName[t.id] = t.name;
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  function nameOf(id){
+    var a = PREVIEW.agents.filter(function(x){ return x.id === String(id); })[0];
+    return a ? a.name : (id ? "Owner " + id : "(unassigned)");
+  }
+  // Role scope, exactly as the server applies it: an agent sees their own leads, a
+  // manager sees their team's, a VP sees the floor.
+  var ROLE = PREVIEW.role || "vp";
+  var ALLOW = ROLE === "agent" ? ["201"]
+    : ROLE === "manager" ? (PREVIEW.teams[0].agentIds || []).map(String) : null;
+  function scoped(q){
+    var out = {};
+    Object.keys(base).forEach(function(id){
+      var c = unpack(base[id]);
+      if (q.agent && String(c.owner) !== q.agent) return;
+      if (q.team) {
+        var tt = PREVIEW.teams.filter(function(t){ return t.id === q.team; })[0];
+        if (!tt || (tt.agentIds || []).map(String).indexOf(String(c.owner)) < 0) return;
+      }
+      if (q.creator && c.creator !== q.creator) return;
+      out[id] = base[id];
+    });
+    return out;
+  }
+  function parse(url){
+    var q = {}, s = String(url).split("?")[1] || "";
+    s.split("&").forEach(function(kv){
+      if (!kv) return;
+      var p = kv.split("=");
+      q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || "");
+    });
+    return q;
+  }
+  function matrix(q){
+    var b = scoped(q);
+    var order = PREVIEW.stages.filter(function(s){
+      return Object.keys(b).some(function(id){ return unpack(b[id]).stage === s; });
+    });
+    var agg = aggregate(b, live, day, order);
+    var off = offBase(b, rows, day);
+    var ag = {}, cr = {};
+    Object.keys(b).forEach(function(id){
+      var c = unpack(b[id]);
+      ag[c.owner || "none"] = (ag[c.owner || "none"] || 0) + 1;
+      if (c.creator) cr[c.creator] = (cr[c.creator] || 0) + 1;
+    });
+    return {
+      stages: order.map(function(s){
+        return { stage: s, label: PREVIEW.labels[s] || s,
+          n: agg.sections.n[s], a: agg.sections.a[s], d: agg.sections.d[s] };
+      }),
+      totals: agg.totals, movement: agg.movement, offBase: { leads: off.length },
+      timing: TIMING, columns: COLUMNS, frozen: true,
+      frozenAt: new Date(day.start + 300000).toISOString(), freezeHour: "00:05",
+      workDays: "1,2,3,4,5,6", baseSize: Object.keys(b).length, fixtures: true,
+      teamOptions: PREVIEW.teams.map(function(t){ return { id: t.id, name: t.name }; }),
+      agentOptions: Object.keys(ag).map(function(id){
+        return { id: id === "none" ? "" : id, name: nameOf(id === "none" ? "" : id), n: ag[id] };
+      }).sort(function(x, y){ return y.n - x.n; }),
+      creatorOptions: Object.keys(cr).map(function(u){ return { u: u, n: cr[u] }; })
+        .sort(function(x, y){ return y.n - x.n; }),
+      sourceOptions: [{ u: "forms", n: 12 }, { u: "digital product", n: 9 }],
+      stageOptions: order.map(function(x){ return { stage: x, label: PREVIEW.labels[x] || x }; }),
+      isVP: ROLE === "vp", scoped: ROLE !== "vp", role: ROLE === "agent" ? "agent" : "manager",
+      trackedCreators: ["ayush_singh13", "payalineurope", "ankita_gulati"],
+      effort: (function(){
+        var e = { total: effortCounts(), owner: effortCounts() };
+        Object.keys(b).forEach(function(id){
+          var c = unpack(b[id]);
+          if (c.sec !== "n" || !c.counted) return;
+          var lv = live[id];
+          e.total[effortBand(lv ? lv.calls : 0).key]++;
+          e.owner[effortBand(lv ? lv.own : 0).key]++;
+        });
+        return e;
+      })(),
+      effortBands: EFFORT_BANDS.map(function(b){
+        return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
+      excluded: { n: cell(), a: cell(), d: cell() },
+      loadedAt: "fixtures"
+    };
+  }
+  function agents(q){
+    var b = scoped(q);
+    var eff = {};
+    Object.keys(b).forEach(function(id){
+      var c = unpack(b[id]);
+      if (c.sec !== "n") return;
+      var a = c.owner || "none";
+      if (!eff[a]) eff[a] = { total: effortCounts(), owner: effortCounts() };
+      var lv = live[id];
+      eff[a].total[effortBand(lv ? lv.calls : 0).key]++;
+      eff[a].owner[effortBand(lv ? lv.own : 0).key]++;
+    });
+    var order = PREVIEW.stages;
+    var agg = aggregate(b, live, day, order);
+    var off = {};
+    offBase(b, rows, day).forEach(function(r){ var k = String(r.owner || "none"); off[k] = (off[k] || 0) + 1; });
+    var arows = Object.keys(agg.byAgent).map(function(id){
+      var tid = teamOf[id];
+      return { id: id, name: nameOf(id === "none" ? "" : id), team: tid ? teamName[tid] : "",
+        teamId: tid || "", counted: id !== "none", active: true,
+        effort: eff[id] || { total: effortCounts(), owner: effortCounts() },
+        n: agg.byAgent[id].n, a: agg.byAgent[id].a, d: agg.byAgent[id].d,
+        offBase: off[id] || 0 };
+    }).sort(function(x, y){ return y.n.all - x.n.all; });
+    var tm = {};
+    arows.forEach(function(r){
+      var k = r.teamId || "";
+      if (!tm[k]) tm[k] = { id: k, name: r.team || "Unmapped", n: cell(), a: cell(), d: cell(), offBase: 0, agents: 0 };
+      ["n","a","d"].forEach(function(sec){
+        Object.keys(tm[k][sec]).forEach(function(key){ tm[k][sec][key] += r[sec][key]; });
+      });
+      tm[k].offBase += r.offBase; tm[k].agents++;
+    });
+    return { effortBands: EFFORT_BANDS.map(function(b){
+      return { key: b.key, label: b.label, min: b.min, max: b.max === Infinity ? null : b.max, cls: b.cls }; }),
+      agents: arows, teams: Object.keys(tm).map(function(k){ return tm[k]; })
+      .sort(function(x, y){ return y.n.all - x.n.all; }), frozen: true };
+  }
+  function leads(q){
+    var b = scoped(q), out = [];
+    Object.keys(b).forEach(function(id){
+      var c = unpack(b[id]);
+      if (q.stage && c.stage !== q.stage) return;
+      if (q.sec && c.sec !== q.sec) return;
+      if (q.t && c.t !== q.t) return;
+      if (!hit(c, q.col || "all")) return;
+      var cur = live[id] || null;
+      var w = !!(cur && cur.last >= day.start && cur.last < day.end);
+      if (q.worked === "1" && !w) return;
+      if (q.worked === "0" && w) return;
+      var nowC = cur ? classify(cur, day, { work: WORK, scoreMin: 6 }) : null;
+      if (q.moved === "stage" && !(nowC && nowC.stage !== c.stage)) return;
+      if (q.moved === "fu" && !(nowC && nowC.t !== c.t)) return;
+      if (q.moved === "owner" && !(nowC && nowC.owner !== c.owner)) return;
+      if (q.moved === "gone" && cur) return;
+      if (q.moved === "still" && (w || !cur || nowC.stage !== c.stage || nowC.t !== c.t)) return;
+      var r = cur || {};
+      out.push({ id: id, worked: w, gone: !cur, name: r.name || "(no longer in the list)",
+        openStage: c.stage, openTiming: c.t, section: c.sec, why: c.why,
+        nowStage: nowC ? nowC.stage : "", nowTiming: nowC ? nowC.t : "",
+        movedStage: !!(nowC && nowC.stage !== c.stage), movedFu: !!(nowC && nowC.t !== c.t),
+        movedOwner: !!(nowC && nowC.owner !== c.owner),
+        ownerName: nameOf(c.owner), creator: c.creator, phone: r.phone || "",
+        last: r.last || 0, fu: r.fu || 0, formLast: r.formLast || 0,
+        calls: r.calls || 0, own: r.own || 0, score: r.score || 0, intl: !!r.intl,
+        outcome: "", aiSummary: "", needsOwner: !!r.needsOwner });
+    });
+    var total = out.length;
+    out.sort(function(x, y){
+      if (x.worked !== y.worked) return x.worked ? 1 : -1;
+      return (x.fu || Infinity) - (y.fu || Infinity);
+    });
+    return { total: total, shown: Math.min(out.length, 500), rows: out.slice(0, 500), frozen: true,
+      portal: { uiDomain: "app.hubspot.com", portalId: "0" } };
+  }
+  window.fetch = function(url, opts){
+    var q = parse(url), body;
+    if (String(url).indexOf("/api/callnow2/agents") === 0) body = agents(q);
+    else if (String(url).indexOf("/api/callnow2/leads") === 0) body = leads(q);
+    else if (String(url).indexOf("/api/callnow2/refreeze") === 0) body = { ok: true };
+    else body = matrix(q);
+    return Promise.resolve({ status: 200, ok: true, text: function(){ return Promise.resolve(JSON.stringify(body)); } });
+  };
+})();
+})();
+</script>
+<script>
+
+var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
+var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
+function fmt(n){return (n||0).toLocaleString("en-IN");}
+function asJson(r){return r.text().then(function(t){try{return JSON.parse(t);}catch(e){
+  if(r.status===403)throw new Error("This page is restricted.");
+  if(r.status===502||r.status===504||/upstream/i.test(t))throw new Error("The server took too long to answer. Give it a minute and reload.");
+  throw new Error("Server returned "+r.status+": "+String(t).slice(0,160));}});}
+function qs(extra){var o=Object.assign({},Q,extra||{});
+  return Object.keys(o).filter(function(k){return o[k]!==""&&o[k]!=null;})
+    .map(function(k){return k+"="+encodeURIComponent(o[k]);}).join("&");}
+function withTimeout(p,ms){return new Promise(function(res,rej){
+  var t=setTimeout(function(){rej(new Error("The server did not answer within "+Math.round(ms/1000)+" seconds."));},ms);
+  p.then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});});}
+function show(){var l=document.getElementById("loading"),a=document.getElementById("app");
+  if(l)l.style.display="none"; if(a)a.style.display="block";}
+function load(){LOADING=true;
+  withTimeout(Promise.all([fetch("/api/callnow2?"+qs()).then(asJson),
+                           fetch("/api/callnow2/agents?"+qs()).then(asJson)]),60000)
+    .then(function(r){LOADING=false;
+      if(r[0]&&r[0].notReady){J={error:r[0].error,retry:true,building:true,progress:r[0].progress};show();draw();setTimeout(load,15000);return;}
+      J=r[0];A=r[1];show();draw();if(PICK)loadLeads();})
+    .catch(function(e){LOADING=false;J={error:e.message,retry:true};show();draw();});}
+function loadLeads(){if(!PICK)return;LEADS=true;draw();
+  fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
+    .then(function(j){LEADS=false;L=j;draw();})
+    .catch(function(e){LEADS=false;L={error:e.message};draw();});}
+function setView(v){VIEW=v;if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
+function pick(o){VIEW="queue";SEL="";PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
+  setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
+function unpick(){PICK=null;L=null;draw();}
+function rebuild(btn){if(btn){btn.disabled=true;btn.textContent="Building...";}
+  fetch("/api/callnow2/rebuild",{method:"POST"}).then(asJson).then(function(){setTimeout(load,8000);})
+    .catch(function(e){alert(e.message);});}
+function refreeze(){
+  if(!confirm("Lock the list again using the leads as they are right now? Today's progress will then be measured from this moment instead of from midnight."))return;
+  fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(){load();}).catch(function(e){alert(e.message);});}
+
+var TIMING=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"],["sched","Later date"]];
+var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fresh"],
+  ["refill","Refilled form"],["ifc","IFC due"],["needs","Needs owner"],
+  ["any","Any priority"],["all","All in stage"]];
+var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
+  ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
+  ["d","DNPs","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."]];
+
+// Lifted from the v1 page so the two cannot drift apart.
+var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",discovery:"#DCEDF6|#0B4A66",
+  pricing_pitched:"#DCEDF6|#0B4A66","Follow up":"#FAEBD7|#7A4A08",FU_DNP:"#FAEBD7|#7A4A08",FU_RCB:"#FAEBD7|#7A4A08",
+  payment_prospect:"#EDE9FE|#4B2E9E",rcb_requested_callback:"#DDEFEA|#0A5346",
+  __fresh:"#EAEFF4|#3F5163",IFC:"#EAEFF4|#3F5163",dnp_other:"#EAEFF4|#3F5163",
+  dnp_did_not_pick:"#FBE2D8|#8C2D12",ghosted:"#FBE2D8|#8C2D12",ni_not_interested:"#FBE2D8|#8C2D12",
+  disqualified:"#FADFDA|#99301C",deal_won:"#DFEFE6|#15613F"};
+var STAGE_LABEL={counselled:"Counselled",program_pitched:"Program pitched",discovery:"Discovery",
+  pricing_pitched:"Pricing pitched","Follow up":"Follow up",payment_prospect:"Payment prospect",
+  FU_DNP:"FU - DNP",FU_RCB:"FU - RCB",rcb_requested_callback:"RCB - Requested callback",
+  dnp_did_not_pick:"DNP",dnp_other:"DNP",__fresh:"Fresh leads",
+  IFC:"Interested in future",ghosted:"Ghosted",ni_not_interested:"NI - Not interested",
+  disqualified:"Disqualified",deal_won:"Deal won"};
+function chip(stage,label){
+  var c=(STAGE_CHIP[stage]||"#F2F2F4|#525252").split("|");
+  return "<span class='st' style='background:"+c[0]+";color:"+c[1]+"'>"+esc(label||STAGE_LABEL[stage]||stage)+"</span>";
+}
+// Same shading v1 uses, so a big number reads as a big number at a glance.
+function heats(rows,keys,sec){
+  var mx={};
+  keys.forEach(function(k){
+    var m=0;
+    rows.forEach(function(r){ var v=r[sec][k]||0; if(v>m)m=v; });
+    mx[k]=m;
+  });
+  return mx;
+}
+// Four groups, each with its own tint and a band naming it, so timing, priority signals,
+// new information and totals are told apart instead of read as one long row.
+var GRP={due:"gA",over:"gA",nofu:"gA",newlead:"gA",sched:"gA",
+  form:"gB",score:"gB",intl:"gB",
+  fresh:"gC",refill:"gC",ifc:"gC",
+  needs:"gD",any:"gD",all:"gD"};
+var HEAT={gA:"47,111,228",gB:"184,121,26",gC:"28,107,78",gD:"90,107,125"};
+var GRPHEAD=[["gA","Call today",5],["gB","Priority signals",3],["gC","New information",3],["gD","Totals",3]];
+var EDGE={due:1,form:1,fresh:1,needs:1};
+function head(){
+  var g="<tr class='grp'><th class='gh'></th>";
+  GRPHEAD.forEach(function(x){ g+="<th class='gh "+x[0]+" edge' colspan='"+x[2]+"'>"+x[1]+"</th>"; });
+  var h="<tr class='colh'><th>Stage</th>";
+  TIMING.concat(COLS).forEach(function(c){
+    h+="<th class='n "+GRP[c[0]]+(EDGE[c[0]]?" edge":"")+"'>"+c[1]+"</th>";});
+  return "<thead>"+g+"</tr>"+h+"</tr></thead>";}
+function cellHtml(c,key,sec,stage,isT,i,mx){
+  var on=PICK&&PICK.stage===stage&&PICK.sec===sec&&(isT?PICK.t===key:(PICK.col===key&&!PICK.t));
+  var arg=isT?{stage:stage,sec:sec,t:key}:{stage:stage,sec:sec,col:key};
+  var cls="cell "+GRP[key]+(EDGE[key]?" edge":"")+(on?" sel":"");
+  var tot=c[key],w=c[key+"W"];
+  var click=" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'";
+  if(!tot)return "<td class='"+cls+" z'"+click+">0</td>";
+  // The heatmap used one fixed blue, which painted straight over the group tint and left
+  // only the empty cells showing their colour. Shade in the group's own hue instead, so
+  // the band survives the shading.
+  var heat=mx&&mx[key]?Math.sqrt(tot/mx[key]):0;
+  var rgb=HEAT[GRP[key]]||HEAT.gA;
+  var bg=(!on&&heat>0)?" style='background:rgba("+rgb+","+(0.06+0.26*heat).toFixed(3)+")'":"";
+  var p=Math.round(100*w/tot);
+  return "<td class='"+cls+"'"+bg+click+">"+fmt(tot)+
+    "<div class='sub3'><b class='"+(p>=60?"c":(p>0?"d":"m"))+"'>"+fmt(w)+"</b> called &middot; "+p+"%</div></td>";}
+function body(sec){
+  var rows=J.stages.filter(function(s){return s[sec].all>0;});
+  var span=1+TIMING.length+COLS.length;
+  if(!rows.length)return "<tr><td colspan='"+span+"' class='z'>Nothing here.</td></tr>";
+  var mx=heats(rows,TIMING.map(function(t){return t[0];}).concat(COLS.map(function(t){return t[0];})),sec);
+  return rows.map(function(s){
+    var c=s[sec],h="<tr><td>"+chip(s.stage,s.label)+"</td>";
+    TIMING.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,true,i,mx);});
+    COLS.forEach(function(t,i){h+=cellHtml(c,t[0],sec,s.stage,false,i,mx);});
+    return h+"</tr>";}).join("");}
+// v1 puts the total inside the table body as a light row, not a dark sticky footer.
+// The dark one was covering the last row and could not be clicked. These are clickable
+// too: a column total opens that column across every stage.
+function totRow(label,cells,secKey,cls){
+  var h="<tr class='tot "+(cls||"")+"'><td><b>"+label+"</b></td>";
+  var col=function(k,g,i,isT){
+    var t=cells.reduce(function(a,c){return a+c[k];},0),
+        w=cells.reduce(function(a,c){return a+(c[k+"W"]||0);},0);
+    var arg=isT?{stage:"",sec:secKey,t:k}:{stage:"",sec:secKey,col:k};
+    var on=PICK&&!PICK.stage&&PICK.sec===secKey&&(isT?PICK.t===k:(PICK.col===k&&!PICK.t));
+    var cc="n cell "+g+(i===0?" edge":"")+(on?" sel":"");
+    var click=" onclick='pick("+JSON.stringify(arg).replace(/"/g,"&quot;")+")'";
+    if(!t)return "<td class='"+cc+" z'"+click+">0</td>";
+    return "<td class='"+cc+"'"+click+">"+fmt(t)+"<div class='sub3'><b class='"+
+      (w/t>=0.6?"c":(w?"d":"m"))+"'>"+fmt(w)+"</b> called &middot; "+Math.round(100*w/t)+"%</div></td>";};
+  TIMING.forEach(function(t,i){h+=col(t[0],"gA",i,true);});
+  COLS.forEach(function(t,i){h+=col(t[0],"gB",i,false);});
+  return h+"</tr>";}
+function baseNote(){
+  if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
+  return "<div class='sec mini'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
+    new Date(J.frozenAt).toLocaleString("en-IN")+"</b> with "+fmt(J.baseSize)+
+    " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning."+
+    // The one thing allowed to move, and only upward. Stated on the page so a manager who
+    // sees the denominator grow has the reason in front of them rather than a suspicion.
+    (J.promoted?" <b>"+fmt(J.promoted)+"</b> lead"+(J.promoted>1?"s":"")+" had no working owner this morning and "+
+      (J.promoted>1?"have":"has")+" since been routed to an agent, so "+(J.promoted>1?"they are":"it is")+
+      " now counted against whoever took "+(J.promoted>1?"them":"it")+". That is the only way the total can grow during the day.":"")+
+    (J.isVP?" <a href='#' class='a2' onclick='refreeze();return false'>Lock again using right now</a>":"")+
+    "</div></div>";}
+function sel(id,label,opts,val){
+  var h="<div><label>"+label+"</label><select onchange='Q."+id+"=this.value;load()'><option value=''>All</option>";
+  opts.forEach(function(o){h+="<option value='"+esc(o.v)+"'"+(String(val)===String(o.v)?" selected":"")+">"+esc(o.l)+"</option>";});
+  return h+"</select></div>";}
+function bar(){
+  var h="<div class='bar'>";
+  // A scoped reader has nothing to choose between, so the picker is not drawn for them.
+  if(!J.scoped){
+    h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
+    h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
+  }
+  h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
+  h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
+  h+=sel("intl","Number",[{v:"yes",l:"International only"},{v:"no",l:"National only"}],Q.intl);
+  h+="<div><button class='btn' onclick='load()'>Reload</button>"+
+    ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
+      ? " <button class='btn' onclick='clearF()'>Clear</button>" : "")+
+    "<div style='font-size:11px;color:#566575;margin-top:4px;white-space:nowrap'>"+
+    (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"synced "+new Date(J.loadedAt).toLocaleTimeString("en-IN"):""))+
+    (J.listBuiltAt?" &middot; built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div></div>";
+  h+="</div>";
+  // Second row of chips, the same controls v1 puts under its dropdowns.
+  h+="<div class='bar' style='padding-top:8px;padding-bottom:8px'>";
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;flex:0 0 auto'>Stages</span>"+
+    "<div class='chips'>"+
+    "<button class='chipb"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
+    (J.stageOptions||[]).map(function(o){
+      var on=String(Q.stages).split(",").indexOf(o.stage)>=0;
+      return "<button class='chipb"+(on?" on":"")+"' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
+        esc(o.label)+"</button>";}).join("")+"</div>";
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:10px;flex:0 0 auto'>Owner</span>"+
+    "<div class='chips'>"+
+    [["","All"],["active","Active agents"],["inactive","Deactivated agents"],
+     ["needs","Needs owner"],["unassigned","Unassigned"]].map(function(o){
+      return "<button class='chipb"+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
+        JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
+  return h+"</div>";}
+function setF(k,v){ Q[k]=v; load(); }
+function clearF(){ Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""}; load(); }
+function setStages(v){ Q.stages=v; load(); }
+function toggleStage(st){
+  var cur=String(Q.stages||"").split(",").filter(Boolean);
+  var i=cur.indexOf(st);
+  if(i>=0)cur.splice(i,1); else cur.push(st);
+  Q.stages=cur.join(","); load();
+}
+// actual_source arrives as machine values like "digital product" or "marketing webinar".
+function srcLabel(v){
+  if(!v)return "(not set)";
+  return String(v).replace(/_/g," ").replace(/^\w/,function(m){return m.toUpperCase();});
+}
+function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
+  return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
+function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
+function hsl(id){var p=(L&&L.portal)||{};return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
+function toggleDet(id){OPEN[id]=!OPEN[id];draw();}
+// What the lead told us on the form, laid out as question and answer the way they saw it.
+function formBlock(subs){
+  if(!subs||!subs.length)return "";
+  return subs.map(function(sub){
+    var qa=(sub.answers||[]).map(function(x){
+      return "<div class='qa'><div class='q'>"+esc(x.q)+"</div>"+
+        (x.a||[]).map(function(v){return "<div class='a'>"+esc(v)+"</div>";}).join("")+"</div>";
+    }).join("");
+    return "<div class='fsub'><div class='fhd'>"+esc(sub.form)+
+      (sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
+      (qa||"<div class='z'>No answers captured on this submission.</div>")+"</div>";
+  }).join("");}
+function detRow(r,cols){
+  var bits=[],h="";
+  if(r.source)bits.push("<b>Source:</b> "+esc(srcLabel(r.source)));
+  if(r.formSubs&&r.formSubs.length)h+=formBlock(r.formSubs);
+  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
+    (r.formN>1?" &middot; "+r.formN+" submissions":"")+(r.formLast?" &middot; last "+esc(tmp(r.formLast)):"")+
+    "<br><span class='z'>Answers not captured for this submission.</span>");
+  else if(r.convRecent)bits.push("<b>Came in through:</b> "+esc(r.convRecent));
+  if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+
+    (r.bookType?" ("+esc(r.bookType.replace(/_/g," "))+")":"")+
+    (r.bookAt?" on "+esc(tmp(r.bookAt)):"")+(r.bookN>1?" &middot; "+r.bookN+" bookings":""));
+  if(r.aiSummary)bits.push("<b>AI call summary:</b> "+esc(r.aiSummary));
+  if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
+  if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
+  if(r.coldReason)bits.push("<b>Reason given:</b> "+esc(r.coldReason));
+  if(!h&&!bits.length)bits.push("<span class='z'>Nothing recorded on this lead beyond the basics.</span>");
+  return "<tr class='det'><td colspan='"+cols+"'>"+h+bits.join("<br>")+"</td></tr>";}
+function bandOf(k){ return ((J&&J.effortBands)||[]).filter(function(b){return b.key===k;})[0]||null; }
+function bandCls(k){ var b=bandOf(k); return b?b.cls:"z"; }
+function bandTitle(k){ var b=bandOf(k); return b?esc(b.label):""; }
+function days(ms){ return ms ? Math.max(0, Math.round((Date.now()-ms)/86400000)) : ""; }
+function whyTags(r){
+  // Same tag vocabulary, colours and tooltips as v1's Why call column.
+  var t=[];
+  (r.forms||[]).forEach(function(f){
+    t.push("<span class='tag f' title='Submitted this waitlist form'>"+esc(f)+"</span>"); });
+  if(r.why.refill)t.push("<span class='tag rf' title='Filled the form again since the last call'>Refilled</span>");
+  if(r.why.score)t.push("<span class='tag s' title='Conversion score "+(r.score||"")+"'>Score "+(r.score||"")+"</span>");
+  if(r.why.intl)t.push("<span class='tag i' title='International number'>INTL</span>");
+  if(r.why.ifc)t.push("<span class='tag p' title='Said interested in future and that date has arrived'>IFC due</span>");
+  if(r.why.fresh)t.push("<span class='tag p' title='Brand new, nobody has worked it'>Fresh</span>");
+  if(r.source)t.push("<span class='tag src' title='Lead source'>"+esc(srcLabel(r.source))+"</span>");
+  if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
+  return t.join(" ");
+}
+function queueView(){
+  var h="<div class='sec'><h2 id='qtitle'>Call queue</h2>";
+  if(!PICK)return h+"<div class='sub'>Pick a number in the Matrix, or a line on a Board card, to open those leads here.</div></div>";
+  if(LEADS)return h+"<div style='padding:30px;text-align:center;color:#566575'><div class='spin'></div>Loading leads</div></div>";
+  if(!L)return h+"</div>";
+  if(L.error)return h+"<div class='warn'>"+esc(L.error)+"</div></div>";
+  var wk=L.rows.filter(function(r){return r.worked;}).length;
+  h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight &middot; <b>"+fmt(wk)+"</b> called today &middot; "+
+    fmt(L.total-wk)+" not yet"+(L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
+    " &middot; not yet called first, then earliest follow-up</div>";
+  h+="<div class='sub' style='margin:0 0 7px'>Row colour is attempts in this stage by the agent holding the lead: "+
+    ((J.effortBands||[]).map(function(b){
+      return "<span class='tag' style='background:transparent;border-left:3px solid "+
+        ({low:"#C0492A",avg:"#B8791A",bench:"#0A7C63",high:"#6D4AC4"}[b.key])+";padding-left:6px;border-radius:0'>"+
+        esc(b.label)+" "+(b.max==null?(b.min+"+"):(b.min+" to "+b.max))+"</span>";}).join(" "))+"</div>";
+  h+="<div class='chips' style='margin-bottom:9px'>"+
+    "<button class='chipb"+(PICK.worked==="0"?" on":"")+"' onclick='PICK.worked=\"0\";loadLeads()'>Not called yet</button>"+
+    "<button class='chipb"+(PICK.worked==="1"?" on":"")+"' onclick='PICK.worked=\"1\";loadLeads()'>Called today</button>"+
+    "<button class='chipb"+(PICK.worked===""?" on":"")+"' onclick='PICK.worked=\"\";loadLeads()'>All</button>"+
+    "<input type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' oninput='LQ=this.value;draw()' style='min-width:200px'>"+
+    (SORT.k?"<button class='chipb on' onclick='clearSort()'>Sorted by "+esc(SORT.k)+", clear</button>":"")+
+    "<button class='chipb' onclick='unpick()'>Close</button></div>";
+  var q=String(LQ||"").toLowerCase();
+  var rows=q?L.rows.filter(function(r){
+    return (r.name+" "+r.creator+" "+r.ownerName).toLowerCase().indexOf(q)>=0;}):L.rows.slice();
+  // Already called sinks to the bottom: the top of the list is always what is left.
+  // Sorting a column overrides that, because then you asked for a different order.
+  if(SORT.k){
+    var pick=function(r){
+      switch(SORT.k){
+        case "name": return String(r.name||"").toLowerCase();
+        case "phone": return String(r.phone||"");
+        case "stage": return String(STAGE_LABEL[r.openStage]||r.openStage||"");
+        case "owner": return String(r.ownerName||"").toLowerCase();
+        case "creator": return String(r.creator||"").toLowerCase();
+        case "fu": return r.fu||Infinity;
+        case "last": return r.last||0;
+        case "calls": return r.calls||0;
+        case "own": return r.own||0;
+        case "days": return r.stageEntered||0;
+        default: return 0;
+      }};
+    rows.sort(function(a,b){
+      var x=pick(a),y=pick(b);
+      if(x<y)return -SORT.d; if(x>y)return SORT.d; return 0;});
+  } else {
+    rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
+  }
+  var COLDEF=[["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
+    ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],
+    ["owner","Agent this morning",1],["creator","Creator",1],
+    ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
+  h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
+    COLDEF.map(function(c,i){
+      var num=i>=11||i===3;
+      if(!c[2])return "<th"+(num?" class='n'":"")+">"+esc(c[1])+"</th>";
+      var on=SORT.k===c[0];
+      return "<th class='sortable"+(num?" n":"")+(on?" on":"")+"' onclick='sortBy("+
+        JSON.stringify(c[0]).replace(/"/g,"&quot;")+")'>"+esc(c[1])+
+        "<span class='ar'>"+(on?(SORT.d>0?"\u25b2":"\u25bc"):"\u21c5")+"</span></th>";
+    }).join("")+"</tr></thead><tbody>";
+  rows.forEach(function(r,i){
+    var digits=String(r.phone||"").replace(/[^0-9]/g,"");
+    var moved=r.movedStage?"<div class='sub3'>now "+esc(STAGE_LABEL[r.nowStage]||r.nowStage)+"</div>":"";
+    h+="<tr class='rowlink b-"+esc(r.bandOwner||"low")+(r.worked?" done":"")+(SEL===r.id?" sel":"")+"' onclick='pickLead("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
+      "<td class='exp' onclick='event.stopPropagation();toggleDet("+JSON.stringify(r.id).replace(/"/g,"&quot;")+")'>"+
+        (OPEN[r.id]?"&minus;":"+")+"</td>"+
+      "<td class='z'>"+(i+1)+"</td>"+
+      "<td>"+(r.worked?"<span class='tick' title='Called today'>&#10003;</span>":"")+
+        "<a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>"+esc(r.name)+" &nearr;</a>"+
+        (r.gone?" <span class='tag p' title='Was on this morning list, has since left the tracked pool'>left the list</span>":"")+"</td>"+
+      "<td class='n'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
+      "<td>"+(digits?"<a class='wa' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' title='Open WhatsApp' onclick='event.stopPropagation()'>WA</a>":"")+"</td>"+
+      "<td>"+chip(r.openStage)+moved+"</td>"+
+      "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
+      "<td>"+tm(r.fu)+"</td><td>"+tm(r.last)+"</td>"+
+      "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
+        (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
+      "<td>"+esc(r.creator||"–")+"</td>"+
+      "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
+      "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", this agent only'>"+fmt(r.own)+"</b></td>"+
+      "<td class='n'>"+(r.stageEntered?days(r.stageEntered)+"d":"<span class='z'>–</span>")+"</td></tr>";
+    if(OPEN[r.id])h+="<tr class='det'><td colspan='14'><div class='detbox'>"+detBody(r)+"</div></td></tr>";
+  });
+  if(!rows.length)h+="<tr><td colspan='14' class='z'>Nothing matches that search.</td></tr>";
+  h+="</tbody></table></div></div>"+leadCard(rows)+"</div></div>";
+  return h;}
+
+// The card only exists once a lead is picked, and it never sits on top of the table.
+function leadCard(rows){
+  if(!SEL)return "";
+  var r=rows.filter(function(x){return x.id===SEL;})[0];
+  if(!r)return "";
+  var b=bandOf(r.bandOwner)||{};
+  return "<div><div class='now'><div class='k'>Lead card</div>"+
+    "<div class='nm2'>"+(r.worked?"<span class='tick'>&#10003;</span>":"")+esc(r.name)+"</div>"+
+    "<div class='ph'>"+esc(r.phone||"no number")+"</div>"+
+    "<div style='margin:8px 0 9px'>"+chip(r.openStage)+" "+whyTags(r)+"</div>"+
+    "<div class='kv'><span class='k2'>Agent this morning</span><span class='v2'>"+esc(r.ownerName)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Creator</span><span class='v2'>"+esc(r.creator||"–")+"</span></div>"+
+    (r.source?"<div class='kv'><span class='k2'>Source</span><span class='v2'>"+esc(srcLabel(r.source))+"</span></div>":"")+
+    "<div class='kv'><span class='k2'>Conversion score</span><span class='v2'>"+(r.score||0)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Follow-up</span><span class='v2'>"+tm(r.fu)+"</span></div>"+
+    "<div class='kv'><span class='k2'>Last call</span><span class='v2'>"+tm(r.last)+"</span></div>"+
+    "<div class='eff3'><div class='eb'><div class='n "+bandCls(r.band)+"'>"+fmt(r.calls)+"</div><div class='l'>In stage</div></div>"+
+    "<div class='eb'><div class='n "+bandCls(r.bandOwner)+"'>"+fmt(r.own)+"</div><div class='l'>By this agent</div></div>"+
+    "<div class='eb'><div class='n' style='font-size:11px;padding-top:3px'>"+esc(b.label||"")+"</div><div class='l'>Churn</div></div></div>"+
+    "<div class='btnrow'><button class='btn p' onclick=\"window.open('"+hsl(r.id)+"','_blank')\">Open in HubSpot</button>"+
+    "<button class='btn' onclick='closeLead()'>Close</button></div>"+
+    "<div class='cardexp'>"+
+      "<button class='expbtn' onclick='toggleCard(0)'><span id='cx0'>+</span> Why this lead can convert</button>"+
+      "<div id='cb0' hidden class='expbody'>"+whyBody(r)+"</div>"+
+      "<button class='expbtn' onclick='toggleCard(1)'><span id='cx1'>+</span> AI call summary</button>"+
+      "<div id='cb1' hidden class='expbody'>"+(r.aiSummary?esc(r.aiSummary):"<span class='z'>Nothing recorded.</span>")+"</div>"+
+    "</div></div>";}
+function whyBody(r){
+  var bits=[];
+  bits.push("Sitting in "+esc(STAGE_LABEL[r.openStage]||r.openStage)+
+    (r.stageEntered?" for "+days(r.stageEntered)+"d":"")+" &middot; "+fmt(r.calls)+" dial(s) in the stage, "+
+    fmt(r.own)+" by this agent");
+  if(r.formSubs&&r.formSubs.length)bits.push(formBlock(r.formSubs));
+  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", ")));
+  if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+(r.bookAt?" on "+esc(tmp(r.bookAt)):""));
+  if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
+  if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
+  return bits.join("<br>");}
+function detBody(r){
+  var h=whyBody(r);
+  if(r.aiSummary)h+="<br><b>AI call summary:</b> "+esc(r.aiSummary);
+  return h;}
+function toggleCard(i){
+  var b=document.getElementById("cb"+i), x=document.getElementById("cx"+i);
+  if(!b)return;
+  var open=!b.hasAttribute("hidden");
+  if(open)b.setAttribute("hidden",""); else b.removeAttribute("hidden");
+  x.textContent=open?"+":"−";}
+function sortBy(k){
+  if(SORT.k===k)SORT.d=-SORT.d; else {SORT.k=k;SORT.d=1;}
+  draw();}
+function clearSort(){ SORT={k:"",d:1}; draw(); }
+function pickLead(id){ SEL=(SEL===id?"":id); draw(); }
+function closeLead(){ SEL=""; draw(); }
+
+function excludedNote(){
+  if(!J.isVP)return "";
+  var e=J.excluded;
+  if(!e)return "";
+  var tot=e.n.all+e.a.all+e.d.all;
+  if(!tot)return "";
+  var w=e.n.allW+e.a.allW+e.d.allW;
+  return "<div class='sec mini'><h2>Shown but not counted</h2>"+
+    "<div class='sub'>Parking buckets and unassigned leads. They appear per agent below so the pile stays visible, "+
+    "and they are kept out of every total above so one bucket cannot swamp the floor. Same treatment as the v1 page.</div>"+
+    "<div class='chips'>"+
+    "<button class='chipb' onclick='pick({sec:\"\",col:\"all\",notcounted:\"1\"})'>"+fmt(tot)+" leads held aside</button>"+
+    "<button class='chipb'>"+fmt(w)+" of them called today</button>"+
+    "<button class='chipb'>"+fmt(e.n.all)+" would be call-today work</button>"+
+    "</div></div>";}
+
+/* The tracked creator list scopes this whole page, so it has to be manageable from here,
+   and the calls it is hiding have to be visible. */
+var OUT=null,OUTBUSY=false,CSYNC=false;
+function loadOutside(force){
+  if(OUTBUSY)return; OUTBUSY=true; draw();
+  fetch("/api/callnow2/outside"+(force?"?force=1":"")).then(asJson)
+    .then(function(j){OUTBUSY=false;OUT=j;draw();})
+    .catch(function(e){OUTBUSY=false;OUT={error:e.message};draw();});}
+function addCreator(u,btn){
+  if(!u)return;
+  if(btn){btn.disabled=true;btn.textContent="Syncing...";}
+  CSYNC=true;
+  fetch("/api/callnow/sync-creator?creator="+encodeURIComponent(u),{method:"POST"}).then(asJson)
+    .then(function(j){
+      CSYNC=false;
+      if(j&&j.error){alert(j.error);draw();return;}
+      if(j&&j.truncated)alert("Added "+u+", but only "+fmt(j.added)+" of "+fmt(j.hubspotTotal)+
+        " leads could be pulled. HubSpot stops paging at 10,000 per query.");
+      OUT=null; load();
+    })
+    .catch(function(e){CSYNC=false;alert(e.message);draw();});}
+function dropCreator(u){
+  if(!confirm("Stop tracking "+u+"? Their leads leave this page from the next list build."))return;
+  fetch("/api/callnow/drop-creator?creator="+encodeURIComponent(u),{method:"POST"}).then(asJson)
+    .then(function(){OUT=null;load();}).catch(function(e){alert(e.message);});}
+
+function creatorPanel(){
+  if(!J.isVP)return "";
+  var list=(J.trackedCreators||[]).slice();
+  var lower={};
+  list.forEach(function(c){var k=String(c).toLowerCase();lower[k]=(lower[k]||0)+1;});
+  var dupes=Object.keys(lower).filter(function(k){return lower[k]>1;});
+  var h="<div class='sec mini'><h2>Tracked creators "+
+    "<button class='btn' style='float:right' onclick='loadOutside(1)'>"+
+    (OUTBUSY?"Checking...":"Check what is outside")+"</button></h2>"+
+    "<div class='sub'>This list scopes the whole page. A lead whose creator is not here is invisible to every "+
+    "number above. Additions are saved on the volume and survive a redeploy.</div>";
+  if(dupes.length)h+="<div class='warn'>The same creator is listed twice with different capitalisation: "+
+    esc(dupes.join(", "))+". Matching is exact, so one of the two matches nothing. Remove whichever is wrong.</div>";
+  h+="<div class='chips' style='margin-bottom:9px'>"+list.map(function(c){
+    return "<button class='chipb on' title='Stop tracking' onclick='dropCreator("+JSON.stringify(c).replace(/"/g,"&quot;")+")'>"+
+      esc(c)+" &times;</button>";}).join("")+"</div>";
+  h+="<div class='bar' style='padding:8px 10px;margin:0'>"+
+    "<input id='newcreator' type='search' placeholder='topmate_username, exactly as HubSpot has it' style='min-width:280px'>"+
+    "<button class='btn p' "+(CSYNC?"disabled":"")+" onclick=\"addCreator(document.getElementById('newcreator').value.trim(),this)\">"+
+    (CSYNC?"Syncing...":"Add and sync")+"</button></div>";
+  if(OUT&&!OUT.error){
+    h+="<div class='sub' style='margin:11px 0 7px'><b>"+fmt(OUT.hubspotCalledToday)+
+      "</b> leads were called today in HubSpot. Every one of them is accounted for below. "+
+      "Checked "+new Date(OUT.at).toLocaleTimeString("en-IN")+".</div>";
+    if(J.baseSize&&OUT.poolNow&&OUT.poolNow>J.baseSize*1.5)
+      h+="<div class='warn'>Today's list was locked with "+fmt(J.baseSize)+" leads, but the app now holds "+
+        fmt(OUT.poolNow)+". The list was locked before the pool changed, so a lot of calls land in "+
+        "<b>in the pool but not on this morning's list</b>. From tomorrow's lock the two line up again.</div>";
+    h+="<div class='tw' style='margin-bottom:11px'><table><thead><tr><th>Where the call went</th>"+
+      "<th class='n'>Leads</th><th>What it means</th></tr></thead><tbody>"+
+      (OUT.ladder||[]).map(function(r){
+        var sub=r.key.indexOf("onList")===0;
+        return "<tr><td"+(sub?" style='padding-left:22px'":"")+"><b>"+esc(r.label)+"</b></td>"+
+          "<td class='n'><b>"+fmt(r.n)+"</b></td>"+
+          "<td class='mut' style='white-space:normal'>"+esc(r.why)+"</td></tr>";}).join("")+
+      "<tr class='tot'><td><b>Accounted for</b></td><td class='n'><b>"+fmt(OUT.accountedFor)+
+      "</b></td><td class='mut'>"+(OUT.accountedFor===OUT.hubspotCalledToday
+        ? "Matches HubSpot exactly." : "Does not match HubSpot's "+fmt(OUT.hubspotCalledToday)+", which is a bug worth reporting.")+
+      "</td></tr></tbody></table></div>";
+    if((OUT.byStage||[]).length)h+="<div class='sub' style='margin:0 0 7px'>Stages this page does not carry: "+
+      OUT.byStage.map(function(x){return esc(x.label)+" "+fmt(x.n);}).join(", ")+
+      (OUT.stageMovedOutToday?". <b>"+fmt(OUT.stageMovedOutToday)+"</b> of those moved stage today, but none of them "+
+        "were on this morning's list either way: a lead that was on the list keeps its place all day, whatever "+
+        "happens to its stage.":
+        ". None of those moved stage today. Either way they were not on this morning's list.")+"</div>";
+    if(OUT.onList!=null&&OUT.onListNeedsCall!=null)
+      h+="<div class='sub' style='margin:0 0 9px'><b>"+fmt(OUT.onList)+"</b> calls landed on today's list, but only "+
+        "<b>"+fmt(OUT.onListNeedsCall)+"</b> of those are leads the list actually asked for. The rest were booked "+
+        "for a later date, parked DNP, or in a parking bucket, which is why the headline is the smaller number.</div>";
+    if(!OUT.rows.length)h+="<div class='z'>No calls today on untracked creators.</div>";
+    else h+="<div class='tw scrolly'><table><thead><tr><th>Creator</th><th class='n'>Called today</th>"+
+      "<th>Agents doing it</th><th></th></tr></thead><tbody>"+
+      OUT.rows.map(function(r){
+        return "<tr><td>"+esc(r.creator)+
+          (r.caseClash?" <span class='tag o' title='Same name already tracked with different capitalisation'>case clash</span>":"")+
+          "</td><td class='n'><b>"+fmt(r.leads)+"</b></td>"+
+          "<td class='mut'>"+r.agents.map(function(a){return esc(a.name)+" "+a.n;}).join(", ")+"</td>"+
+          "<td><button class='btn' onclick='addCreator("+JSON.stringify(r.creator).replace(/"/g,"&quot;")+",this)'>Track and sync</button></td></tr>";
+      }).join("")+"</tbody></table></div>";
+  } else if(OUT&&OUT.error){ h+="<div class='warn'>"+esc(OUT.error)+"</div>"; }
+  else h+="<div class='z' style='margin-top:9px'>Press <b>Check what is outside</b> to ask HubSpot which of today's calls landed on creators this list is hiding.</div>";
+  return h+"</div>";}
+
+var REC=null,RECBUSY=false;
+function loadRec(){
+  if(RECBUSY)return; RECBUSY=true; draw();
+  fetch("/api/callnow2/reconcile?"+qs()).then(asJson)
+    .then(function(j){RECBUSY=false;REC=j;draw();})
+    .catch(function(e){RECBUSY=false;REC={error:e.message};draw();});}
+// Every difference between the two pages, as a number and a sentence, before anyone's
+// targets depend on it.
+function reconcile(){
+  var h="<div class='sec mini'><h2>Call Now v1 against v2 "+
+    "<button class='btn' style='float:right' onclick='loadRec()'>"+
+    (RECBUSY?"Checking...":(REC?"Re-check":"Compare now"))+"</button></h2>"+
+    "<div class='sub'>Both sides counted from the same pool in the same request, so no gap can be blamed on timing. "+
+    "Run this for a fortnight before moving any target onto v2.</div>";
+  if(!REC)return h+"<div class='z' style='padding:6px 2px'>Not compared yet.</div></div>";
+  if(REC.error)return h+"<div class='warn'>"+esc(REC.error)+"</div></div>";
+  if(REC.fixtures)h+="<div class='warn'>Running on test data, so the v1 side reads zero. This is only meaningful against real leads.</div>";
+  h+="<div class='tw'><table><thead><tr><th>Bucket</th><th class='n'>v1, live</th><th class='n'>v2, locked list</th>"+
+    "<th class='n'>Difference</th><th>Why they differ</th></tr></thead><tbody>";
+  h+=REC.rows.map(function(r){
+    var cls=r.delta===0?"z":(r.delta>0?"c":"m");
+    var sign=r.delta>0?"+":"";
+    return "<tr><td><b>"+esc(r.label)+"</b></td>"+
+      "<td class='n'>"+fmt(r.v1)+"</td><td class='n'>"+fmt(r.v2)+"</td>"+
+      "<td class='n'><b class='"+cls+"'>"+(r.delta===0?"same":sign+fmt(r.delta))+"</b></td>"+
+      "<td style='white-space:normal;font-size:12.5px;color:#566575;line-height:1.5'>"+esc(r.why)+"</td></tr>";
+  }).join("");
+  h+="</tbody></table></div>";
+  if(REC.shown)h+="<div class='sub' style='margin-top:9px'>"+fmt(REC.shown.notCounted)+
+    " leads are shown but not counted by v2, of which "+fmt(REC.shown.unassigned)+" have no owner at all.</div>";
+  return h+"</div>";}
+
+// Where an agent is not churning. Of the leads they hold that need a call today, how
+// many have barely been tried. Everyone sees this: an agent for themselves, a manager for
+// their team, a VP for the floor.
+var CHURN_BY="owner";
+function setChurnBy(v){ CHURN_BY=v; draw(); }
+// The one number that matters, and how the morning list has moved since midnight.
+/* Data quality, stated on the page rather than hidden in a log. Two different questions:
+   is this page consistent with itself, and is it consistent with HubSpot. */
+// Movement, stated so the parts add to the list. Chips that did not add to anything were
+// impossible to check and easy to misread.
+function movementTable(){
+  var m=J.movement||{}, T=J.totals||{};
+  var onList=(T.n.all||0)+(T.a.all||0)+(T.d.all||0)+
+    ((J.excluded?J.excluded.n.all+J.excluded.a.all+J.excluded.d.all:0));
+  var called=m.called||0, gone=m.gone||0, still=m.still||0;
+  var rows=[
+    ["Called today", called, "Somewhere on the list"],
+    ["Moved stage", m.stage||0, "Still counted where it started"],
+    ["Next call date changed", m.fu||0, "Still counted where it started"],
+    ["Given to another agent", m.owner||0, "Still credited to this morning's agent"],
+    ["Routed to an agent today", J.promoted||0, "Nobody was working it this morning, so it now counts for whoever took it"],
+    ["No longer in the list", gone, "Left the tracked pool during the day"],
+    ["Nothing happened", still, "Not called, not moved, not reassigned"]
+  ];
+  return "<div class='sec mini'><h2>What happened to this morning's list</h2>"+
+    "<div class='sub'>Every lead that was on the list at midnight, and what has become of it. "+
+    "A lead can appear in more than one row: it can be called and also move stage.</div>"+
+    "<div class='tw'><table><thead><tr><th>Since midnight</th><th class='n'>Leads</th><th>Note</th></tr></thead><tbody>"+
+    rows.map(function(r){
+      return "<tr><td>"+esc(r[0])+"</td><td class='n'><b>"+fmt(r[1])+"</b></td>"+
+        "<td class='mut'>"+esc(r[2])+"</td></tr>";}).join("")+
+    "<tr class='tot'><td><b>On the list at midnight</b></td><td class='n'><b>"+fmt(onList)+
+    "</b></td><td class='mut'>Nothing joins after the lock</td></tr>"+
+    "</tbody></table></div>"+
+    (J.offBase&&J.offBase.leads?"<div class='sub' style='margin-top:8px'><b>"+fmt(J.offBase.leads)+
+      "</b> more leads were called today that were never on this list. They are in the fourth card above.</div>":"")+
+    "</div>";}
+
+function quality(){
+  if(!J.isVP)return "";
+  var c=J.checks, d=J.drift;
+  if(!c&&!d)return "";
+  var bad=c?c.checks.filter(function(x){return !x.ok;}):[];
+  var h="";
+  if(bad.length){
+    h+="<div class='warn' style='border-color:#D98080;background:#FDECEA;color:#8C2D12'>"+
+      "<b>These numbers do not add up.</b> "+fmt(bad.length)+" internal check"+(bad.length>1?"s":"")+" failed, so "+
+      "treat this page as broken until it is fixed:<ul style='margin:6px 0 0 18px;padding:0'>"+
+      bad.map(function(x){return "<li>"+esc(x.label)+(x.detail?" &mdash; "+esc(x.detail):"")+"</li>";}).join("")+
+      "</ul></div>";
+  }
+  if(d&&d.level!=="ok"){
+    h+="<div class='warn'>HubSpot has <b>"+fmt(d.hubspot)+"</b> leads called today, this app can see <b>"+
+      fmt(d.ours)+"</b>, a gap of "+d.pct+"%. Some gap is expected, this page only holds tracked creators and "+
+      "certain stages, but "+(d.level==="bad"?"this is large enough to be worth checking":"it is drifting")+
+      ". Checked "+new Date(d.at).toLocaleTimeString("en-IN")+
+      (d.leadsSyncedAt?" &middot; leads last updated "+new Date(d.leadsSyncedAt).toLocaleTimeString("en-IN"):"")+".</div>";
+  }
+  return h;}
+function qualityPanel(){
+  if(!J.isVP)return "";
+  var c=J.checks;
+  if(!c)return "";
+  var d=J.drift;
+  var h="<div class='sec mini'><h2>Data quality "+
+    "<span class='tag "+(c.ok?"s":"o")+"' style='margin-left:6px'>"+(c.ok?"all clear":"failing")+"</span></h2>"+
+    "<div class='sub'>These run on every build of this page, not when someone remembers to check. "+
+    "A number that is quietly wrong is worse than a page that is visibly broken.</div>"+
+    "<div class='tw'><table><thead><tr><th></th><th>What is checked</th><th>Detail</th></tr></thead><tbody>"+
+    c.checks.map(function(x){
+      return "<tr><td style='width:26px'>"+(x.ok?"<span class='tick'>&#10003;</span>":
+        "<span class='tag o'>fail</span>")+"</td><td>"+esc(x.label)+"</td>"+
+        "<td class='mut' style='white-space:normal'>"+esc(x.detail||"")+"</td></tr>";}).join("")+
+    (d?"<tr><td style='width:26px'>"+(d.level==="ok"?"<span class='tick'>&#10003;</span>":"<span class='tag o'>"+d.pct+"%</span>")+
+      "</td><td>Agrees with HubSpot on how many were called today</td>"+
+      "<td class='mut' style='white-space:normal'>HubSpot "+fmt(d.hubspot)+", this app "+fmt(d.ours)+
+      ". Checked "+new Date(d.at).toLocaleTimeString("en-IN")+"</td></tr>":"")+
+    "</tbody></table></div>"+
+    "<div class='sub' style='margin-top:8px'>Checked at "+new Date(c.at).toLocaleTimeString("en-IN")+
+    ". For the full accounting of every call HubSpot logged today, use <b>Check what is outside</b> above.</div></div>";
+  return h;}
+
+function hero(){
+  var T=J.totals||{}, off=(J.offBase&&J.offBase.leads)||0;
+  // One card per group. Numerator is what was called today, denominator is what the list
+  // locked with. Same population top and bottom, every time.
+  var card=function(cls,label,sec,note){
+    var c=T[sec]||{}, pool=c.all||0, done=c.allW||0;
+    var p=pool?Math.round(100*done/pool):0;
+    return "<div class='hcard "+cls+"'><div class='k'>"+label+"</div>"+
+      "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span>"+
+      "<span class='pctpill'>"+p+"%</span></div>"+
+      "<div class='track'><i style='width:"+p+"%'></i></div>"+
+      "<div class='foot'>"+note+"</div></div>";};
+  var h="<div class='herorow'>"+
+    card("h1","Call today","n","Due today, overdue, no FU, fresh")+
+    card("h2","Booked for a later date","a","Called anyway, not owed today")+
+    card("h3","DNPs","d","Called anyway, nothing asked for")+
+    "<div class='hcard h4'><div class='k'>Outside the list</div>"+
+    "<div class='big'>"+fmt(off)+"</div>"+
+    "<div class='track'><i style='width:0%'></i></div>"+
+    "<div class='foot'>Calls today on leads the list did not hold</div></div>"+
+    "</div>";
+  return h+"<div class='hnote'>"+
+    (J.frozen?("Locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
+      " with "+fmt(J.baseSize)+" leads. "):"List not locked yet. ")+
+    "The list is fixed at midnight, so these move only because of what the floor did today."+
+    "</div>";}
+function chipOf(k,n,label){
+  return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
+    "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
+
+function viewTabs(){
+  return "<div class='bar' style='padding:7px 10px'><span class='seg'>"+
+    ["matrix","queue","board"].map(function(v){
+      var lbl=v.charAt(0).toUpperCase()+v.slice(1);
+      return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+"</button>";
+    }).join("")+"</span>"+
+    "<span style='margin-left:auto;font-size:11.5px;color:#566575'>"+
+    (VIEW==="matrix"?"Every stage against every reason to call":
+     VIEW==="queue"?"The leads themselves, worst first":
+     "One card per stage, click a line to open those leads")+"</span></div>";}
+
+// One card per stage. Clicking a line opens those leads in the queue.
+function boardView(){
+  var rows=J.stages.filter(function(s){return s.n.all>0;});
+  if(!rows.length)return "<div class='sec mini'><div class='z'>Nothing to call today.</div></div>";
+  var cards=rows.map(function(s){
+    var c=s.n, t=c.due+c.over+c.nofu+c.newlead||1;
+    var seg=function(k,label,cls,v){
+      return "<div class='brk' onclick='pick({stage:"+JSON.stringify(s.stage).replace(/"/g,"&quot;")+
+        ",sec:\"n\",t:"+JSON.stringify(k).replace(/"/g,"&quot;")+"})'><span class='sw "+cls+"'></span>"+
+        label+"<span class='v'>"+fmt(v)+"</span></div>";};
+    return "<div class='bcard'><div class='top'>"+chip(s.stage,s.label)+
+      "<span class='instage'>"+fmt(c.all)+" in stage</span></div>"+
+      "<div class='h2n'>"+fmt(c.any)+"<span>any priority</span></div>"+
+      "<div class='stack'><i class='s1' style='width:"+(100*c.due/t)+"%'></i>"+
+      "<i class='s2' style='width:"+(100*c.over/t)+"%'></i>"+
+      "<i class='s3' style='width:"+(100*(c.nofu+c.newlead)/t)+"%'></i></div>"+
+      seg("due","Due today","s1",c.due)+seg("over","Overdue","s2",c.over)+
+      seg("nofu","No follow-up","s3",c.nofu)+
+      "<div class='brk' onclick='pick({stage:"+JSON.stringify(s.stage).replace(/"/g,"&quot;")+
+        ",sec:\"n\",col:\"score\"})'><span class='sw s4'></span>Score &ge;6<span class='v'>"+fmt(c.score)+"</span></div>"+
+      "</div>";}).join("");
+  return "<div class='sec'><h2>Board view</h2>"+
+    "<div class='sub'>One card per stage. The bar splits what is due today, what is overdue and what has no next step. "+
+    "Click any line to open those leads.</div><div class='board'>"+cards+"</div></div>";}
+
+function churnPanel(){
+  // A manager coaches on this; an agent should be working their list, not ranking
+  // themselves against it. Same reason they do not get the agent table.
+  if(J.scoped&&J.role==="agent")return "";
+  if(!A||!A.agents||!A.agents.length)return "";
+  var B=A.effortBands||J.effortBands;
+  if(!B)return "";
+  var rows=A.agents.filter(function(a){return a.n.all>0;});
+  if(!rows.length)return "";
+  var range=function(b){ return b.max==null?(b.min+"+"):(b.min+" to "+b.max); };
+  var share=function(a){
+    var e=a.effort[CHURN_BY],t=B.reduce(function(x,b){return x+e[b.key];},0);
+    return t?e.low/t:0;};
+  // Working agents first, worst churn at the top, then parking buckets, then anyone
+  // deactivated. A deactivated agent's untouched pile is a reassignment job, not a
+  // coaching conversation, so it must not head the list.
+  var rank=function(a){ return (a.active?0:2)+(a.counted?0:1); };
+  rows=rows.slice().sort(function(x,y){
+    return rank(x)-rank(y) || share(y)-share(x) || y.n.all-x.n.all; });
+  var h="<div class='sec mini'><h2>Lead churn effort</h2>"+
+    "<div class='sub'>Of the leads each agent is holding that need a call today, how many have barely been tried. "+
+    "Sorted worst first. <b>By the agent who holds it</b> is the accountable number; <b>by anyone</b> tells you whether "+
+    "the lead has had a go at all, which is how an inherited lead is told from a neglected one. Click any number for those leads.</div>"+
+    "<div class='chips' style='margin-bottom:9px'>"+
+    "<button class='chipb"+(CHURN_BY==="owner"?" on":"")+"' onclick='setChurnBy(\"owner\")'>By the agent who holds it</button>"+
+    "<button class='chipb"+(CHURN_BY==="total"?" on":"")+"' onclick='setChurnBy(\"total\")'>By anyone, in the stage</button>"+
+    "</div>"+
+    "<div class='tw scrolly'><table><thead><tr><th>Agent</th><th class='n'>Call today</th>"+
+    B.map(function(b){return "<th class='n'>"+esc(b.label)+"<div class='sub3'>"+range(b)+"</div></th>";}).join("")+
+    "<th class='n'>Barely tried</th></tr></thead><tbody>";
+  h+=rows.map(function(a){
+    var e=a.effort[CHURN_BY];
+    var t=B.reduce(function(x,b){return x+e[b.key];},0);
+    var pc=t?Math.round(100*e.low/t):0;
+    var flag=pc>=70?"m":(pc>=40?"d":"c");
+    return "<tr class='rowlink"+(Q.agent===a.id?" on":"")+"'>"+
+      "<td onclick=\"Q.agent='"+esc(a.id)+"';load()\">"+esc(a.name)+
+        (a.counted?"":" <span class='tag p'>not counted</span>")+
+        (a.active?"":" <span class='tag o'>INACTIVE</span>")+
+        (a.team?"<div class='sub3'>"+esc(a.team)+"</div>":"")+"</td>"+
+      "<td class='n'>"+fmt(a.n.all)+"</td>"+
+      B.map(function(b){
+        var n=e[b.key];
+        var on=PICK&&PICK.band===b.key&&PICK.bandBy===CHURN_BY&&PICK.agent===a.id;
+        if(!n)return "<td class='n cell z' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+          ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>0</td>";
+        return "<td class='n cell"+(on?" sel":"")+"' onclick='pick({band:"+JSON.stringify(b.key).replace(/"/g,"&quot;")+
+          ",bandBy:"+JSON.stringify(CHURN_BY).replace(/"/g,"&quot;")+",agent:"+JSON.stringify(a.id).replace(/"/g,"&quot;")+",sec:\"n\"})'>"+
+          "<b class='"+b.cls+"'>"+fmt(n)+"</b></td>";}).join("")+
+      "<td class='n'><b class='"+flag+"'>"+pc+"%</b></td></tr>";}).join("");
+  return h+"</tbody></table></div></div>";}
+
+var ASORT={k:"",d:1};
+function aHead(k,label,cls){
+  var on=ASORT.k===k;
+  return "<th class='"+cls+" sortable"+(on?" on":"")+"' onclick='aSort("+
+    JSON.stringify(k).replace(/"/g,"&quot;")+")'>"+esc(label)+
+    "<span class='ar'>"+(on?(ASORT.d>0?"\u25b2":"\u25bc"):"\u21c5")+"</span></th>";}
+function aSort(k){ if(ASORT.k===k)ASORT.d=-ASORT.d; else {ASORT.k=k;ASORT.d=1;} draw(); }
+function agentTable(){
+  if(!A||!A.agents||!A.agents.length)return "";
+  var mx=0; A.agents.forEach(function(a){ if(a.n.all>mx)mx=a.n.all; });
+  // Working agents first, then parking buckets, then anyone deactivated. A deactivated
+  // agent's pile is a reassignment job, not a calling job, so it does not belong on top.
+  var list=A.agents.slice().sort(function(x,y){
+    var rx=(x.active?0:2)+(x.counted?0:1), ry=(y.active?0:2)+(y.counted?0:1);
+    return rx-ry || y.n.all-x.n.all;
+  });
+  var h="<div class='sec mini'><h2>Today's calling list by agent</h2>"+
+    "<div class='sub'>Every lead on today's list, split by whoever held it this morning. Click a row to scope the whole page to that agent. "+
+    "Rows marked <b>not counted</b> are parking buckets, shown for visibility but left out of every total above.</div>"+
+    "<div class='tw scrolly'><table><thead><tr>"+
+    aHead("name","Agent","")+aHead("all","Call today","n")+
+    aHead("due","Due today","n gA edge")+aHead("over","Overdue","n gA")+aHead("nofu","No FU","n gA")+
+    aHead("newlead","Fresh","n gA")+
+    aHead("form","Form","n gB edge")+aHead("score","Score","n gB")+aHead("intl","Intl","n gB")+
+    aHead("refill","Refilled","n gB")+
+    aHead("called","Called","n")+aHead("later","Booked later","n")+aHead("dnp","DNP","n")+
+    "</tr></thead><tbody>";
+  var pill=function(v,cls){ return v?"<span class='pill"+(cls||"")+"'>"+fmt(v)+"</span>":"<span class='z'>0</span>"; };
+  if(ASORT.k){
+    var av=function(a){
+      if(ASORT.k==="name")return String(a.name||"").toLowerCase();
+      if(ASORT.k==="called")return a.n.dueW||0;
+      if(ASORT.k==="later")return a.a.all||0;
+      if(ASORT.k==="dnp")return a.d.all||0;
+      return a.n[ASORT.k]||0;};
+    list=list.slice().sort(function(x,y){
+      var p=av(x),q=av(y); if(p<q)return -ASORT.d; if(p>q)return ASORT.d; return 0;});
+  }
+  list.forEach(function(a){
+    var w=mx?Math.round(56*a.n.all/mx):0;
+    var miss=a.n.due-a.n.dueW;
+    h+="<tr class='rowlink"+(Q.agent===a.id?" on":"")+"' onclick=\"Q.agent='"+esc(a.id)+"';load()\">"+
+      "<td>"+esc(a.name)+
+        (a.counted?"":" <span class='tag p'>not counted</span>")+
+        (a.active?"":" <span class='tag o'>INACTIVE</span>")+
+        (a.team?"<div class='sub3'>"+esc(a.team)+"</div>":"")+"</td>"+
+      "<td class='n'><span class='mbar' style='width:"+w+"px'></span><b>"+fmt(a.n.all)+"</b>"+
+        "<div class='sub3'><b class='"+(a.n.allW?"c":"m")+"'>"+fmt(a.n.allW)+"</b> called</div></td>"+
+      "<td class='n gA edge'>"+fmt(a.n.due)+"</td>"+
+      "<td class='n gA'>"+pill(a.n.over)+"</td>"+
+      "<td class='n gA'>"+pill(a.n.nofu," w")+"</td>"+
+      "<td class='n gA'>"+fmt(a.n.newlead)+"</td>"+
+      "<td class='n gB edge'>"+fmt(a.n.form)+"</td>"+
+      "<td class='n gB'>"+fmt(a.n.score)+"</td>"+
+      "<td class='n gB'>"+fmt(a.n.intl)+"</td>"+
+      "<td class='n gB'>"+fmt(a.n.refill)+"</td>"+
+      "<td class='n'>"+(miss>0?pill(miss)+"<div class='sub3'>missed of "+fmt(a.n.due)+" due</div>":fmt(a.n.dueW))+"</td>"+
+      "<td class='n'>"+fmt(a.a.all)+"</td>"+
+      "<td class='n'>"+fmt(a.d.all)+"</td></tr>";
+  });
+  return h+"</tbody></table></div></div>";}
+function draw(){
+  var el=document.getElementById("app");
+  if(!J)return;
+  if(J.error){
+    var pr=J.progress,bar2="";
+    if(pr&&pr.agents){var pcv=Math.round(100*pr.agentsDone/pr.agents);
+      bar2="<div style='margin-top:9px'><div style='height:7px;background:#EFD3AE;border-radius:4px;overflow:hidden'>"+
+        "<i style='display:block;height:7px;width:"+pcv+"%;background:#B8791A'></i></div>"+
+        "<div style='margin-top:5px;font-size:11.5px'>"+(pr.phase?esc(pr.phase)+": ":"")+
+        pr.agentsDone+" of "+pr.agents+" agents fetched &middot; "+
+        fmt(pr.leadsSoFar)+" leads so far"+(pr.syncError?" &middot; error: "+esc(pr.syncError):"")+"</div></div>";}
+    el.innerHTML="<div class='warn'>"+esc(J.error)+(J.building?" Checking again every fifteen seconds.":"")+
+      (J.retry?" <button class='btn' onclick='load()'>Try again</button>":"")+
+      (J.building&&J.isVP?" <button class='btn' onclick='rebuild(this)'>Build it now</button>":"")+bar2+"</div>";
+    return;}
+  var fx=document.getElementById("fxtag");
+  if(fx)fx.innerHTML=(J.fixtures?"<span class='mebadge'>test data, not real</span>":"")+
+    (J.scoped?"<span class='mebadge'>your leads</span>":"");
+  var sub=document.getElementById("sub");
+  if(sub&&J.scoped)sub.textContent="Your calling list, locked at midnight. It does not change during the day, so what you work against is fixed.";
+  var nav=document.getElementById("vpnav");
+  if(nav)nav.style.display=J.isVP?"flex":"none";
+  // Four full width bars stacked on top of each other pushed the tables below the fold.
+  // Two columns instead: controls on the left, the state of today's list on the right.
+  // A VP gets the machinery: what the list is, what is held aside, how it compares to v1,
+  // whether it adds up, and what is outside it. A manager or agent gets the work.
+  /* Short cards flow in columns so a tall neighbour cannot leave a hole beside a short
+     one. The wide tables sit below at full width, where they belong. */
+  var vpBlock = J.isVP
+    ? "<div class='vpflow'>"+baseNote()+movementTable()+excludedNote()+"</div>"+
+      "<div class='vpwide'>"+qualityPanel()+creatorPanel()+reconcile()+"</div>"
+    : "";
+  var h=quality()+hero()+vpBlock+"<div class='top'><div class='topcol'>"+bar()+"</div></div>"+viewTabs();
+  var matrix="";
+  SECS.forEach(function(s,i){
+    var last=i===SECS.length-1;
+    matrix+="<div class='sec mini'><h2>"+s[1]+"</h2><div class='sub'>"+s[2]+"</div>"+
+      "<div class='tw'><table>"+head()+"<tbody>"+body(s[0])+
+      (J.stages.filter(function(x){return x[s[0]].all>0;}).length>1
+        ? totRow(s[1],[J.totals[s[0]]],s[0],"sub") : "")+
+      (last?totRow("Everything added up",[J.totals.n,J.totals.a,J.totals.d],"","grand"):"")+
+      "</tbody></table></div></div>";});
+  matrix+=churnPanel()+excludedNote()+creatorPanel()+(J.isVP?reconcile():"")+qualityPanel()+(J.scoped&&J.role==="agent"?"":agentTable());
+  h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
+     "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
+     "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
+  el.innerHTML=h;}
+load();
+setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);
+
+</script>
+</body></html>

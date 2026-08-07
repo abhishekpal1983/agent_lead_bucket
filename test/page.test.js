@@ -359,6 +359,8 @@ console.log("\nRole specific things appear only where they should");
   }
   ok("every table is inside a scrolling wrapper",
     (vp.match(/class='tw/g) || []).length >= 4, String((vp.match(/class='tw/g) || []).length));
+  ok("a denominator that grew during the day says why",
+    vp.indexOf("routed to an agent") >= 0 || vp.indexOf("Routed to an agent today") >= 0);
   ok("why-call tags carry the tooltip v1 has",
     vp.indexOf("title='Filled the form again since the last call'") >= 0 ||
     vp.indexOf("title='Submitted this waitlist form'") >= 0);
