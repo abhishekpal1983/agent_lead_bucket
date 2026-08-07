@@ -222,21 +222,25 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
 .wrap .hcard.h4{background:linear-gradient(135deg,#5A6B7D,#3B4756)}
 .wrap .hnote{font-size:11.5px;color:#566575;margin:0 0 12px}
-/* Two columns, because a short note and a six row table each taking the full width of a
-   1,880px screen is most of the page spent on nothing. The wide tables span both. */
-.wrap .vpblock{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-  gap:12px !important;align-items:start !important;margin-bottom:13px !important}
-.wrap .vpblock > *{margin-bottom:0 !important}
-.wrap .vpblock > .span2{grid-column:1 / -1 !important}
-@media (max-width:1200px){ .wrap .vpblock{grid-template-columns:1fr !important} }
-/* Filters spread across the width instead of huddling on the left. */
-.wrap .top .bar{display:grid !important;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important;
-  gap:10px !important;align-items:end !important}
-.wrap .top .bar > div{min-width:0}
+/* Short cards flow in columns, so a tall card cannot leave a hole beside a short one.
+   Grid rows align to the tallest cell; columns do not, which is what this needs. */
+.wrap .vpflow{column-count:3;column-gap:12px;margin-bottom:0}
+.wrap .vpflow > *{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;
+  width:100%;margin:0 0 12px !important;vertical-align:top}
+.wrap .vpwide{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:13px}
+.wrap .vpwide > *{margin:0 !important}
+@media (max-width:1500px){ .wrap .vpflow{column-count:2} }
+@media (max-width:1000px){ .wrap .vpflow{column-count:1} }
+/* Filters as one row that uses the width, with the sync line pushed to the far right. */
+.wrap .top .bar{display:flex !important;flex-wrap:wrap !important;gap:10px !important;
+  align-items:flex-end !important}
+.wrap .top .bar > div{flex:1 1 150px;min-width:0}
 .wrap .top .bar select{width:100% !important;min-width:0 !important}
-.wrap .top .bar .chips{grid-column:1 / -1}
+.wrap .top .bar > div:last-child{flex:0 0 auto;margin-left:auto;text-align:right}
+.wrap .top .bar .chips{flex:1 1 100%}
 .wrap .top{grid-template-columns:1fr !important}
+/* Stage and owner chips: label and chips on one line, not stacked. */
+.wrap .top .bar:last-child{align-items:center !important}
 @media (max-width:1100px){ .wrap .herorow{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
 /* Churn band, read straight off the row: attempts in this stage by the agent holding it. */
 /* Strong enough to read at a glance down a long list. A tint you have to look for is a
@@ -509,24 +513,23 @@ function bar(){
   h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
   h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
   h+=sel("intl","Number",[{v:"yes",l:"International only"},{v:"no",l:"National only"}],Q.intl);
-  h+="<div style='align-self:flex-end'><button class='btn' onclick='load()'>Reload</button>";
-  if(Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
-    h+=" <button class='btn' onclick='clearF()'>Clear</button>";
-  h+="</div>";
-  h+="<div style='margin-left:auto;align-self:flex-end;font-size:11.5px;color:#566575'>"+
-    (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"leads synced "+new Date(J.loadedAt).toLocaleString("en-IN"):""))+
-    (J.listBuiltAt?" &middot; list built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div>";
+  h+="<div><button class='btn' onclick='load()'>Reload</button>"+
+    ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
+      ? " <button class='btn' onclick='clearF()'>Clear</button>" : "")+
+    "<div style='font-size:11px;color:#566575;margin-top:4px;white-space:nowrap'>"+
+    (J.loadedAt==="fixtures"?"made-up test data":(J.loadedAt?"synced "+new Date(J.loadedAt).toLocaleTimeString("en-IN"):""))+
+    (J.listBuiltAt?" &middot; built "+new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"")+"</div></div>";
   h+="</div>";
   // Second row of chips, the same controls v1 puts under its dropdowns.
   h+="<div class='bar' style='padding-top:8px;padding-bottom:8px'>";
-  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em'>Stages</span>"+
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;flex:0 0 auto'>Stages</span>"+
     "<div class='chips'>"+
     "<button class='chipb"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
     (J.stageOptions||[]).map(function(o){
       var on=String(Q.stages).split(",").indexOf(o.stage)>=0;
       return "<button class='chipb"+(on?" on":"")+"' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
         esc(o.label)+"</button>";}).join("")+"</div>";
-  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:8px'>Owner</span>"+
+  h+="<span style='font-size:11px;color:#4A5A6A;font-weight:600;letter-spacing:.03em;margin-left:10px;flex:0 0 auto'>Owner</span>"+
     "<div class='chips'>"+
     [["","All"],["active","Active agents"],["inactive","Deactivated agents"],
      ["needs","Needs owner"],["unassigned","Unassigned"]].map(function(o){
@@ -790,7 +793,7 @@ function creatorPanel(){
   var lower={};
   list.forEach(function(c){var k=String(c).toLowerCase();lower[k]=(lower[k]||0)+1;});
   var dupes=Object.keys(lower).filter(function(k){return lower[k]>1;});
-  var h="<div class='sec mini span2'><h2>Tracked creators "+
+  var h="<div class='sec mini'><h2>Tracked creators "+
     "<button class='btn' style='float:right' onclick='loadOutside(1)'>"+
     (OUTBUSY?"Checking...":"Check what is outside")+"</button></h2>"+
     "<div class='sub'>This list scopes the whole page. A lead whose creator is not here is invisible to every "+
@@ -856,7 +859,7 @@ function loadRec(){
 // Every difference between the two pages, as a number and a sentence, before anyone's
 // targets depend on it.
 function reconcile(){
-  var h="<div class='sec mini span2'><h2>Call Now v1 against v2 "+
+  var h="<div class='sec mini'><h2>Call Now v1 against v2 "+
     "<button class='btn' style='float:right' onclick='loadRec()'>"+
     (RECBUSY?"Checking...":(REC?"Re-check":"Compare now"))+"</button></h2>"+
     "<div class='sub'>Both sides counted from the same pool in the same request, so no gap can be blamed on timing. "+
@@ -942,7 +945,7 @@ function qualityPanel(){
   var c=J.checks;
   if(!c)return "";
   var d=J.drift;
-  var h="<div class='sec mini span2'><h2>Data quality "+
+  var h="<div class='sec mini'><h2>Data quality "+
     "<span class='tag "+(c.ok?"s":"o")+"' style='margin-left:6px'>"+(c.ok?"all clear":"failing")+"</span></h2>"+
     "<div class='sub'>These run on every build of this page, not when someone remembers to check. "+
     "A number that is quietly wrong is worse than a page that is visibly broken.</div>"+
@@ -1162,9 +1165,11 @@ function draw(){
   // Two columns instead: controls on the left, the state of today's list on the right.
   // A VP gets the machinery: what the list is, what is held aside, how it compares to v1,
   // whether it adds up, and what is outside it. A manager or agent gets the work.
+  /* Short cards flow in columns so a tall neighbour cannot leave a hole beside a short
+     one. The wide tables sit below at full width, where they belong. */
   var vpBlock = J.isVP
-    ? "<div class='vpblock'>"+baseNote()+movementTable()+excludedNote()+qualityPanel()+
-      creatorPanel()+reconcile()+"</div>"
+    ? "<div class='vpflow'>"+baseNote()+movementTable()+excludedNote()+"</div>"+
+      "<div class='vpwide'>"+qualityPanel()+creatorPanel()+reconcile()+"</div>"
     : "";
   var h=quality()+hero()+vpBlock+"<div class='top'><div class='topcol'>"+bar()+"</div></div>"+viewTabs();
   var matrix="";

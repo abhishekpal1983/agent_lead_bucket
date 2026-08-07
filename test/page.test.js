@@ -289,9 +289,11 @@ console.log("\nRole specific things appear only where they should");
   ok("all four bands are coloured, not just the extremes",
     ["b-low", "b-avg", "b-bench", "b-high"].every(function(c){
       return html.indexOf("tr." + c + " td{background") >= 0; }));
-  ok("the VP block lays out in columns rather than full width stacks",
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".vpblock{display:grid") >= 0);
-  ok("wide panels span both columns", vp.indexOf("sec mini span2") >= 0);
+  ok("short VP cards flow in columns so none leaves a hole",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".vpflow{column-count:3") >= 0);
+  ok("and the wide tables sit below at full width",
+    vp.indexOf("class='vpflow'") >= 0 && vp.indexOf("class='vpwide'") >= 0 &&
+    vp.indexOf("class='vpflow'") < vp.indexOf("class='vpwide'"));
   ok("in the queue, phone and WhatsApp come before the stage",
       phone >= 0 && stage >= 0 && phone < stage, "phone " + phone + ", stage " + stage);
   }
@@ -317,10 +319,10 @@ console.log("\nRole specific things appear only where they should");
   ok("a manager still gets the agent table, only the agent loses it",
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
   ok("the VP machinery sits above the filters, not scattered below",
-    vp.indexOf("class='vpblock'") >= 0 &&
-    vp.indexOf("class='vpblock'") < vp.indexOf(">Manager<"));
+    vp.indexOf("class='vpflow'") >= 0 &&
+    vp.indexOf("class='vpflow'") < vp.indexOf(">Manager<"));
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
-  [["the VP block", "class='vpblock'"], ["the lock note", "Today's calling list locked"],
+  [["the VP block", "class='vpflow'"], ["the lock note", "Today's calling list locked"],
    ["data quality", "Data quality"], ["the held-aside pile", "Shown but not counted"],
    ["the v1 comparison", "Call Now v1 against v2"], ["the creator list", "Tracked creators"],
    ["the movement table", "What happened to this morning's list"]].forEach(function(t){
