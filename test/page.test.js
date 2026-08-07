@@ -280,7 +280,8 @@ console.log("\nRole specific things appear only where they should");
     // Scope the check to the queue table: the matrix has a Stage column too, and comparing
     // against that one compares two different tables.
     const q = vp.slice(vp.indexOf("Call queue"));
-    const phone = q.indexOf("Phone"), stage = q.indexOf("<th>Stage</th>");
+    // The headers are generated now, so match the label rather than the old fixed markup.
+    const phone = q.indexOf(">Phone<"), stage = q.indexOf(">Stage<");
     ok("queue columns can be sorted", vp.indexOf("class='sortable") >= 0 && vp.indexOf("sortBy(") >= 0);
   ok("the agent table can be sorted too", vp.indexOf("aSort(") >= 0);
   ok("churn colour is strong enough to read, not a hint",
