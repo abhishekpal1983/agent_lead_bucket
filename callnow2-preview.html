@@ -220,6 +220,53 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap tr:hover td.bd-high{background:#EDE9FE}
 .wrap tr.sub2 td{background:#FBFCFE}
 .wrap tr.sub2 td:first-child{padding-left:26px !important;font-size:12px !important}
+/* ---- bands ------------------------------------------------------------------------
+   Controls stay put while the table scrolls under them, so a filter is never more than
+   a glance away. The shadow only appears once the bar is actually stuck. */
+.wrap .top.sticky{position:sticky;top:0;z-index:40;background:var(--canvas,#F6F7FB);
+  padding-top:6px;margin-bottom:10px;box-shadow:0 10px 12px -12px rgba(10,37,64,.28)}
+.wrap .top.sticky .sec{margin-bottom:8px !important}
+
+/* Behind the numbers: one fold, not eleven loose cards. */
+.wrap .behind{margin-top:16px}
+.wrap .behindbtn{width:100%;text-align:left;background:#fff;border:1px solid var(--line,#DCE4EC);
+  border-radius:12px;padding:11px 15px;font-size:13.5px;font-weight:600;color:#0A2540;cursor:pointer;
+  display:flex;align-items:center;gap:8px}
+.wrap .behindbtn:hover{background:#FBFCFE;border-color:#C9D6E2}
+.wrap .behindbtn .mut{font-weight:400;font-size:12px;color:#7A8CA0}
+.wrap .behind.on .behindbtn{border-bottom-left-radius:0;border-bottom-right-radius:0;background:#FBFCFE}
+.wrap .behindbody{border:1px solid var(--line,#DCE4EC);border-top:0;border-radius:0 0 12px 12px;
+  padding:14px;background:#FBFCFE}
+.wrap .behindh{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#7A8CA0;
+  font-weight:700;margin:4px 0 9px}
+.wrap .behindbody > .behindh:not(:first-child){margin-top:18px}
+
+/* ---- HubSpot segment picker -------------------------------------------------------
+   248 segments, so this is a search box wearing a dropdown, not a select. */
+.wrap .segbox{position:relative;flex:1 1 220px;min-width:0}
+.wrap .segbox label{display:block;font-size:11px;font-weight:600;color:#4A5A6A;margin-bottom:3px}
+.wrap .segbtn{width:100%;text-align:left;background:#fff;border:1px solid var(--line,#DCE4EC);
+  border-radius:9px;padding:7px 10px;font-size:13px;color:#0A2540;cursor:pointer;
+  display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.wrap .segbtn .car{margin-left:auto;color:#7A8CA0}
+.wrap .segbtn.on{border-color:#4F46E5;background:#F5F4FF;font-weight:600;color:#3B2FA8}
+.wrap .segdrop{position:absolute;z-index:60;top:100%;left:0;width:340px;max-width:80vw;margin-top:4px;
+  background:#fff;border:1px solid var(--line,#DCE4EC);border-radius:12px;
+  box-shadow:0 14px 30px rgba(10,37,64,.16);padding:9px}
+.wrap .segsearch{width:100%;border:1px solid var(--line,#DCE4EC);border-radius:8px;padding:7px 9px;
+  font-size:13px;font-family:inherit}
+.wrap .segnote{font-size:11px;color:#7A8CA0;padding:6px 2px}
+.wrap .seglist{max-height:290px;overflow:auto}
+.wrap .segitem{display:flex;width:100%;text-align:left;gap:8px;align-items:center;background:none;
+  border:0;border-radius:7px;padding:6px 8px;font-size:12.5px;color:#0A2540;cursor:pointer}
+.wrap .segitem:hover{background:#F2F6FA}
+.wrap .segitem.on{background:#EEF0FE;font-weight:600;color:#3B2FA8}
+.wrap .segitem.clear{color:#8C2D12;font-weight:600}
+.wrap .segitem .segn{margin-left:auto;color:#93A7BC;font-size:11px}
+.wrap .segbar{background:#F5F4FF;border:1px solid #DDD9FA;color:#3B2FA8;border-radius:11px;
+  padding:9px 13px;font-size:12.5px;margin-bottom:11px}
+.wrap .segbar.warn{background:#FDF3E2;border-color:#F0DCB8;color:#7A4A08}
+
 /* Freshness, stated rather than timestamped. Silent when healthy, loud when not. */
 .wrap .fresh{font-size:11px;color:#7A8CA0;margin-top:4px;white-space:nowrap;text-align:right}
 .wrap .fresh.warn{color:#7A4A08;font-weight:600}
@@ -996,7 +1043,7 @@ var PREVIEW = {
 <script>
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
-var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""};
+var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""};
 
 /* ---- links into this page ---------------------------------------------------------
 
@@ -1017,7 +1064,7 @@ function paramsToState(search){
   var p=new URLSearchParams(String(search||""));
   var a=p.get("agent")||p.get("id")||"";
   if(a)out.q.agent=String(a);
-  ["team","creator","source","ostate","intl","stages"].forEach(function(k){
+  ["team","creator","source","ostate","intl","stages","segment"].forEach(function(k){
     var v=p.get(k); if(v)out.q[k]=String(v);});
   var v=p.get("view");
   if(v==="matrix"||v==="queue"||v==="board")out.view=v;
@@ -1229,6 +1276,61 @@ function freshness(){
     esc(msg)+
     (J.listBuiltAt?" &middot; list built "+esc(since(J.listBuiltAt)):"")+"</div>";}
 
+/* ---- HubSpot segments ------------------------------------------------------------
+   248 of them, so a dropdown is useless and a search box is the only usable shape.
+   Typing filters the names; picking one narrows every view to the people in it. */
+var SEGS=null, SEGQ="", SEGOPEN=false;
+function loadSegs(){
+  if(SEGS)return;
+  fetch("/api/callnow2/segments").then(asJson)
+    .then(function(j){SEGS=j;draw();}).catch(function(){SEGS={allowed:false,rows:[]};});}
+function segOpen(){SEGOPEN=!SEGOPEN;if(SEGOPEN)loadSegs();draw();}
+function segQ(v){SEGQ=v;draw();}
+function segPick(id){Q.segment=id;SEGOPEN=false;SEGQ="";load();}
+function segClear(){Q.segment="";SEGOPEN=false;SEGQ="";load();}
+
+function segPicker(){
+  if(J.scoped&&J.role==="agent")return "";
+  var cur=J.seg;
+  var label=cur?cur.name:"All leads";
+  var h="<div class='segbox'><label>HubSpot segment</label>"+
+    "<button class='segbtn"+(Q.segment?" on":"")+"' onclick='segOpen()'>"+esc(label)+
+    "<span class='car'>"+(SEGOPEN?"\u25be":"\u25b8")+"</span></button>";
+  if(SEGOPEN){
+    h+="<div class='segdrop'>"+
+      "<input class='segsearch' placeholder='search segments' value='"+esc(SEGQ)+"' "+
+      "oninput='segQ(this.value)' autofocus>";
+    if(!SEGS)h+="<div class='segnote'>loading segments...</div>";
+    else if(!SEGS.allowed)h+="<div class='segnote'>not available</div>";
+    else{
+      var q=String(SEGQ).toLowerCase();
+      var rows=(SEGS.rows||[]).filter(function(r){return !q||String(r.name).toLowerCase().indexOf(q)>=0;});
+      h+="<div class='segnote'>"+fmt(rows.length)+" of "+fmt((SEGS.rows||[]).length)+" segments</div>";
+      h+="<div class='seglist'>";
+      if(Q.segment)h+="<button class='segitem clear' onclick='segClear()'>Clear, show all leads</button>";
+      rows.slice(0,300).forEach(function(r){
+        h+="<button class='segitem"+(Q.segment===r.id?" on":"")+"' onclick='segPick(\""+esc(r.id)+"\")'>"+
+          esc(r.name)+"<span class='segn'>"+(r.size?fmt(r.size):"")+"</span></button>";});
+      if(!rows.length)h+="<div class='segnote'>nothing matches</div>";
+      h+="</div>";}
+    h+="</div>";}
+  h+="</div>";
+  return h;}
+
+/* What the chosen segment did to the list, said out loud. A segment almost always holds
+   people who are not on today's calling list, and dropping them without a word is how a
+   manager ends up believing a segment of 1,904 has 40 people in it. */
+function segNote(){
+  var g=J.seg;
+  if(!g)return "";
+  if(g.loading)return "<div class='segbar warn'>Fetching <b>"+esc(g.name)+"</b> from HubSpot. "+
+    "A large segment takes a few seconds the first time; press Reload in a moment.</div>";
+  return "<div class='segbar'>Showing <b>"+esc(g.name)+"</b>: <b>"+fmt(g.onList)+"</b> of its "+
+    fmt(g.size)+" people are on today's calling list."+
+    (g.outside?" The other <b>"+fmt(g.outside)+"</b> are not, because they are outside the tracked creators, in a closed stage, or booked for a later day.":"")+
+    (g.truncated?" This segment is larger than the fetch limit, so it is partial.":"")+
+    " <a href='#' class='a2' onclick='segClear();return false'>Clear</a></div>";}
+
 function bar(){
   var h="<div class='bar'>";
   // A scoped reader has nothing to choose between, so the picker is not drawn for them.
@@ -1239,8 +1341,9 @@ function bar(){
   h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
   h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
   h+=sel("intl","Number",[{v:"yes",l:"International only"},{v:"no",l:"National only"}],Q.intl);
+  h+=segPicker();
   h+="<div><button class='btn' onclick='load()'>Reload</button>"+
-    ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages)
+    ((Q.team||Q.agent||Q.creator||Q.source||Q.ostate||Q.intl||Q.stages||Q.segment)
       ? " <button class='btn' onclick='clearF()'>Clear</button>" : "")+
     freshness()+"</div>";
   h+="</div>";
@@ -1261,7 +1364,7 @@ function bar(){
         JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
   return h+"</div>";}
 function setF(k,v){ Q[k]=v; load(); }
-function clearF(){ Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:""}; load(); }
+function clearF(){ Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""}; load(); }
 function setStages(v){ Q.stages=v; load(); }
 function toggleStage(st){
   var cur=String(Q.stages||"").split(",").filter(Boolean);
@@ -1574,41 +1677,8 @@ function creatorPanel(){
   else h+="<div class='z' style='margin-top:9px'>Press <b>Check what is outside</b> to ask HubSpot which of today's calls landed on creators this list is hiding.</div>";
   return h+"</div>";}
 
-var REC=null,RECBUSY=false;
-function loadRec(){
-  if(RECBUSY)return; RECBUSY=true; draw();
-  fetch("/api/callnow2/reconcile?"+qs()).then(asJson)
-    .then(function(j){RECBUSY=false;REC=j;draw();})
-    .catch(function(e){RECBUSY=false;REC={error:e.message};draw();});}
-// Every difference between the two pages, as a number and a sentence, before anyone's
-// targets depend on it.
-function reconcile(){
-  var h="<div class='sec mini'><h2>Call Now v1 against v2 "+
-    "<button class='btn' style='float:right' onclick='loadRec()'>"+
-    (RECBUSY?"Checking...":(REC?"Re-check":"Compare now"))+"</button></h2>"+
-    "<div class='sub'>Both sides counted from the same pool in the same request, so no gap can be blamed on timing. "+
-    "Run this for a fortnight before moving any target onto v2.</div>";
-  if(!REC)return h+"<div class='z' style='padding:6px 2px'>Not compared yet.</div></div>";
-  if(REC.error)return h+"<div class='warn'>"+esc(REC.error)+"</div></div>";
-  if(REC.fixtures)h+="<div class='warn'>Running on test data, so the v1 side reads zero. This is only meaningful against real leads.</div>";
-  h+="<div class='tw'><table><thead><tr><th>Bucket</th><th class='n'>v1, live</th><th class='n'>v2, locked list</th>"+
-    "<th class='n'>Difference</th><th>Why they differ</th></tr></thead><tbody>";
-  h+=REC.rows.map(function(r){
-    var cls=r.delta===0?"z":(r.delta>0?"c":"m");
-    var sign=r.delta>0?"+":"";
-    return "<tr><td><b>"+esc(r.label)+"</b></td>"+
-      "<td class='n'>"+fmt(r.v1)+"</td><td class='n'>"+fmt(r.v2)+"</td>"+
-      "<td class='n'><b class='"+cls+"'>"+(r.delta===0?"same":sign+fmt(r.delta))+"</b></td>"+
-      "<td style='white-space:normal;font-size:12.5px;color:#566575;line-height:1.5'>"+esc(r.why)+"</td></tr>";
-  }).join("");
-  h+="</tbody></table></div>";
-  if(REC.shown)h+="<div class='sub' style='margin-top:9px'>"+fmt(REC.shown.notCounted)+
-    " leads are shown but not counted by v2, of which "+fmt(REC.shown.unassigned)+" have no owner at all.</div>";
-  return h+"</div>";}
-
-// Where an agent is not churning. Of the leads they hold that need a call today, how
-// many have barely been tried. Everyone sees this: an agent for themselves, a manager for
-// their team, a VP for the floor.
+// The v1 against v2 comparison lived here. v2 is the model now, so there is nothing
+// left to compare it against and the panel was only noise.
 var CHURN_BY="owner";
 function setChurnBy(v){ CHURN_BY=v; draw(); }
 // The one number that matters, and how the morning list has moved since midnight.
@@ -2020,14 +2090,20 @@ function draw(){
   /* Left: what the list is and what has happened to it, which is one long story.
      Right: the two piles that are not in the totals, held aside and waiting to be
      assigned, which belong beside each other and fill the space the story leaves. */
-  var vpBlock = J.isVP
-    ? "<div class='vpflow'><div class='vpcol'>"+baseNote()+movementTable()+"</div>"+
-      "<div class='vpcol'>"+excludedNote()+assignPanel()+"</div></div>"+
-      "<div class='vpwide'>"+qualityPanel()+creatorPanel()+reconcile()+"</div>"
-    // A manager gets none of the machinery, but the pool they can hand out is their job,
-    // so it is the one summary they do get.
-    : "<div class='vpwide'>"+assignPanel()+"</div>";
-  var h=quality()+hero()+vpBlock+"<div class='top'><div class='topcol'>"+bar()+"</div></div>"+viewTabs();
+  /* ---- four bands ----------------------------------------------------------------
+
+     The page used to be eleven cards of equal weight in one long scroll, with the
+     filters buried below the summaries, so you scrolled past the analysis to reach the
+     control that changes it. One rule now: the work goes above the explanation of it.
+
+       1  where today stands      hero cards, one strip
+       2  controls                filters, stages, owner, views, pinned while you scroll
+       3  the work                matrix, queue or board
+       4  behind the numbers      every explanatory card, folded away until asked for
+
+     Nothing was deleted; the cards below the fold are the same cards. */
+  var h=quality()+hero()+
+    "<div class='top sticky'><div class='topcol'>"+bar()+"</div>"+viewTabs()+"</div>"+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;
@@ -2040,11 +2116,44 @@ function draw(){
   /* Stage and creator first: a manager reads the shape of the day before the names.
      The VP-only cards are NOT repeated here. They live in the block at the top of the
      page, and rendering them again drew every one of them twice. */
-  matrix+=summaryPanel()+churnPanel()+(J.scoped&&J.role==="agent"?"":agentTable());
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
+  h+=behind();
   el.innerHTML=h;}
+
+/* Everything that explains the numbers rather than being the numbers, in the order a
+   manager asks for it, folded away so it cannot compete with the work. Open state is
+   remembered, so someone who lives in these cards is not made to click every morning. */
+var BEHIND=(function(){try{return localStorage.getItem("cn2_behind")==="1";}catch(e){return false;}})();
+function toggleBehind(){BEHIND=!BEHIND;try{localStorage.setItem("cn2_behind",BEHIND?"1":"0");}catch(e){}draw();
+  if(BEHIND)setTimeout(function(){var el=document.getElementById("behind");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
+
+function behind(){
+  var isAgent=J.scoped&&J.role==="agent";
+  var cards=[];
+  if(!isAgent){
+    cards.push(["Effort and churn","<div class='vpwide'>"+summaryPanel()+churnPanel()+agentTable()+"</div>"]);
+  }
+  // movementTable and baseNote have no gate of their own: they were only ever drawn
+  // inside a VP-only branch. The fold must keep that, or opening it hands a manager
+  // machinery that was deliberately kept from them.
+  var flow=[J.isVP?movementTable():"",J.isVP?baseNote():"",excludedNote(),assignPanel()].filter(Boolean);
+  if(flow.length)cards.unshift(["Today's list",
+    "<div class='vpflow'><div class='vpcol'>"+flow.filter(function(_,i){return i%2===0;}).join("")+"</div>"+
+    "<div class='vpcol'>"+flow.filter(function(_,i){return i%2===1;}).join("")+"</div></div>"]);
+  var extra=[qualityPanel(),creatorPanel()].filter(Boolean);
+  if(extra.length)cards.push(["Data quality and tracked creators","<div class='vpwide'>"+extra.join("")+"</div>"]);
+  if(!cards.length)return "";
+  var n=cards.length;
+  var h="<div id='behind' class='behind"+(BEHIND?" on":"")+"'>"+
+    "<button class='behindbtn' onclick='toggleBehind()'>"+
+    "<span class='car'>"+(BEHIND?"\u25be":"\u25b8")+"</span> Behind the numbers"+
+    "<span class='mut'> &middot; "+n+" section"+(n>1?"s":"")+": how today's list was built, what is held aside, where the effort went</span>"+
+    "</button>";
+  if(BEHIND)h+="<div class='behindbody'>"+cards.map(function(c){
+    return "<h3 class='behindh'>"+esc(c[0])+"</h3>"+c[1];}).join("")+"</div>";
+  return h+"</div>";}
 load();
 setInterval(function(){if(!LOADING&&!LEADS)load();},10*60*1000);
 

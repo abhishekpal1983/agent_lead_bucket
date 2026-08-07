@@ -301,3 +301,24 @@ sides to compare. That is the point of it.
 Snapshot version is now 3. Days captured under version 2 were measured on v1 definitions
 and are refrozen rather than carried forward, so the Daily review never compares a day
 measured one way against a day measured another.
+
+---
+
+## 13. HubSpot segments
+
+A manager can narrow the page to a **HubSpot segment** (a List in the API). Managers and
+VPs only; an agent works the list they are given.
+
+**It filters today's list, it does not replace it.** Picking a segment shows the people in
+it **that are on today's calling list**. The page states how many of the segment fell
+outside, and why: outside the tracked creators, in a closed stage, or booked for a later
+day. Nothing is dropped without a number against it.
+
+That is deliberate. If a segment brought its own population in, the denominator would stop
+being today's frozen list and every coverage percentage on the page would mean something
+different depending on whether a filter was set.
+
+The catalogue of segments is held for ten minutes. A segment's membership is fetched once
+and held for the rest of the day, because a segment of eleven thousand people is a hundred
+and ten HubSpot calls. The first pick of a large segment takes a few seconds and the page
+says so rather than showing an empty list.

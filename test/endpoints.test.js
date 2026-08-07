@@ -278,6 +278,20 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("rebuilding and relocking the list stay closed to everyone but a VP",
       (src.match(/Call Now v2 is restricted/g) || []).length === 2);
 
+    // The segment picker is a manager and VP control; the endpoint has to say so itself.
+    const segs = await get("/api/callnow2/segments");
+    ok("the segment catalogue answers", segs.status === 200, "status " + segs.status);
+    ok("and says whether the caller may use it", segs.body && "allowed" in segs.body,
+      JSON.stringify(segs.body));
+    // With no HubSpot token the catalogue is empty, which must not become a 500.
+    ok("an empty catalogue is not an error", !(segs.body && segs.body.error) || segs.status === 200);
+    const segFiltered = await get("/api/callnow2?segment=999999");
+    ok("an unknown segment does not break the page", segFiltered.status === 200,
+      "status " + segFiltered.status + " " + segFiltered.raw);
+    ok("and it reports itself as still fetching rather than silently empty",
+      segFiltered.body && segFiltered.body.seg && segFiltered.body.seg.loading === true,
+      JSON.stringify(segFiltered.body && segFiltered.body.seg));
+
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;
     if (vp && vp.teams && vp.teams.length) {

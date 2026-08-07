@@ -126,12 +126,17 @@ function render(role){
     { u: "ayush_singh13", n: 90,
       effort: { total: { low: 60, avg: 20, bench: 8, high: 2 }, owner: { low: 70, avg: 12, bench: 6, high: 2 } } }
   ];
+  ctx.J.seg = { id: "77", name: "ayush-final-payment-push", loading: false,
+    size: 1904, onList: 412, outside: 1492, truncated: false };
   ctx.ASSIGN = { allowed: true, scoped: !!role.scoped, rows: [
     { u: "ayush_singh13", unassigned: 4, left: 2, total: 6, assignedToday: 1,
       holders: [{ id: "205", name: "Gone Gita", n: 2 }] },
     { u: "payalineurope", unassigned: 3, left: 0, total: 3, assignedToday: 0, holders: [] }
   ], totals: { unassigned: 7, left: 2, total: 9, assignedToday: 1 } };
   ctx.LOADING = false;
+  // The explanatory cards live in a fold that is shut by default. Open it, or every
+  // assertion about them tests the fold rather than the card.
+  ctx.BEHIND = true;
   ctx.draw();                                   // the matrix, filters, agent table
   ctx.PICK = { stage: "counselled", sec: "n", col: "all", t: "", worked: "", moved: "", notcounted: "" };
   ctx.LEADS = false;
@@ -139,9 +144,6 @@ function render(role){
   ctx.L = { total: leadRows.length, shown: leadRows.length, rows: leadRows,
     portal: { uiDomain: "app.hubspot.com", portalId: "1" } };
   ctx.draw();                                   // again, with the drill open and expanded
-  ctx.REC = { rows: [{ key: "overdue", label: "Overdue", v1: 100, v2: 40, delta: -60, why: "different rule" }],
-    shown: { notCounted: 41, unassigned: 1 } };
-  ctx.draw();                                   // and with the reconciliation panel
   return out;
 }
 
@@ -214,7 +216,7 @@ console.log("\nChurn effort ordering");
   vm.createContext(ctx); vm.runInContext(script, ctx);
   ctx.J = Object.assign({}, payload, { isVP: true, scoped: false, role: "manager" });
   ctx.A = { agents: list, effortBands: payload.effortBands };
-  ctx.LOADING = false; ctx.draw();
+  ctx.LOADING = false; ctx.BEHIND = true; ctx.draw();
   const churn = out.slice(out.indexOf("Lead churn effort"));
   const seen = ["Sloppy Sam", "Tidy Tina", "Parking Pete", "Deactivated Dan"]
     .map(function(n){ return { n: n, at: churn.indexOf(n) }; })
@@ -229,8 +231,13 @@ console.log("\nChurn effort ordering");
 console.log("\nRole specific things appear only where they should");
 {
   const vp = render(ROLES[0][1]), mgr = render(ROLES[1][1]), agent = render(ROLES[2][1]);
-  ok("only a VP is offered the v1 comparison", vp.indexOf("Call Now v1 against v2") >= 0 &&
-    mgr.indexOf("Call Now v1 against v2") < 0 && agent.indexOf("Call Now v1 against v2") < 0);
+  // v2 is the model now, so there is nothing left to compare it against.
+  ok("a chosen segment says how much of it is on today's list",
+    vp.indexOf("ayush-final-payment-push") >= 0 && vp.indexOf("412") >= 0);
+  ok("and says plainly what fell outside rather than dropping it",
+    vp.indexOf("1,492") >= 0 && vp.indexOf("are not") >= 0);
+  ok("the v1 comparison is gone for everybody",
+    [vp, mgr, agent].every(function(x){ return x.indexOf("Call Now v1 against v2") < 0; }));
   ok("only a VP can relock the list", vp.indexOf("Lock again") >= 0 && agent.indexOf("Lock again") < 0);
   ok("an agent gets no agent table", vp.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
   ok("a scoped reader gets no manager or agent picker",
@@ -264,8 +271,12 @@ console.log("\nRole specific things appear only where they should");
     ok("a failed invariant is shouted at the top", out.indexOf("These numbers do not add up") >= 0);
     ok("and it names the check that failed", out.indexOf("10 vs 11") >= 0);
     ok("drift against HubSpot is shown too", out.indexOf("a gap of 59.2%") >= 0);
-    ok("the banner comes before the headline number",
-      out.indexOf("These numbers do not add up") < out.indexOf("Called today"));
+    // The banner is a warning, not an explanation, so it stays above the fold and above
+    // the number it is warning about.
+    ok("the banner comes before everything it is warning about",
+      out.indexOf("These numbers do not add up") >= 0 &&
+      out.indexOf("These numbers do not add up") < out.indexOf("class='hcard") &&
+      out.indexOf("class='hcard") < out.indexOf(">Manager<"));
   }
 
   ok("the tracked creator list can be managed from the page",
@@ -295,6 +306,9 @@ console.log("\nRole specific things appear only where they should");
   ok("and it is VP machinery, not floor furniture",
     mgr.indexOf("What happened to this morning's list") < 0 &&
     agent.indexOf("What happened to this morning's list") < 0);
+  ok("the explanatory cards are folded away, not stacked above the work",
+    vp.indexOf("class='behind") >= 0 && vp.indexOf("Behind the numbers") >= 0 &&
+    vp.indexOf("class='view") < vp.indexOf("class='behind"));
   ok("each group shades in its own hue, not one blue over everything",
     vp.indexOf("rgba(184,121,26,") >= 0 && vp.indexOf("rgba(28,107,78,") >= 0 &&
     vp.indexOf("rgba(47,111,228,") >= 0,
@@ -348,13 +362,20 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("counting every agent") >= 0 && vp.indexOf("this agent only") >= 0);
   ok("a manager still gets the agent table, only the agent loses it",
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
-  ok("the VP machinery sits above the filters, not scattered below",
-    vp.indexOf("class='vpflow'") >= 0 &&
-    vp.indexOf("class='vpflow'") < vp.indexOf(">Manager<"));
+  // Reversed on purpose: the work now sits above the explanation of the work.
+  ok("the controls sit above the work, and the machinery below it",
+    vp.indexOf(">Manager<") < vp.indexOf("class='view") &&
+    vp.indexOf("class='view") < vp.indexOf("class='vpflow'"));
+  ok("and the controls are pinned so a filter is always in reach",
+    vp.indexOf("class='top sticky'") >= 0 &&
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .top.sticky{position:sticky") >= 0);
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
-  [["the VP block", "class='vpflow'"], ["the lock note", "Today's calling list locked"],
+  // vpflow is now just a two column grid, and a manager legitimately gets one card in it,
+  // the pool they can assign from. What they must not see is its VP-only contents, which
+  // the entries below name one by one.
+  [["the lock note", "Today's calling list locked"],
    ["data quality", "Data quality"], ["the held-aside pile", "Shown but not counted"],
-   ["the v1 comparison", "Call Now v1 against v2"], ["the creator list", "Tracked creators"],
+   ["the creator list", "Tracked creators"],
    ["the movement table", "What happened to this morning's list"]].forEach(function(t){
     ok("a manager cannot see " + t[0], mgr.indexOf(t[1]) < 0);
     ok("an agent cannot see " + t[0], agent.indexOf(t[1]) < 0);
@@ -419,6 +440,17 @@ console.log("\nRole specific things appear only where they should");
       vp.indexOf("hour") >= 0 || vp.indexOf("not synced yet") >= 0));
   ok("a stalled or failed sync is not left looking healthy",
     html.indexOf(".wrap .fresh.bad") >= 0 && html.indexOf(".wrap .fresh.warn") >= 0);
+  /* HubSpot segments. 248 of them, so the control has to be a search box, and picking
+     one has to say what it did to the list rather than silently shrinking it. */
+  ok("managers and VPs get a segment picker",
+    vp.indexOf("HubSpot segment") >= 0 && mgr.indexOf("HubSpot segment") >= 0);
+  ok("an agent does not, they work the list they are given",
+    agent.indexOf("HubSpot segment") < 0);
+  ok("it is a search box, not a dropdown of 248 options",
+    html.indexOf("segsearch") >= 0 && html.indexOf("search segments") >= 0);
+  ok("the segment is a filter like any other, so Clear clears it",
+    html.indexOf('stages:"",segment:""') >= 0);
+  ok("and it can be linked to", html.indexOf('"stages","segment"') >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);

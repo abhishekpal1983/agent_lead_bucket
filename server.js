@@ -2573,6 +2573,31 @@ function cn2Context(req){
   const day = snap.day, live = snap.live, liveAll = snap.liveAll, frozen = snap.frozen;
   const rows = snap.rows;
   let base = snap.base;
+  // Declared here because the segment narrows the base before anything else touches it.
+  const wantSegment = String(req.query.segment || "");
+  /* A HubSpot segment narrows the list to those people. Applied to the frozen base, so
+     the answer is "of this segment, who is on today's list and have they been called",
+     not a second list with its own denominator. What the segment holds that is NOT on
+     today's list is counted and reported rather than dropped without a word. */
+  let seg = null;
+  if (wantSegment) {
+    const mem = segMembersReady(wantSegment);
+    if (!mem) {
+      seg = { id: wantSegment, name: segName(wantSegment), loading: true };
+    } else {
+      const kept = {};
+      let inList = 0;
+      Object.keys(base).forEach(function(id){
+        if (!mem.ids[id]) return;
+        kept[id] = base[id];
+        inList++;
+      });
+      seg = { id: wantSegment, name: segName(wantSegment), loading: false,
+        size: mem.n, onList: inList, outside: Math.max(0, mem.n - inList), truncated: !!mem.truncated };
+      base = kept;
+    }
+  }
+
   // The whole list before any filter or role scope is applied. The assignment pool is
   // the one thing that must not be scoped by agent: a lead with no owner belongs to no
   // agent, so filtering by agent would hide exactly the leads a manager came to find.
@@ -2645,7 +2670,7 @@ function cn2Context(req){
     });
   }
   return { day: day, base: base, baseAll: baseAll, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
-    promoted: snap.promoted, corrected: snap.corrected,
+    promoted: snap.promoted, corrected: snap.corrected, seg: seg,
     names: snap.names, frozenAt: snap.frozenAt };
 }
 
@@ -2702,7 +2727,7 @@ app.get("/api/callnow2", function(req, res){
     baseSize: Object.keys(ctx.base).length,
     // Leads routed to a working agent since the list was written. The denominator can
     // only grow, and only by this, so it is reported rather than left to be noticed.
-    promoted: ctx.promoted, corrected: ctx.corrected,
+    promoted: ctx.promoted, corrected: ctx.corrected, seg: ctx.seg,
     agentOptions: Object.keys(agents).map(function(id){
       return { id: id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
@@ -3003,6 +3028,118 @@ function cn2CreatorScope(req){
     .forEach(function(t){ (t.creators || []).forEach(function(u){ if (out.indexOf(u) < 0) out.push(u); }); });
   return out;
 }
+
+/* ---------- HubSpot segments (Lists) ----------
+
+   HubSpot calls them Segments in the UI and Lists in the API. A manager who has built
+   one, "ayush final payment push", wants to work exactly those people today, and until
+   now the only way was to open HubSpot in another tab and read names across.
+
+   Two caches, because the two questions have very different costs. The catalogue of
+   segments is one call and changes rarely, so it is held for ten minutes. Membership is
+   one call per hundred people, so a segment of eleven thousand is a hundred and ten
+   calls: that is held for the rest of the day, per segment, and capped. */
+const SEG_TTL_MS = 10 * 60 * 1000;
+const SEG_MEMBER_MAX = parseInt(process.env.SEG_MEMBER_MAX || "60000", 10);
+let SEGS = { at: 0, rows: [], error: null, loading: false };
+const SEG_MEMBERS = {};          // listId -> { at, day, ids: {}, n, truncated }
+
+async function segCatalogue(){
+  if (SEGS.rows.length && Date.now() - SEGS.at < SEG_TTL_MS) return SEGS.rows;
+  if (SEGS.loading) return SEGS.rows;
+  SEGS.loading = true;
+  try {
+    const out = [];
+    let offset = 0, guard = 0;
+    while (guard < 40) {
+      guard++;
+      const j = await hs("/crm/v3/lists/search", { method: "POST", body: JSON.stringify({
+        query: "", count: 100, offset: offset, additionalProperties: ["hs_list_size"] })});
+      const rows = j.lists || j.results || [];
+      rows.forEach(function(l){
+        // Contacts only. A deal or company list cannot filter a lead list.
+        if (String(l.objectTypeId || "0-1") !== "0-1") return;
+        const extra = l.additionalProperties || l.additionalPropertiesMap || {};
+        out.push({ id: String(l.listId), name: l.name || ("List " + l.listId),
+          size: num(extra.hs_list_size), type: l.processingType || "",
+          updatedAt: l.updatedAt || l.createdAt || null });
+      });
+      if (rows.length < 100) break;
+      offset += rows.length;
+      await sleep(120);
+    }
+    out.sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
+    SEGS = { at: Date.now(), rows: out, error: null, loading: false };
+    console.log("Segments loaded: " + out.length + " contact lists");
+  } catch (e) {
+    SEGS.loading = false;
+    SEGS.error = e.message;
+    console.error("Segment catalogue failed: " + e.message);
+  }
+  return SEGS.rows;
+}
+
+async function segMembers(listId){
+  const id = String(listId || "");
+  if (!id) return null;
+  const today = istParts(new Date(cn2Now())).date;
+  const hit = SEG_MEMBERS[id];
+  if (hit && hit.day === today) return hit;
+  const ids = {};
+  let n = 0, after = "", guard = 0, truncated = false;
+  while (guard < 900) {
+    guard++;
+    const q = "/crm/v3/lists/" + encodeURIComponent(id) + "/memberships?limit=100" +
+      (after ? "&after=" + encodeURIComponent(after) : "");
+    const j = await hs(q);
+    const rows = j.results || [];
+    rows.forEach(function(r){ const k = String(r.recordId || r.id || ""); if (k) { ids[k] = 1; n++; } });
+    after = ((j.paging || {}).next || {}).after || "";
+    if (!after || !rows.length) break;
+    if (n >= SEG_MEMBER_MAX) { truncated = true; break; }
+    await sleep(90);
+  }
+  const v = { at: Date.now(), day: today, ids: ids, n: n, truncated: truncated };
+  SEG_MEMBERS[id] = v;
+  // Keep the day's segments, not every segment ever asked for.
+  const keys = Object.keys(SEG_MEMBERS);
+  if (keys.length > 25) delete SEG_MEMBERS[keys[0]];
+  return v;
+}
+
+/* Requests must never wait on a hundred HubSpot calls. This answers from the cache, and
+   if the segment is not held yet it starts fetching and says "not ready"; the page shows
+   that plainly and picks it up on the next load. */
+const SEG_FETCHING = {};
+function segMembersReady(listId){
+  const id = String(listId || "");
+  if (!id) return null;
+  const today = istParts(new Date(cn2Now())).date;
+  const hit = SEG_MEMBERS[id];
+  if (hit && hit.day === today) return hit;
+  if (!SEG_FETCHING[id]) {
+    SEG_FETCHING[id] = 1;
+    segMembers(id).catch(function(e){ console.error("segment " + id + ": " + e.message); })
+      .then(function(){ delete SEG_FETCHING[id]; });
+  }
+  return null;
+}
+function segName(listId){
+  const r = (SEGS.rows || []).filter(function(x){ return x.id === String(listId); })[0];
+  return r ? r.name : ("Segment " + listId);
+}
+
+// The picker. Managers and VPs only: an agent works the list they are given.
+app.get("/api/callnow2/segments", async function(req, res){
+  const role = (req.session && req.session.role) || "manager";
+  if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
+  try {
+    const rows = await segCatalogue();
+    res.json({ allowed: true, rows: rows, error: SEGS.error || null, at: SEGS.at || null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.get("/api/callnow2/assign", function(req, res){
   if (!cn2Ready()) return res.json({ notReady: true });
