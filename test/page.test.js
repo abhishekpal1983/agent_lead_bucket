@@ -244,8 +244,13 @@ console.log("\nRole specific things appear only where they should");
   ok("an agent gets no agent table", vp.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
   ok("a scoped reader gets no manager or agent picker",
     vp.indexOf(">Manager<") >= 0 && agent.indexOf(">Manager<") < 0);
-  ok("everyone still gets the stage and owner controls",
-    agent.indexOf("All stages") >= 0 && agent.indexOf("Needs owner") >= 0);
+  // Reversed on purpose: an agent already has every stage in the matrix, and only ever
+  // holds their own leads, so both chip rows were duplicating or filtering on nothing.
+  ok("managers and VPs keep the stage and owner controls",
+    vp.indexOf("All stages") >= 0 && vp.indexOf("Needs owner") >= 0 &&
+    mgr.indexOf("All stages") >= 0);
+  ok("an agent does not, the matrix is already their stage filter",
+    agent.indexOf("All stages") < 0 && agent.indexOf("Active agents") < 0);
   ok("the form answers render inside the drill", vp.indexOf("What is your current Role ?") >= 0);
   ok("a deactivated owner is flagged on the lead row", vp.indexOf(">INACTIVE<") >= 0);
   ok("the WhatsApp button rule sits after the theme so it is not plain text",
@@ -346,7 +351,7 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("class='wa'") >= 0 && vp.indexOf("wa.me/") >= 0);
   ok("active and deactivated agents can be filtered",
     vp.indexOf("Active agents") >= 0 && vp.indexOf("Deactivated agents") >= 0);
-  ok("an agent gets those filters too", agent.indexOf("Active agents") >= 0);
+  ok("but an agent does not need them", agent.indexOf("Active agents") < 0);
   ok("the matrix header is banded into four groups",
     vp.indexOf("Priority signals") >= 0 && vp.indexOf("New information") >= 0 &&
     vp.indexOf("Totals") >= 0 && vp.indexOf("class='grp'") >= 0);
@@ -494,6 +499,11 @@ console.log("\nRole specific things appear only where they should");
     html.indexOf("J.caughtUpTo||J.leadsAt") >= 0 && html.indexOf("up to date as of ") >= 0);
   ok("a sweep still working through a backlog is called out",
     html.indexOf("J.caughtUp===false") >= 0);
+  ok("the headline card breaks itself down by timing",
+    vp.indexOf("class='hsplit'") >= 0 && vp.indexOf(">Due today</span>") >= 0 &&
+    vp.indexOf(">Overdue</span>") >= 0);
+  ok("and each split carries its own coverage bar",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .hcard .hsplit .t i") >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);
@@ -562,6 +572,21 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
 {
   const vphtml = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
   ok("it says which page it is reviewing", vphtml.indexOf("Call Now 2.0 as it stood that day") >= 0);
+  /* Overview's queue block has to speak the same buckets, and every one of them has to
+     be worked against total. A bare count is not something a manager can act on. */
+  ok("the queue block uses Call Now 2.0's buckets",
+    ["Call today", "Due today", "Overdue", "No FU set", "Fresh", "Refilled", "IFC due"]
+      .every(function(b){ return vphtml.indexOf('"' + b + '"') >= 0; }));
+  ok("the old v1 bucket names are gone from it",
+    vphtml.indexOf('"Priority pool"') < 0 && vphtml.indexOf('"Waitlist form"') < 0 &&
+    vphtml.indexOf('"Follow-ups overdue"') < 0);
+  ok("every team column is worked against total, not a bare count",
+    vphtml.indexOf("var pcell = function(did, tot") >= 0 &&
+    vphtml.indexOf("pcell(x.overdueT || 0, x.overdue)") >= 0);
+  ok("and the audit cadence sits in the same table",
+    vphtml.indexOf("auditCell(x.audits, x.auditTarget)") >= 0);
+  ok("the Overview cards are packed tighter",
+    vphtml.indexOf("minmax(168px,1fr)") >= 0 && vphtml.indexOf("tiles.compact") >= 0);
   ok("timings are named as the floor names them",
     ["Due today, called", "Overdue, called", "No next call set, called", "Fresh leads, called"]
       .every(function(t){ return vphtml.indexOf(t) >= 0; }));

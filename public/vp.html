@@ -50,6 +50,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sec h2{font-size:15px;font-weight:600;margin-bottom:3px;color:#0A2540}
 .sec .sub{font-size:12.5px;color:#566575;margin-bottom:10px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;margin-bottom:14px}
+/* Six across, half the height: these are progress readings, not headlines. */
+.tiles.compact{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:9px}
+.tiles.compact .tile{padding:8px 10px;border-radius:9px}
+.tiles.compact .tile .v{font-size:17px}
+.tiles.compact .tile .l{font-size:11px}
+.tiles.compact .tile .sb{font-size:10.5px;margin-top:4px;padding-top:4px}
+/* Worked against total, in a table cell, without a second column for the bar. */
+.pbar{height:3px;border-radius:3px;background:#EDEFF4;margin-top:3px;overflow:hidden}
+.pbar i{display:block;height:3px;border-radius:3px;background:#2E9E7A}
 .tile{border-radius:10px;padding:12px 14px}
 .tile .v{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
 .tile .l{font-size:12px;margin-top:1px}
@@ -210,23 +219,29 @@ input:focus,select:focus{outline:none;border-color:var(--ind);box-shadow:0 0 0 3
 .hwarn a{color:#C7C3F5}
 
 /* bands */
-.bandl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin:16px 0 8px}
+.bandl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin:11px 0 6px}
 .bandl span{text-transform:none;letter-spacing:-.006em;font-weight:450;font-size:11.5px;color:var(--ink3);margin-left:8px}
-.tiles2{display:grid;grid-template-columns:repeat(auto-fit,minmax(216px,1fr));gap:11px}
-.t2{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 15px;box-shadow:var(--sh);transition:box-shadow .16s,transform .06s}
+/* Twelve cards at 216px each ate most of a screen for twelve numbers. Narrower minimum
+   and tighter internals fit six across on a wide monitor and four on a laptop, so the
+   whole Overview lands above the fold instead of taking three scrolls to read. */
+.tiles2{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:9px}
+.t2{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:var(--sh);transition:box-shadow .16s,transform .06s}
 .t2:hover{box-shadow:0 2px 6px rgba(14,18,32,.06),0 18px 40px -18px rgba(14,18,32,.22)}
 .t2:active{transform:translateY(.5px)}
 .t2.bad{border-color:#F7CFD4}
 .t2h{display:flex;align-items:center;gap:7px}
-.t2l{font-size:9.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+.t2l{font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ch{margin-left:auto;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;white-space:nowrap}
 .ch.g{background:var(--em-soft);color:var(--em-ink)}
 .ch.r{background:var(--rose-soft);color:var(--rose-ink)}
 .ch.a{background:var(--amb-soft);color:var(--amb-ink)}
 .ch.n{background:#F1F2F7;color:var(--ink2)}
-.t2v{font-size:25px;font-weight:600;letter-spacing:-.03em;margin-top:6px;line-height:1.15}
-.t2of{font-size:13px;font-weight:400;color:var(--ink3);letter-spacing:-.01em}
-.t2f{font-size:11px;color:var(--ink2);margin-top:8px;line-height:1.5}
+.t2v{font-size:21px;font-weight:600;letter-spacing:-.03em;margin-top:4px;line-height:1.15}
+.t2of{font-size:12px;font-weight:400;color:var(--ink3);letter-spacing:-.01em}
+/* Two lines at most. The full sentence stays on hover, where it costs no height. */
+.t2f{font-size:10.5px;color:var(--ink2);margin-top:6px;line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .t2f a{color:var(--ind);text-decoration:none;font-weight:550}
 .pb{margin-top:9px;height:6px;background:#F0F1F7;border-radius:99px;position:relative}
 .pb i{display:block;height:6px;border-radius:99px}
@@ -977,11 +992,14 @@ function drawRecon(){
 function drawCallNow(){
   var t = 0, f = 0, sc = 0, il = 0, nd = 0, due = 0, done = 0, missed = 0, ov = 0, unc = 0;
   var qT = 0, fT = 0, scT = 0, ilT = 0, ndT = 0, ovT = 0;
+  var nf = 0, nfT = 0, fr = 0, frT = 0, rf = 0, rfT = 0, ifc = 0, ifT = 0;
   J.teams.forEach(function(x){
     t += x.queue; f += (x.form || 0); sc += (x.score || 0); il += (x.intl || 0); nd += (x.needs || 0);
     due += x.due; done += x.done; missed += x.missed; ov += x.overdue; unc += x.uncalled;
     qT += (x.queueT || 0); fT += (x.formT || 0); scT += (x.scoreT || 0);
     ilT += (x.intlT || 0); ndT += (x.needsT || 0); ovT += (x.overdueT || 0);
+    nf += (x.nofu || 0); nfT += (x.nofuT || 0); fr += (x.fresh || 0); frT += (x.freshT || 0);
+    rf += (x.refill || 0); rfT += (x.refillT || 0); ifc += (x.ifc || 0); ifT += (x.ifcT || 0);
   });
   var lm = agoMin((J.syncs && J.syncs.leads && J.syncs.leads.at) || J.leadsLoadedAt);
   var h = "<div class='sec'><h2>Call Now queue " +
@@ -990,18 +1008,32 @@ function drawCallNow(){
     "<button class='btn' style='font-size:11.5px;padding:3px 9px;margin-left:8px' " + (REFRESHING ? "disabled" : "") +
     " onclick=\"hardRefresh('delta')\">" + (REFRESHING ? "Refreshing..." : "Refresh now") + "</button></h2>" +
     "<div class='sub'>What the floor is actually working today. Parking buckets and manager-held leads are excluded from these numbers.</div>";
-  h += "<div class='tiles' style='margin-bottom:12px'>" +
-    tile("grey", fmt(t), "Priority pool", cov(qT, t)) +
-    tile("blue", fmt(f), "Waitlist form", cov(fT, f)) +
-    tile("blue", fmt(sc), "Score &ge; 6", cov(scT, sc)) +
-    tile("blue", fmt(il), "International", cov(ilT, il)) +
-    tile(nd ? "red" : "grey", fmt(nd), "Needs owner", cov(ndT, nd)) +
-    tile(missed ? "red" : "teal", fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(due) + "</span>", "Due calls made",
-      due ? fmt(missed) + " missed · " + Math.round(100 * done / due) + "%" : "") +
-    tile(missed ? "red" : "grey", fmt(missed), "Missed today",
+  /* Every tile is now "worked of total", in Call Now 2.0's own buckets, so a manager
+     reading this and an agent reading the floor's page are looking at the same thing
+     with the same names. A bare count answers nothing on its own: 1,531 overdue is not
+     a fact anybody can act on until you know how many of them were rung. */
+  var prog = function(cls, did, tot, label){
+    var pc = tot ? Math.round(100 * did / tot) : 0;
+    return tile(tot ? (pc >= 60 ? "teal" : (pc > 0 ? cls : "red")) : "grey",
+      fmt(did) + " <span style='font-size:14px;font-weight:400'>of " + fmt(tot) + "</span>",
+      label, tot ? pc + "% worked" : "nothing in this bucket");
+  };
+  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
+    prog("amber", qT, t, "Call today") +
+    prog("amber", done, due, "Due today") +
+    prog("amber", ovT, ov, "Overdue") +
+    prog("amber", nfT, nf, "No FU set") +
+    prog("amber", frT, fr, "Fresh") +
+    tile(missed ? "red" : "teal", fmt(missed), "Missed today",
       due ? Math.round(100 * missed / due) + "% of today's due" : "") +
-    tile(ov ? "amber" : "grey", fmt(ov), "Follow-ups overdue", cov(ovT, ov)) +
-    tile(unc ? "amber" : "grey", fmt(unc), "Fresh / never called") +
+    "</div>";
+  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
+    prog("amber", fT, f, "Form") +
+    prog("amber", scT, sc, "Score &ge; 6") +
+    prog("amber", ilT, il, "International") +
+    prog("amber", rfT, rf, "Refilled") +
+    prog("amber", ifT, ifc, "IFC due") +
+    prog("amber", ndT, nd, "Needs owner") +
     "</div>";
   // A manager has one team, so a single team row tells them nothing. Break it down by
   // agent instead, summed across the creators in their team.
@@ -1012,11 +1044,11 @@ function drawCallNow(){
     J.teams.forEach(function(t){
       (t.creatorRows || []).forEach(function(c){
         (c.agents || []).forEach(function(a){
-          if (!m[a.id]) m[a.id] = { id: a.id, name: a.name, active: a.active, queue: 0, form: 0, score: 0,
-            intl: 0, needs: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0 };
-          ["queue","form","score","intl","needs","due","done","missed","overdue","uncalled"].forEach(function(k){
-            m[a.id][k] += (a[k] || 0);
-          });
+          if (!m[a.id]) m[a.id] = { id: a.id, name: a.name, active: a.active };
+          ["queue","form","score","intl","needs","due","done","missed","overdue","uncalled",
+           "nofu","fresh","refill","ifc",
+           "queueT","formT","scoreT","intlT","needsT","overdueT","nofuT","freshT","refillT","ifcT"]
+            .forEach(function(k){ m[a.id][k] = (m[a.id][k] || 0) + (a[k] || 0); });
         });
       });
     });
@@ -1024,20 +1056,38 @@ function drawCallNow(){
   } else {
     rows = J.teams.slice();
   }
-  h += "<div class='tw'><table class='rt'><thead><tr><th>" + (byAgent ? "Agent" : "Team") + "</th><th class='n'>Priority pool</th><th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th><th class='n'>Needs owner</th><th class='n'>Today</th><th class='n'>Overdue</th><th class='n'>Fresh / never called</th></tr></thead><tbody>";
+  /* Every column is worked of total, not a bare count. "Overdue 476" is a fact nobody
+     can act on; "3 of 476" is the conversation. Same buckets as the tiles above and the
+     same as the floor's page, so nothing has to be translated in a review. */
+  var pcell = function(did, tot, tone){
+    if (!tot) return "<td class='n mut'>–</td>";
+    var pc = Math.round(100 * did / tot);
+    return "<td class='n'><b class='" + (pc >= 60 ? "cg" : (pc > 0 ? "ca" : "cr")) + "'>" + fmt(did) + "</b>" +
+      "<span class='mut'> of " + fmt(tot) + "</span>" +
+      "<div class='pbar'><i class='" + (tone || "") + "' style='width:" + pc + "%'></i></div></td>";
+  };
+  h += "<div class='tw'><table class='rt'><thead><tr><th>" + (byAgent ? "Agent" : "Team") + "</th>" +
+    "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Overdue</th>" +
+    "<th class='n'>No FU set</th><th class='n'>Fresh</th>" +
+    "<th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th>" +
+    "<th class='n'>Needs owner</th><th class='n' title='Call audits submitted today against the cadence'>Audits</th>" +
+    "<th></th></tr></thead><tbody>";
   rows.sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
     h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b>" +
       (x.active === false ? " <span class='pill a'>inactive</span>" : "") + "</td>" +
-      "<td class='n'><b>" + fmt(x.queue) + "</b>" + qbar(x) + "</td>" +
-      "<td class='n'>" + fmt(x.form || 0) + "</td><td class='n'>" + fmt(x.score || 0) + "</td><td class='n'>" + fmt(x.intl || 0) + "</td>" +
-      "<td class='n'>" + ((x.needs || 0) ? "<span class='pill r'>" + fmt(x.needs) + "</span>" : "<span class='mut'>0</span>") + "</td>" +
-      "<td class='n'>" + (x.due ? "<b class='cg'>" + fmt(x.done) + "</b> <span class='mut'>of " + fmt(x.due) + "</span>" : "<span class='mut'>0 due</span>") +
-      (x.missed ? " <span class='pill r'>" + fmt(x.missed) + " missed</span>" : "") + "</td>" +
-      "<td class='n " + (x.overdue ? "cr" : "mut") + "'>" + fmt(x.overdue) + "</td>" +
-      "<td class='n " + (x.uncalled ? "ca" : "mut") + "'>" + fmt(x.uncalled) + "</td>" +
+      pcell(x.queueT || 0, x.queue) +
+      pcell(x.done || 0, x.due) +
+      pcell(x.overdueT || 0, x.overdue) +
+      pcell(x.nofuT || 0, x.nofu) +
+      pcell(x.freshT || 0, x.fresh) +
+      pcell(x.formT || 0, x.form) +
+      pcell(x.scoreT || 0, x.score) +
+      pcell(x.intlT || 0, x.intl) +
+      pcell(x.needsT || 0, x.needs) +
+      "<td class='n'>" + (byAgent ? "<span class='mut'>–</span>" : auditCell(x.audits, x.auditTarget)) + "</td>" +
       "<td><a class='mlink' href='/callnow.html" + (byAgent && x.id ? "?id=" + esc(x.id) : "") + "' title='Open Call Now'>open</a></td></tr>";
   });
-  if (!rows.length) h += "<tr><td colspan='10' class='mut'>No agents with a priority queue yet.</td></tr>";
+  if (!rows.length) h += "<tr><td colspan='12' class='mut'>No agents with a priority queue yet.</td></tr>";
   h += "</tbody></table></div></div>";
   return h;
 }

@@ -4412,12 +4412,7 @@ function vpAggregate(month){
   const cell = function(tid, creator, agentId){
     if (!agg[tid]) agg[tid] = {};
     if (!agg[tid][creator]) agg[tid][creator] = {};
-    if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = {
-      revenue: 0, enrolments: 0, queue: 0, due: 0, done: 0, missed: 0, overdue: 0, uncalled: 0, touched: 0,
-      churned: 0, worked: 0, counsellings: 0, created: 0, cohortCounselled: 0, risk: 0,
-      form: 0, score: 0, intl: 0, needs: 0, counsToday: 0,
-      queueT: 0, formT: 0, scoreT: 0, intlT: 0, needsT: 0, overdueT: 0
-    };
+    if (!agg[tid][creator][agentId]) agg[tid][creator][agentId] = REV.zero();
     return agg[tid][creator][agentId];
   };
   const seen = {};
@@ -4487,8 +4482,12 @@ function vpAggregate(month){
       if (b.why.score) { o.score++; if (ct) o.scoreT++; }
       if (b.why.intl)  { o.intl++;  if (ct) o.intlT++; }
       if (b.why.needs) { o.needs++; if (ct) o.needsT++; }
+      if (b.why.refill) { o.refill++; if (ct) o.refillT++; }
+      if (b.why.ifc)   { o.ifc++;    if (ct) o.ifcT++; }
+      if (b.why.fresh) { o.fresh++;  if (ct) o.freshT++; }
       if (b.t === "over") { o.overdue++; if (ct) o.overdueT++; }
-      if (b.t === "due") { o.due++; if (ct) o.done++; else o.missed++; }
+      if (b.t === "nofu") { o.nofu++; if (ct) o.nofuT++; }
+      if (b.t === "due") { o.due++; if (ct) { o.done++; o.dueT++; } else o.missed++; }
       if (!(lv && lv.last)) o.uncalled++;
     });
   }

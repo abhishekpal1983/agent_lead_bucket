@@ -406,6 +406,14 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .hcard .track i{display:block;height:3px;background:#fff;border-radius:3px}
 .wrap .hcard .foot{font-size:9.5px;opacity:.8;line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* The headline card's own breakdown: four rows, each its own small progress bar. */
+.wrap .hcard .hsplits{margin-top:2px;display:flex;flex-direction:column;gap:3px}
+.wrap .hcard .hsplit{display:grid;grid-template-columns:1fr auto;gap:2px 7px;align-items:baseline;font-size:9.5px}
+.wrap .hcard .hsplit .l{opacity:.82;white-space:nowrap}
+.wrap .hcard .hsplit .v{font-variant-numeric:tabular-nums;opacity:.9;white-space:nowrap}
+.wrap .hcard .hsplit .v b{font-size:11px}
+.wrap .hcard .hsplit .t{grid-column:1/3;height:2px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
+.wrap .hcard .hsplit .t i{display:block;height:2px;background:#fff;border-radius:2px}
 .wrap .hcard.h1{background:linear-gradient(135deg,#3B63E0,#3E2FA8)}
 .wrap .hcard.h2{background:linear-gradient(135deg,#2F7DA8,#1E5B7E)}
 .wrap .hcard.h3{background:linear-gradient(135deg,#8A5A6E,#5E3A4C)}
@@ -1386,16 +1394,31 @@ function hero(){
   var T=J.totals||{}, off=(J.offBase&&J.offBase.leads)||0;
   // One card per group. Numerator is what was called today, denominator is what the list
   // locked with. Same population top and bottom, every time.
-  var card=function(cls,label,sec,note){
+  var card=function(cls,label,sec,note,extra){
     var c=T[sec]||{}, pool=c.all||0, done=c.allW||0;
     var p=pool?Math.round(100*done/pool):0;
     return "<div class='hcard "+cls+"'><div class='k'>"+label+"</div>"+
       "<div class='big'>"+fmt(done)+"<span class='of'>/ "+fmt(pool)+"</span>"+
       "<span class='pctpill'>"+p+"%</span></div>"+
       "<div class='track'><i style='width:"+p+"%'></i></div>"+
-      "<div class='foot'>"+note+"</div></div>";};
+      (extra||"<div class='foot'>"+note+"</div>")+"</div>";};
+  /* The headline card carries its own breakdown. "8 of 2,432" tells an agent nothing
+     about where to start; due today at 10 of 50 and overdue at 3 of 1,200 tells them
+     exactly that, and it is the same arithmetic split four ways rather than a new
+     number to reconcile. */
+  var split=function(){
+    var c=T.n||{};
+    var parts=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"]];
+    var rows=parts.filter(function(p){ return (c[p[0]]||0)>0; }).map(function(p){
+      var tot=c[p[0]]||0, did=c[p[0]+"W"]||0;
+      var pc=tot?Math.round(100*did/tot):0;
+      return "<div class='hsplit'><span class='l'>"+p[1]+"</span>"+
+        "<span class='v'><b>"+fmt(did)+"</b>/"+fmt(tot)+"</span>"+
+        "<span class='t'><i style='width:"+pc+"%'></i></span></div>";});
+    return rows.length?"<div class='hsplits'>"+rows.join("")+"</div>":"";};
+
   var h="<div class='herorow'>"+
-    card("h1","Call today","n","Due today, overdue, no FU, fresh")+
+    card("h1","Call today","n","Due today, overdue, no FU, fresh",split())+
     card("h2","Booked for a later date","a","Called anyway, not owed today")+
     card("h3","DNPs","d","Called anyway, nothing asked for")+
     "<div class='hcard h4'><div class='k'>Outside the list</div>"+
@@ -1695,7 +1718,10 @@ function draw(){
       "<div class='heroside'>"+hero()+"</div>"+
       "<div class='ctrlside'>"+barTop()+viewTabs()+"</div>"+
     "</div>"+
-    barChips()+segNote();
+    // An agent already has every stage in the matrix and only ever holds their own leads,
+    // so the stage row duplicates a control they have and the owner row filters on a
+    // question they cannot answer. Both go, and the screen gets the height back.
+    ((J.scoped&&J.role==="agent")?"":barChips())+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;
