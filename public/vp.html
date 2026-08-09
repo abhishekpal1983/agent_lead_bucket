@@ -595,8 +595,90 @@ function dailyCsv(){
   a.download = "daily_review_" + DAILY.date + ".csv";
   a.click();
 }
+/* Creator targets, week by week.
+
+   A monthly target is not something a manager can act on until the month is nearly over.
+   Split across the weeks it becomes a Monday question: are we ahead or behind, and on
+   which creator. The split is by working days, so a short last week is handed a small
+   share rather than an equal one.
+
+   Attribution here is by creator, not by agent. Rule 8 follows the agent when the
+   question is who to credit; this question is whether a creator's pipeline is producing
+   what it was expected to. */
+var WEEKS = null;
+function loadWeeks(){
+  fetch("/api/vp/creator-weeks?month=" + encodeURIComponent(J.month))
+    .then(asJson)
+    .then(function(j){ WEEKS = j; renderWeeks(); })
+    .catch(function(e){
+      var el = document.getElementById("weekwrap");
+      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
+    });
+}
+function wkCell(w){
+  if (!w.target && !w.actual) return "<td class='n mut'>–</td>";
+  if (!w.started) return "<td class='n mut' title='This week has not started'>" +
+    (w.target ? "<span class='mut'>" + inr(w.target) + "</span>" : "–") + "</td>";
+  var pc = w.target ? Math.round(100 * w.actual / w.target) : null;
+  var cls = pc === null ? "" : (pc >= 100 ? "cg" : (pc >= 60 ? "ca" : "cr"));
+  return "<td class='n'><b class='" + cls + "'>" + inr(w.actual) + "</b>" +
+    (w.target ? "<div class='mut' style='font-size:11px'>of " + inr(w.target) +
+      (pc === null ? "" : " · " + pc + "%") + "</div>" +
+      "<div class='pbar'><i style='width:" + Math.min(100, pc || 0) + "%'></i></div>" : "") +
+    "</td>";
+}
+function renderWeeks(){
+  var el = document.getElementById("weekwrap");
+  if (!el) return;
+  var j = WEEKS;
+  if (!j) return;
+  var h = "<div class='sec'><h2>Creator targets, week by week</h2>" +
+    "<div class='sub'>The monthly target for each creator, split across the weeks of " + esc(j.month) +
+    " in proportion to the working days each week holds, against what actually came in. " +
+    "A week that has not started yet shows its target in grey; it is not a miss until it is due. " +
+    (j.scoped ? "Your team's creators only. " : "") +
+    "Counted against the creator the payment names, which is the creator whose target it is.</div>";
+
+  if (!j.rows.length) {
+    return void (el.innerHTML = h + "<div class='mut'>No creator has a target for this month yet. " +
+      "Set them under Teams and targets.</div></div>");
+  }
+
+  var t = j.totals;
+  var gap = t.actual - t.dueSoFar;
+  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
+    tile("grey", inr(t.actual), "Booked this month", "of " + inr(t.target)) +
+    tile("grey", inr(t.dueSoFar), "Owed by now", "weeks started so far") +
+    tile(gap >= 0 ? "teal" : "red", (gap >= 0 ? "+" : "") + inr(gap), "Against the weeks due",
+      t.dueSoFar ? Math.round(100 * t.actual / t.dueSoFar) + "% of what is owed" : "") +
+    tile("grey", fmt(t.enrolments), "Enrolments") +
+    "</div>";
+
+  h += "<div class='tw'><table class='rt'><thead><tr><th>Creator</th><th class='n'>Month</th>" +
+    j.weeks.map(function(w){
+      return "<th class='n" + (w.done ? "" : (w.started ? " on" : " mut")) + "'>W" + w.n +
+        "<div class='mut' style='font-weight:400;font-size:10px'>" + esc(w.label) + " · " +
+        w.workDays + "d</div></th>";
+    }).join("") + "<th class='n'>Against pace</th></tr></thead><tbody>";
+
+  j.rows.forEach(function(r){
+    h += "<tr><td><b>" + esc(r.u) + "</b>" +
+      (r.team ? "<div class='mut' style='font-size:11.5px'>" + esc(r.team) + "</div>" : "") + "</td>" +
+      "<td class='n'><b>" + inr(r.actual) + "</b><div class='mut' style='font-size:11px'>of " +
+      (r.target ? inr(r.target) : "no target") + "</div></td>" +
+      r.weeks.map(wkCell).join("") +
+      "<td class='n'>" + (r.dueSoFar
+        ? (r.gap >= 0 ? "<span class='pill g'>+" + inr(r.gap) + "</span>"
+                      : "<span class='pill r'>" + inr(-r.gap) + "</span>")
+        : "<span class='mut'>–</span>") + "</td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  el.innerHTML = h;
+}
+
 function drawNav(){
-  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)], ["daily", "Daily review", ""]];
+  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
+    ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
     items.push(["mapping", "Mapping", String(J.drift.length)]);
@@ -644,6 +726,7 @@ function draw(){
     "<span id='syncbadge' style='margin-left:auto'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
   if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
+  else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
@@ -651,6 +734,7 @@ function draw(){
   document.getElementById("app").innerHTML = h;
   drawNav();
   if (VIEW === "daily") loadDaily(DAILY_DATE);
+  if (VIEW === "weeks") loadWeeks();
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +

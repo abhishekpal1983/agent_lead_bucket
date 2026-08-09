@@ -367,6 +367,26 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* Creator targets split across the weeks of the month. */
+    const cw = await get("/api/vp/creator-weeks");
+    ok("creator weeks answers", cw.status === 200, "status " + cw.status + " " + cw.raw);
+    ok("it splits the month into four or five weeks",
+      cw.body && Array.isArray(cw.body.weeks) && cw.body.weeks.length >= 4 && cw.body.weeks.length <= 5,
+      JSON.stringify(cw.body && cw.body.weeks));
+    ok("every week covers a real span of days",
+      cw.body.weeks.every(function(w){ return /^\d+\u2013\d+$/.test(w.label); }),
+      JSON.stringify(cw.body.weeks.map(function(w){ return w.label; })));
+    ok("the weekly shares add up to the month",
+      Math.abs(cw.body.weeks.reduce(function(a, w){ return a + w.share; }, 0) - 100) < 0.5,
+      String(cw.body.weeks.reduce(function(a, w){ return a + w.share; }, 0)));
+    ok("Sunday is not counted as a working day",
+      cw.body.weeks.every(function(w){ return w.workDays <= 6; }),
+      JSON.stringify(cw.body.weeks.map(function(w){ return w.workDays; })));
+    ok("a week that has not started is marked, so it is not read as a miss",
+      cw.body.weeks.every(function(w){ return typeof w.started === "boolean"; }));
+    ok("and it reports what is owed by now separately from the month",
+      cw.body.totals && "dueSoFar" in cw.body.totals && "target" in cw.body.totals);
+
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;
     if (vp && vp.teams && vp.teams.length) {

@@ -607,6 +607,17 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf("pcell(x.overdueT || 0, x.overdue)") >= 0);
   ok("and the audit cadence sits in the same table",
     vphtml.indexOf("auditCell(x.audits, x.auditTarget)") >= 0);
+  /* Creator targets week by week: a monthly number nobody can act on until the 25th,
+     split into a Monday question. */
+  ok("creator weeks is its own view", vphtml.indexOf('["weeks", "Creator weeks", ""]') >= 0 &&
+    vphtml.indexOf("function renderWeeks") >= 0);
+  ok("it explains that the split follows working days",
+    vphtml.indexOf("in proportion to the working days each week holds") >= 0);
+  ok("a week not yet started is shown as not yet due, not as a miss",
+    vphtml.indexOf("it is not a miss until it is due") >= 0 &&
+    vphtml.indexOf("This week has not started") >= 0);
+  ok("and it says which way it attributes, since the other view attributes the other way",
+    vphtml.indexOf("which is the creator whose target it is") >= 0);
   ok("the Overview cards are packed tighter",
     vphtml.indexOf("minmax(168px,1fr)") >= 0 && vphtml.indexOf("tiles.compact") >= 0);
   ok("timings are named as the floor names them",

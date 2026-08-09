@@ -5053,6 +5053,133 @@ app.post("/api/org/import", express.json({ limit: "4mb" }), function(req, res){
   res.json({ ok: true, teams: ORG.teams.length, creators: (ORG.creators || []).length });
 });
 
+/* ---------- creator targets, week by week ----------
+
+   A monthly target is a number nobody can act on until the 25th. Split into weeks it
+   becomes a question you can answer on a Monday: are we ahead or behind, and on which
+   creator.
+
+   The split is by WORKING DAYS, not by calendar days. Sunday is not a working day here,
+   and a week containing a holiday should not be handed the same share as a full one, so
+   each week gets the monthly target in proportion to the working days it holds. The last
+   week of a month is usually short and is treated as short.
+
+   Attribution is by CREATOR, deliberately. Rule 8 says a payment follows the agent when
+   the question is "whose revenue is this", because that is about who to credit. This
+   question is different: it is about whether a creator's pipeline is producing what it
+   was expected to, so it follows the creator whose target it is. */
+const WEEK_EDGES = [1, 8, 15, 22, 29];
+
+function monthWeeks(month){
+  const y = Number(month.slice(0, 4)), m = Number(month.slice(5, 7));
+  const dim = new Date(y, m, 0).getDate();
+  const work = (typeof CN2_WORK !== "undefined" && CN2_WORK) ? CN2_WORK : { 1:1,2:1,3:1,4:1,5:1,6:1 };
+  const isWork = function(d){
+    // Day of week in IST for the 1st..last of this month.
+    const wd = new Date(Date.UTC(y, m - 1, d, 6, 0, 0)).getUTCDay();
+    return !!work[wd];
+  };
+  const out = [];
+  for (let i = 0; i < WEEK_EDGES.length; i++) {
+    const from = WEEK_EDGES[i];
+    if (from > dim) break;
+    const to = Math.min(dim, (i + 1 < WEEK_EDGES.length ? WEEK_EDGES[i + 1] - 1 : dim));
+    let wd = 0;
+    for (let d = from; d <= to; d++) if (isWork(d)) wd++;
+    out.push({ n: i + 1, from: from, to: to, workDays: wd,
+      label: from + "\u2013" + to,
+      fromKey: month + "-" + ("0" + from).slice(-2),
+      toKey: month + "-" + ("0" + to).slice(-2) });
+  }
+  const total = out.reduce(function(a, w){ return a + w.workDays; }, 0) || 1;
+  out.forEach(function(w){ w.share = w.workDays / total; });
+  return out;
+}
+
+app.get("/api/vp/creator-weeks", function(req, res){
+  const month = String(req.query.month || curMonth());
+  const t = (ORG.targets || {})[month] || { teams: {}, creators: {} };
+  const weeks = monthWeeks(month);
+  const today = istParts(new Date()).date;
+
+  // Scope: a VP sees the floor, a manager sees the creators mapped to their team.
+  const me = String(whoami(req) || "").toLowerCase();
+  const vp = isVP(req);
+  const mine = {};
+  let scoped = false;
+  if (!vp) {
+    scoped = true;
+    (ORG.teams || []).filter(function(x){ return String(x.managerEmail || "").toLowerCase() === me; })
+      .forEach(function(x){ (x.creators || []).forEach(function(u){ mine[u] = 1; }); });
+  }
+  const teamOfCreator = {};
+  (ORG.teams || []).forEach(function(x){
+    (x.creators || []).forEach(function(u){ teamOfCreator[u] = x.name || "(unnamed)"; });
+  });
+
+  const byCreator = {};
+  const slot = function(u){
+    if (!byCreator[u]) {
+      byCreator[u] = { u: u, team: teamOfCreator[u] || "", target: num(((t.creators || {})[u] || {}).revenue),
+        actual: 0, enrolments: 0, weeks: weeks.map(function(){ return { actual: 0, enrolments: 0 }; }) };
+    }
+    return byCreator[u];
+  };
+  // Every creator that has a target, so a creator producing nothing is visible as a zero
+  // rather than by being absent.
+  Object.keys((t.creators || {})).forEach(function(u){ if (!scoped || mine[u]) slot(u); });
+
+  const seen = {};
+  (SHEET.rows || []).forEach(function(r){
+    const d = String(r.date || "").slice(0, 10);
+    if (d.slice(0, 7) !== month) return;
+    const u = r.creator_username || "(no creator)";
+    if (scoped && !mine[u]) return;
+    const day = Number(d.slice(8, 10));
+    let wi = -1;
+    weeks.forEach(function(w, i){ if (day >= w.from && day <= w.to) wi = i; });
+    if (wi < 0) return;
+    const o = slot(u);
+    const v = num(r.price_inr);
+    o.actual += v; o.weeks[wi].actual += v;
+    const k = String(r.consumer_email || "").toLowerCase() + "|" + u;
+    if (!seen[k]) { seen[k] = 1; o.enrolments++; o.weeks[wi].enrolments++; }
+  });
+
+  const rows = Object.keys(byCreator).map(function(u){
+    const o = byCreator[u];
+    let run = 0, runT = 0;
+    const weeksOut = weeks.map(function(w, i){
+      const target = Math.round(o.target * w.share);
+      run += o.weeks[i].actual; runT += target;
+      // A week that has not started yet is not a miss, it is simply not due.
+      const started = w.fromKey <= today;
+      const done = w.toKey < today;
+      return { n: w.n, label: w.label, workDays: w.workDays, target: target,
+        actual: o.weeks[i].actual, enrolments: o.weeks[i].enrolments,
+        pct: target ? Math.round(100 * o.weeks[i].actual / target) : null,
+        started: started, done: done,
+        cumActual: run, cumTarget: runT };
+    });
+    const dueSoFar = weeksOut.filter(function(w){ return w.started; })
+      .reduce(function(a, w){ return a + w.target; }, 0);
+    return Object.assign({}, o, { weeks: weeksOut, dueSoFar: dueSoFar,
+      gap: Math.round(o.actual - dueSoFar) });
+  }).sort(function(a, b){ return b.target - a.target || b.actual - a.actual; });
+
+  res.json({ month: month, today: today, scoped: scoped,
+    weeks: weeks.map(function(w){
+      return { n: w.n, label: w.label, workDays: w.workDays,
+        share: Math.round(w.share * 1000) / 10, started: w.fromKey <= today, done: w.toKey < today };
+    }),
+    rows: rows,
+    totals: rows.reduce(function(a, r){
+      a.target += r.target; a.actual += r.actual; a.dueSoFar += r.dueSoFar;
+      a.enrolments += r.enrolments; return a;
+    }, { target: 0, actual: 0, dueSoFar: 0, enrolments: 0 })
+  });
+});
+
 app.get("/api/vp/daily", function(req, res){
   const all = (typeof ORG !== "undefined" && ORG.daily) || {};
   const dates = Object.keys(all).sort().reverse();
