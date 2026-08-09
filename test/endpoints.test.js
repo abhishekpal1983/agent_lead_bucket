@@ -320,7 +320,7 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
 
     const srv2 = require("fs").readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
     ok("the incremental walk pages by modified date, so stopping early cannot lose records",
-      srv2.indexOf('sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }]') >= 0);
+      srv2.indexOf('sorts: [{ propertyName: DELTA_PROP, direction: "ASCENDING" }]') >= 0);
     ok("it resumes from a stored watermark rather than restarting each run",
       srv2.indexOf("ORG.sync.deltaMark") >= 0 && srv2.indexOf("function deltaLoad") >= 0);
     ok("it stops on a time budget, not a page count",
