@@ -388,9 +388,16 @@ console.log("\nRole specific things appear only where they should");
   ok("the control cards are marked as controls",
     (vp.match(/class='bar ctl/g) || []).length >= 2 &&
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .bar.ctl{border-top") >= 0);
-  ok("and the wide chip rows get the full width below the band",
-    vp.indexOf("class='bar chipbar ctl'") >= 0 &&
-    vp.indexOf("class='headband") < vp.indexOf("class='bar chipbar ctl'"));
+  // Dropdowns and chips now sit two abreast inside the band, with the view tabs under
+  // both, so the three control blocks stop being taller than the cards beside them.
+  ok("the chips sit beside the dropdowns, not under them",
+    vp.indexOf("class='ctlgrid'") >= 0 &&
+    vp.indexOf("class='bar ctl'") < vp.indexOf("class='bar chipbar ctl'") &&
+    vp.indexOf("class='bar chipbar ctl'") < vp.indexOf("class='seg'"));
+  ok("and an agent, who gets no chips, keeps the full width",
+    agent.indexOf("class='ctlgrid solo'") >= 0);
+  ok("the pairing is defined after theme.css, or it never takes effect",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .ctlgrid{display:grid") >= 0);
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
   // vpflow is now just a two column grid, and a manager legitimately gets one card in it,
   // the pool they can assign from. What they must not see is its VP-only contents, which

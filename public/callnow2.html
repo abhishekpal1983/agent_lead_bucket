@@ -226,7 +226,18 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .headband.sticky{position:sticky;top:0;z-index:40;background:var(--canvas,#F6F7FB);
   padding-top:6px;box-shadow:0 10px 12px -12px rgba(10,37,64,.28)}
 /* Wide by nature, so the stage and owner chips get the whole width under the band. */
-.wrap .bar.chipbar{padding-top:8px !important;padding-bottom:8px !important;margin-bottom:10px !important}
+.wrap .bar.chipbar{padding-top:8px !important;padding-bottom:8px !important;margin-bottom:0 !important}
+/* Dropdowns left, chips right, view tabs under both. */
+.wrap .ctlgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;
+  align-items:start;margin-bottom:8px}
+.wrap .ctlgrid.solo{grid-template-columns:1fr}
+.wrap .ctlgrid > .bar{margin-bottom:0 !important;height:100%}
+/* Half the width, so the dropdowns pair up instead of stringing out across a row. */
+.wrap .ctlgrid .bar.ctl > div{flex:1 1 44% !important;min-width:0}
+.wrap .ctlgrid .bar.ctl > div:last-child{flex:1 1 100% !important;margin-left:0 !important;text-align:left}
+.wrap .ctlgrid .bar.chipbar{align-items:flex-start !important}
+.wrap .ctlgrid .bar.chipbar .barlbl{align-self:flex-start;margin-top:3px}
+@media (max-width:1250px){ .wrap .ctlgrid{grid-template-columns:1fr} }
 
 /* ---- the control cards ------------------------------------------------------------
    Three white boxes with grey chips gave no clue which one did what, and none of them
@@ -1713,15 +1724,23 @@ function draw(){
      right. Four cards in a row were a full screen width of chrome for four numbers, and
      the filters sat under all of it. Side by side, the band is about half as tall and
      everything below it gets that height back. */
+  /* The controls sit two abreast: the dropdowns on the left, the stage and owner chips
+     on the right, with the view tabs underneath spanning both. Stacked, those three
+     blocks were taller than the four cards beside them and left a hole under the cards;
+     side by side they finish level and the tables start higher up the page.
+
+     An agent gets neither chip row: the matrix already is their stage filter, and they
+     only ever hold their own leads, so the owner row filters on a question they cannot
+     answer. Their controls take the full width on their own. */
+  var mineOnly=J.scoped&&J.role==="agent";
   var h=quality()+
     "<div class='headband sticky'>"+
       "<div class='heroside'>"+hero()+"</div>"+
-      "<div class='ctrlside'>"+barTop()+viewTabs()+"</div>"+
-    "</div>"+
-    // An agent already has every stage in the matrix and only ever holds their own leads,
-    // so the stage row duplicates a control they have and the owner row filters on a
-    // question they cannot answer. Both go, and the screen gets the height back.
-    ((J.scoped&&J.role==="agent")?"":barChips())+segNote();
+      "<div class='ctrlside'>"+
+        "<div class='ctlgrid"+(mineOnly?" solo":"")+"'>"+barTop()+(mineOnly?"":barChips())+"</div>"+
+        viewTabs()+
+      "</div>"+
+    "</div>"+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
     var last=i===SECS.length-1;
