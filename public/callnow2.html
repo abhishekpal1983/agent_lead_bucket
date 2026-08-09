@@ -326,6 +326,30 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .rfr.bad{color:#8C2D12;font-weight:700}
 .wrap .btn.busy{opacity:.7;cursor:progress}
 
+/* ---- the agent's list -------------------------------------------------------------
+   An agent has one job on this page: work down their list. Nine columns fit a laptop
+   without sideways scrolling; on a phone even nine do not, so the row folds into a card
+   with the label beside each value. Same markup, same data, no second code path to keep
+   in step with the first. */
+.wrap .qrow.mine table{table-layout:auto}
+.wrap .qrow.mine td,.wrap .qrow.mine th{white-space:normal}
+.wrap .qrow.mine td:nth-child(3){min-width:150px}
+.wrap .qrow.mine .detbar{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:7px;
+  padding-bottom:7px;border-bottom:1px solid var(--line2,#EFF3F7);font-size:12px;color:#4A5A6A}
+.wrap .qrow.mine .detbar b{color:#0A2540}
+
+@media (max-width:760px){
+  .wrap .qrow.mine thead{display:none}
+  .wrap .qrow.mine table,.wrap .qrow.mine tbody,.wrap .qrow.mine tr,.wrap .qrow.mine td{display:block;width:auto}
+  .wrap .qrow.mine tbody tr{border:1px solid var(--line,#DCE4EC);border-radius:12px;
+    margin-bottom:9px;padding:9px 11px;background:#fff}
+  .wrap .qrow.mine tbody tr td{border:0 !important;padding:2px 0 !important;text-align:left !important}
+  .wrap .qrow.mine tbody tr td:before{content:attr(data-l);display:inline-block;min-width:78px;
+    font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#93A7BC;font-weight:700}
+  .wrap .qrow.mine tbody tr td:nth-child(1),.wrap .qrow.mine tbody tr td:nth-child(2){display:inline-block;width:auto}
+  .wrap .qrow.mine tbody tr td:nth-child(3){font-size:15px;font-weight:600}
+}
+
 /* ---- cards in the two-column block ------------------------------------------------
    Half the width, so the fixed 200px first column and fixed table layout pushed the last
    column off the edge and the reader lost the one that mattered. Inside a column the
@@ -1009,13 +1033,21 @@ function queueView(){
   } else {
     rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
   }
-  var COLDEF=[["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
-    ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0],
-    ["owner","Agent this morning",1],["creator","Creator",1],
-    ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
-  h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
+  /* An agent works one list: their own. Every column that answers "whose is this" is
+     noise on their screen and is what pushed the table off the right edge. They keep
+     what they act on; the rest moves into the row expander, so nothing is lost and
+     nothing has to be scrolled sideways to reach. */
+  var mine=J.scoped&&J.role==="agent";
+  var COLDEF=mine
+    ? [["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
+       ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0]]
+    : [["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
+       ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0],
+       ["owner","Agent this morning",1],["creator","Creator",1],
+       ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
+  h+="<div class='qrow"+(SEL?" open":"")+(mine?" mine":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
     COLDEF.map(function(c,i){
-      var num=i>=12||i===3;
+      var num=(mine?false:i>=12)||i===3;
       if(!c[2])return "<th"+(num?" class='n'":"")+">"+esc(c[1])+"</th>";
       var on=SORT.k===c[0];
       return "<th class='sortable"+(num?" n":"")+(on?" on":"")+"' onclick='sortBy("+
@@ -1032,18 +1064,20 @@ function queueView(){
       "<td>"+(r.worked?"<span class='tick' title='Called today'>&#10003;</span>":"")+
         "<a class='a2' href='"+hsl(r.id)+"' target='_blank' rel='noopener' onclick='event.stopPropagation()'>"+esc(r.name)+" &nearr;</a>"+
         (r.gone?" <span class='tag p' title='Was on this morning list, has since left the tracked pool'>left the list</span>":"")+"</td>"+
-      "<td class='n'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
+      "<td class='n' data-l='Phone'>"+(r.phone?"<span class='ph'>"+esc(r.phone)+"</span>":"<span class='z'>none</span>")+"</td>"+
       "<td>"+(digits?"<a class='wa' href='https://wa.me/"+digits+"' target='_blank' rel='noopener' title='Open WhatsApp' onclick='event.stopPropagation()'>WA</a>":"")+"</td>"+
-      "<td>"+chip(r.openStage)+moved+"</td>"+
-      "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
-      "<td>"+tm(r.fu)+"</td><td>"+tm(r.last)+"</td>"+
+      "<td data-l='Stage'>"+chip(r.openStage)+moved+"</td>"+
+      "<td data-l='Why call'>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
+      "<td data-l='Follow-up'>"+tm(r.fu)+"</td><td data-l='Last call'>"+tm(r.last)+"</td>"+
       "<td class='n'>"+refreshBtn(r.id)+"</td>"+
-      "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
-        (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
-      "<td>"+esc(r.creator||"–")+"</td>"+
-      "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
-      "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", this agent only'>"+fmt(r.own)+"</b></td>"+
-      "<td class='n'>"+(r.stageEntered?days(r.stageEntered)+"d":"<span class='z'>–</span>")+"</td></tr>";
+      (mine?"":
+        "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
+          (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
+        "<td>"+esc(r.creator||"–")+"</td>"+
+        "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
+        "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", this agent only'>"+fmt(r.own)+"</b></td>"+
+        "<td class='n'>"+(r.stageEntered?days(r.stageEntered)+"d":"<span class='z'>–</span>")+"</td>")+
+      "</tr>";
     if(OPEN[r.id])h+="<tr class='det'><td colspan='14'><div class='detbox'>"+detBody(r)+"</div></td></tr>";
   });
   if(!rows.length)h+="<tr><td colspan='14' class='z'>Nothing matches that search.</td></tr>";
@@ -1096,7 +1130,17 @@ function whyBody(r){
   if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
   return bits.join("<br>");}
 function detBody(r){
-  var h=whyBody(r);
+  var h="";
+  // Dropped from an agent's table to keep it on one screen, so it has to be here.
+  if(J.scoped&&J.role==="agent"){
+    h+="<div class='detbar'>"+
+      "<span><b>"+fmt(r.calls)+"</b> attempts in this stage</span>"+
+      "<span><b>"+fmt(r.own)+"</b> by you</span>"+
+      (r.stageEntered?"<span><b>"+days(r.stageEntered)+"</b> days in stage</span>":"")+
+      (r.creator?"<span>Creator <b>"+esc(r.creator)+"</b></span>":"")+
+      "</div>";
+  }
+  h+=whyBody(r);
   if(r.aiSummary)h+="<br><b>AI call summary:</b> "+esc(r.aiSummary);
   return h;}
 function toggleCard(i){

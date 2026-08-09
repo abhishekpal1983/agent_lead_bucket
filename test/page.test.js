@@ -469,6 +469,20 @@ console.log("\nRole specific things appear only where they should");
     html.indexOf('stages:"",segment:""') >= 0);
   ok("and it can be linked to", html.indexOf('"stages","segment"') >= 0);
   /* One click to settle a number, rather than waiting for the next sweep. */
+  /* An agent works one list, so every column answering "whose is this" is noise on
+     their screen, and it was what pushed the table off the right edge. */
+  ok("an agent's queue drops the columns that are not theirs to act on",
+    ["Agent this morning", "By owner"].every(function(c){ return agent.indexOf(c) < 0; }) &&
+    vp.indexOf("Agent this morning") >= 0);
+  ok("and keeps everything they do act on",
+    ["Lead", "Phone", "Stage", "Why call", "Follow-up", "Last call"]
+      .every(function(c){ return agent.indexOf(">" + c) >= 0; }));
+  ok("what was dropped moves into the row expander, so nothing is lost",
+    html.indexOf("attempts in this stage") >= 0 && html.indexOf("days in stage") >= 0);
+  ok("their table is marked so it can fold on a small screen",
+    agent.indexOf("class='qrow mine'") >= 0 || agent.indexOf(" mine'") >= 0);
+  ok("and the folded card labels each value, since the header row is hidden",
+    html.indexOf("content:attr(data-l)") >= 0 && html.indexOf("data-l='Follow-up'") >= 0);
   ok("every queue row offers a refresh", vp.indexOf("refreshLead(") >= 0);
   // The card only renders with a lead picked, so this one reads the source.
   ok("and the lead card says what it does rather than showing an icon",
