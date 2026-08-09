@@ -396,6 +396,11 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("class='bar chipbar ctl'") < vp.indexOf("class='seg'"));
   ok("and an agent, who gets no chips, keeps the full width",
     agent.indexOf("class='ctlgrid solo'") >= 0);
+  ok("the stage and owner chips are two labelled rows, not one row wrapping into itself",
+    (vp.match(/class='chipset'/g) || []).length === 2 &&
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .chipset + .chipset") >= 0);
+  ok("and everything in the band is shrunk to the height the cards set",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .ctlgrid .chipb{padding:2px 8px") >= 0);
   ok("the pairing is defined after theme.css, or it never takes effect",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .ctlgrid{display:grid") >= 0);
   // Each of these is VP machinery. Naming them one by one means a future leak says which.

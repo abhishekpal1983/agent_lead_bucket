@@ -239,6 +239,27 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .ctlgrid .bar.chipbar .barlbl{align-self:flex-start;margin-top:3px}
 @media (max-width:1250px){ .wrap .ctlgrid{grid-template-columns:1fr} }
 
+/* ---- the band, held to the height of the cards ------------------------------------
+   The controls were taller than the four cards beside them, so the band ended in a hole
+   and the tables started lower than they needed to. Everything here is shrunk to the
+   same end: the cards set the height, the controls fit inside it. */
+.wrap .ctlgrid .bar.ctl{padding:9px 11px !important}
+.wrap .ctlgrid .bar.ctl > div > label{font-size:9.5px !important;margin-bottom:2px !important;
+  letter-spacing:.03em}
+.wrap .ctlgrid .bar.ctl select,.wrap .ctlgrid .bar.ctl .segbtn{
+  padding:4px 8px !important;font-size:12px !important;border-radius:7px !important}
+.wrap .ctlgrid .bar.ctl{gap:7px 9px !important}
+.wrap .ctlgrid .bar.ctl .btn{padding:4px 10px !important;font-size:12px !important}
+.wrap .ctlgrid .fresh{margin-top:2px}
+
+/* Chips: two labelled rows, small, tight. Thirteen stages have to fit half a band. */
+.wrap .chipset{display:block;width:100%}
+.wrap .chipset + .chipset{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2,#EFF3F7)}
+.wrap .chipset .barlbl{display:flex;margin-bottom:4px}
+.wrap .ctlgrid .chips{gap:4px !important}
+.wrap .ctlgrid .chipb{padding:2px 8px !important;font-size:10.5px !important;border-radius:14px !important}
+.wrap .ctlgrid .bar.chipbar{padding:9px 11px !important}
+
 /* ---- the control cards ------------------------------------------------------------
    Three white boxes with grey chips gave no clue which one did what, and none of them
    looked like part of the same page as the tables below. Each now carries the indigo
@@ -1471,7 +1492,7 @@ function barTop(){
 function barChips(){
   // The same controls v1 puts under its dropdowns.
   var h="<div class='bar chipbar ctl'>";
-  h+="<span class='barlbl'>Stages</span>"+
+  h+="<div class='chipset'><span class='barlbl'>Stages</span>"+
     "<div class='chips'>"+
     "<button class='chipb all"+(Q.stages===""?" on":"")+"' onclick='setStages(\"\")'>All stages</button>"+
     (J.stageOptions||[]).map(function(o){
@@ -1483,15 +1504,15 @@ function barChips(){
                :("background:"+c[0]+";color:"+c[1]+";border-color:transparent");
       return "<button class='chipb stagechip"+(on?" on":"")+"' style='"+st+
         "' onclick='toggleStage("+JSON.stringify(o.stage).replace(/"/g,"&quot;")+")'>"+
-        esc(o.label)+"</button>";}).join("")+"</div>";
-  h+="<span class='barlbl'>Owner</span>"+
+        esc(o.label)+"</button>";}).join("")+"</div></div>";
+  h+="<div class='chipset'><span class='barlbl'>Owner</span>"+
     "<div class='chips'>"+
     // Semantic, and the same meanings the rest of the page uses: green is somebody is
     // working it, rust is somebody left, amber is it needs routing, slate is nobody.
     [["","All","all"],["active","Active agents","ok"],["inactive","Deactivated agents","gone"],
      ["needs","Needs owner","route"],["unassigned","Unassigned","none"]].map(function(o){
       return "<button class='chipb own own-"+o[2]+(Q.ostate===o[0]?" on":"")+"' onclick='setF(\"ostate\","+
-        JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div>";
+        JSON.stringify(o[0]).replace(/"/g,"&quot;")+")'>"+o[1]+"</button>";}).join("")+"</div></div>";
   return h+"</div>";}
 function setF(k,v){ Q[k]=v; load(); }
 function clearF(){ Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""}; load(); }
