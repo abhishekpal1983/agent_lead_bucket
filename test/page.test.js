@@ -373,9 +373,14 @@ console.log("\nRole specific things appear only where they should");
   ok("the controls sit above the work, and the machinery below it",
     vp.indexOf(">Manager<") < vp.indexOf("class='view") &&
     vp.indexOf("class='view") < vp.indexOf("class='vpflow'"));
-  ok("and the controls are pinned so a filter is always in reach",
-    vp.indexOf("class='headband sticky'") >= 0 &&
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .headband.sticky{position:sticky") >= 0);
+  // Pinned was tried and dropped: a fifth of the screen held back on every table below
+  // is too much to pay for keeping a filter in reach.
+  ok("the band does not stick to the top of the screen",
+    vp.indexOf("class='headband'") >= 0 && vp.indexOf("headband sticky") < 0 &&
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .headband.sticky{position:sticky") < 0);
+  ok("the view tabs sit under the cards, where the choice follows the headline",
+    vp.indexOf("class='heroside'") < vp.indexOf("class='seg'") &&
+    vp.indexOf("class='seg'") < vp.indexOf("class='ctrlside'"));
   ok("the cards sit two by two beside the controls, not four across above them",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .herorow{display:grid !important;grid-template-columns:repeat(2") >= 0 &&
     vp.indexOf("class='heroside'") < vp.indexOf("class='ctrlside'"));
@@ -392,8 +397,7 @@ console.log("\nRole specific things appear only where they should");
   // both, so the three control blocks stop being taller than the cards beside them.
   ok("the chips sit beside the dropdowns, not under them",
     vp.indexOf("class='ctlgrid'") >= 0 &&
-    vp.indexOf("class='bar ctl'") < vp.indexOf("class='bar chipbar ctl'") &&
-    vp.indexOf("class='bar chipbar ctl'") < vp.indexOf("class='seg'"));
+    vp.indexOf("class='bar ctl'") < vp.indexOf("class='bar chipbar ctl'"));
   ok("and an agent, who gets no chips, keeps the full width",
     agent.indexOf("class='ctlgrid solo'") >= 0);
   ok("the stage and owner chips are two labelled rows, not one row wrapping into itself",

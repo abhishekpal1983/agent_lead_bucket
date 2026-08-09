@@ -313,7 +313,7 @@ const DELTA_OVERLAP_MIN = parseInt(process.env.DELTA_OVERLAP_MIN || "60", 10);
    up rather than stepping over it. */
 const DELTA_LAG_MS = parseInt(process.env.DELTA_LAG_MS || "20000", 10);
 let DELTA = { at: null, running: false, lastCount: 0, lastMs: 0, error: null, since: null,
-  mark: 0, caughtUp: true, pages: 0, disabled: String(process.env.DELTA_OFF || "") === "1" };
+  mark: 0, caughtUp: null, pages: 0, disabled: String(process.env.DELTA_OFF || "") === "1" };
 // Survive a restart, or every deploy re-walks from an hour before the last full load.
 function deltaSave(){
   try {
@@ -951,7 +951,9 @@ app.get("/api/health", function(req, res){
             // and reporting only the first is how a four hour gap hid in plain sight.
             caughtUpTo: DELTA.mark ? new Date(DELTA.mark).toISOString() : null,
             behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
-            caughtUp: DELTA.caughtUp !== false, pages: DELTA.pages || 0 },
+            // null, not true, until a run has actually finished since the restart.
+            // Reporting the previous process's answer is how a stale reading hides.
+            caughtUp: DELTA.at ? DELTA.caughtUp !== false : null, pages: DELTA.pages || 0 },
           truncatedOwners: Object.keys(OWNER_TRUNCATED || {}).length
             ? OWNER_TRUNCATED : null,
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
@@ -2855,7 +2857,7 @@ app.get("/api/callnow2", function(req, res){
     syncEvery: (typeof DELTA_MINUTES !== "undefined") ? DELTA_MINUTES : null,
     // Coverage, not activity: how far through HubSpot's changes the app has actually got.
     caughtUpTo: (typeof DELTA !== "undefined" && DELTA.mark) ? new Date(DELTA.mark).toISOString() : null,
-    caughtUp: (typeof DELTA === "undefined") ? true : DELTA.caughtUp !== false,
+    caughtUp: (typeof DELTA === "undefined" || !DELTA.at) ? null : DELTA.caughtUp !== false,
     syncOff: !!(typeof DELTA !== "undefined" && DELTA.disabled),
     syncError: (typeof DELTA !== "undefined" && DELTA.error) || null,
     fixtures: !!CN2_FIXTURE_DATA,
@@ -6343,6 +6345,13 @@ SERVER = app.listen(PORT, () => {
   guard("sync", function(){ return sync().then(() => syncCounsel()); })();
   // Deltas every few minutes, full rebuild only on boot and every FULL_SYNC_HOURS.
   setInterval(guard("delta", syncDelta), DELTA_MINUTES * 60 * 1000);
+  /* And one as soon as there is something to merge into. An interval alone means every
+     deploy costs a full interval of standing still on top of the reload, and if the app
+     is behind, that is exactly when waiting is worst. syncDelta returns immediately if a
+     full rebuild is still running, so this is safe to try early and often. */
+  [20, 60, 150, 300].forEach(function(sec){
+    setTimeout(guard("delta", syncDelta), sec * 1000);
+  });
   setTimeout(function(){ adoptStoredCreators(); }, 3000);
   setTimeout(guard("snapshot", snapshotToday), 4 * 60 * 1000);
   setInterval(guard("snapshot", snapshotToday), 15 * 60 * 1000);

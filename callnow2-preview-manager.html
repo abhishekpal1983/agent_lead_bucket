@@ -223,8 +223,10 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 /* ---- bands ------------------------------------------------------------------------
    Controls stay put while the table scrolls under them, so a filter is never more than
    a glance away. The shadow only appears once the bar is actually stuck. */
-.wrap .headband.sticky{position:sticky;top:0;z-index:40;background:var(--canvas,#F6F7FB);
-  padding-top:6px;box-shadow:0 10px 12px -12px rgba(10,37,64,.28)}
+/* Deliberately not sticky. It was pinned so a filter was always in reach; a fifth of the
+   screen held back on every table below is too much to pay for that. */
+.wrap .headband > .heroside > .bar{margin:6px 0 0 !important;padding:6px 8px !important}
+.wrap .headband > .heroside > .hnote{margin-top:6px !important}
 /* Wide by nature, so the stage and owner chips get the whole width under the band. */
 .wrap .bar.chipbar{padding-top:8px !important;padding-bottom:8px !important;margin-bottom:0 !important}
 /* Dropdowns left, chips right, view tabs under both. */
@@ -2043,7 +2045,12 @@ function hero(){
     "<div class='track'><i style='width:0%'></i></div>"+
     "<div class='foot'>Calls today on leads the list did not hold</div></div>"+
     "</div>";
-  return h+"<div class='hnote'>"+
+  return h;}
+
+/* The fine print about the list, kept apart from the cards so the view tabs can sit
+   between them, right under Call today where the choice belongs. */
+function lockNote(){
+  return "<div class='hnote'>"+
     (J.frozen?("Locked "+new Date(J.frozenAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})+
       " with "+fmt(J.baseSize)+" leads. "):"List not locked yet. ")+
     "The list is fixed at midnight, so these move only because of what the floor did today."+
@@ -2339,12 +2346,18 @@ function draw(){
      only ever hold their own leads, so the owner row filters on a question they cannot
      answer. Their controls take the full width on their own. */
   var mineOnly=J.scoped&&J.role==="agent";
+  /* The view tabs sit under Call today, not under the filters. Choosing between matrix,
+     queue and board is the first decision after reading the headline, and it was three
+     blocks away on the far side of the band.
+
+     The band does not stick. Pinning it kept the filters in reach and cost a fifth of a
+     laptop screen all the way down a long table, which is the wrong trade on the page
+     people scroll most. */
   var h=quality()+
-    "<div class='headband sticky'>"+
-      "<div class='heroside'>"+hero()+"</div>"+
+    "<div class='headband'>"+
+      "<div class='heroside'>"+hero()+viewTabs()+lockNote()+"</div>"+
       "<div class='ctrlside'>"+
         "<div class='ctlgrid"+(mineOnly?" solo":"")+"'>"+barTop()+(mineOnly?"":barChips())+"</div>"+
-        viewTabs()+
       "</div>"+
     "</div>"+segNote();
   var matrix="";

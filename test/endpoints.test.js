@@ -325,6 +325,10 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("ORG.sync.deltaMark") >= 0 && srv2.indexOf("function deltaLoad") >= 0);
     ok("it stops on a time budget, not a page count",
       srv2.indexOf("DELTA_BUDGET_MS") >= 0);
+    ok("it does not wait a full interval after a restart before running at all",
+      srv2.indexOf("[20, 60, 150, 300].forEach(function(sec){") >= 0);
+    ok("and it says nothing rather than something stale before its first run",
+      srv2.indexOf("caughtUp: DELTA.at ? DELTA.caughtUp !== false : null") >= 0);
     ok("the per owner walk no longer stops at the search ceiling",
       srv2.indexOf("if (out.length >= 9900) break;") < 0 &&
       srv2.indexOf("async function fetchContactsForOwner") >= 0 &&
