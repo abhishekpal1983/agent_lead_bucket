@@ -316,6 +316,15 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .fresh{font-size:11px;color:#7A8CA0;margin-top:4px;white-space:nowrap;text-align:right}
 .wrap .fresh.warn{color:#7A4A08;font-weight:600}
 .wrap .fresh.bad{color:#8C2D12;font-weight:700}
+/* One click to settle a number, in the queue and on the card. */
+.wrap .rfr{border:1px solid var(--line,#DCE4EC);background:#fff;border-radius:7px;
+  width:24px;height:22px;line-height:1;font-size:13px;color:#4A5A6A;cursor:pointer;padding:0}
+.wrap .rfr:hover{background:#EEF0FE;border-color:#4F46E5;color:#3B2FA8}
+.wrap span.rfr{border:0;background:none;display:inline-block;text-align:center}
+.wrap .rfr.busy{color:#7A4A08}
+.wrap .rfr.ok{color:#0A5346;font-weight:700}
+.wrap .rfr.bad{color:#8C2D12;font-weight:700}
+.wrap .btn.busy{opacity:.7;cursor:progress}
 
 /* ---- cards in the two-column block ------------------------------------------------
    Half the width, so the fixed 200px first column and fixed table layout pushed the last
@@ -1323,13 +1332,19 @@ function since(t){
 function freshness(){
   if(J.loadedAt==="fixtures")return "<div class='fresh'>made-up test data</div>";
   var every=J.syncEvery||10;
-  var mins=J.leadsAt?Math.round((Date.now()-new Date(J.leadsAt).getTime())/60000):null;
-  var cls=(J.syncError||J.syncOff||(mins!=null&&mins>every*4))?"bad":
+  // caughtUpTo is how far through HubSpot's changes we have actually got. leadsAt is only
+  // when a run last finished, and a run that finishes having covered nothing still looks
+  // healthy by that measure. Prefer coverage; fall back only if it is not reported.
+  var basis=J.caughtUpTo||J.leadsAt;
+  var mins=basis?Math.round((Date.now()-new Date(basis).getTime())/60000):null;
+  var cls=(J.syncError||J.syncOff||J.caughtUp===false||(mins!=null&&mins>every*4))?"bad":
           ((mins!=null&&mins>every*2)?"warn":"");
   var msg=J.syncOff?"automatic sync is off"
-    :(J.syncError?"last sync failed":(mins==null?"leads not synced yet":"leads "+since(J.leadsAt)));
+    :(J.syncError?"last sync failed":(mins==null?"leads not synced yet":
+      (J.caughtUpTo?"up to date as of "+since(basis):"leads "+since(basis))));
   return "<div class='fresh "+cls+"' title='"+
-    "Leads refresh every "+every+" minutes. Full rebuild "+(J.fullAt?new Date(J.fullAt).toLocaleTimeString("en-IN"):"not yet")+
+    "Leads refresh every "+every+" minutes"+(J.caughtUp===false?", and the last run did not catch up, so it is still working through a backlog":"")+
+    ". Full rebuild "+(J.fullAt?new Date(J.fullAt).toLocaleTimeString("en-IN"):"not yet")+
     ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
     esc(msg)+
     (J.listBuiltAt?" &middot; list built "+esc(since(J.listBuiltAt)):"")+"</div>";}
@@ -1501,6 +1516,36 @@ function whyTags(r){
   if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
   return t.join(" ");
 }
+/* Re-read one lead from HubSpot on demand.
+
+   The sweep runs every ten minutes and that is usually fine, but an agent who has just
+   rung somebody should not have to take the page's word for it, and a manager checking a
+   number should be able to settle it in one click. One contact, one call, straight into
+   the same place the sweep writes to. */
+var RFRESH={};
+function refreshLead(id,ev){
+  if(ev&&ev.stopPropagation)ev.stopPropagation();
+  if(RFRESH[id]==="busy")return;
+  RFRESH[id]="busy"; draw();
+  fetch("/api/callnow2/lead/"+encodeURIComponent(id)+"/refresh",{method:"POST"})
+    .then(asJson)
+    .then(function(j){
+      RFRESH[id]=j.lead&&j.lead.left?"left":"done";
+      // Re-read the drill so the row shows what HubSpot just told us, rather than a
+      // number patched in by hand that could disagree with the rest of the page.
+      loadLeads();
+      setTimeout(function(){ if(RFRESH[id]!=="busy"){delete RFRESH[id];draw();} },6000);})
+    .catch(function(e){ RFRESH[id]="fail:"+e.message; draw(); });}
+
+function refreshBtn(id){
+  var st=RFRESH[id];
+  if(st==="busy")return "<span class='rfr busy' title='Asking HubSpot'>\u2026</span>";
+  if(st==="done")return "<span class='rfr ok' title='Re-read from HubSpot just now'>\u2713</span>";
+  if(st==="left")return "<span class='rfr ok' title='Re-read: this lead no longer qualifies, it keeps its place on today&#39;s list'>\u2713</span>";
+  if(st&&st.indexOf("fail:")===0)return "<span class='rfr bad' title='"+esc(st.slice(5))+"'>!</span>";
+  return "<button class='rfr' title='Re-read this lead from HubSpot now' onclick='refreshLead("+
+    JSON.stringify(id).replace(/"/g,"&quot;")+",event)'>\u21bb</button>";}
+
 function queueView(){
   var h="<div class='sec'><h2 id='qtitle'>Call queue</h2>";
   if(!PICK)return h+"<div class='sub'>Pick a number in the Matrix, or a line on a Board card, to open those leads here.</div></div>";
@@ -1550,12 +1595,12 @@ function queueView(){
     rows.sort(function(a,b){ return (a.worked?1:0)-(b.worked?1:0); });
   }
   var COLDEF=[["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
-    ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],
+    ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0],
     ["owner","Agent this morning",1],["creator","Creator",1],
     ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
   h+="<div class='qrow"+(SEL?" open":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
     COLDEF.map(function(c,i){
-      var num=i>=11||i===3;
+      var num=i>=12||i===3;
       if(!c[2])return "<th"+(num?" class='n'":"")+">"+esc(c[1])+"</th>";
       var on=SORT.k===c[0];
       return "<th class='sortable"+(num?" n":"")+(on?" on":"")+"' onclick='sortBy("+
@@ -1577,6 +1622,7 @@ function queueView(){
       "<td>"+chip(r.openStage)+moved+"</td>"+
       "<td>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
       "<td>"+tm(r.fu)+"</td><td>"+tm(r.last)+"</td>"+
+      "<td class='n'>"+refreshBtn(r.id)+"</td>"+
       "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
         (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
       "<td>"+esc(r.creator||"–")+"</td>"+
@@ -1609,6 +1655,13 @@ function leadCard(rows){
     "<div class='eb'><div class='n "+bandCls(r.bandOwner)+"'>"+fmt(r.own)+"</div><div class='l'>By this agent</div></div>"+
     "<div class='eb'><div class='n' style='font-size:11px;padding-top:3px'>"+esc(b.label||"")+"</div><div class='l'>Churn</div></div></div>"+
     "<div class='btnrow'><button class='btn p' onclick=\"window.open('"+hsl(r.id)+"','_blank')\">Open in HubSpot</button>"+
+    // Named, not an icon: on the card there is room to say what it does, and the last
+    // call time is right above it, which is the number people want to settle.
+    "<button class='btn"+(RFRESH[r.id]==="busy"?" busy":"")+"' onclick='refreshLead("+
+      JSON.stringify(r.id).replace(/"/g,"&quot;")+",event)'>"+
+      (RFRESH[r.id]==="busy"?"Asking HubSpot...":
+       (RFRESH[r.id]&&String(RFRESH[r.id]).indexOf("fail:")===0?"Refresh failed, try again":
+        (RFRESH[r.id]?"Re-read just now":"Refresh from HubSpot")))+"</button>"+
     "<button class='btn' onclick='closeLead()'>Close</button></div>"+
     "<div class='cardexp'>"+
       "<button class='expbtn' onclick='toggleCard(0)'><span id='cx0'>+</span> Why this lead can convert</button>"+

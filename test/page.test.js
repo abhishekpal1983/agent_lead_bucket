@@ -126,6 +126,8 @@ function render(role){
     { u: "ayush_singh13", n: 90,
       effort: { total: { low: 60, avg: 20, bench: 8, high: 2 }, owner: { low: 70, avg: 12, bench: 6, high: 2 } } }
   ];
+  ctx.J.caughtUpTo = new Date(Date.now() - 4 * 60000).toISOString();
+  ctx.J.caughtUp = true;
   ctx.J.seg = { id: "77", name: "ayush-final-payment-push", loading: false,
     size: 1904, onList: 412, outside: 1492, truncated: false };
   ctx.ASSIGN = { allowed: true, scoped: !!role.scoped, rows: [
@@ -466,6 +468,18 @@ console.log("\nRole specific things appear only where they should");
   ok("the segment is a filter like any other, so Clear clears it",
     html.indexOf('stages:"",segment:""') >= 0);
   ok("and it can be linked to", html.indexOf('"stages","segment"') >= 0);
+  /* One click to settle a number, rather than waiting for the next sweep. */
+  ok("every queue row offers a refresh", vp.indexOf("refreshLead(") >= 0);
+  // The card only renders with a lead picked, so this one reads the source.
+  ok("and the lead card says what it does rather than showing an icon",
+    html.indexOf("Refresh from HubSpot") >= 0 && html.indexOf("Asking HubSpot...") >= 0);
+  ok("clicking it does not also open the lead", html.indexOf("ev.stopPropagation()") >= 0);
+  ok("and it re-reads the drill rather than patching a number in by hand",
+    html.indexOf("RFRESH[id]=j.lead") >= 0 && html.indexOf("number patched in by hand") >= 0);
+  ok("freshness prefers coverage over the fact that a run happened",
+    html.indexOf("J.caughtUpTo||J.leadsAt") >= 0 && html.indexOf("up to date as of ") >= 0);
+  ok("a sweep still working through a backlog is called out",
+    html.indexOf("J.caughtUp===false") >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);

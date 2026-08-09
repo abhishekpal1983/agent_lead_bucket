@@ -167,26 +167,42 @@ async function fetchOwners(){
   return map;
 }
 
+/* Paging with `after` walks into HubSpot's 10,000 result ceiling, which is why this used
+   to stop at 9,900 and drop the rest of an agent's leads on the floor, silently, every
+   run. Paging by object id instead re-queries from the last id seen, so the ceiling never
+   applies. fetchFreshForOwner beside this has always done it the right way. */
+const OWNER_MAX = parseInt(process.env.OWNER_MAX || "120000", 10);
+let OWNER_TRUNCATED = {};
 async function fetchContactsForOwner(ownerId){
   const out = [];
-  let after;
-  do {
+  let lastId = "0", guard = 0;
+  while (guard < 1400) {
+    guard++;
     const body = {
       filterGroups: [{ filters: [
         { propertyName: "contact_engagement_stage", operator: "HAS_PROPERTY" },
-        { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId }
+        { propertyName: "hubspot_owner_id", operator: "EQ", value: ownerId },
+        { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
       ]}],
       properties: PROPS,
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
-      limit: 100,
-      after: after
+      limit: 100
     };
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
-    (j.results || []).forEach(r => out.push(Object.assign({ id: r.id }, r.properties)));
-    after = j.paging && j.paging.next && j.paging.next.after;
+    const rows = j.results || [];
+    if (!rows.length) break;
+    rows.forEach(r => out.push(Object.assign({ id: r.id }, r.properties)));
+    lastId = rows[rows.length - 1].id;
+    if (rows.length < 100) break;
+    // A real ceiling, far above any real bucket, and it says so out loud if it is ever hit.
+    if (out.length >= OWNER_MAX) {
+      OWNER_TRUNCATED[String(ownerId)] = { at: new Date().toISOString(), got: out.length };
+      console.error("Owner " + ownerId + " truncated at " + out.length +
+        " leads: raise OWNER_MAX or split the query. Leads past this point are NOT loaded.");
+      break;
+    }
     await sleep(120); // stay well under search rate limits
-    if (out.length >= 9900) break; // search API caps at 10k per query
-  } while (after);
+  }
   return out;
 }
 
@@ -291,28 +307,96 @@ async function sync(){
 const DELTA_MINUTES = parseInt(process.env.DELTA_MINUTES || "10", 10);
 const FULL_SYNC_HOURS = parseFloat(process.env.FULL_SYNC_HOURS || "12");
 const DELTA_OVERLAP_MIN = parseInt(process.env.DELTA_OVERLAP_MIN || "60", 10);
-let DELTA = { at: null, running: false, lastCount: 0, lastMs: 0, error: null, since: null, disabled: String(process.env.DELTA_OFF || "") === "1" };
+/* A few seconds of deliberate lag on the watermark. HubSpot's search index is eventually
+   consistent, so a record modified at the exact instant we ask may not be searchable yet;
+   parking the watermark just behind the newest thing we saw means the next run picks it
+   up rather than stepping over it. */
+const DELTA_LAG_MS = parseInt(process.env.DELTA_LAG_MS || "20000", 10);
+let DELTA = { at: null, running: false, lastCount: 0, lastMs: 0, error: null, since: null,
+  mark: 0, caughtUp: true, pages: 0, disabled: String(process.env.DELTA_OFF || "") === "1" };
+// Survive a restart, or every deploy re-walks from an hour before the last full load.
+function deltaSave(){
+  try {
+    if (typeof ORG === "undefined") return;
+    ORG.sync = ORG.sync || {};
+    ORG.sync.deltaMark = DELTA.mark || 0;
+    if (typeof orgSave === "function") orgSave("delta.mark", String(DELTA.mark || 0), "system");
+  } catch (e) {}
+}
+function deltaLoad(){
+  try {
+    if (typeof ORG === "undefined") return;
+    const m = Number((ORG.sync || {}).deltaMark || 0);
+    // Ignore a stale watermark: more than a day behind and a full walk is cheaper.
+    if (m && Date.now() - m < 26 * 3600000) DELTA.mark = m;
+  } catch (e) {}
+}
+
+/* Walk the contacts that changed, in the order they changed.
+
+   The old version filtered on modified date but paged by object id, and gave up after
+   800 pages. That combination loses data permanently: it stops partway down the id
+   range, and the next run starts from the top of the same range again, so anything
+   past the stopping point is never reached. Newly created leads have the highest ids,
+   which is exactly what went missing.
+
+   Sorting by modified date instead means the stopping point is a moment in time, and
+   the next run carries on from that moment. A run that ends early is then harmless: it
+   is behind, not blind, and it says how far behind it is.
+
+   Ties matter. Many contacts can share the same millisecond, so the watermark moves in
+   GTE steps and ids already taken at that exact millisecond are skipped, rather than
+   stepping past them and losing the rest of the tie. */
+const DELTA_BUDGET_MS = parseInt(process.env.DELTA_BUDGET_MS || "45000", 10);
 
 async function fetchModifiedSince(sinceMs){
   const out = [];
-  let lastId = "0", guard = 0;
-  while (guard < 800) {
-    guard++;
-    const filters = [
-      { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(sinceMs) },
-      { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
-    ];
+  const t0 = Date.now();
+  let mark = Number(sinceMs) || 0;
+  let seenAtMark = {};
+  let pages = 0, caughtUp = false;
+  while (pages < 4000) {
+    pages++;
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
-      filterGroups: [{ filters }], properties: PROPS,
-      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+      filterGroups: [{ filters: [
+        { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(mark) }
+      ]}],
+      properties: PROPS.concat(["hs_lastmodifieddate"]),
+      sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }], limit: 100 })});
     const rows = j.results || [];
-    if (!rows.length) break;
-    rows.forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });
-    lastId = rows[rows.length - 1].id;
-    if (rows.length < 100) break;
+    if (!rows.length) { caughtUp = true; break; }
+
+    let taken = 0, lastMs = mark;
+    rows.forEach(function(r){
+      const ms = Number(r.properties && r.properties.hs_lastmodifieddate) ||
+                 Date.parse((r.properties || {}).hs_lastmodifieddate || "") || 0;
+      if (ms === mark && seenAtMark[r.id]) return;      // already taken on the last pass
+      out.push(Object.assign({ id: r.id }, r.properties));
+      taken++;
+      if (ms > lastMs) lastMs = ms;
+    });
+
+    if (rows.length < 100) { caughtUp = true; mark = Math.max(mark, lastMs); break; }
+
+    if (lastMs > mark) {
+      mark = lastMs;
+      seenAtMark = {};
+      rows.forEach(function(r){
+        const ms = Number(r.properties && r.properties.hs_lastmodifieddate) || 0;
+        if (ms === mark) seenAtMark[r.id] = 1;
+      });
+    } else {
+      /* A full page all sharing one millisecond and none of it new. Stepping forward by
+         one is the only way out, and it can only skip records that share that exact
+         millisecond, which we have already taken. */
+      mark = mark + 1;
+      seenAtMark = {};
+    }
+    if (!taken && rows.length < 100) { caughtUp = true; break; }
+    if (Date.now() - t0 > DELTA_BUDGET_MS) break;       // resume from `mark` next run
     await sleep(120);
   }
-  return out;
+  return { rows: out, mark: mark, caughtUp: caughtUp, pages: pages, ms: Date.now() - t0 };
 }
 
 // Route each changed contact to the right bucket. A lead that gained a stage moves out
@@ -370,15 +454,25 @@ async function syncDelta(){
   DELTA.running = true;
   const t0 = Date.now();
   try {
-    const base = DELTA.at ? Date.parse(DELTA.at) : Date.parse(CACHE.loadedAt);
-    const since = base - DELTA_OVERLAP_MIN * 60000;
-    const rows = await fetchModifiedSince(since);
-    const r = applyDelta(rows);
-    DELTA = { at: new Date().toISOString(), running: false, lastCount: rows.length, lastMs: Date.now() - t0,
-      error: null, since: new Date(since).toISOString(), disabled: DELTA.disabled };
-    console.log("Delta sync: " + rows.length + " changed contacts in " + DELTA.lastMs + "ms (" +
-      r.staged + " staged, " + r.fresh + " fresh, " + r.dropped + " unassigned) · pool now " +
-      CACHE.contacts.length + " staged");
+    /* Resume from where the last run stopped, not from "an hour before it started".
+       The small overlap stays as belt and braces against HubSpot's search index lagging
+       a little behind reality. */
+    const base = DELTA.mark || (Date.parse(CACHE.loadedAt) - DELTA_OVERLAP_MIN * 60000);
+    const since = DELTA.mark ? DELTA.mark : base;
+    const got = await fetchModifiedSince(since);
+    const r = applyDelta(got.rows);
+    DELTA = { at: new Date().toISOString(), running: false, lastCount: got.rows.length,
+      lastMs: Date.now() - t0, error: null, since: new Date(since).toISOString(),
+      // How far through time we have actually got. This, not "when did it last run", is
+      // the honest answer to "how fresh is this page".
+      mark: Math.max(got.mark - DELTA_LAG_MS, since),
+      caughtUp: got.caughtUp, pages: got.pages, disabled: DELTA.disabled };
+    deltaSave();
+    console.log("Delta sync: " + got.rows.length + " changed contacts over " + got.pages +
+      " pages in " + DELTA.lastMs + "ms (" + r.staged + " staged, " + r.fresh + " fresh, " +
+      r.dropped + " unassigned) · caught up to " + new Date(DELTA.mark).toISOString() +
+      (got.caughtUp ? "" : " · STILL BEHIND, will resume next run") +
+      " · pool now " + CACHE.contacts.length + " staged");
   } catch (e) {
     DELTA.running = false; DELTA.error = e.message;
     console.error("Delta sync failed: " + e.message);
@@ -852,7 +946,14 @@ app.get("/api/health", function(req, res){
                  trackedCreators: PFRESH_LIST.length },
           delta: (typeof DELTA === "undefined") ? null : { at: DELTA.at, running: !!DELTA.running,
             lastCount: DELTA.lastCount, lastMs: DELTA.lastMs, error: DELTA.error || null,
-            disabled: !!DELTA.disabled, everyMinutes: DELTA_MINUTES },
+            disabled: !!DELTA.disabled, everyMinutes: DELTA_MINUTES,
+            // Coverage, not activity. "It ran" is not the same as "it is up to date",
+            // and reporting only the first is how a four hour gap hid in plain sight.
+            caughtUpTo: DELTA.mark ? new Date(DELTA.mark).toISOString() : null,
+            behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
+            caughtUp: DELTA.caughtUp !== false, pages: DELTA.pages || 0 },
+          truncatedOwners: Object.keys(OWNER_TRUNCATED || {}).length
+            ? OWNER_TRUNCATED : null,
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
                   leadsSoFar: SYNC_PROGRESS.contacts, phase: SYNC_PROGRESS.phase,
@@ -2752,6 +2853,9 @@ app.get("/api/callnow2", function(req, res){
     leadsAt: CN2_FIXTURE_DATA ? null : ((typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt),
     fullAt: CN2_FIXTURE_DATA ? null : CACHE.loadedAt,
     syncEvery: (typeof DELTA_MINUTES !== "undefined") ? DELTA_MINUTES : null,
+    // Coverage, not activity: how far through HubSpot's changes the app has actually got.
+    caughtUpTo: (typeof DELTA !== "undefined" && DELTA.mark) ? new Date(DELTA.mark).toISOString() : null,
+    caughtUp: (typeof DELTA === "undefined") ? true : DELTA.caughtUp !== false,
     syncOff: !!(typeof DELTA !== "undefined" && DELTA.disabled),
     syncError: (typeof DELTA !== "undefined" && DELTA.error) || null,
     fixtures: !!CN2_FIXTURE_DATA,
@@ -3130,6 +3234,63 @@ function segName(listId){
 }
 
 // The picker. Managers and VPs only: an agent works the list they are given.
+/* Re-read one contact from HubSpot, right now.
+
+   The ten minute sweep is the mechanism; this is the escape hatch. An agent looking at
+   somebody they have just called should not have to wait for the next pass, and a
+   manager checking a number should be able to prove it in one click rather than
+   arguing with a screenshot.
+
+   One API call. It merges through the same path the sweep uses, so there is no second
+   way for a contact to enter the app, and it patches the built list in place rather
+   than triggering a rebuild of all thirty thousand. */
+const LEAD_REFRESH = {};
+app.post("/api/callnow2/lead/:id/refresh", async function(req, res){
+  const id = String(req.params.id || "");
+  if (!id) return res.status(400).json({ error: "no lead id" });
+  if (!TOKEN) return res.status(503).json({ error: "no HubSpot token" });
+
+  // An agent may only refresh a lead they hold. The scope is the same one every other
+  // v2 endpoint applies, so this cannot become a way to read somebody else's list.
+  const allow = cn2Scope(req);
+  const known = (CN2_POOL.live && CN2_POOL.live[id]) || null;
+  if (allow && known && allow.indexOf(String(known.owner)) < 0) {
+    return res.status(403).json({ error: "that lead is not yours" });
+  }
+  const last = LEAD_REFRESH[id] ? Date.parse(LEAD_REFRESH[id]) : 0;
+  if (Date.now() - last < 10000) return res.json({ ok: true, skipped: "just did that", at: LEAD_REFRESH[id] });
+
+  try {
+    const j = await hs("/crm/v3/objects/contacts/" + encodeURIComponent(id) +
+      "?properties=" + encodeURIComponent(PROPS.join(",")));
+    if (!j || !j.id) return res.status(404).json({ error: "HubSpot does not have that contact" });
+    const row = Object.assign({ id: String(j.id) }, j.properties || {});
+    applyDelta([row]);
+    LEAD_REFRESH[id] = new Date().toISOString();
+
+    /* Patch the built list in place. Rebuilding it walks every lead in the pool, which
+       is far too expensive to do because one row was refreshed. */
+    let out = null;
+    const day = CN2.dayBoundsFor(cn2Now());
+    if (PFRESH_LIST.indexOf(row.topmate_username || "") >= 0 && cn2CheapQualify(row, day)) {
+      const r = cnRow(row);
+      if (r.stage === "dnp_other") r.stage = "dnp_did_not_pick";
+      r.counted = cn2Countable(r.owner);
+      const at = CN2_POOL.rows.findIndex(function(x){ return String(x.id) === id; });
+      if (at >= 0) CN2_POOL.rows[at] = r; else CN2_POOL.rows.push(r);
+      if (CN2_POOL.live) CN2_POOL.live[id] = r;
+      out = { last: r.last, fu: r.fu, stage: r.stage, calls: r.calls, own: r.own,
+        owner: r.owner, ownerName: r.ownerName };
+    } else if (CN2_POOL.live && CN2_POOL.live[id]) {
+      // It no longer qualifies. Leave the morning list alone; it keeps its place there.
+      out = { left: true };
+    }
+    res.json({ ok: true, at: LEAD_REFRESH[id], lead: out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
@@ -3886,6 +4047,8 @@ function orgSave(action, detail, who){
   } catch (e) { console.error("Org save failed: " + e.message); return false; }
 }
 orgLoad();
+// The watermark lives in the org store, so a deploy resumes rather than re-walking.
+if (typeof deltaLoad === "function") deltaLoad();
 
 function isVP(req){
   if (!AUTH_ON) return true;

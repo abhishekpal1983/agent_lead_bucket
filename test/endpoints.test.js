@@ -27,6 +27,23 @@ function get(p){
     req.on("error", reject);
   });
 }
+function post(p){
+  return new Promise(function(resolve, reject){
+    const req = http.request({ host: "127.0.0.1", port: PORT, path: p, method: "POST", timeout: 20000 },
+      function(res){
+        let d = "";
+        res.on("data", function(c){ d += c; });
+        res.on("end", function(){
+          let body = null;
+          try { body = JSON.parse(d); } catch (e) {}
+          resolve({ status: res.statusCode, body: body, raw: d.slice(0, 200) });
+        });
+      });
+    req.on("timeout", function(){ req.destroy(new Error("timed out")); });
+    req.on("error", reject);
+    req.end();
+  });
+}
 function getText(p){
   return new Promise(function(resolve, reject){
     const req = http.get({ host: "127.0.0.1", port: PORT, path: p, timeout: 20000 }, function(res){
@@ -291,6 +308,32 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("and it reports itself as still fetching rather than silently empty",
       segFiltered.body && segFiltered.body.seg && segFiltered.body.seg.loading === true,
       JSON.stringify(segFiltered.body && segFiltered.body.seg));
+
+    /* The two silent ceilings, and the escape hatch. */
+    const health = (await get("/api/health")).body;
+    ok("the sync reports coverage, not just that it ran",
+      health.cn2 && health.cn2.delta && "caughtUpTo" in health.cn2.delta &&
+      "behindMin" in health.cn2.delta && "caughtUp" in health.cn2.delta,
+      JSON.stringify(health.cn2 && health.cn2.delta));
+    ok("and a truncated owner is reported rather than swallowed",
+      "truncatedOwners" in (health.cn2 || {}), JSON.stringify(Object.keys(health.cn2 || {})));
+
+    const srv2 = require("fs").readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    ok("the incremental walk pages by modified date, so stopping early cannot lose records",
+      srv2.indexOf('sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }]') >= 0);
+    ok("it resumes from a stored watermark rather than restarting each run",
+      srv2.indexOf("ORG.sync.deltaMark") >= 0 && srv2.indexOf("function deltaLoad") >= 0);
+    ok("it stops on a time budget, not a page count",
+      srv2.indexOf("DELTA_BUDGET_MS") >= 0);
+    ok("the per owner walk no longer stops at the search ceiling",
+      srv2.indexOf("if (out.length >= 9900) break;") < 0 &&
+      srv2.indexOf("async function fetchContactsForOwner") >= 0 &&
+      srv2.slice(srv2.indexOf("async function fetchContactsForOwner"),
+                 srv2.indexOf("async function fetchFreshForOwner")).indexOf('operator: "GT", value: String(lastId)') >= 0);
+
+    const bad = await post("/api/callnow2/lead/does-not-exist/refresh");
+    ok("refreshing a lead that does not exist fails cleanly",
+      bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;

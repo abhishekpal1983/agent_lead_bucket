@@ -322,3 +322,30 @@ The catalogue of segments is held for ten minutes. A segment's membership is fet
 and held for the rest of the day, because a segment of eleven thousand people is a hundred
 and ten HubSpot calls. The first pick of a large segment takes a few seconds and the page
 says so rather than showing an empty list.
+
+---
+
+## 14. How fresh the numbers are
+
+The app does not watch calls. It re-reads **contacts** from HubSpot and copies across two
+properties, `last_call_date_and_time` and `follow_up_date_and_time`. Everything about
+"called today" rests on those.
+
+**The sweep runs every 10 minutes** and walks contacts in the order they changed, carrying
+on from where the last run stopped. A run that runs out of time is behind, not blind: it
+resumes from the same moment next time. The position survives a restart.
+
+**Nothing is capped silently.** The per-agent load pages by record id, which has no
+ceiling; if it ever does stop early it says so on the health page and in the log. Before
+7 August 2026 both walks gave up quietly, which lost newly created leads for hours at a
+time without anything looking wrong.
+
+**The page reports coverage, not activity.** "Up to date as of 4 min ago" means the app
+has caught up with HubSpot to that moment. It turns amber past twice the sweep interval
+and red past four times, when the sweep has failed, or when the last run did not catch up.
+A sweep that runs perfectly every ten minutes and covers nothing is the failure this is
+designed to expose.
+
+**Refresh this lead** re-reads one contact immediately, from the queue or the lead card.
+It is the escape hatch, not the mechanism: one API call, merged through the same path the
+sweep uses, so there is no second way for a lead to enter the app.
