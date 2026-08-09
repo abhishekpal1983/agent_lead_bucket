@@ -332,6 +332,12 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("function deltaSoon") >= 0);
     ok("a run that ends behind comes back at once, not in ten minutes",
       srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
+    ok("and there is a lever to run it now rather than wait and guess",
+      srv2.indexOf('app.post("/api/callnow2/sync/delta"') >= 0 &&
+      srv2.indexOf('if (!isVP(req)) return res.status(403).json({ error: "VP only" });') >= 0);
+    const kick = await post("/api/callnow2/sync/delta");
+    ok("the lever answers rather than hanging", kick.status === 200 || kick.status === 409,
+      "status " + kick.status + " " + kick.raw);
     ok("and it says nothing rather than something stale before its first run",
       srv2.indexOf("caughtUp: DELTA.at ? DELTA.caughtUp !== false : null") >= 0);
     ok("the per owner walk no longer stops at the search ceiling",

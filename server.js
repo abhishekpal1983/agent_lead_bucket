@@ -3314,6 +3314,31 @@ app.post("/api/callnow2/lead/:id/refresh", async function(req, res){
   }
 });
 
+/* A lever, so nobody has to wait and guess.
+
+   Kicks the sweep immediately and answers with what it did: how many pages it walked,
+   how many contacts it merged, and where the watermark now sits. `from` rewinds the
+   watermark first, for the case where it is the watermark itself that is wrong. */
+app.post("/api/callnow2/sync/delta", async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  if (DELTA.running) return res.json({ ok: true, alreadyRunning: true });
+  if (CACHE.syncing) return res.status(409).json({ error: "a full rebuild is running, try again in a minute" });
+  const from = String(req.query.from || "");
+  if (from) {
+    const ms = /^\d+$/.test(from) ? Number(from) : Date.parse(from);
+    if (!ms) return res.status(400).json({ error: "from must be epoch ms or an ISO date" });
+    DELTA.mark = ms;
+    deltaSave();
+  }
+  const before = DELTA.mark;
+  await syncDelta();
+  res.json({ ok: true, error: DELTA.error || null,
+    from: before ? new Date(before).toISOString() : null,
+    caughtUpTo: DELTA.mark ? new Date(DELTA.mark).toISOString() : null,
+    behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
+    caughtUp: DELTA.caughtUp, pages: DELTA.pages, merged: DELTA.lastCount, ms: DELTA.lastMs });
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
