@@ -332,6 +332,12 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("function deltaSoon") >= 0);
     ok("a run that ends behind comes back at once, not in ten minutes",
       srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
+    ok("contacts are walked by lastmodifieddate, the one that is actually populated",
+      srv2.indexOf('const DELTA_PROP = process.env.DELTA_MODIFIED_PROP || "lastmodifieddate";') >= 0 &&
+      srv2.indexOf('{ propertyName: DELTA_PROP, operator: "GTE", value: String(mark) }') >= 0);
+    ok("an empty answer after hours of silence is called out, not called caught up",
+      srv2.indexOf("which cannot be right") >= 0 &&
+      srv2.indexOf("caughtUp: got.caughtUp && !got.stalled") >= 0);
     ok("the walk asks for both spellings of the modified date",
       srv2.indexOf('PROPS.concat(["lastmodifieddate", "hs_lastmodifieddate"])') >= 0 &&
       srv2.indexOf("function msOf(r)") >= 0);

@@ -349,6 +349,18 @@ function deltaLoad(){
    stepping past them and losing the rest of the tie. */
 const DELTA_BUDGET_MS = parseInt(process.env.DELTA_BUDGET_MS || "45000", 10);
 
+/* On CONTACTS the modified-date property is `lastmodifieddate`. `hs_lastmodifieddate` is
+   the equivalent on companies, deals and tickets, and it exists on contacts too, but it
+   is not populated, so filtering on it matches nothing at all. HubSpot does not complain:
+   it answers "no results", the sweep reports itself caught up, and the app quietly stops
+   seeing new calls. That is what happened here, and it means the incremental sweep has
+   very likely never worked: leads were only ever refreshed by the twelve hourly full
+   rebuild and by deploys, which is exactly the three to four hour staleness we saw.
+
+   Overridable, because a property name is the kind of thing a portal can surprise you
+   with and nobody should need a deploy to answer it. */
+const DELTA_PROP = process.env.DELTA_MODIFIED_PROP || "lastmodifieddate";
+
 // When a record was last touched, whichever of the two spellings the portal returns.
 function msOf(r){
   const p = (r && r.properties) || {};
@@ -366,16 +378,27 @@ async function fetchModifiedSince(sinceMs){
     pages++;
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
-        { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(mark) }
+        { propertyName: DELTA_PROP, operator: "GTE", value: String(mark) }
       ]}],
       // Both spellings. On contacts the readable property is `lastmodifieddate`;
       // `hs_lastmodifieddate` is what the FILTER understands and is not always returned.
       // Asking for only the filter's spelling gave every row a modified date of nothing,
       // which is what froze the watermark: the walk could not tell where it had got to.
       properties: PROPS.concat(["lastmodifieddate", "hs_lastmodifieddate"]),
-      sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }], limit: 100 })});
+      sorts: [{ propertyName: DELTA_PROP, direction: "ASCENDING" }], limit: 100 })});
     const rows = j.results || [];
-    if (!rows.length) { caughtUp = true; break; }
+    if (!rows.length) {
+      caughtUp = true;
+      /* Zero changes is a real answer for a portal that has been quiet for a minute. It
+         is not a real answer for one that has been quiet for hours: somebody logs a call
+         every few minutes. Reported as caught up, it looks perfect while being wrong,
+         which is exactly how this hid all day. */
+      if (pages === 1 && Date.now() - mark > 30 * 60000) {
+        stalled = "HubSpot reports nothing changed since " + new Date(mark).toISOString() +
+          ", which cannot be right. Check the modified-date property name (" + DELTA_PROP + ").";
+      }
+      break;
+    }
 
     let taken = 0, lastMs = mark, dated = 0;
     rows.forEach(function(r){
@@ -501,7 +524,7 @@ async function syncDelta(){
       // How far through time we have actually got. This, not "when did it last run", is
       // the honest answer to "how fresh is this page".
       mark: Math.max(got.mark - DELTA_LAG_MS, since),
-      caughtUp: got.caughtUp, pages: got.pages, stalled: got.stalled || null,
+      caughtUp: got.caughtUp && !got.stalled, pages: got.pages, stalled: got.stalled || null,
       disabled: DELTA.disabled };
     if (got.stalled) console.error("Delta sync STALLED: " + got.stalled);
     deltaSave();
