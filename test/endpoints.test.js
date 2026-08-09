@@ -327,6 +327,11 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("DELTA_BUDGET_MS") >= 0);
     ok("it does not wait a full interval after a restart before running at all",
       srv2.indexOf("[20, 60, 150, 300].forEach(function(sec){") >= 0);
+    ok("and being turned away by a rebuild books a retry rather than losing the turn",
+      srv2.indexOf("if (CACHE.syncing) { deltaSoon(45); return; }") >= 0 &&
+      srv2.indexOf("function deltaSoon") >= 0);
+    ok("a run that ends behind comes back at once, not in ten minutes",
+      srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
     ok("and it says nothing rather than something stale before its first run",
       srv2.indexOf("caughtUp: DELTA.at ? DELTA.caughtUp !== false : null") >= 0);
     ok("the per owner walk no longer stops at the search ceiling",

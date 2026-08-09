@@ -447,10 +447,28 @@ function applyDelta(rows){
   return { staged: staged, fresh: fr, dropped: dropped };
 }
 
+/* A skipped run used to mean waiting a full ten minutes for the next tick. After a
+   restart the full rebuild holds the door for several minutes, so every boot kick and
+   most ticks landed inside that window and the sweep simply never started: the health
+   page showed `at: null` and `pages: 0` while the watermark quietly aged.
+
+   Being turned away now books a retry a minute later instead, so the sweep begins about
+   a minute after the rebuild finishes rather than whenever the next tick happens to
+   fall. One pending retry at a time, so this cannot pile up. */
+let DELTA_RETRY = null;
+function deltaSoon(sec){
+  if (DELTA_RETRY) return;
+  DELTA_RETRY = setTimeout(function(){
+    DELTA_RETRY = null;
+    (typeof guard === "function" ? guard("delta", syncDelta) : syncDelta)();
+  }, (sec || 60) * 1000);
+}
+
 async function syncDelta(){
   if (!TOKEN || DELTA.disabled || DELTA.running) return;
-  if (CACHE.syncing) return;                 // a full rebuild is authoritative, do not fight it
-  if (!CACHE.loadedAt) return;               // nothing to merge into yet
+  // A full rebuild is authoritative, do not fight it. But do come back for it.
+  if (CACHE.syncing) { deltaSoon(45); return; }
+  if (!CACHE.loadedAt) { deltaSoon(45); return; }
   DELTA.running = true;
   const t0 = Date.now();
   try {
@@ -468,6 +486,9 @@ async function syncDelta(){
       mark: Math.max(got.mark - DELTA_LAG_MS, since),
       caughtUp: got.caughtUp, pages: got.pages, disabled: DELTA.disabled };
     deltaSave();
+    // Still behind means there is more waiting right now. Ten minutes is the idle
+    // cadence, not the catch-up one.
+    if (!got.caughtUp) deltaSoon(20);
     console.log("Delta sync: " + got.rows.length + " changed contacts over " + got.pages +
       " pages in " + DELTA.lastMs + "ms (" + r.staged + " staged, " + r.fresh + " fresh, " +
       r.dropped + " unassigned) · caught up to " + new Date(DELTA.mark).toISOString() +
