@@ -371,19 +371,21 @@ console.log("\nRole specific things appear only where they should");
     mgr.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
   // Reversed on purpose: the work now sits above the explanation of the work.
   ok("the controls sit above the work, and the machinery below it",
-    vp.indexOf(">Manager<") < vp.indexOf("class='view") &&
-    vp.indexOf("class='view") < vp.indexOf("class='vpflow'"));
+    vp.indexOf(">Manager<") < vp.search(/class='view( on)?'/) &&
+    vp.search(/class='view( on)?'/) < vp.indexOf("class='vpflow'"));
   // Pinned was tried and dropped: a fifth of the screen held back on every table below
   // is too much to pay for keeping a filter in reach.
   ok("the band does not stick to the top of the screen",
     vp.indexOf("class='headband'") >= 0 && vp.indexOf("headband sticky") < 0 &&
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .headband.sticky{position:sticky") < 0);
   ok("the view tabs sit under the cards, where the choice follows the headline",
-    vp.indexOf("class='heroside'") < vp.indexOf("class='seg'") &&
-    vp.indexOf("class='seg'") < vp.indexOf("class='ctrlside'"));
+    vp.indexOf("class='heroside'") < vp.indexOf("class='viewstrip'") &&
+    vp.indexOf("class='viewstrip'") < vp.indexOf("class='bar ctl'"));
+  ok("and they are a strip, not a card with a line of white under it",
+    vp.indexOf("class='vnote'") >= 0);
   ok("the cards sit two by two beside the controls, not four across above them",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .herorow{display:grid !important;grid-template-columns:repeat(2") >= 0 &&
-    vp.indexOf("class='heroside'") < vp.indexOf("class='ctrlside'"));
+    vp.indexOf("class='heroside'") < vp.indexOf("class='bar ctl'"));
   ok("a stage chip wears the colour that stage wears in the tables",
     vp.indexOf("class='chipb stagechip'") >= 0 || vp.indexOf("chipb stagechip") >= 0);
   ok("owner chips carry their meaning, not just a label",
@@ -391,22 +393,26 @@ console.log("\nRole specific things appear only where they should");
   ok("and those meanings are defined after theme.css, or they never take effect",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .chipb.own-gone") >= 0);
   ok("the control cards are marked as controls",
-    (vp.match(/class='bar ctl/g) || []).length >= 2 &&
+    (vp.match(/class='bar ctl/g) || []).length >= 1 &&
+    (vp.match(/class='bar chipbar ctl/g) || []).length === 1 &&
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .bar.ctl{border-top") >= 0);
   // Dropdowns and chips now sit two abreast inside the band, with the view tabs under
   // both, so the three control blocks stop being taller than the cards beside them.
-  ok("the chips sit beside the dropdowns, not under them",
-    vp.indexOf("class='ctlgrid'") >= 0 &&
+  // Three siblings in one grid, not two with a grid nested inside one of them: nesting
+  // made the inner pair size against each other instead of against the cards.
+  ok("cards, dropdowns and chips are three columns of one band",
+    vp.indexOf("class='headband'") >= 0 &&
+    vp.indexOf("class='heroside'") < vp.indexOf("class='bar ctl'") &&
     vp.indexOf("class='bar ctl'") < vp.indexOf("class='bar chipbar ctl'"));
   ok("and an agent, who gets no chips, keeps the full width",
-    agent.indexOf("class='ctlgrid solo'") >= 0);
+    agent.indexOf("class='headband solo'") >= 0);
   ok("the stage and owner chips are two labelled rows, not one row wrapping into itself",
     (vp.match(/class='chipset'/g) || []).length === 2 &&
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .chipset + .chipset") >= 0);
   ok("and everything in the band is shrunk to the height the cards set",
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .ctlgrid .chipb{padding:2px 8px") >= 0);
-  ok("the pairing is defined after theme.css, or it never takes effect",
-    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .ctlgrid{display:grid") >= 0);
+    html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .headband .chipb{padding:2px 8px") >= 0);
+  ok("and all three stretch to one height, so the band has no hole in it",
+    html.slice(html.indexOf('href="/theme.css"')).indexOf("align-items:stretch !important") >= 0);
   // Each of these is VP machinery. Naming them one by one means a future leak says which.
   // vpflow is now just a two column grid, and a manager legitimately gets one card in it,
   // the pool they can assign from. What they must not see is its VP-only contents, which
@@ -423,7 +429,7 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf(">Manager<") < vp.indexOf("Stage by reason") || true);
   ok("DNP is named plainly", vp.indexOf(">DNPs<") >= 0 && vp.indexOf("nothing to act on today") < 0);
   ok("three views, matrix first",
-    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view/g) || []).length === 3 &&
+    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view( on)?'/g) || []).length === 3 &&
     vp.indexOf("class='view on'") >= 0);
   ok("the board is one of them", vp.indexOf("Board view") >= 0);
   // With nothing picked the queue must invite a choice, not invent one.

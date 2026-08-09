@@ -235,32 +235,32 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .ctlgrid.solo{grid-template-columns:1fr}
 .wrap .ctlgrid > .bar{margin-bottom:0 !important;height:100%}
 /* Half the width, so the dropdowns pair up instead of stringing out across a row. */
-.wrap .ctlgrid .bar.ctl > div{flex:1 1 44% !important;min-width:0}
-.wrap .ctlgrid .bar.ctl > div:last-child{flex:1 1 100% !important;margin-left:0 !important;text-align:left}
-.wrap .ctlgrid .bar.chipbar{align-items:flex-start !important}
-.wrap .ctlgrid .bar.chipbar .barlbl{align-self:flex-start;margin-top:3px}
+.wrap .headband .bar.ctl > div{flex:1 1 44% !important;min-width:0}
+.wrap .headband .bar.ctl > div:last-child{flex:1 1 100% !important;margin-left:0 !important;text-align:left}
+.wrap .headband .bar.chipbar{align-items:flex-start !important}
+.wrap .headband .bar.chipbar .barlbl{align-self:flex-start;margin-top:3px}
 @media (max-width:1250px){ .wrap .ctlgrid{grid-template-columns:1fr} }
 
 /* ---- the band, held to the height of the cards ------------------------------------
    The controls were taller than the four cards beside them, so the band ended in a hole
    and the tables started lower than they needed to. Everything here is shrunk to the
    same end: the cards set the height, the controls fit inside it. */
-.wrap .ctlgrid .bar.ctl{padding:9px 11px !important}
-.wrap .ctlgrid .bar.ctl > div > label{font-size:9.5px !important;margin-bottom:2px !important;
+.wrap .headband .bar.ctl{padding:9px 11px !important}
+.wrap .headband .bar.ctl > div > label{font-size:9.5px !important;margin-bottom:2px !important;
   letter-spacing:.03em}
-.wrap .ctlgrid .bar.ctl select,.wrap .ctlgrid .bar.ctl .segbtn{
+.wrap .headband .bar.ctl select,.wrap .headband .bar.ctl .segbtn{
   padding:4px 8px !important;font-size:12px !important;border-radius:7px !important}
-.wrap .ctlgrid .bar.ctl{gap:7px 9px !important}
-.wrap .ctlgrid .bar.ctl .btn{padding:4px 10px !important;font-size:12px !important}
-.wrap .ctlgrid .fresh{margin-top:2px}
+.wrap .headband .bar.ctl{gap:7px 9px !important}
+.wrap .headband .bar.ctl .btn{padding:4px 10px !important;font-size:12px !important}
+.wrap .headband .fresh{margin-top:2px}
 
 /* Chips: two labelled rows, small, tight. Thirteen stages have to fit half a band. */
 .wrap .chipset{display:block;width:100%}
 .wrap .chipset + .chipset{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2,#EFF3F7)}
 .wrap .chipset .barlbl{display:flex;margin-bottom:4px}
-.wrap .ctlgrid .chips{gap:4px !important}
-.wrap .ctlgrid .chipb{padding:2px 8px !important;font-size:10.5px !important;border-radius:14px !important}
-.wrap .ctlgrid .bar.chipbar{padding:9px 11px !important}
+.wrap .headband .chips{gap:4px !important}
+.wrap .headband .chipb{padding:2px 8px !important;font-size:10.5px !important;border-radius:14px !important}
+.wrap .headband .bar.chipbar{padding:9px 11px !important}
 
 /* ---- the control cards ------------------------------------------------------------
    Three white boxes with grey chips gave no clue which one did what, and none of them
@@ -417,12 +417,20 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
    Four cards across the full width was a screenful of chrome for four numbers, with the
    filters stranded underneath. Two by two on the left, controls beside them on the right,
    and the band is about half as tall. Everything below gets that height back. */
-.wrap .headband{display:grid !important;grid-template-columns:minmax(300px,360px) 1fr !important;
-  gap:12px !important;align-items:start !important;margin-bottom:10px !important}
-.wrap .headband .heroside > .herorow{margin-bottom:6px !important}
-.wrap .headband .ctrlside > .bar{margin-bottom:8px !important}
-.wrap .headband .ctrlside > .bar:last-child{margin-bottom:0 !important}
-@media (max-width:1150px){ .wrap .headband{grid-template-columns:1fr !important} }
+.wrap .headband{display:grid !important;grid-template-columns:minmax(290px,330px) minmax(0,1fr) minmax(0,1fr) !important;
+  gap:10px !important;align-items:stretch !important;margin-bottom:10px !important}
+.wrap .headband.solo{grid-template-columns:minmax(290px,330px) minmax(0,1fr) !important}
+.wrap .headband > *{margin-bottom:0 !important;min-width:0}
+.wrap .headband .heroside{display:flex;flex-direction:column}
+.wrap .headband .heroside > .herorow{margin-bottom:0 !important}
+/* The footnote sits at the bottom of its column, so all three columns end level. */
+.wrap .headband .heroside > .hnote{margin-top:auto !important;padding-top:6px}
+@media (max-width:1250px){ .wrap .headband,.wrap .headband.solo{grid-template-columns:1fr !important} }
+
+/* The view switch: one line, tabs then caption, no card around it. */
+.wrap .viewstrip{display:flex;align-items:center;gap:10px;margin-top:7px;min-width:0}
+.wrap .viewstrip .vnote{font-size:10.5px;color:#7A8CA0;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;min-width:0}
 
 /* Four hero cards, two by two and compact: the number still reads across the room, the
    furniture around it does not. */
@@ -2059,16 +2067,18 @@ function chipOf(k,n,label){
   return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
     "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
 
+/* A strip, not a card. In a card the tabs took one line and their description took
+   another, right aligned, which left a band of white between them for no reason. On one
+   line the description is a caption to the choice, which is what it is. */
 function viewTabs(){
-  return "<div class='bar ctl' style='padding:7px 10px'><span class='seg'>"+
+  var note=VIEW==="matrix"?"Every stage against every reason to call":
+           VIEW==="queue"?"The leads themselves, worst first":
+           "One card per stage, click a line to open those leads";
+  return "<div class='viewstrip'><span class='seg'>"+
     ["matrix","queue","board"].map(function(v){
       var lbl=v.charAt(0).toUpperCase()+v.slice(1);
       return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+"</button>";
-    }).join("")+"</span>"+
-    "<span style='margin-left:auto;font-size:11.5px;color:#566575'>"+
-    (VIEW==="matrix"?"Every stage against every reason to call":
-     VIEW==="queue"?"The leads themselves, worst first":
-     "One card per stage, click a line to open those leads")+"</span></div>";}
+    }).join("")+"</span><span class='vnote' title='"+esc(note)+"'>"+esc(note)+"</span></div>";}
 
 // One card per stage. Clicking a line opens those leads in the queue.
 function boardView(){
@@ -2353,12 +2363,15 @@ function draw(){
      The band does not stick. Pinning it kept the filters in reach and cost a fifth of a
      laptop screen all the way down a long table, which is the wrong trade on the page
      people scroll most. */
+  /* Three columns, not two with a grid inside one of them. Nesting meant the two inner
+     blocks sized against each other rather than against the cards, so one of the three
+     always finished short and left a band of white under it. As siblings they stretch to
+     one height and the band has no hole in it. */
   var h=quality()+
-    "<div class='headband'>"+
+    "<div class='headband"+(mineOnly?" solo":"")+"'>"+
       "<div class='heroside'>"+hero()+viewTabs()+lockNote()+"</div>"+
-      "<div class='ctrlside'>"+
-        "<div class='ctlgrid"+(mineOnly?" solo":"")+"'>"+barTop()+(mineOnly?"":barChips())+"</div>"+
-      "</div>"+
+      barTop()+
+      (mineOnly?"":barChips())+
     "</div>"+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
