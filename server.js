@@ -349,42 +349,58 @@ function deltaLoad(){
    stepping past them and losing the rest of the tie. */
 const DELTA_BUDGET_MS = parseInt(process.env.DELTA_BUDGET_MS || "45000", 10);
 
+// When a record was last touched, whichever of the two spellings the portal returns.
+function msOf(r){
+  const p = (r && r.properties) || {};
+  return Number(p.hs_lastmodifieddate) || Date.parse(p.hs_lastmodifieddate || "") ||
+         Number(p.lastmodifieddate) || Date.parse(p.lastmodifieddate || "") || 0;
+}
+
 async function fetchModifiedSince(sinceMs){
   const out = [];
   const t0 = Date.now();
   let mark = Number(sinceMs) || 0;
   let seenAtMark = {};
-  let pages = 0, caughtUp = false;
+  let pages = 0, caughtUp = false, stalled = null;
   while (pages < 4000) {
     pages++;
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
         { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(mark) }
       ]}],
-      properties: PROPS.concat(["hs_lastmodifieddate"]),
+      // Both spellings. On contacts the readable property is `lastmodifieddate`;
+      // `hs_lastmodifieddate` is what the FILTER understands and is not always returned.
+      // Asking for only the filter's spelling gave every row a modified date of nothing,
+      // which is what froze the watermark: the walk could not tell where it had got to.
+      properties: PROPS.concat(["lastmodifieddate", "hs_lastmodifieddate"]),
       sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }], limit: 100 })});
     const rows = j.results || [];
     if (!rows.length) { caughtUp = true; break; }
 
-    let taken = 0, lastMs = mark;
+    let taken = 0, lastMs = mark, dated = 0;
     rows.forEach(function(r){
-      const ms = Number(r.properties && r.properties.hs_lastmodifieddate) ||
-                 Date.parse((r.properties || {}).hs_lastmodifieddate || "") || 0;
+      const ms = msOf(r);
+      if (ms) dated++;
       if (ms === mark && seenAtMark[r.id]) return;      // already taken on the last pass
       out.push(Object.assign({ id: r.id }, r.properties));
       taken++;
       if (ms > lastMs) lastMs = ms;
     });
 
+    /* If a whole page comes back with no readable modified date, the walk has no cursor
+       and every further page would re-read the same hundred rows forever. Stop and say
+       so, loudly, rather than grinding through the budget achieving nothing. */
+    if (!dated) {
+      stalled = "no readable modified date on any row: cannot advance the watermark";
+      break;
+    }
+
     if (rows.length < 100) { caughtUp = true; mark = Math.max(mark, lastMs); break; }
 
     if (lastMs > mark) {
       mark = lastMs;
       seenAtMark = {};
-      rows.forEach(function(r){
-        const ms = Number(r.properties && r.properties.hs_lastmodifieddate) || 0;
-        if (ms === mark) seenAtMark[r.id] = 1;
-      });
+      rows.forEach(function(r){ if (msOf(r) === mark) seenAtMark[r.id] = 1; });
     } else {
       /* A full page all sharing one millisecond and none of it new. Stepping forward by
          one is the only way out, and it can only skip records that share that exact
@@ -396,7 +412,8 @@ async function fetchModifiedSince(sinceMs){
     if (Date.now() - t0 > DELTA_BUDGET_MS) break;       // resume from `mark` next run
     await sleep(120);
   }
-  return { rows: out, mark: mark, caughtUp: caughtUp, pages: pages, ms: Date.now() - t0 };
+  return { rows: out, mark: mark, caughtUp: caughtUp, pages: pages, ms: Date.now() - t0,
+    stalled: stalled };
 }
 
 // Route each changed contact to the right bucket. A lead that gained a stage moves out
@@ -484,7 +501,9 @@ async function syncDelta(){
       // How far through time we have actually got. This, not "when did it last run", is
       // the honest answer to "how fresh is this page".
       mark: Math.max(got.mark - DELTA_LAG_MS, since),
-      caughtUp: got.caughtUp, pages: got.pages, disabled: DELTA.disabled };
+      caughtUp: got.caughtUp, pages: got.pages, stalled: got.stalled || null,
+      disabled: DELTA.disabled };
+    if (got.stalled) console.error("Delta sync STALLED: " + got.stalled);
     deltaSave();
     // Still behind means there is more waiting right now. Ten minutes is the idle
     // cadence, not the catch-up one.
@@ -974,7 +993,8 @@ app.get("/api/health", function(req, res){
             behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
             // null, not true, until a run has actually finished since the restart.
             // Reporting the previous process's answer is how a stale reading hides.
-            caughtUp: DELTA.at ? DELTA.caughtUp !== false : null, pages: DELTA.pages || 0 },
+            caughtUp: DELTA.at ? DELTA.caughtUp !== false : null, pages: DELTA.pages || 0,
+            stalled: DELTA.stalled || null },
           truncatedOwners: Object.keys(OWNER_TRUNCATED || {}).length
             ? OWNER_TRUNCATED : null,
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
@@ -3336,7 +3356,8 @@ app.post("/api/callnow2/sync/delta", async function(req, res){
     from: before ? new Date(before).toISOString() : null,
     caughtUpTo: DELTA.mark ? new Date(DELTA.mark).toISOString() : null,
     behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
-    caughtUp: DELTA.caughtUp, pages: DELTA.pages, merged: DELTA.lastCount, ms: DELTA.lastMs });
+    caughtUp: DELTA.caughtUp, stalled: DELTA.stalled || null,
+    pages: DELTA.pages, merged: DELTA.lastCount, ms: DELTA.lastMs });
 });
 
 app.get("/api/callnow2/segments", async function(req, res){

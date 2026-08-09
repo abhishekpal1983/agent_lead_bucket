@@ -332,6 +332,14 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("function deltaSoon") >= 0);
     ok("a run that ends behind comes back at once, not in ten minutes",
       srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
+    ok("the walk asks for both spellings of the modified date",
+      srv2.indexOf('PROPS.concat(["lastmodifieddate", "hs_lastmodifieddate"])') >= 0 &&
+      srv2.indexOf("function msOf(r)") >= 0);
+    ok("and a page with no readable date stops the walk instead of grinding",
+      srv2.indexOf("cannot advance the watermark") >= 0 &&
+      srv2.indexOf("Delta sync STALLED") >= 0);
+    ok("the reason is on the health page, not only in the log",
+      srv2.indexOf("stalled: DELTA.stalled || null }") >= 0);
     ok("and there is a lever to run it now rather than wait and guess",
       srv2.indexOf('app.post("/api/callnow2/sync/delta"') >= 0 &&
       srv2.indexOf('if (!isVP(req)) return res.status(403).json({ error: "VP only" });') >= 0);
