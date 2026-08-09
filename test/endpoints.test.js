@@ -346,6 +346,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     const kick = await post("/api/callnow2/sync/delta");
     ok("the lever answers rather than hanging", kick.status === 200 || kick.status === 409,
       "status " + kick.status + " " + kick.raw);
+    const kickGet = await get("/api/callnow2/sync/delta");
+    ok("and it can be opened as a link, not only posted from a console",
+      kickGet.status === 200 || kickGet.status === 409, "status " + kickGet.status);
     ok("and it says nothing rather than something stale before its first run",
       srv2.indexOf("caughtUp: DELTA.at ? DELTA.caughtUp !== false : null") >= 0);
     ok("the per owner walk no longer stops at the search ceiling",

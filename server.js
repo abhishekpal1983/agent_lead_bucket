@@ -3339,7 +3339,12 @@ app.post("/api/callnow2/lead/:id/refresh", async function(req, res){
    Kicks the sweep immediately and answers with what it did: how many pages it walked,
    how many contacts it merged, and where the watermark now sits. `from` rewinds the
    watermark first, for the case where it is the watermark itself that is wrong. */
-app.post("/api/callnow2/sync/delta", async function(req, res){
+/* GET as well as POST. A POST needs a console; a GET is a link you can open, and the
+   person who most needs this lever is the one least likely to want a console. It is VP
+   only and it changes nothing that a scheduled run would not do anyway. */
+app.get("/api/callnow2/sync/delta", function(req, res, next){ syncDeltaNow(req, res).catch(next); });
+app.post("/api/callnow2/sync/delta", function(req, res, next){ syncDeltaNow(req, res).catch(next); });
+async function syncDeltaNow(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "VP only" });
   if (DELTA.running) return res.json({ ok: true, alreadyRunning: true });
   if (CACHE.syncing) return res.status(409).json({ error: "a full rebuild is running, try again in a minute" });
@@ -3358,7 +3363,7 @@ app.post("/api/callnow2/sync/delta", async function(req, res){
     behindMin: DELTA.mark ? Math.round((Date.now() - DELTA.mark) / 60000) : null,
     caughtUp: DELTA.caughtUp, stalled: DELTA.stalled || null,
     pages: DELTA.pages, merged: DELTA.lastCount, ms: DELTA.lastMs });
-});
+}
 
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
