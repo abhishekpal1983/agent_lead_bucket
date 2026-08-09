@@ -332,6 +332,18 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("function deltaSoon") >= 0);
     ok("a run that ends behind comes back at once, not in ten minutes",
       srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
+    /* The sweep that matters asks the specific question rather than the general one. */
+    ok("today's calls are asked for directly, by the call date itself",
+      srv2.indexOf('{ propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) }') >= 0 &&
+      srv2.indexOf("async function syncCallsToday") >= 0);
+    ok("it re-reads the whole day rather than carrying a cursor, so a missed run costs nothing",
+      srv2.indexOf("idempotent and self healing") >= 0 &&
+      srv2.slice(srv2.indexOf("async function syncCallsToday"),
+                 srv2.indexOf("async function syncDelta")).indexOf("mark") < 0);
+    ok("it runs far more often than the general sweep",
+      srv2.indexOf('CALLSYNC_MINUTES || "3"') >= 0);
+    ok("and its health is reported separately from the general sweep",
+      srv2.indexOf("// The sweep the page's numbers actually depend on.") >= 0);
     ok("contacts are walked by lastmodifieddate, the one that is actually populated",
       srv2.indexOf('const DELTA_PROP = process.env.DELTA_MODIFIED_PROP || "lastmodifieddate";') >= 0 &&
       srv2.indexOf('{ propertyName: DELTA_PROP, operator: "GTE", value: String(mark) }') >= 0);

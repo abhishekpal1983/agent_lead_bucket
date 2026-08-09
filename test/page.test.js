@@ -128,6 +128,8 @@ function render(role){
   ];
   ctx.J.caughtUpTo = new Date(Date.now() - 4 * 60000).toISOString();
   ctx.J.caughtUp = true;
+  ctx.J.callsAt = new Date(Date.now() - 2 * 60000).toISOString();
+  ctx.J.callsEvery = 3;
   ctx.J.seg = { id: "77", name: "ayush-final-payment-push", loading: false,
     size: 1904, onList: 412, outside: 1492, truncated: false };
   ctx.ASSIGN = { allowed: true, scoped: !!role.scoped, rows: [
@@ -519,8 +521,12 @@ console.log("\nRole specific things appear only where they should");
     html.indexOf("RFRESH[id]=j.lead") >= 0 && html.indexOf("number patched in by hand") >= 0);
   ok("freshness prefers coverage over the fact that a run happened",
     html.indexOf("J.caughtUpTo||J.leadsAt") >= 0 && html.indexOf("up to date as of ") >= 0);
-  ok("a sweep still working through a backlog is called out",
-    html.indexOf("J.caughtUp===false") >= 0);
+  // Freshness reports the calls sweep, because that is the one the numbers rest on.
+  ok("freshness measures the calls sweep, not the general one",
+    html.indexOf("var basis=J.callsAt||J.caughtUpTo||J.leadsAt;") >= 0 &&
+    html.indexOf("calls up to date as of ") >= 0);
+  ok("and a failed calls sweep is shouted, not absorbed",
+    html.indexOf("J.callsError||J.syncError") >= 0);
   ok("the headline card breaks itself down by timing",
     vp.indexOf("class='hsplit'") >= 0 && vp.indexOf(">Due today</span>") >= 0 &&
     vp.indexOf(">Overdue</span>") >= 0);

@@ -504,6 +504,62 @@ function deltaSoon(sec){
   }, (sec || 60) * 1000);
 }
 
+/* ---------- today's calls, asked for directly ----------
+
+   `lastmodifieddate` moves for anything: a marketing email sent, an open, a click, a
+   workflow writing a property, a list membership change. Most of that has nothing to do
+   with calls, so a general "what changed" sweep spends its budget on noise while the
+   handful of records that matter queue behind it. That is also why the old walk kept
+   hitting its ceiling.
+
+   So ask the specific question. Every few minutes: which contacts have a call logged
+   today? That is the exact set every number on the Call Now page depends on, it is a few
+   hundred records rather than tens of thousands, and it costs about ten API calls.
+
+   No watermark and no cursor. It re-reads the whole of today every time, which makes it
+   idempotent and self healing: miss a run, or restart mid way, and the next run has
+   everything anyway. A cursor is what you need when the set is unbounded; today's calls
+   are bounded by the day. */
+const CALLSYNC_MINUTES = parseFloat(process.env.CALLSYNC_MINUTES || "3");
+let CALLSYNC = { at: null, running: false, n: 0, ms: 0, error: null, day: null };
+
+async function syncCallsToday(){
+  if (!TOKEN || CALLSYNC.running) return;
+  if (CACHE.syncing) return;               // the full rebuild is doing this and more
+  if (!CACHE.loadedAt) return;
+  CALLSYNC.running = true;
+  const t0 = Date.now();
+  const day = istDayBounds();
+  try {
+    const rows = [];
+    let lastId = "0", guard = 0;
+    while (guard < 400) {                  // 40,000 calls in a day is not a real number
+      guard++;
+      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: [
+          { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
+          { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+        ]}],
+        properties: PROPS,
+        sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+      const page = j.results || [];
+      if (!page.length) break;
+      page.forEach(function(r){ rows.push(Object.assign({ id: r.id }, r.properties)); });
+      lastId = page[page.length - 1].id;
+      if (page.length < 100) break;
+      await sleep(100);
+    }
+    if (rows.length) applyDelta(rows);
+    CALLSYNC = { at: new Date().toISOString(), running: false, n: rows.length,
+      ms: Date.now() - t0, error: null, day: istParts(new Date()).date };
+    console.log("Calls today synced: " + rows.length + " contacts called today, in " + CALLSYNC.ms + "ms");
+  } catch (e) {
+    CALLSYNC.running = false;
+    CALLSYNC.error = e.message;
+    console.error("Calls today sync failed: " + e.message);
+  }
+}
+
 async function syncDelta(){
   if (!TOKEN || DELTA.disabled || DELTA.running) return;
   // A full rebuild is authoritative, do not fight it. But do come back for it.
@@ -1020,6 +1076,10 @@ app.get("/api/health", function(req, res){
             stalled: DELTA.stalled || null },
           truncatedOwners: Object.keys(OWNER_TRUNCATED || {}).length
             ? OWNER_TRUNCATED : null,
+          // The sweep the page's numbers actually depend on.
+          calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
+            ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
+            behindMin: CALLSYNC.at ? Math.round((Date.now() - Date.parse(CALLSYNC.at)) / 60000) : null },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
                   leadsSoFar: SYNC_PROGRESS.contacts, phase: SYNC_PROGRESS.phase,
@@ -2916,6 +2976,12 @@ app.get("/api/callnow2", function(req, res){
        claimed the leads were hours old while they were in fact minutes old, and anyone
        following that reading would have chased a sync that was working perfectly.
        leadsAt is the real answer: the last time lead data arrived, by either route. */
+    /* Freshness now reports the CALLS sweep, because that is what every number on this
+       page rests on. The general sweep matters for stage and owner changes, which do not
+       move today's counts, so reporting it here would answer a question nobody asked. */
+    callsAt: CN2_FIXTURE_DATA ? null : ((typeof CALLSYNC !== "undefined" && CALLSYNC.at) || null),
+    callsEvery: (typeof CALLSYNC_MINUTES !== "undefined") ? CALLSYNC_MINUTES : null,
+    callsError: (typeof CALLSYNC !== "undefined" && CALLSYNC.error) || null,
     leadsAt: CN2_FIXTURE_DATA ? null : ((typeof DELTA !== "undefined" && DELTA.at) || CACHE.loadedAt),
     fullAt: CN2_FIXTURE_DATA ? null : CACHE.loadedAt,
     syncEvery: (typeof DELTA_MINUTES !== "undefined") ? DELTA_MINUTES : null,
@@ -6574,6 +6640,9 @@ SERVER = app.listen(PORT, () => {
   [20, 60, 150, 300].forEach(function(sec){
     setTimeout(guard("delta", syncDelta), sec * 1000);
   });
+  /* Today's calls, often, because this is the one every number on the page rests on. */
+  setInterval(guard("callsToday", syncCallsToday), Math.max(1, CALLSYNC_MINUTES) * 60 * 1000);
+  [30, 90, 180].forEach(function(sec){ setTimeout(guard("callsToday", syncCallsToday), sec * 1000); });
   setTimeout(function(){ adoptStoredCreators(); }, 3000);
   setTimeout(guard("snapshot", snapshotToday), 4 * 60 * 1000);
   setInterval(guard("snapshot", snapshotToday), 15 * 60 * 1000);

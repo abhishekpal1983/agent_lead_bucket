@@ -820,19 +820,25 @@ function since(t){
 
 function freshness(){
   if(J.loadedAt==="fixtures")return "<div class='fresh'>made-up test data</div>";
-  var every=J.syncEvery||10;
+  var every=isCalls?(J.callsEvery||3):(J.syncEvery||10);
   // caughtUpTo is how far through HubSpot's changes we have actually got. leadsAt is only
   // when a run last finished, and a run that finishes having covered nothing still looks
   // healthy by that measure. Prefer coverage; fall back only if it is not reported.
-  var basis=J.caughtUpTo||J.leadsAt;
+  /* Report the sweep the numbers rest on. Calls are asked for directly, every few
+     minutes; the general "what changed" sweep matters for stage and owner moves, which
+     do not shift today's counts, so quoting it here would answer a question nobody on
+     this page is asking. */
+  var basis=J.callsAt||J.caughtUpTo||J.leadsAt;
+  var isCalls=!!J.callsAt;
   var mins=basis?Math.round((Date.now()-new Date(basis).getTime())/60000):null;
-  var cls=(J.syncError||J.syncOff||J.caughtUp===false||(mins!=null&&mins>every*4))?"bad":
+  var cls=(J.callsError||J.syncError||J.syncOff||(mins!=null&&mins>every*4))?"bad":
           ((mins!=null&&mins>every*2)?"warn":"");
   var msg=J.syncOff?"automatic sync is off"
-    :(J.syncError?"last sync failed":(mins==null?"leads not synced yet":
-      (J.caughtUpTo?"up to date as of "+since(basis):"leads "+since(basis))));
+    :((J.callsError||J.syncError)?"last sync failed":(mins==null?"leads not synced yet":
+      (isCalls?"calls up to date as of "+since(basis)
+             :(J.caughtUpTo?"up to date as of "+since(basis):"leads "+since(basis)))));
   return "<div class='fresh "+cls+"' title='"+
-    "Leads refresh every "+every+" minutes"+(J.caughtUp===false?", and the last run did not catch up, so it is still working through a backlog":"")+
+    (isCalls?"Calls are asked for directly every "+every+" minutes. ":"Leads refresh every "+every+" minutes. ")+
     ". Full rebuild "+(J.fullAt?new Date(J.fullAt).toLocaleTimeString("en-IN"):"not yet")+
     ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
     esc(msg)+
