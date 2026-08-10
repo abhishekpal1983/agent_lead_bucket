@@ -11,13 +11,44 @@ const src = fs.readFileSync(require("path").join(__dirname, "..", "server.js"), 
 // copy of the rule. Built with Function rather than eval, because eval under "use strict"
 // keeps its declarations to itself.
 const creatorMatchesForm = new Function(
-  src.slice(src.indexOf("function nameKey("), src.indexOf("async function discoverForms")) +
+  src.slice(src.indexOf("const FORM_STOPWORDS"), src.indexOf("async function discoverForms")) +
   "; return creatorMatchesForm;")();
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra){
   if (cond) { pass++; console.log("  ok   " + name); }
   else { fail++; console.log("  FAIL " + name + (extra ? "  ->  " + extra : "")); }
+}
+
+/* The real portal, all 22 forms discovery found, each against every tracked creator.
+   Twenty one must land on exactly one creator and the boilerplate one on nobody. This is
+   the table that caught the bug below: "Topmate Creator Cohort — Registration" was being
+   given to kartikkapoorconsultation because "ation" appears in both. */
+{
+  const CREATORS = ["ayush_singh13", "payalineurope", "wanderess_priyanka", "ankita_gulati",
+    "simrankhokha", "technomanagers", "saurav_chaudhary_1", "vijaychandola",
+    "digital_girl_dubai", "kartikkapoorconsultation"];
+  const EXPECT = [
+    ["Payal Waitlist", "payalineurope"], ["Ayush Waitlist", "ayush_singh13"],
+    ["Priyanka Waitlist", "wanderess_priyanka"], ["Vijay Chandola Cohort form", "vijaychandola"],
+    ["Test_Ayush Form", "ayush_singh13"], ["Vijay Chandola_Leads ", "vijaychandola"],
+    ["Saurav Cohort Form", "saurav_chaudhary_1"],
+    ["Topmate Creator Cohort \u2014 Registration", null],
+    ["Ankita Gulati Blog", "ankita_gulati"], ["Wanderess priyanka form", "wanderess_priyanka"],
+    ["Kartik Kapoor blog", "kartikkapoorconsultation"], ["Ankita Gulati Form", "ankita_gulati"],
+    ["Ayush Blog ", "ayush_singh13"], ["Ayush Cohort form", "ayush_singh13"],
+    ["Test_Vijaychandola Form", "vijaychandola"], ["digital_girl_dubai Form", "digital_girl_dubai"],
+    ["Payalineurope Cohort Form", "payalineurope"], ["Saurav - Build Infrathrone", "saurav_chaudhary_1"],
+    ["New form Payal in Europe", "payalineurope"], ["Kartik Kapoor", "kartikkapoorconsultation"],
+    ["Ayush October Cohort form ", "ayush_singh13"], ["Simran khokha Form", "simrankhokha"]
+  ];
+  EXPECT.forEach(function(e){
+    const hits = CREATORS.filter(function(c){ return creatorMatchesForm(c, e[0]); });
+    const want = e[1] ? [e[1]] : [];
+    ok("\"" + e[0].trim() + "\" belongs to " + (e[1] || "nobody"),
+      hits.length === want.length && hits.every(function(h){ return want.indexOf(h) >= 0; }),
+      "got " + (hits.join(", ") || "none"));
+  });
 }
 
 /* The forms are not named to a house style. Real ones from the portal:
@@ -69,6 +100,12 @@ function ok(name, cond, extra){
 
 // Short or empty handles must never match, or every form becomes everybody's.
 ok("a handle too short to be distinctive matches nothing", creatorMatchesForm("abc", "ABC Waitlist") === false);
+// The bug this table found: an arbitrary run of letters shared by two words is not evidence.
+ok("a shared word ending is not a match",
+  creatorMatchesForm("kartikkapoorconsultation", "Topmate Creator Cohort Registration") === false);
+ok("nor is any boilerplate word on its own",
+  ["Cohort Form", "Waitlist", "Blog", "Registration Page", "Test Form"].every(function(f){
+    return creatorMatchesForm("kartikkapoorconsultation", f) === false; }));
 ok("an empty handle matches nothing", creatorMatchesForm("", "Ayush Waitlist") === false);
 ok("an empty form name matches nothing", creatorMatchesForm("ayush_singh13", "") === false);
 ok("punctuation and case are ignored", creatorMatchesForm("Ayush_Singh13", "  ayush   waitlist  ") === true);

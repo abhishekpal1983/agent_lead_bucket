@@ -2031,21 +2031,30 @@ const FORM_GUIDS_EXTRA = (process.env.FORM_GUIDS || "")
 const FORM_DISCOVER_HOURS = parseFloat(process.env.FORM_DISCOVER_HOURS || "12");
 let FORM_LIST = { forms: WAITLIST_FORMS.slice(), at: 0, discovered: 0, unmatched: [], error: null };
 
-// "ayush_singh13" and "Ayush Waitlist" are the same person. Compare on letters only, and
-// require a run of at least five so "the" and "and" cannot match anything.
+/* "ayush_singh13" and "Ayush Waitlist" are the same person. Take the WORDS of the form
+   name and look for one inside the creator's handle, which handles a handle that runs the
+   words together: "payal" is a word of "Payal Waitlist" and sits inside "payalineurope".
+
+   An earlier version also went the other way, hunting any five letter run of the handle
+   inside the form name. That matched "Topmate Creator Cohort — Registration" to
+   kartikkapoorconsultation, on the strength of "ation" appearing in both. Arbitrary
+   substrings are not evidence of anything. Every real form here matches on a word, so the
+   reverse test bought nothing and cost a wrong attribution.
+
+   The stoplist removes the words every form shares. Without it, a form called nothing but
+   boilerplate can still land on whichever creator happens to contain one of those letters
+   in sequence. */
+const FORM_STOPWORDS = ("form,forms,cohort,blog,leads,lead,waitlist,registration,register," +
+  "topmate,creator,creators,test,testing,demo,contact,signup,submission,submissions,page," +
+  "landing,newsletter,download,webinar,event,masterclass,workshop,batch,august,september," +
+  "october,november,december,january,february,march,april,june,july").split(",");
 function nameKey(s){ return String(s || "").toLowerCase().replace(/[^a-z]/g, ""); }
 function creatorMatchesForm(creator, formName){
   const c = nameKey(creator);
   if (c.length < 5) return false;
-  const words = String(formName || "").toLowerCase().split(/[^a-z]+/).filter(function(w){ return w.length >= 5; });
+  const words = String(formName || "").toLowerCase().split(/[^a-z]+/)
+    .filter(function(w){ return w.length >= 5 && FORM_STOPWORDS.indexOf(w) < 0; });
   for (let i = 0; i < words.length; i++) if (c.indexOf(words[i]) >= 0) return true;
-  // And the other way, for a creator handle that runs the words together.
-  for (let n = c.length; n >= 5; n--) {
-    for (let i = 0; i + n <= c.length; i++) {
-      if (nameKey(formName).indexOf(c.slice(i, i + n)) >= 0 && n >= 5) return true;
-    }
-    if (n < 6) break;   // stop before this gets expensive; five letters is enough signal
-  }
   return false;
 }
 
