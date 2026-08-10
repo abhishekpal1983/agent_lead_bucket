@@ -1405,19 +1405,25 @@ function since(t){
 
 function freshness(){
   if(J.loadedAt==="fixtures")return "<div class='fresh'>made-up test data</div>";
-  var every=J.syncEvery||10;
+  var every=isCalls?(J.callsEvery||3):(J.syncEvery||10);
   // caughtUpTo is how far through HubSpot's changes we have actually got. leadsAt is only
   // when a run last finished, and a run that finishes having covered nothing still looks
   // healthy by that measure. Prefer coverage; fall back only if it is not reported.
-  var basis=J.caughtUpTo||J.leadsAt;
+  /* Report the sweep the numbers rest on. Calls are asked for directly, every few
+     minutes; the general "what changed" sweep matters for stage and owner moves, which
+     do not shift today's counts, so quoting it here would answer a question nobody on
+     this page is asking. */
+  var basis=J.callsAt||J.caughtUpTo||J.leadsAt;
+  var isCalls=!!J.callsAt;
   var mins=basis?Math.round((Date.now()-new Date(basis).getTime())/60000):null;
-  var cls=(J.syncError||J.syncOff||J.caughtUp===false||(mins!=null&&mins>every*4))?"bad":
+  var cls=(J.callsError||J.syncError||J.syncOff||(mins!=null&&mins>every*4))?"bad":
           ((mins!=null&&mins>every*2)?"warn":"");
   var msg=J.syncOff?"automatic sync is off"
-    :(J.syncError?"last sync failed":(mins==null?"leads not synced yet":
-      (J.caughtUpTo?"up to date as of "+since(basis):"leads "+since(basis))));
+    :((J.callsError||J.syncError)?"last sync failed":(mins==null?"leads not synced yet":
+      (isCalls?"calls up to date as of "+since(basis)
+             :(J.caughtUpTo?"up to date as of "+since(basis):"leads "+since(basis)))));
   return "<div class='fresh "+cls+"' title='"+
-    "Leads refresh every "+every+" minutes"+(J.caughtUp===false?", and the last run did not catch up, so it is still working through a backlog":"")+
+    (isCalls?"Calls are asked for directly every "+every+" minutes. ":"Leads refresh every "+every+" minutes. ")+
     ". Full rebuild "+(J.fullAt?new Date(J.fullAt).toLocaleTimeString("en-IN"):"not yet")+
     ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
     esc(msg)+
@@ -1481,7 +1487,6 @@ function segNote(){
 /* Two pieces, because they want different widths. The dropdowns are narrow and sit
    beside the hero cards; the stage and owner chips are wide by nature and get the full
    width below, where they wrap to one or two rows instead of five. */
-function bar(){ return barTop()+barChips(); }
 function barTop(){
   var h="<div class='bar ctl'>";
   // A scoped reader has nothing to choose between, so the picker is not drawn for them.
@@ -1555,23 +1560,6 @@ function formBlock(subs){
       (sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
       (qa||"<div class='z'>No answers captured on this submission.</div>")+"</div>";
   }).join("");}
-function detRow(r,cols){
-  var bits=[],h="";
-  if(r.source)bits.push("<b>Source:</b> "+esc(srcLabel(r.source)));
-  if(r.formSubs&&r.formSubs.length)h+=formBlock(r.formSubs);
-  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
-    (r.formN>1?" &middot; "+r.formN+" submissions":"")+(r.formLast?" &middot; last "+esc(tmp(r.formLast)):"")+
-    "<br><span class='z'>Answers not captured for this submission.</span>");
-  else if(r.convRecent)bits.push("<b>Came in through:</b> "+esc(r.convRecent));
-  if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+
-    (r.bookType?" ("+esc(r.bookType.replace(/_/g," "))+")":"")+
-    (r.bookAt?" on "+esc(tmp(r.bookAt)):"")+(r.bookN>1?" &middot; "+r.bookN+" bookings":""));
-  if(r.aiSummary)bits.push("<b>AI call summary:</b> "+esc(r.aiSummary));
-  if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
-  if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
-  if(r.coldReason)bits.push("<b>Reason given:</b> "+esc(r.coldReason));
-  if(!h&&!bits.length)bits.push("<span class='z'>Nothing recorded on this lead beyond the basics.</span>");
-  return "<tr class='det'><td colspan='"+cols+"'>"+h+bits.join("<br>")+"</td></tr>";}
 function bandOf(k){ return ((J&&J.effortBands)||[]).filter(function(b){return b.key===k;})[0]||null; }
 function bandCls(k){ var b=bandOf(k); return b?b.cls:"z"; }
 function bandTitle(k){ var b=bandOf(k); return b?esc(b.label):""; }
@@ -2063,9 +2051,6 @@ function lockNote(){
       " with "+fmt(J.baseSize)+" leads. "):"List not locked yet. ")+
     "The list is fixed at midnight, so these move only because of what the floor did today."+
     "</div>";}
-function chipOf(k,n,label){
-  return "<button class='chipb"+(PICK&&PICK.moved===k&&!PICK.stage?" on":"")+
-    "' onclick='pick({moved:"+JSON.stringify(k)+(k===""?",worked:\"1\"":"")+"})'>"+fmt(n||0)+" "+label+"</button>";}
 
 /* A strip, not a card. In a card the tabs took one line and their description took
    another, right aligned, which left a band of white between them for no reason. On one

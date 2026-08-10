@@ -638,8 +638,14 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf("the order of the rows is the order of the conversations") >= 0);
   ok("and it subtracts rather than re-counting",
     vphtml.indexOf("minus what they dialled") >= 0);
-  ok("the export carries the same buckets",
-    vphtml.indexOf('"NoFU","NoFUWorked"') >= 0 && vphtml.indexOf('"Refill","RefillWorked"') >= 0);
+  /* The header and the values were two separate lists and drifted: the header was
+     rewritten into the new buckets and the row was left in the old order, so every
+     column in the export was mislabelled. They are one paired list now. */
+  ok("the export pairs each column name with the value it reads",
+    vphtml.indexOf('["NoFU", function(x){ return x.nofu; }]') >= 0 &&
+    vphtml.indexOf('["RefillWorked", function(x){ return x.refillC; }]') >= 0);
+  ok("and the header is built from that same list, so it cannot drift again",
+    vphtml.indexOf('["Level","Name","Team","Source"].concat(COLS.map(function(c){ return c[0]; }))') >= 0);
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

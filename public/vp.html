@@ -566,27 +566,41 @@ function missedTable(map, back){
 }
 // Days captured before the midnight fix recorded the hour as 24 rather than 00.
 function hm24(t){ return String(t || "").replace(/^24:/, "00:"); }
-function pcTxt(done, total){ if (total == null || done == null) return "<span style='font-size:20px'>–</span>"; return total ? fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>" : "0"; }
 function dailyCsv(){
   var sn = DAILY && DAILY.snapshot;
   if (!sn) return;
   if (!DAILY.isVP) return;
-  var head = ["Level","Name","Team","Source","CallToday","CallTodayWorked","Due","DueDone","Missed",
-    "Overdue","OverdueWorked","NoFU","NoFUWorked","Fresh","FreshWorked","Form","FormWorked",
-    "Score","ScoreWorked","Intl","IntlWorked","Refill","RefillWorked","IFC","IFCWorked",
-    "NeedsOwner","NeedsOwnerWorked","NeverCalled","NeverCalledWorked",
-    "Counsellings","Revenue","Enrolments","Audits","AuditTarget"];
-  var lines = [head.join(",")];
+  var lines = [];
   var src = sn.backfilled ? "rebuilt" : "live";
   var d = function(o, c){ return o == null ? c : o; };
+  /* The header and the row are one list, paired, so they cannot drift apart. They did:
+     the header was rewritten into Call Now 2.0's buckets and the row was left in the old
+     order, so every column in the export was mislabelled. */
+  var COLS = [
+    ["CallToday", function(x){ return d(x.oPool, x.pool); }], ["CallTodayWorked", function(x){ return x.calls; }],
+    ["Due", function(x){ return d(x.oDue, x.due); }], ["DueDone", function(x){ return x.done; }],
+    ["Missed", function(x){ return x.missed; }],
+    ["Overdue", function(x){ return d(x.oOverdue, x.overdue); }], ["OverdueWorked", function(x){ return x.overdueC; }],
+    ["NoFU", function(x){ return x.nofu; }], ["NoFUWorked", function(x){ return x.nofuC; }],
+    ["Fresh", function(x){ return d(x.oFresh, x.fresh); }], ["FreshWorked", function(x){ return x.freshC; }],
+    ["Form", function(x){ return d(x.oForm, x.form); }], ["FormWorked", function(x){ return x.formC; }],
+    ["Score", function(x){ return d(x.oScore, x.score); }], ["ScoreWorked", function(x){ return x.scoreC; }],
+    ["Intl", function(x){ return d(x.oIntl, x.intl); }], ["IntlWorked", function(x){ return x.intlC; }],
+    ["Refill", function(x){ return x.refill; }], ["RefillWorked", function(x){ return x.refillC; }],
+    ["IFC", function(x){ return x.ifc; }], ["IFCWorked", function(x){ return x.ifcC; }],
+    ["NeedsOwner", function(x){ return d(x.oNeeds, x.needs); }], ["NeedsOwnerWorked", function(x){ return x.needsC; }],
+    ["NeverCalled", function(x){ return d(x.oUncalled, x.uncalled); }], ["NeverCalledWorked", function(x){ return x.uncalledC; }],
+    ["Counsellings", function(x){ return x.counsellings; }],
+    ["Revenue", function(x){ return Math.round(x.revenue || 0); }],
+    ["Enrolments", function(x){ return x.enrolments; }],
+    ["Audits", function(x){ return x.audits; }], ["AuditTarget", function(x){ return x.auditTarget; }]
+  ];
   var row = function(level, name, team, x){
-    lines.push([level, name, team || "", src,
-      d(x.oPool, x.pool), x.calls, d(x.oForm, x.form), x.formC, d(x.oScore, x.score), x.scoreC,
-      d(x.oIntl, x.intl), x.intlC, d(x.oNeeds, x.needs), x.needsC, d(x.oDue, x.due), x.done, x.missed,
-      d(x.oOverdue, x.overdue), x.overdueC, d(x.oUncalled, x.uncalled), x.uncalledC,
-      x.counsellings, Math.round(x.revenue || 0), x.enrolments, x.audits, x.auditTarget]
+    lines.push([level, name, team || "", src]
+      .concat(COLS.map(function(c){ return c[1](x); }))
       .map(function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","));
   };
+  lines.push(["Level","Name","Team","Source"].concat(COLS.map(function(c){ return c[0]; })).join(","));
   row("company", "All teams", "", sn);
   Object.keys(sn.teams || {}).forEach(function(k){ row("team", sn.teams[k].name, "", sn.teams[k]); });
   Object.keys(sn.agents || {}).forEach(function(k){ row("agent", sn.agents[k].name, sn.agents[k].team, sn.agents[k]); });
@@ -765,10 +779,6 @@ function auditCell(done, target){
   var d = done || 0;
   var cl = d >= target ? "cg" : (d === 0 ? "cr" : "ca");
   return "<b class='" + cl + "'>" + d + "</b><span class='mut'>/" + target + "</span>";
-}
-function cov(done, total){
-  if (!total) return "";
-  return fmt(done) + " called · " + Math.round(100 * done / total) + "%";
 }
 /* ---------- Overview strip ----------
    Twelve tiles in three bands, and the band names are the argument: revenue is a
@@ -999,16 +1009,6 @@ function drawExceptions(){
     h += "</div>";
   });
   return h + "</div></div>";
-}
-function qbar(x){
-  var due = x.due || 0, done = x.done || 0;
-  var pct = due ? Math.round(100 * done / due) : 0;
-  if (!due) return "<div class='mut' style='font-size:11.5px'>nothing due today</div>";
-  return "<div style='height:5px;border-radius:3px;background:#E7EEF4;overflow:hidden;display:flex;margin-top:4px'>" +
-    "<i style='display:block;height:5px;width:" + pct + "%;background:#0091AE'></i>" +
-    "<i style='display:block;height:5px;width:" + (100 - pct) + "%;background:#FF7A59'></i></div>" +
-    "<div class='mut' style='font-size:11.5px;margin-top:2px'><b class='cg'>" + fmt(done) + "</b> done · <b class='cr'>" +
-    fmt(due - done) + "</b> missed · " + pct + "%</div>";
 }
 var RECON = null, RECON_LOADING = false;
 function loadRecon(force){
