@@ -20,6 +20,20 @@ function ok(name, cond, extra){
   else { fail++; console.log("  FAIL " + name + (extra ? "  ->  " + extra : "")); }
 }
 
+/* The forms are not named to a house style. Real ones from the portal:
+   "Wanderess priyanka form", "Ayush Cohort form", "digital_girl_dubai Form", and some
+   are just the creator's name with nothing after it. An earlier version demanded the
+   word "waitlist" and would have kept most of these out. */
+[["wanderess_priyanka", "Wanderess priyanka form"],
+ ["ayush_singh13", "Ayush Cohort form"],
+ ["digital_girl_dubai", "digital_girl_dubai Form"],
+ ["kartikkapoor", "Kartik Kapoor"],
+ ["kartik_kapoor", "Kartik Kapoor"]
+].forEach(function(p){
+  ok("matches the real form name " + JSON.stringify(p[1]) + " to " + p[0],
+    creatorMatchesForm(p[0], p[1]) === true);
+});
+
 // A creator handle and their form are the same person however they are spelled.
 [["ayush_singh13", "Ayush Waitlist"],
  ["payalineurope", "Payal Waitlist"],
@@ -38,7 +52,9 @@ function ok(name, cond, extra){
 [["ayush_singh13", "Payal Waitlist"],
  ["payalineurope", "Ayush Waitlist"],
  ["simrankhokha", "Priyanka Waitlist"],
- ["vijaychandola", "Ankita Gulati Waitlist"]
+ ["vijaychandola", "Ankita Gulati Waitlist"],
+ ["ayush_singh13", "Wanderess priyanka form"],
+ ["technomanagers", "digital_girl_dubai Form"]
 ].forEach(function(p){
   ok("does not match " + p[0] + " to " + p[1], creatorMatchesForm(p[0], p[1]) === false);
 });
@@ -58,9 +74,14 @@ ok("an empty form name matches nothing", creatorMatchesForm("ayush_singh13", "")
 ok("punctuation and case are ignored", creatorMatchesForm("Ayush_Singh13", "  ayush   waitlist  ") === true);
 
 // The guard that keeps discovery from changing what counts as a priority lead.
-ok("discovery only considers forms that look like a waitlist",
-  src.indexOf('const FORM_INCLUDE = (process.env.FORM_INCLUDE || "waitlist")') >= 0 &&
-  src.indexOf("must not change meaning") >= 0);
+ok("naming the creator is the filter, not a house style nobody follows",
+  src.indexOf('const FORM_INCLUDE = (process.env.FORM_INCLUDE || "")') >= 0 &&
+  src.indexOf("Requiring a house style that does not exist") >= 0);
+ok("with a small denylist for the awkward middle",
+  src.indexOf('const FORM_EXCLUDE = (process.env.FORM_EXCLUDE || "unsubscribe,newsletter') >= 0);
+ok("and every match is named, so a wrong one is visible rather than trusted",
+  src.indexOf("matched: FORM_LIST.pairs") >= 0 &&
+  src.indexOf('pairs.push({ form: f.name, creator: who })') >= 0);
 ok("a hand-named form is never dropped by discovery",
   src.indexOf("Whatever was named by hand stays named by hand") >= 0);
 ok("and a creator with no form is reported rather than left silent",

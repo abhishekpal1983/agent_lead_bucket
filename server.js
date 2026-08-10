@@ -1078,7 +1078,8 @@ app.get("/api/health", function(req, res){
             ? OWNER_TRUNCATED : null,
           forms: (typeof FORM_LIST === "undefined") ? null : { tracked: (FORM_LIST.forms || []).length,
             discovered: FORM_LIST.discovered || 0, scanned: FORM_LIST.scanned || 0,
-            noFormFor: FORM_LIST.unmatched || [], error: FORM_LIST.error || null },
+            noFormFor: FORM_LIST.unmatched || [], matched: FORM_LIST.pairs || [],
+            error: FORM_LIST.error || null },
           // The sweep the page's numbers actually depend on.
           calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
             ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
@@ -2012,12 +2013,18 @@ async function fetchFormLabels(guid){
    So the forms are discovered. Every form in the portal is read once, and one is kept when
    its name names a tracked creator AND looks like a waitlist form.
 
-   That second condition matters. `formsOf` turns "has a submission" into the Form reason on
-   the calling queue, so pulling in every form a creator ever published would quietly widen
-   what counts as a priority lead. Discovery may add coverage; it must not change meaning.
-   FORM_INCLUDE relaxes it if you ever want more, and FORM_GUIDS still forces a form in by
-   hand. */
-const FORM_INCLUDE = (process.env.FORM_INCLUDE || "waitlist")
+   Naming the creator IS the filter. An earlier version also demanded the word "waitlist",
+   which was wrong: the forms are called "Ayush Cohort form", "Wanderess priyanka form",
+   "digital_girl_dubai Form", and some are just the creator's name with nothing after it.
+   Requiring a house style that does not exist would have quietly kept most of them out.
+
+   A generic form cannot match anyway, because "Contact Us" and "Newsletter" name nobody.
+   FORM_EXCLUDE is a small denylist for the awkward middle: a form whose name happens to
+   contain a creator's name without being theirs. Every match is reported, so a wrong one
+   is visible rather than silently feeding the Form reason on the calling queue. */
+const FORM_INCLUDE = (process.env.FORM_INCLUDE || "")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+const FORM_EXCLUDE = (process.env.FORM_EXCLUDE || "unsubscribe,newsletter,test form,demo request")
   .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
 const FORM_GUIDS_EXTRA = (process.env.FORM_GUIDS || "")
   .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
@@ -2064,15 +2071,16 @@ async function discoverForms(){
       if (!byGuid[g]) byGuid[g] = { guid: g, label: (f && f.name) || ("Form " + g), match: "", how: "env" };
     });
     const creators = PFRESH_LIST.slice();
-    const matched = {};
+    const matched = {}, pairs = [];
     all.forEach(function(f){
-      const looksRight = !FORM_INCLUDE.length ||
-        FORM_INCLUDE.some(function(w){ return f.name.toLowerCase().indexOf(w) >= 0; });
-      if (!looksRight) return;
+      const low = f.name.toLowerCase();
+      if (FORM_INCLUDE.length && !FORM_INCLUDE.some(function(w){ return low.indexOf(w) >= 0; })) return;
+      if (FORM_EXCLUDE.some(function(w){ return low.indexOf(w) >= 0; })) return;
       const who = creators.filter(function(c){ return creatorMatchesForm(c, f.name); })[0];
       if (!who) return;
       matched[who] = 1;
-      if (!byGuid[f.id]) byGuid[f.id] = { guid: f.id, label: f.name, match: f.name.toLowerCase(), how: "discovered" };
+      pairs.push({ form: f.name, creator: who });
+      if (!byGuid[f.id]) byGuid[f.id] = { guid: f.id, label: f.name, match: low, how: "discovered" };
     });
     const forms = Object.keys(byGuid).map(function(g){ return byGuid[g]; });
     // Creators with no form of their own: their leads can only ever show a form name.
@@ -2080,9 +2088,12 @@ async function discoverForms(){
       return !matched[c] && !forms.some(function(f){ return creatorMatchesForm(c, f.label); });
     });
     FORM_LIST = { forms: forms, at: Date.now(), discovered: forms.filter(function(f){ return f.how === "discovered"; }).length,
-      unmatched: unmatched, error: null, scanned: all.length };
+      // Every match, named. A form matched to the wrong creator would put somebody else's
+      // answers on a lead card, so it has to be inspectable rather than trusted.
+      pairs: pairs, unmatched: unmatched, error: null, scanned: all.length };
     console.log("Forms discovered: " + forms.length + " tracked (" + FORM_LIST.discovered + " found by name) from " +
       all.length + " in the portal" + (unmatched.length ? " · no form for: " + unmatched.join(", ") : ""));
+    pairs.forEach(function(p){ console.log("  form \"" + p.form + "\" -> " + p.creator); });
   } catch (e) {
     FORM_LIST.error = e.message;
     console.error("Form discovery failed: " + e.message + " (keeping the named list)");
