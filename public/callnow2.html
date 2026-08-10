@@ -990,7 +990,10 @@ function whyTags(r){
   if(r.why.intl)t.push("<span class='tag i' title='International number'>INTL</span>");
   if(r.why.ifc)t.push("<span class='tag p' title='Said interested in future and that date has arrived'>IFC due</span>");
   if(r.why.fresh)t.push("<span class='tag p' title='Brand new, nobody has worked it'>Fresh</span>");
-  if(r.source)t.push("<span class='tag src' title='Lead source'>"+esc(srcLabel(r.source))+"</span>");
+  // Labelled, because "Forms" as a lead SOURCE reads exactly like a form submission and
+  // is not one. A lead can carry the source and have no submission we hold.
+  if(r.source)t.push("<span class='tag src' title='Lead source: "+esc(srcLabel(r.source))+
+    ". This is where the lead came from, not a form we have read.'>"+esc(srcLabel(r.source))+"</span>");
   if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
   return t.join(" ");
 }
@@ -1163,7 +1166,12 @@ function whyBody(r){
     (r.stageEntered?" for "+days(r.stageEntered)+"d":"")+" &middot; "+fmt(r.calls)+" dial(s) in the stage, "+
     fmt(r.own)+" by this agent");
   if(r.formSubs&&r.formSubs.length)bits.push(formBlock(r.formSubs));
-  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", ")));
+  else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
+    " <span class='z'>(no answers held for this form yet)</span>");
+  else if(String(r.source||"").toLowerCase().indexOf("form")>=0)
+    bits.push("<span class='z'>Came in through a form, but we hold no submission for "+
+      "this email. Either the form is not one we read yet, or they filled it under a "+
+      "different address.</span>");
   if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+(r.bookAt?" on "+esc(tmp(r.bookAt)):""));
   if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
   if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));

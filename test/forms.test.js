@@ -88,5 +88,22 @@ ok("and a creator with no form is reported rather than left silent",
   src.indexOf("noFormFor: FORM_LIST.unmatched") >= 0 &&
   src.indexOf("creatorsWithoutForm:") >= 0);
 
+/* The trap this walked into: "Forms" is also a lead SOURCE. A card can show a Forms chip
+   and hold no submission at all, which reads as a bug and is not one. */
+ok("answers are no longer gated on the form label being set",
+  src.indexOf("formSubs: formAnswers({ email: r.email }),") >= 0);
+{
+  const page = fs.readFileSync(require("path").join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("the source chip says it is a source, not a submission",
+    page.indexOf("This is where the lead came from, not a form we have read") >= 0);
+  ok("and a form lead with no submission says why rather than showing nothing",
+    page.indexOf("we hold no submission for ") >= 0 &&
+    page.indexOf("no answers held for this form yet") >= 0);
+}
+ok("there is a lever to rediscover and re-read forms now",
+  src.indexOf('app.get("/api/callnow2/sync/forms"') >= 0 &&
+  src.indexOf("creatorsWithNoForm:") >= 0 &&
+  src.indexOf("submissionsPerForm:") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

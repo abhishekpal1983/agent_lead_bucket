@@ -2049,9 +2049,9 @@ function creatorMatchesForm(creator, formName){
   return false;
 }
 
-async function discoverForms(){
+async function discoverForms(force){
   if (!TOKEN) return FORM_LIST;
-  if (FORM_LIST.at && Date.now() - FORM_LIST.at < FORM_DISCOVER_HOURS * 3600000) return FORM_LIST;
+  if (!force && FORM_LIST.at && Date.now() - FORM_LIST.at < FORM_DISCOVER_HOURS * 3600000) return FORM_LIST;
   try {
     const all = [];
     let after = "", guard = 0;
@@ -3563,6 +3563,36 @@ async function syncDeltaNow(req, res){
     pages: DELTA.pages, merged: DELTA.lastCount, ms: DELTA.lastMs });
 }
 
+/* Rediscover the forms and re-read their submissions, now, and say what happened.
+
+   Discovery runs at boot and every twelve hours, and the submission pull every six, so
+   after adding a creator or renaming a form there is otherwise a long wait before anybody
+   can tell whether it worked. This answers with the forms it is tracking, which creator
+   each one matched, which creators still have none, and how many submissions came back
+   per form. Enough to diagnose "the lead filled the form but the card is empty" in one
+   call rather than by waiting. */
+app.get("/api/callnow2/sync/forms", function(req, res, next){ syncFormsNow(req, res).catch(next); });
+app.post("/api/callnow2/sync/forms", function(req, res, next){ syncFormsNow(req, res).catch(next); });
+async function syncFormsNow(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  if (!TOKEN) return res.status(503).json({ error: "no HubSpot token" });
+  try {
+    await discoverForms(true);
+    await syncForms(true);
+    res.json({ ok: true,
+      scannedInPortal: FORM_LIST.scanned || 0,
+      tracking: (FORM_LIST.forms || []).map(function(f){ return { form: f.label, guid: f.guid, how: f.how }; }),
+      matchedToCreator: FORM_LIST.pairs || [],
+      creatorsWithNoForm: FORM_LIST.unmatched || [],
+      submissionsPerForm: FORMS.counts || {},
+      emailsWithASubmission: FORMS.byEmail ? FORMS.byEmail.size : 0,
+      source: FORMS.source, note: FORMS.error || null,
+      discoveryError: FORM_LIST.error || null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
@@ -3794,7 +3824,11 @@ app.get("/api/callnow2/leads", function(req, res){
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,
-        formSubs: (r.forms && r.forms.length) ? formAnswers({ email: r.email }) : [],
+        /* Was gated on the Form label being set, which meant a lead whose form we had
+           not yet discovered showed nothing at all even once we held the submission.
+           If a submission exists for this email, it is worth reading whatever else we
+           concluded about the lead. */
+        formSubs: formAnswers({ email: r.email }),
         convRecent: r.convRecent || "", convFirst: r.convFirst || "",
         bookTitle: r.bookTitle || "", bookType: r.bookType || "",
         bookAt: r.bookAt || 0, bookN: r.bookN || 0,
