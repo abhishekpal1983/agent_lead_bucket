@@ -5162,6 +5162,160 @@ function monthWeeks(month){
   return out;
 }
 
+/* ---------- one row per agent, for one day ----------
+
+   Three questions a manager asks every morning about yesterday, answered side by side
+   instead of on three different screens:
+
+     how many people did each agent actually call
+     how many of those became a counselling
+     and how much of the list they were given did they get through
+
+   The first is deliberately NOT taken from our lead pool. It asks HubSpot directly for
+   every contact whose last call lands on that day, tracked creator or not, so a manager
+   can see the calls that fall outside the tracked list rather than having them silently
+   excluded. That is the number the HubSpot "calls done today" report shows.
+
+   Counselling uses the same definition as everything else here: the first time a contact
+   entered one of the counselled stages, read from engagement stage history. */
+const AGENTDAY_TTL_MS = 3 * 60 * 1000;
+const AGENTDAY = {};
+
+async function agentDayCalls(dateKey){
+  const hit = AGENTDAY[dateKey];
+  if (hit && Date.now() - hit.at < AGENTDAY_TTL_MS) return hit;
+  const b = istBoundsFor(dateKey);
+  const byOwner = {};
+  let total = 0, tracked = 0, guard = 0, lastId = "0";
+  while (guard < 600) {
+    guard++;
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "last_call_date_and_time", operator: "GTE", value: String(b.start) },
+        { propertyName: "last_call_date_and_time", operator: "LT", value: String(b.end) },
+        { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+      ]}],
+      properties: ["hubspot_owner_id", "topmate_username", "contact_engagement_stage"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+    const page = j.results || [];
+    if (!page.length) break;
+    page.forEach(function(r){
+      const p = r.properties || {};
+      const oid = String(p.hubspot_owner_id || "none");
+      if (!byOwner[oid]) byOwner[oid] = { called: 0, calledTracked: 0 };
+      byOwner[oid].called++; total++;
+      if (PFRESH_LIST.indexOf(p.topmate_username || "") >= 0) { byOwner[oid].calledTracked++; tracked++; }
+    });
+    lastId = page[page.length - 1].id;
+    if (page.length < 100) break;
+    await sleep(100);
+  }
+  const v = { at: Date.now(), byOwner: byOwner, total: total, tracked: tracked };
+  AGENTDAY[dateKey] = v;
+  return v;
+}
+
+app.get("/api/vp/agent-day", async function(req, res){
+  const today = istParts(new Date()).date;
+  const date = String(req.query.date || today);
+  const isToday = date === today;
+  try {
+    const teamOf = {}, teamName = {};
+    (ORG.teams || []).forEach(function(t){
+      teamName[t.id] = t.name || "(unnamed)";
+      (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+    });
+    const allow = cn2Scope(req);          // null for a VP, own agents for a manager
+    const inScope = function(id){ return !allow || allow.indexOf(String(id)) >= 0; };
+
+    /* HubSpot being unreachable should cost the call counts, not the whole report. The
+       counselling and list columns come from what we already hold and are still worth
+       showing, with the missing part named rather than shown as zero. */
+    let calls = { byOwner: {}, total: 0, tracked: 0 };
+    let callsError = null;
+    try { calls = await agentDayCalls(date); }
+    catch (e) { callsError = e.message; console.error("agent-day calls: " + e.message); }
+
+    /* Counsellings that day, attributed to whoever holds the lead now, the same rule
+       Overview and the daily review use. */
+    const couns = {};
+    const b = istBoundsFor(date);
+    callnowPool().forEach(function(c){
+      const t = ts(COUNSEL.byId[c.id]);
+      if (!t || t < b.start || t >= b.end) return;
+      const oid = String(c.hubspot_owner_id || "none");
+      couns[oid] = (couns[oid] || 0) + 1;
+    });
+
+    /* The Call Now side. Today comes from the live frozen list; a past day comes from
+       the snapshot written that night, because the list it was measured against no
+       longer exists. */
+    const cn = {};
+    if (isToday && cn2Ready()) {
+      const snap = cn2SnapshotCached();
+      Object.keys(snap.base).forEach(function(id){
+        const bb = CN2.read(snap.base[id]);
+        if (!bb.counted || bb.sec !== CN2.SEC_ACTION) return;
+        const oid = String(bb.owner || "none");
+        if (!cn[oid]) cn[oid] = { queue: 0, worked: 0, due: 0, done: 0, overdue: 0, overdueW: 0,
+          nofu: 0, nofuW: 0, fresh: 0, freshW: 0 };
+        const lv = snap.live[id] || snap.liveAll[id] || null;
+        const ct = !!(lv && lv.last >= snap.day.start && lv.last < snap.day.end);
+        const o = cn[oid];
+        o.queue++; if (ct) o.worked++;
+        if (bb.t === "due")  { o.due++; if (ct) o.done++; }
+        if (bb.t === "over") { o.overdue++; if (ct) o.overdueW++; }
+        if (bb.t === "nofu") { o.nofu++; if (ct) o.nofuW++; }
+        if (bb.why.fresh)    { o.fresh++; if (ct) o.freshW++; }
+      });
+    } else {
+      const snap = ((ORG.daily || {})[date] || {}).agents || {};
+      Object.keys(snap).forEach(function(oid){
+        const a = snap[oid];
+        cn[oid] = { queue: a.pool || 0, worked: a.calls || 0, due: a.due || 0, done: a.done || 0,
+          overdue: a.overdue || 0, overdueW: a.overdueC || 0, nofu: a.nofu || 0, nofuW: a.nofuC || 0,
+          fresh: a.fresh || 0, freshW: a.freshC || 0 };
+      });
+    }
+
+    const ids = {};
+    Object.keys(calls.byOwner).forEach(function(id){ ids[id] = 1; });
+    Object.keys(couns).forEach(function(id){ ids[id] = 1; });
+    Object.keys(cn).forEach(function(id){ ids[id] = 1; });
+    Object.keys(teamOf).forEach(function(id){ ids[id] = 1; });
+
+    const rows = Object.keys(ids).filter(function(id){
+      if (id === "none") return !allow;          // unassigned is a floor level row
+      return inScope(id);
+    }).map(function(id){
+      const c = calls.byOwner[id] || { called: 0, calledTracked: 0 };
+      const o = CACHE.owners[id] || {};
+      return Object.assign({
+        id: id, name: id === "none" ? "(unassigned)" : (o.name || ("Owner " + id)),
+        team: teamOf[id] ? teamName[teamOf[id]] : "",
+        active: o.active !== false,
+        called: c.called, calledTracked: c.calledTracked,
+        calledOutside: Math.max(0, c.called - c.calledTracked),
+        counsellings: couns[id] || 0
+      }, cn[id] || { queue: 0, worked: 0, due: 0, done: 0, overdue: 0, overdueW: 0,
+        nofu: 0, nofuW: 0, fresh: 0, freshW: 0 });
+    }).filter(function(r){ return r.called || r.counsellings || r.queue; })
+      .sort(function(a, b2){ return b2.called - a.called || b2.queue - a.queue; });
+
+    res.json({ date: date, isToday: isToday, scoped: !!allow, callsError: callsError,
+      source: isToday ? "live" : (((ORG.daily || {})[date]) ? "snapshot" : "none"),
+      rows: rows,
+      totals: rows.reduce(function(a, r){
+        ["called","calledTracked","calledOutside","counsellings","queue","worked","due","done",
+         "overdue","overdueW","nofu","nofuW","fresh","freshW"].forEach(function(k){
+          a[k] = (a[k] || 0) + (r[k] || 0); });
+        return a;
+      }, {}) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/vp/creator-weeks", function(req, res){
   const month = String(req.query.month || curMonth());
   const t = (ORG.targets || {})[month] || { teams: {}, creators: {} };

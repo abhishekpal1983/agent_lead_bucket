@@ -379,6 +379,23 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* One row per agent for one day. */
+    const ad = await get("/api/vp/agent-day");
+    ok("agent day answers", ad.status === 200, "status " + ad.status + " " + ad.raw);
+    ok("it says where its list columns came from",
+      ad.body && ["live", "snapshot", "none"].indexOf(ad.body.source) >= 0, JSON.stringify(ad.body && ad.body.source));
+    ok("a past date with no snapshot is reported, not faked",
+      (await get("/api/vp/agent-day?date=2020-01-01")).body.source === "none");
+    ok("HubSpot being unreachable costs the call counts, not the whole report",
+      ad.status === 200 && (!ad.body.callsError || ad.body.rows !== undefined),
+      JSON.stringify(ad.body && ad.body.callsError));
+    ok("every row keeps tracked and untracked calls separable",
+      (ad.body.rows || []).every(function(r){
+        return r.called === r.calledTracked + r.calledOutside; }),
+      JSON.stringify((ad.body.rows || [])[0]));
+    ok("and no row claims more calls made than it has",
+      (ad.body.rows || []).every(function(r){ return r.done <= r.due && r.worked <= r.queue; }));
+
     /* Creator targets split across the weeks of the month. */
     const cw = await get("/api/vp/creator-weeks");
     ok("creator weeks answers", cw.status === 200, "status " + cw.status + " " + cw.raw);

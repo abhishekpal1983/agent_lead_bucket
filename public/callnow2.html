@@ -904,11 +904,12 @@ function segNote(){
    width below, where they wrap to one or two rows instead of five. */
 function barTop(){
   var h="<div class='bar ctl'>";
-  // A scoped reader has nothing to choose between, so the picker is not drawn for them.
-  if(!J.scoped){
-    h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
-    h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
-  }
+  /* A manager picks between their own agents, which is most of what they use this page
+     for, so they keep the Agent list; the server has already scoped it to their team.
+     Only the Manager picker is a VP control. An agent has nothing to choose between and
+     gets neither. */
+  if(!J.scoped)h+=sel("team","Manager",(J.teamOptions||[]).map(function(t){return {v:t.id,l:t.name};}),Q.team);
+  if(J.role!=="agent")h+=sel("agent","Agent",(J.agentOptions||[]).map(function(a){return {v:a.id,l:a.name+" · "+fmt(a.n)};}),Q.agent);
   h+=sel("creator","Creator",(J.creatorOptions||[]).map(function(c){return {v:c.u,l:c.u+" · "+fmt(c.n)};}),Q.creator);
   h+=sel("source","Source",(J.sourceOptions||[]).map(function(c){return {v:c.u,l:srcLabel(c.u)+" · "+fmt(c.n)};}),Q.source);
   h+=sel("intl","Number",[{v:"yes",l:"International only"},{v:"no",l:"National only"}],Q.intl);

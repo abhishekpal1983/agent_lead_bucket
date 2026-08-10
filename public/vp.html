@@ -690,9 +690,105 @@ function renderWeeks(){
   el.innerHTML = h;
 }
 
+/* One row per agent for one day: how many people they called, how many became a
+   counselling, and how much of their list they got through.
+
+   The call count comes from HubSpot directly rather than from our lead pool, so calls on
+   creators we do not track are shown rather than silently dropped. That difference is its
+   own column, because it is usually the answer to "why does HubSpot say more than you". */
+var AD = null, AD_DATE = "";
+function loadAgentDay(d){
+  fetch("/api/vp/agent-day" + (d ? "?date=" + encodeURIComponent(d) : ""))
+    .then(asJson)
+    .then(function(j){ AD = j; AD_DATE = j.date; renderAgentDay(); })
+    .catch(function(e){
+      var el = document.getElementById("adwrap");
+      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
+    });
+}
+function adPc(did, tot){
+  if (!tot) return "<span class='mut'>–</span>";
+  var pc = Math.round(100 * did / tot);
+  return "<b class='" + (pc >= 60 ? "cg" : (pc > 0 ? "ca" : "cr")) + "'>" + fmt(did) + "</b>" +
+    "<span class='mut'> of " + fmt(tot) + "</span>" +
+    "<div class='pbar'><i style='width:" + Math.min(100, pc) + "%'></i></div>";
+}
+function renderAgentDay(){
+  var el = document.getElementById("adwrap");
+  if (!el) return;
+  var j = AD;
+  if (!j) return;
+  var t = j.totals || {};
+  var h = "<div class='sec'><h2>Agent day <span class='mut' style='font-size:12.5px;font-weight:400'>" +
+    esc(j.date) + (j.isToday ? " · today, still moving" : "") + "</span></h2>" +
+    "<div class='sub'>What each agent did on one day: people called, counsellings, and how much of " +
+    "the calling list they were given they got through. Calls are counted from HubSpot itself, so " +
+    "calls on creators outside the tracked list are shown rather than dropped." +
+    (j.scoped ? " Your team only." : "") +
+    (j.source === "none" ? " <b>No snapshot exists for that date, so the list columns are empty.</b>" : "") +
+    (j.callsError ? " <b>HubSpot could not be reached for the call counts, so People called reads zero. " +
+      esc(j.callsError) + "</b>" : "") +
+    "</div>";
+  h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
+    "<input type='date' value='" + esc(j.date) + "' onchange='loadAgentDay(this.value)'>" +
+    "<button class='btn' onclick='adCsv()'>Download CSV</button>" +
+    "<span class='mut' style='font-size:12px'>" +
+    (j.isToday ? "live" : "from the snapshot written that night") + "</span></div>";
+
+  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
+    tile("grey", fmt(t.called || 0), "People called", fmt(t.calledOutside || 0) + " outside the tracked list") +
+    tile("grey", fmt(t.counsellings || 0), "Counsellings") +
+    tile("grey", fmt(t.worked || 0) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t.queue || 0) + "</span>", "Call today worked") +
+    tile("grey", fmt(t.done || 0) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t.due || 0) + "</span>", "Due today called") +
+    "</div>";
+
+  h += "<div class='tw'><table class='rt'><thead><tr><th>Agent</th>" +
+    "<th class='n'>People called</th><th class='n' title='Calls on creators the list does not track'>Outside</th>" +
+    "<th class='n'>Counsellings</th>" +
+    "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Overdue</th>" +
+    "<th class='n'>No FU</th><th class='n'>Fresh</th></tr></thead><tbody>";
+  (j.rows || []).forEach(function(r){
+    h += "<tr><td><b>" + esc(r.name) + "</b>" +
+      (r.active === false ? " <span class='pill a'>inactive</span>" : "") +
+      (r.team ? "<div class='mut' style='font-size:11.5px'>" + esc(r.team) + "</div>" : "") + "</td>" +
+      "<td class='n'><b>" + fmt(r.called) + "</b></td>" +
+      "<td class='n " + (r.calledOutside ? "ca" : "mut") + "'>" + (r.calledOutside ? fmt(r.calledOutside) : "–") + "</td>" +
+      "<td class='n'>" + (r.counsellings ? "<b class='cg'>" + fmt(r.counsellings) + "</b>" : "<span class='mut'>0</span>") + "</td>" +
+      "<td class='n'>" + adPc(r.worked, r.queue) + "</td>" +
+      "<td class='n'>" + adPc(r.done, r.due) + "</td>" +
+      "<td class='n'>" + adPc(r.overdueW, r.overdue) + "</td>" +
+      "<td class='n'>" + adPc(r.nofuW, r.nofu) + "</td>" +
+      "<td class='n'>" + adPc(r.freshW, r.fresh) + "</td></tr>";
+  });
+  if (!(j.rows || []).length) h += "<tr><td colspan='9' class='mut'>Nobody called anybody on that date.</td></tr>";
+  h += "</tbody></table></div></div>";
+  el.innerHTML = h;
+}
+function adCsv(){
+  if (!AD) return;
+  var COLS = [["Agent", function(r){ return r.name; }], ["Team", function(r){ return r.team; }],
+    ["PeopleCalled", function(r){ return r.called; }],
+    ["CalledTracked", function(r){ return r.calledTracked; }],
+    ["CalledOutside", function(r){ return r.calledOutside; }],
+    ["Counsellings", function(r){ return r.counsellings; }],
+    ["CallToday", function(r){ return r.queue; }], ["CallTodayWorked", function(r){ return r.worked; }],
+    ["DueToday", function(r){ return r.due; }], ["DueTodayCalled", function(r){ return r.done; }],
+    ["Overdue", function(r){ return r.overdue; }], ["OverdueCalled", function(r){ return r.overdueW; }],
+    ["NoFU", function(r){ return r.nofu; }], ["NoFUCalled", function(r){ return r.nofuW; }],
+    ["Fresh", function(r){ return r.fresh; }], ["FreshCalled", function(r){ return r.freshW; }]];
+  var lines = [COLS.map(function(c){ return c[0]; }).join(",")];
+  (AD.rows || []).forEach(function(r){
+    lines.push(COLS.map(function(c){ return '"' + String(c[1](r) == null ? "" : c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
+  });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = "agent_day_" + AD.date + ".csv";
+  a.click();
+}
+
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
-    ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
+    ["agentday", "Agent day", ""], ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
     items.push(["mapping", "Mapping", String(J.drift.length)]);
@@ -741,6 +837,7 @@ function draw(){
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
   if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
   else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
+  else if (VIEW === "agentday") h += "<div id='adwrap'>Loading the day...</div>";
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
@@ -749,6 +846,7 @@ function draw(){
   drawNav();
   if (VIEW === "daily") loadDaily(DAILY_DATE);
   if (VIEW === "weeks") loadWeeks();
+  if (VIEW === "agentday") loadAgentDay(AD_DATE);
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +

@@ -244,8 +244,12 @@ console.log("\nRole specific things appear only where they should");
     [vp, mgr, agent].every(function(x){ return x.indexOf("Call Now v1 against v2") < 0; }));
   ok("only a VP can relock the list", vp.indexOf("Lock again") >= 0 && agent.indexOf("Lock again") < 0);
   ok("an agent gets no agent table", vp.indexOf("by agent") >= 0 && agent.indexOf("by agent") < 0);
-  ok("a scoped reader gets no manager or agent picker",
-    vp.indexOf(">Manager<") >= 0 && agent.indexOf(">Manager<") < 0);
+  // A manager picks between their own agents constantly; only the Manager picker is a
+  // VP control. An agent has nothing to choose between and gets neither.
+  ok("only a VP gets the manager picker",
+    vp.indexOf(">Manager<") >= 0 && mgr.indexOf(">Manager<") < 0 && agent.indexOf(">Manager<") < 0);
+  ok("a manager gets the agent picker, an agent does not",
+    mgr.indexOf(">Agent<") >= 0 && vp.indexOf(">Agent<") >= 0 && agent.indexOf(">Agent<") < 0);
   // Reversed on purpose: an agent already has every stage in the matrix, and only ever
   // holds their own leads, so both chip rows were duplicating or filtering on nothing.
   ok("managers and VPs keep the stage and owner controls",
@@ -615,6 +619,21 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf("auditCell(x.audits, x.auditTarget)") >= 0);
   /* Creator targets week by week: a monthly number nobody can act on until the 25th,
      split into a Monday question. */
+  /* One row per agent for one day: called, counselled, and how much of the list they got
+     through. Three questions that used to need three screens. */
+  ok("agent day is its own view", vphtml.indexOf('["agentday", "Agent day", ""]') >= 0 &&
+    vphtml.indexOf("function renderAgentDay") >= 0);
+  ok("it counts calls from HubSpot, not from our own lead pool",
+    vphtml.indexOf("Calls are counted from HubSpot itself") >= 0);
+  ok("and shows calls on untracked creators rather than dropping them",
+    vphtml.indexOf("Calls on creators the list does not track") >= 0);
+  ok("every list column is worked against total",
+    vphtml.indexOf("function adPc(did, tot)") >= 0 &&
+    vphtml.indexOf("adPc(r.overdueW, r.overdue)") >= 0);
+  ok("its export pairs each name with the value it reads, like the other one",
+    vphtml.indexOf('["OverdueCalled", function(r){ return r.overdueW; }]') >= 0);
+  ok("a date with no snapshot says so instead of showing zeros as fact",
+    vphtml.indexOf("No snapshot exists for that date") >= 0);
   ok("creator weeks is its own view", vphtml.indexOf('["weeks", "Creator weeks", ""]') >= 0 &&
     vphtml.indexOf("function renderWeeks") >= 0);
   ok("it explains that the split follows working days",
