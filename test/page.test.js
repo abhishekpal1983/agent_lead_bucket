@@ -623,6 +623,15 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
      through. Three questions that used to need three screens. */
   ok("agent day is its own view", vphtml.indexOf('["agentday", "Agent day", ""]') >= 0 &&
     vphtml.indexOf("function renderAgentDay") >= 0);
+  ok("it can be filtered by manager and by agent",
+    vphtml.indexOf("function adRows()") >= 0 && vphtml.indexOf("All managers") >= 0 &&
+    vphtml.indexOf("All agents") >= 0);
+  ok("the agent list follows the manager choice, so the two cannot disagree",
+    vphtml.indexOf("Agents to choose from follow the manager choice") >= 0);
+  ok("the tiles are recomputed from the filtered rows, not left showing the floor",
+    vphtml.indexOf("var t = adTotals(rows);") >= 0);
+  ok("and the export follows what is on screen",
+    vphtml.indexOf("adRows().forEach(function(r){") >= 0);
   ok("it counts calls from HubSpot, not from our own lead pool",
     vphtml.indexOf("Calls are counted from HubSpot itself") >= 0);
   ok("and shows calls on untracked creators rather than dropping them",

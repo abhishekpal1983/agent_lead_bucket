@@ -696,7 +696,26 @@ function renderWeeks(){
    The call count comes from HubSpot directly rather than from our lead pool, so calls on
    creators we do not track are shown rather than silently dropped. That difference is its
    own column, because it is usually the answer to "why does HubSpot say more than you". */
-var AD = null, AD_DATE = "";
+var AD = null, AD_DATE = "", AD_TEAM = "", AD_AGENT = "";
+function adSet(k, v){ if(k === "team"){ AD_TEAM = v; AD_AGENT = ""; } else AD_AGENT = v; renderAgentDay(); }
+/* Filtering here rather than on the server: the rows are already loaded and small, so a
+   round trip would only add a wait. The tiles are recomputed from the filtered rows, or
+   they would answer a different question from the table under them. */
+function adRows(){
+  return ((AD && AD.rows) || []).filter(function(r){
+    if (AD_TEAM && r.teamId !== AD_TEAM) return false;
+    if (AD_AGENT && String(r.id) !== AD_AGENT) return false;
+    return true;
+  });
+}
+function adTotals(rows){
+  return rows.reduce(function(a, r){
+    ["called","calledTracked","calledOutside","counsellings","queue","worked","due","done",
+     "overdue","overdueW","nofu","nofuW","fresh","freshW"].forEach(function(k){
+      a[k] = (a[k] || 0) + (r[k] || 0); });
+    return a;
+  }, {});
+}
 function loadAgentDay(d){
   fetch("/api/vp/agent-day" + (d ? "?date=" + encodeURIComponent(d) : ""))
     .then(asJson)
@@ -718,7 +737,8 @@ function renderAgentDay(){
   if (!el) return;
   var j = AD;
   if (!j) return;
-  var t = j.totals || {};
+  var rows = adRows();
+  var t = adTotals(rows);
   var h = "<div class='sec'><h2>Agent day <span class='mut' style='font-size:12.5px;font-weight:400'>" +
     esc(j.date) + (j.isToday ? " · today, still moving" : "") + "</span></h2>" +
     "<div class='sub'>What each agent did on one day: people called, counsellings, and how much of " +
@@ -729,11 +749,26 @@ function renderAgentDay(){
     (j.callsError ? " <b>HubSpot could not be reached for the call counts, so People called reads zero. " +
       esc(j.callsError) + "</b>" : "") +
     "</div>";
+  // Agents to choose from follow the manager choice, so the two pickers cannot disagree.
+  var pool = ((j.rows || []).filter(function(r){ return !AD_TEAM || r.teamId === AD_TEAM; }));
   h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
     "<input type='date' value='" + esc(j.date) + "' onchange='loadAgentDay(this.value)'>" +
+    (j.isVP && (j.teams || []).length > 1
+      ? "<select onchange=\"adSet('team',this.value)\"><option value=''>All managers</option>" +
+        (j.teams || []).map(function(x){
+          return "<option value='" + esc(x.id) + "'" + (AD_TEAM === x.id ? " selected" : "") + ">" +
+            esc(x.name) + "</option>"; }).join("") + "</select>"
+      : "") +
+    "<select onchange=\"adSet('agent',this.value)\"><option value=''>All agents</option>" +
+    pool.map(function(r){
+      return "<option value='" + esc(String(r.id)) + "'" + (AD_AGENT === String(r.id) ? " selected" : "") + ">" +
+        esc(r.name) + "</option>"; }).join("") + "</select>" +
+    ((AD_TEAM || AD_AGENT) ? "<button class='btn' onclick=\"AD_TEAM='';AD_AGENT='';renderAgentDay()\">Clear</button>" : "") +
     "<button class='btn' onclick='adCsv()'>Download CSV</button>" +
     "<span class='mut' style='font-size:12px'>" +
-    (j.isToday ? "live" : "from the snapshot written that night") + "</span></div>";
+    (j.isToday ? "live" : "from the snapshot written that night") +
+    ((AD_TEAM || AD_AGENT) ? " · " + fmt(rows.length) + " of " + fmt((j.rows || []).length) + " agents" : "") +
+    "</span></div>";
 
   h += "<div class='tiles compact' style='margin-bottom:12px'>" +
     tile("grey", fmt(t.called || 0), "People called", fmt(t.calledOutside || 0) + " outside the tracked list") +
@@ -747,7 +782,7 @@ function renderAgentDay(){
     "<th class='n'>Counsellings</th>" +
     "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Overdue</th>" +
     "<th class='n'>No FU</th><th class='n'>Fresh</th></tr></thead><tbody>";
-  (j.rows || []).forEach(function(r){
+  rows.forEach(function(r){
     h += "<tr><td><b>" + esc(r.name) + "</b>" +
       (r.active === false ? " <span class='pill a'>inactive</span>" : "") +
       (r.team ? "<div class='mut' style='font-size:11.5px'>" + esc(r.team) + "</div>" : "") + "</td>" +
@@ -760,7 +795,8 @@ function renderAgentDay(){
       "<td class='n'>" + adPc(r.nofuW, r.nofu) + "</td>" +
       "<td class='n'>" + adPc(r.freshW, r.fresh) + "</td></tr>";
   });
-  if (!(j.rows || []).length) h += "<tr><td colspan='9' class='mut'>Nobody called anybody on that date.</td></tr>";
+  if (!rows.length) h += "<tr><td colspan='9' class='mut'>" +
+    ((AD_TEAM || AD_AGENT) ? "Nothing for that filter on this date." : "Nobody called anybody on that date.") + "</td></tr>";
   h += "</tbody></table></div></div>";
   el.innerHTML = h;
 }
@@ -777,7 +813,9 @@ function adCsv(){
     ["NoFU", function(r){ return r.nofu; }], ["NoFUCalled", function(r){ return r.nofuW; }],
     ["Fresh", function(r){ return r.fresh; }], ["FreshCalled", function(r){ return r.freshW; }]];
   var lines = [COLS.map(function(c){ return c[0]; }).join(",")];
-  (AD.rows || []).forEach(function(r){
+  // The export follows what is on screen. Exporting the unfiltered set would hand
+  // somebody a file that does not match the page they asked it from.
+  adRows().forEach(function(r){
     lines.push(COLS.map(function(c){ return '"' + String(c[1](r) == null ? "" : c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
   });
   var a = document.createElement("a");

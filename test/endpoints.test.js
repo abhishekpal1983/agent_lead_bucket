@@ -382,6 +382,10 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     /* One row per agent for one day. */
     const ad = await get("/api/vp/agent-day");
     ok("agent day answers", ad.status === 200, "status " + ad.status + " " + ad.raw);
+    ok("it offers the pickers a manager needs, built from teams not from rows",
+      Array.isArray(ad.body.teams) && "isVP" in ad.body);
+    ok("and every row carries the team id the picker filters on",
+      (ad.body.rows || []).every(function(r){ return "teamId" in r; }));
     ok("it says where its list columns came from",
       ad.body && ["live", "snapshot", "none"].indexOf(ad.body.source) >= 0, JSON.stringify(ad.body && ad.body.source));
     ok("a past date with no snapshot is reported, not faked",

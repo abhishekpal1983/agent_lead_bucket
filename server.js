@@ -5293,6 +5293,7 @@ app.get("/api/vp/agent-day", async function(req, res){
       return Object.assign({
         id: id, name: id === "none" ? "(unassigned)" : (o.name || ("Owner " + id)),
         team: teamOf[id] ? teamName[teamOf[id]] : "",
+        teamId: teamOf[id] || "",
         active: o.active !== false,
         called: c.called, calledTracked: c.calledTracked,
         calledOutside: Math.max(0, c.called - c.calledTracked),
@@ -5302,7 +5303,15 @@ app.get("/api/vp/agent-day", async function(req, res){
     }).filter(function(r){ return r.called || r.counsellings || r.queue; })
       .sort(function(a, b2){ return b2.called - a.called || b2.queue - a.queue; });
 
+    // The pickers are built from the teams the caller may see, not from the rows, so a
+    // manager with a quiet day still gets their own name rather than an empty list.
+    const me2 = String(whoami(req) || "").toLowerCase();
+    const teams = (ORG.teams || []).filter(function(t){
+      return isVP(req) || String(t.managerEmail || "").toLowerCase() === me2;
+    }).map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; });
+
     res.json({ date: date, isToday: isToday, scoped: !!allow, callsError: callsError,
+      isVP: isVP(req), teams: teams,
       source: isToday ? "live" : (((ORG.daily || {})[date]) ? "snapshot" : "none"),
       rows: rows,
       totals: rows.reduce(function(a, r){
