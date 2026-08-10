@@ -1076,6 +1076,9 @@ app.get("/api/health", function(req, res){
             stalled: DELTA.stalled || null },
           truncatedOwners: Object.keys(OWNER_TRUNCATED || {}).length
             ? OWNER_TRUNCATED : null,
+          forms: (typeof FORM_LIST === "undefined") ? null : { tracked: (FORM_LIST.forms || []).length,
+            discovered: FORM_LIST.discovered || 0, scanned: FORM_LIST.scanned || 0,
+            noFormFor: FORM_LIST.unmatched || [], error: FORM_LIST.error || null },
           // The sweep the page's numbers actually depend on.
           calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
             ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
@@ -1999,6 +2002,95 @@ async function fetchFormLabels(guid){
   return map;
 }
 
+/* ---------- which forms to read ----------
+
+   This list used to be three hard-coded waitlist forms. Ten creators are tracked now, and
+   the list never followed, so a lead who filled any other creator's form showed the form
+   name and nothing to read. The list drifting out of date the next time a creator is added
+   is the actual bug; naming three more forms would only postpone it.
+
+   So the forms are discovered. Every form in the portal is read once, and one is kept when
+   its name names a tracked creator AND looks like a waitlist form.
+
+   That second condition matters. `formsOf` turns "has a submission" into the Form reason on
+   the calling queue, so pulling in every form a creator ever published would quietly widen
+   what counts as a priority lead. Discovery may add coverage; it must not change meaning.
+   FORM_INCLUDE relaxes it if you ever want more, and FORM_GUIDS still forces a form in by
+   hand. */
+const FORM_INCLUDE = (process.env.FORM_INCLUDE || "waitlist")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+const FORM_GUIDS_EXTRA = (process.env.FORM_GUIDS || "")
+  .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+const FORM_DISCOVER_HOURS = parseFloat(process.env.FORM_DISCOVER_HOURS || "12");
+let FORM_LIST = { forms: WAITLIST_FORMS.slice(), at: 0, discovered: 0, unmatched: [], error: null };
+
+// "ayush_singh13" and "Ayush Waitlist" are the same person. Compare on letters only, and
+// require a run of at least five so "the" and "and" cannot match anything.
+function nameKey(s){ return String(s || "").toLowerCase().replace(/[^a-z]/g, ""); }
+function creatorMatchesForm(creator, formName){
+  const c = nameKey(creator);
+  if (c.length < 5) return false;
+  const words = String(formName || "").toLowerCase().split(/[^a-z]+/).filter(function(w){ return w.length >= 5; });
+  for (let i = 0; i < words.length; i++) if (c.indexOf(words[i]) >= 0) return true;
+  // And the other way, for a creator handle that runs the words together.
+  for (let n = c.length; n >= 5; n--) {
+    for (let i = 0; i + n <= c.length; i++) {
+      if (nameKey(formName).indexOf(c.slice(i, i + n)) >= 0 && n >= 5) return true;
+    }
+    if (n < 6) break;   // stop before this gets expensive; five letters is enough signal
+  }
+  return false;
+}
+
+async function discoverForms(){
+  if (!TOKEN) return FORM_LIST;
+  if (FORM_LIST.at && Date.now() - FORM_LIST.at < FORM_DISCOVER_HOURS * 3600000) return FORM_LIST;
+  try {
+    const all = [];
+    let after = "", guard = 0;
+    while (guard < 40) {
+      guard++;
+      const j = await hs("/marketing/v3/forms?limit=100" + (after ? "&after=" + encodeURIComponent(after) : ""));
+      (j.results || []).forEach(function(f){ all.push({ id: String(f.id), name: String(f.name || "") }); });
+      after = ((j.paging || {}).next || {}).after || "";
+      if (!after) break;
+      await sleep(120);
+    }
+    const byGuid = {};
+    // Whatever was named by hand stays named by hand, discovery only ever adds.
+    WAITLIST_FORMS.forEach(function(f){ byGuid[f.guid] = { guid: f.guid, label: f.label, match: f.match, how: "named" }; });
+    FORM_GUIDS_EXTRA.forEach(function(g){
+      const f = all.filter(function(x){ return x.id === g; })[0];
+      if (!byGuid[g]) byGuid[g] = { guid: g, label: (f && f.name) || ("Form " + g), match: "", how: "env" };
+    });
+    const creators = PFRESH_LIST.slice();
+    const matched = {};
+    all.forEach(function(f){
+      const looksRight = !FORM_INCLUDE.length ||
+        FORM_INCLUDE.some(function(w){ return f.name.toLowerCase().indexOf(w) >= 0; });
+      if (!looksRight) return;
+      const who = creators.filter(function(c){ return creatorMatchesForm(c, f.name); })[0];
+      if (!who) return;
+      matched[who] = 1;
+      if (!byGuid[f.id]) byGuid[f.id] = { guid: f.id, label: f.name, match: f.name.toLowerCase(), how: "discovered" };
+    });
+    const forms = Object.keys(byGuid).map(function(g){ return byGuid[g]; });
+    // Creators with no form of their own: their leads can only ever show a form name.
+    const unmatched = creators.filter(function(c){
+      return !matched[c] && !forms.some(function(f){ return creatorMatchesForm(c, f.label); });
+    });
+    FORM_LIST = { forms: forms, at: Date.now(), discovered: forms.filter(function(f){ return f.how === "discovered"; }).length,
+      unmatched: unmatched, error: null, scanned: all.length };
+    console.log("Forms discovered: " + forms.length + " tracked (" + FORM_LIST.discovered + " found by name) from " +
+      all.length + " in the portal" + (unmatched.length ? " · no form for: " + unmatched.join(", ") : ""));
+  } catch (e) {
+    FORM_LIST.error = e.message;
+    console.error("Form discovery failed: " + e.message + " (keeping the named list)");
+  }
+  return FORM_LIST;
+}
+function formList(){ return (FORM_LIST.forms && FORM_LIST.forms.length) ? FORM_LIST.forms : WAITLIST_FORMS; }
+
 const FORMS_HOURS = parseFloat(process.env.FORMS_HOURS || "6");
 async function syncForms(force){
   if (!TOKEN || FORMS.syncing) return;
@@ -2008,10 +2100,12 @@ async function syncForms(force){
   if (!force && FORMS.byEmail.size > 0 && ageH < FORMS_HOURS && !FORMS.error) return;
   FORMS.syncing = true;
   try {
+  await discoverForms();
+  const LIST = formList();
   const map = new Map();
   const counts = {}, labels = {};
   let ok = 0, err = "";
-  for (const f of WAITLIST_FORMS) {
+  for (const f of LIST) {
     try {
       const subs = await fetchFormSubmissions(f.guid);
       if (!labels[f.guid]) labels[f.guid] = await fetchFormLabels(f.guid);
@@ -2036,7 +2130,7 @@ async function syncForms(force){
   const quota = /429|daily limit|rate limit/i.test(err);
   const denied = /\b40[13]\b|scope/i.test(err);
   let note = null;
-  if (ok < WAITLIST_FORMS.length) {
+  if (ok < LIST.length) {
     note = quota
       ? "HubSpot daily API limit reached, so waitlist form data was not refreshed this cycle. Showing the last good snapshot; it retries automatically."
       : denied
@@ -2050,11 +2144,11 @@ async function syncForms(force){
     byEmail: keepOld ? FORMS.byEmail : map,
     labels: Object.keys(labels).length ? labels : FORMS.labels,
     counts: keepOld ? FORMS.counts : counts,
-    source: ok === WAITLIST_FORMS.length ? "forms-api" : (keepOld ? "forms-api (cached)" : (ok > 0 ? "forms-api (partial)" : "conversion-event fallback only")),
+    source: ok === LIST.length ? "forms-api" : (keepOld ? "forms-api (cached)" : (ok > 0 ? "forms-api (partial)" : "conversion-event fallback only")),
     loadedAt: keepOld ? FORMS.loadedAt : new Date().toISOString(),
     syncing: false, error: note
   };
-  console.log("Forms synced: " + map.size + " emails across " + ok + "/" + WAITLIST_FORMS.length + " waitlist forms (" + FORMS.source + ")");
+  console.log("Forms synced: " + map.size + " emails across " + ok + "/" + LIST.length + " forms (" + FORMS.source + ")");
   } finally { FORMS.syncing = false; }
 }
 
@@ -2066,7 +2160,7 @@ function formsOf(c){
   const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
   if (hit) Object.keys(hit.labels || {}).forEach(function(k){ out[k] = 1; });
   const names = (String(c.recent_conversion_event_name || "") + " ~ " + String(c.first_conversion_event_name || "")).toLowerCase();
-  WAITLIST_FORMS.forEach(function(f){ if (names.indexOf(f.match) >= 0) out[f.label] = 1; });
+  formList().forEach(function(f){ if (f.match && names.indexOf(f.match) >= 0) out[f.label] = 1; });
   return Object.keys(out);
 }
 // How many waitlist submissions this person made, and when the latest one was.
@@ -2996,6 +3090,10 @@ app.get("/api/callnow2", function(req, res){
     isVP: isVP(req), role: (req.session && req.session.role) || "manager",
     scoped: !!cn2Scope(req),
     trackedCreators: PFRESH_LIST.slice(),
+    // Creators whose form we could not find. Their leads can only ever show a form name,
+    // never the answers, so the gap belongs next to the creator list rather than in a log.
+    creatorsWithoutForm: (typeof FORM_LIST !== "undefined" && FORM_LIST.unmatched) || [],
+    formsTracked: (typeof FORM_LIST !== "undefined" && (FORM_LIST.forms || []).length) || 0,
     stageOptions: cn2StageOrder(ctx.base).map(function(x){
       return { stage: x, label: CN2_STAGE_LABELS[x] || x }; }),
     listBuiltAt: CN2_POOL.at, listBuildMs: CN2_POOL.ms, listSize: CN2_POOL.rows.length

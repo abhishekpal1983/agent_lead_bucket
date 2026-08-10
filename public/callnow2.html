@@ -1248,6 +1248,14 @@ function creatorPanel(){
     (OUTBUSY?"Checking...":"Check what is outside")+"</button></h2>"+
     "<div class='sub'>This list scopes the whole page. A lead whose creator is not here is invisible to every "+
     "number above. Additions are saved on the volume and survive a redeploy.</div>";
+  /* Stated where the creator list is managed, because that is where somebody can fix it.
+     A creator with no form is not broken, but their leads can only ever show a form name
+     and never the answers, and nobody would guess that from the lead card. */
+  var noform=(J.creatorsWithoutForm||[]);
+  if(noform.length)h+="<div class='warn'><b>"+fmt(noform.length)+" tracked creator"+
+    (noform.length>1?"s have":" has")+" no form we could find</b>: "+esc(noform.join(", "))+
+    ". Their leads show a form name but no answers, because there is no submission to read. "+
+    "Forms are matched by name, so a form named after the creator is picked up automatically.</div>";
   if(dupes.length)h+="<div class='warn'>The same creator is listed twice with different capitalisation: "+
     esc(dupes.join(", "))+". Matching is exact, so one of the two matches nothing. Remove whichever is wrong.</div>";
   h+="<div class='chips' style='margin-bottom:9px'>"+list.map(function(c){
