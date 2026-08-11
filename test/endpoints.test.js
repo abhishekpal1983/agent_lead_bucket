@@ -397,6 +397,12 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       (ad.body.rows || []).every(function(r){
         return r.called === r.calledTracked + r.calledOutside; }),
       JSON.stringify((ad.body.rows || [])[0]));
+    ok("both counselling definitions are reported side by side",
+      (ad.body.rows || []).every(function(r){ return "counsellings" in r && "counsDeep" in r; }) &&
+      "counsDeep" in (ad.body.totals || {}));
+    ok("the narrower count can never exceed the wider one",
+      (ad.body.rows || []).every(function(r){ return r.counsDeep <= r.counsellings; }),
+      JSON.stringify((ad.body.rows || []).filter(function(r){ return r.counsDeep > r.counsellings; })));
     ok("and no row claims more calls made than it has",
       (ad.body.rows || []).every(function(r){ return r.done <= r.due && r.worked <= r.queue; }));
 

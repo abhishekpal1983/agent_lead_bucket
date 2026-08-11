@@ -632,6 +632,19 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf("var t = adTotals(rows);") >= 0);
   ok("and the export follows what is on screen",
     vphtml.indexOf("adRows().forEach(function(r){") >= 0);
+  /* Two counselling numbers, side by side, because two tools count it two ways and the
+     page should settle that rather than a meeting. */
+  ok("agent day carries both counselling definitions",
+    vphtml.indexOf('["CounsellingsQAScope", function(r){ return r.counsDeep; }]') >= 0 &&
+    vphtml.indexOf(">QA scope</th>") >= 0);
+  ok("and says plainly that the two answer different questions",
+    vphtml.indexOf("The two answer different questions and will not agree") >= 0);
+  ok("the daily review carries both too",
+    vphtml.indexOf("reached counselled or beyond") >= 0 &&
+    vphtml.indexOf('["CounsellingsQAScope", function(x){ return x.counsDeep; }]') >= 0);
+  ok("a day captured before this counter existed shows a dash, not a zero",
+    vphtml.indexOf("x.counsDeep == null") >= 0 &&
+    vphtml.indexOf("not captured for this day") >= 0);
   ok("it counts calls from HubSpot, not from our own lead pool",
     vphtml.indexOf("Calls are counted from HubSpot itself") >= 0);
   ok("and shows calls on untracked creators rather than dropping them",

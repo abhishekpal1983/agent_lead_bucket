@@ -416,6 +416,8 @@ function dailyRows(map, label, back){
         "<td class='n'>" + pcCell(x.intlC, d(x.oIntl, x.intl)) + "</td>" +
         "<td class='n'>" + pcCell(x.needsC, d(x.oNeeds, x.needs)) + "</td>" +
         "<td class='n'>" + fmt(x.counsellings || 0) + "</td>" +
+        "<td class='n " + (x.counsDeep == null ? "mut" : "") + "'>" +
+          (x.counsDeep == null ? "\u2013" : fmt(x.counsDeep)) + "</td>" +
         "<td class='n'>" + inr(x.revenue || 0) +
           (x.enrolments ? " <span class='mut'>· " + fmt(x.enrolments) + "</span>" : "") + "</td>" +
         "<td class='n'>" + auditCell(x.audits, x.auditTarget) + "</td></tr>";
@@ -499,7 +501,8 @@ function renderDaily(){
     workedTile("amber", sn.refillC, sn.refill, "Refilled the form") +
     workedTile("amber", sn.ifcC, sn.ifc, "IFC came due") +
     workedTile("amber", sn.needsC, d(sn.oNeeds, sn.needs), "Needs owner") +
-    tile("blue", fmt(sn.counsellings), "Counsellings") +
+    tile("blue", fmt(sn.counsellings), "Counsellings",
+      (sn.counsDeep == null ? "not captured for this day" : fmt(sn.counsDeep) + " reached counselled or beyond")) +
     tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
     auditTile(sn) +
     "</div>";
@@ -510,7 +513,9 @@ function renderDaily(){
     "<th class='n' title='No next call date was ever set'>No FU</th><th class='n'>Fresh</th>" +
     "<th class='n'>Form</th><th class='n'>Score &ge; 6</th><th class='n'>International</th>" +
     "<th class='n'>Needs owner</th>" +
-    "<th class='n'>Counsellings</th><th class='n'>Revenue</th><th class='n'>Audits</th></tr></thead>";
+    "<th class='n'>Counsellings</th>" +
+    "<th class='n' title='The subset that reached counselled or beyond, which is what the Counselled QA tool counts.'>QA scope</th>" +
+    "<th class='n'>Revenue</th><th class='n'>Audits</th></tr></thead>";
   h += "<h3 class='rvh'>By team</h3><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team", back) + "</tbody></table></div>";
   h += "<h3 class='rvh'>By agent</h3><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
   el.innerHTML = h + "</div>";
@@ -591,6 +596,7 @@ function dailyCsv(){
     ["NeedsOwner", function(x){ return d(x.oNeeds, x.needs); }], ["NeedsOwnerWorked", function(x){ return x.needsC; }],
     ["NeverCalled", function(x){ return d(x.oUncalled, x.uncalled); }], ["NeverCalledWorked", function(x){ return x.uncalledC; }],
     ["Counsellings", function(x){ return x.counsellings; }],
+    ["CounsellingsQAScope", function(x){ return x.counsDeep; }],
     ["Revenue", function(x){ return Math.round(x.revenue || 0); }],
     ["Enrolments", function(x){ return x.enrolments; }],
     ["Audits", function(x){ return x.audits; }], ["AuditTarget", function(x){ return x.auditTarget; }]
@@ -710,7 +716,7 @@ function adRows(){
 }
 function adTotals(rows){
   return rows.reduce(function(a, r){
-    ["called","calledTracked","calledOutside","counsellings","queue","worked","due","done",
+    ["called","calledTracked","calledOutside","counsellings","counsDeep","queue","worked","due","done",
      "overdue","overdueW","nofu","nofuW","fresh","freshW"].forEach(function(k){
       a[k] = (a[k] || 0) + (r[k] || 0); });
     return a;
@@ -743,7 +749,10 @@ function renderAgentDay(){
     esc(j.date) + (j.isToday ? " · today, still moving" : "") + "</span></h2>" +
     "<div class='sub'>What each agent did on one day: people called, counsellings, and how much of " +
     "the calling list they were given they got through. Calls are counted from HubSpot itself, so " +
-    "calls on creators outside the tracked list are shown rather than dropped." +
+    "calls on creators outside the tracked list are shown rather than dropped. " +
+    "<b>Counsellings</b> is the first time a lead reached any of our eight engaged stages; " +
+    "<b>QA scope</b> is the subset that reached counselled or beyond, which is what the " +
+    "Counselled QA tool counts. The two answer different questions and will not agree." +
     (j.scoped ? " Your team only." : "") +
     (j.source === "none" ? " <b>No snapshot exists for that date, so the list columns are empty.</b>" : "") +
     (j.callsError ? " <b>HubSpot could not be reached for the call counts, so People called reads zero. " +
@@ -772,7 +781,8 @@ function renderAgentDay(){
 
   h += "<div class='tiles compact' style='margin-bottom:12px'>" +
     tile("grey", fmt(t.called || 0), "People called", fmt(t.calledOutside || 0) + " outside the tracked list") +
-    tile("grey", fmt(t.counsellings || 0), "Counsellings") +
+    tile("grey", fmt(t.counsellings || 0), "Counsellings",
+      fmt(t.counsDeep || 0) + " reached counselled or beyond") +
     tile("grey", fmt(t.worked || 0) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t.queue || 0) + "</span>", "Call today worked") +
     tile("grey", fmt(t.done || 0) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t.due || 0) + "</span>", "Due today called") +
     "</div>";
@@ -780,6 +790,7 @@ function renderAgentDay(){
   h += "<div class='tw'><table class='rt'><thead><tr><th>Agent</th>" +
     "<th class='n'>People called</th><th class='n' title='Calls on creators the list does not track'>Outside</th>" +
     "<th class='n'>Counsellings</th>" +
+    "<th class='n' title='The subset that reached counselled, program pitched, pricing pitched or payment prospect. This is what the Counselled QA tool counts.'>QA scope</th>" +
     "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Overdue</th>" +
     "<th class='n'>No FU</th><th class='n'>Fresh</th></tr></thead><tbody>";
   rows.forEach(function(r){
@@ -789,13 +800,14 @@ function renderAgentDay(){
       "<td class='n'><b>" + fmt(r.called) + "</b></td>" +
       "<td class='n " + (r.calledOutside ? "ca" : "mut") + "'>" + (r.calledOutside ? fmt(r.calledOutside) : "–") + "</td>" +
       "<td class='n'>" + (r.counsellings ? "<b class='cg'>" + fmt(r.counsellings) + "</b>" : "<span class='mut'>0</span>") + "</td>" +
+      "<td class='n'>" + (r.counsDeep ? "<b>" + fmt(r.counsDeep) + "</b>" : "<span class='mut'>0</span>") + "</td>" +
       "<td class='n'>" + adPc(r.worked, r.queue) + "</td>" +
       "<td class='n'>" + adPc(r.done, r.due) + "</td>" +
       "<td class='n'>" + adPc(r.overdueW, r.overdue) + "</td>" +
       "<td class='n'>" + adPc(r.nofuW, r.nofu) + "</td>" +
       "<td class='n'>" + adPc(r.freshW, r.fresh) + "</td></tr>";
   });
-  if (!rows.length) h += "<tr><td colspan='9' class='mut'>" +
+  if (!rows.length) h += "<tr><td colspan='10' class='mut'>" +
     ((AD_TEAM || AD_AGENT) ? "Nothing for that filter on this date." : "Nobody called anybody on that date.") + "</td></tr>";
   h += "</tbody></table></div></div>";
   el.innerHTML = h;
@@ -807,6 +819,7 @@ function adCsv(){
     ["CalledTracked", function(r){ return r.calledTracked; }],
     ["CalledOutside", function(r){ return r.calledOutside; }],
     ["Counsellings", function(r){ return r.counsellings; }],
+    ["CounsellingsQAScope", function(r){ return r.counsDeep; }],
     ["CallToday", function(r){ return r.queue; }], ["CallTodayWorked", function(r){ return r.worked; }],
     ["DueToday", function(r){ return r.due; }], ["DueTodayCalled", function(r){ return r.done; }],
     ["Overdue", function(r){ return r.overdue; }], ["OverdueCalled", function(r){ return r.overdueW; }],

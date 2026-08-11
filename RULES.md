@@ -349,3 +349,37 @@ designed to expose.
 **Refresh this lead** re-reads one contact immediately, from the queue or the lead card.
 It is the escape hatch, not the mechanism: one API call, merged through the same path the
 sweep uses, so there is no second way for a lead to enter the app.
+
+---
+
+## 15. Counselling, counted two ways
+
+**Ours.** The **first time** a contact entered any of these eight, read from engagement
+stage history, credited to whoever holds the lead now:
+
+`discovery` · `program_pitched` · `pricing_pitched` · `counselled` · `payment_prospect` ·
+`Follow up` · `FU_DNP` · `FU_RCB`
+
+Confirmed 11 August 2026. It answers **did this lead get engaged at all**, which is what
+the calling floor is judged on.
+
+**The Counselled QA tool's.** A narrower four: `counselled`, `program_pitched`,
+`pricing_pitched`, `payment_prospect`. It also differs in two ways that are easy to miss:
+
+| | This app | Counselled QA |
+|---|---|---|
+| Stages | 8 | 4 |
+| Which moment | First ever entry | Latest entry into the stage the lead is in **now** |
+| Lead that moved on | Still counted | **Dropped**, its rows deleted |
+
+That last row matters for a review: their historical daily numbers can change after the
+fact, because a lead counselled yesterday that moves to DNP today disappears from
+yesterday. Ours cannot change once the day is past.
+
+**So both are on the page.** Agent day and the Daily review show **Counsellings** and
+**QA scope** side by side, the second being the subset that reached counselled or beyond.
+Neither is wrong; they answer different questions, and showing both stops two dashboards
+arguing in a meeting.
+
+Days captured before 11 August 2026 show a dash rather than a zero for QA scope, because
+that counter did not exist when they were frozen. Snapshot version 5.

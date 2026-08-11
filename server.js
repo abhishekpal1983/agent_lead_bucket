@@ -600,7 +600,18 @@ async function syncDelta(){
 
 /* ---------- counselling detection via engagement stage history ---------- */
 const COUNSELLED_SET = ["discovery","program_pitched","pricing_pitched","counselled","payment_prospect","Follow up","FU_DNP","FU_RCB"];
-let COUNSEL = { byId: {}, loadedAt: null, syncing: false, error: null };
+
+/* The Counselled QA tool counts a narrower set: the four stages a real counselling
+   conversation lands in. Ours is deliberately wider, because "did this lead get engaged
+   at all" is the question the calling floor is judged on.
+
+   Both are legitimate and they will never agree, so the page carries both rather than
+   letting two dashboards argue in a meeting. This one is the subset: the first time a
+   lead reached one of the four. Reaching four implies having reached eight, so it is
+   always the smaller number for a given lead, though on any single day the two can move
+   in opposite directions because a lead crosses the two lines on different days. */
+const COUNSELLED_DEEP = ["counselled","program_pitched","pricing_pitched","payment_prospect"];
+let COUNSEL = { byId: {}, deepById: {}, loadedAt: null, syncing: false, error: null };
 
 async function syncCounsel(){
   if (!TOKEN || COUNSEL.syncing) return;
@@ -608,7 +619,7 @@ async function syncCounsel(){
   COUNSEL.syncing = true;
   try {
     const ids = CACHE.contacts.map(c => c.id);
-    const byId = {};
+    const byId = {}, deepById = {};
     for (let i = 0; i < ids.length; i += 50) {
       const inputs = ids.slice(i, i + 50).map(id => ({ id }));
       try {
@@ -616,20 +627,22 @@ async function syncCounsel(){
           body: JSON.stringify({ propertiesWithHistory: ["contact_engagement_stage"], properties: ["contact_engagement_stage"], inputs }) });
         (j.results || []).forEach(r => {
           const h = (r.propertiesWithHistory && r.propertiesWithHistory.contact_engagement_stage) || [];
-          let first = 0;
+          let first = 0, deep = 0;
           h.forEach(e => {
-            if (COUNSELLED_SET.indexOf(e.value) >= 0) {
-              const t = Date.parse(e.timestamp);
-              if (t && (!first || t < first)) first = t;
-            }
+            const t = Date.parse(e.timestamp);
+            if (!t) return;
+            if (COUNSELLED_SET.indexOf(e.value) >= 0 && (!first || t < first)) first = t;
+            if (COUNSELLED_DEEP.indexOf(e.value) >= 0 && (!deep || t < deep)) deep = t;
           });
           if (first) byId[r.id] = first;
+          if (deep) deepById[r.id] = deep;
         });
       } catch (e) { console.error("counsel batch @" + i + ": " + e.message); }
       await sleep(130);
     }
-    COUNSEL = { byId, loadedAt: new Date().toISOString(), syncing: false, error: null };
-    console.log("Counsel history: " + Object.keys(byId).length + " counselled of " + ids.length + " owned staged leads");
+    COUNSEL = { byId, deepById, loadedAt: new Date().toISOString(), syncing: false, error: null };
+    console.log("Counsel history: " + Object.keys(byId).length + " counselled, " +
+      Object.keys(deepById).length + " reached the QA tool's four stages, of " + ids.length + " owned staged leads");
   } catch (e) {
     COUNSEL.syncing = false; COUNSEL.error = e.message;
     console.error("Counsel sync failed: " + e.message);
@@ -4409,6 +4422,8 @@ function snapCounters(){
     // Call Now 2.0's own buckets, so the review speaks the floor's language: a lead with
     // no next call date set, a form refilled since the last call, an IFC that came due.
     nofu: 0, nofuC: 0, refill: 0, refillC: 0, ifc: 0, ifcC: 0,
+    // The same day counted the QA tool's way, so the two dashboards reconcile on the page.
+    counsDeep: 0,
     needs: 0, needsC: 0, uncalled: 0, uncalledC: 0, counsellings: 0,
     revenue: 0, enrolments: 0, audits: 0, auditTarget: 0 };
 }
@@ -4463,7 +4478,7 @@ const OPEN_HM = process.env.OPEN_HM || "00:05";
 // Bumped whenever the meaning of a counter changes. A day frozen under an older
 // definition is refrozen rather than carried forward, otherwise a denominator captured
 // under the old scope would silently poison the whole day.
-const SNAP_VERSION = 4;
+const SNAP_VERSION = 5;
 function snapshotToday(){
   if (typeof ORG === "undefined" || !CACHE.loadedAt) return;
   // Staged leads are now published before the fresh pull finishes, so "loaded" no longer
@@ -4512,6 +4527,12 @@ function snapshotToday(){
       total.counsellings++;
       teams[tid].counsellings++;
       if (aid && agents[aid]) agents[aid].counsellings++;
+    }
+    const dts = (COUNSEL.deepById || {})[id];
+    if (dts && ts(dts) >= day.start && ts(dts) < day.end) {
+      total.counsDeep++;
+      teams[tid].counsDeep++;
+      if (aid && agents[aid]) agents[aid].counsDeep++;
     }
   });
   const emailTeam = {}, emailAgent = {};
@@ -5390,13 +5411,15 @@ app.get("/api/vp/agent-day", async function(req, res){
 
     /* Counsellings that day, attributed to whoever holds the lead now, the same rule
        Overview and the daily review use. */
-    const couns = {};
+    const couns = {}, deep = {};
     const b = istBoundsFor(date);
     callnowPool().forEach(function(c){
-      const t = ts(COUNSEL.byId[c.id]);
-      if (!t || t < b.start || t >= b.end) return;
       const oid = String(c.hubspot_owner_id || "none");
-      couns[oid] = (couns[oid] || 0) + 1;
+      const t = ts(COUNSEL.byId[c.id]);
+      if (t && t >= b.start && t < b.end) couns[oid] = (couns[oid] || 0) + 1;
+      // The same lead counted the QA tool's way: first time it reached one of their four.
+      const d = ts((COUNSEL.deepById || {})[c.id]);
+      if (d && d >= b.start && d < b.end) deep[oid] = (deep[oid] || 0) + 1;
     });
 
     /* The Call Now side. Today comes from the live frozen list; a past day comes from
@@ -5449,10 +5472,11 @@ app.get("/api/vp/agent-day", async function(req, res){
         active: o.active !== false,
         called: c.called, calledTracked: c.calledTracked,
         calledOutside: Math.max(0, c.called - c.calledTracked),
-        counsellings: couns[id] || 0
+        counsellings: couns[id] || 0,
+        counsDeep: deep[id] || 0
       }, cn[id] || { queue: 0, worked: 0, due: 0, done: 0, overdue: 0, overdueW: 0,
         nofu: 0, nofuW: 0, fresh: 0, freshW: 0 });
-    }).filter(function(r){ return r.called || r.counsellings || r.queue; })
+    }).filter(function(r){ return r.called || r.counsellings || r.counsDeep || r.queue; })
       .sort(function(a, b2){ return b2.called - a.called || b2.queue - a.queue; });
 
     // The pickers are built from the teams the caller may see, not from the rows, so a
@@ -5467,7 +5491,7 @@ app.get("/api/vp/agent-day", async function(req, res){
       source: isToday ? "live" : (((ORG.daily || {})[date]) ? "snapshot" : "none"),
       rows: rows,
       totals: rows.reduce(function(a, r){
-        ["called","calledTracked","calledOutside","counsellings","queue","worked","due","done",
+        ["called","calledTracked","calledOutside","counsellings","counsDeep","queue","worked","due","done",
          "overdue","overdueW","nofu","nofuW","fresh","freshW"].forEach(function(k){
           a[k] = (a[k] || 0) + (r[k] || 0); });
         return a;
@@ -5581,7 +5605,7 @@ app.get("/api/vp/daily", function(req, res){
       // rebuilt day has no pool figure, and summing that to zero would be a lie.
       const SNAPKEYS = ["pool","form","score","intl","fresh","due","done","missed","calls",
         "formC","scoreC","intlC","freshC","overdue","overdueC",
-        "nofu","nofuC","refill","refillC","ifc","ifcC","counsellings","revenue",
+        "nofu","nofuC","refill","refillC","ifc","ifcC","counsellings","counsDeep","revenue",
         "enrolments","attempts","connected","audits","auditTarget","needs","needsC","uncalled","uncalledC",
         "oPool","oDue","oScore","oForm","oIntl","oFresh","oOverdue","oNeeds","oUncalled"];
       const roll = {};
