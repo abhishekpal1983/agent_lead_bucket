@@ -172,8 +172,20 @@ async function fetchOwners(){
    run. Paging by object id instead re-queries from the last id seen, so the ceiling never
    applies. fetchFreshForOwner beside this has always done it the right way. */
 const OWNER_MAX = parseInt(process.env.OWNER_MAX || "120000", 10);
+/* Parking buckets are a different animal. Nobody works them, they are shown but never
+   counted, and they hold the overwhelming majority of the leads in the portal: removing
+   the old 9,900 cap took the pool from about fifty thousand to over two hundred thousand,
+   almost all of it sitting in four buckets. That cost is paid on every sync, every list
+   build and every request.
+
+   So the cap comes back, but only where it does no harm. A working agent's bucket is
+   fetched whole, because the tail of their list is real work that was being dropped. A
+   parking bucket is fetched up to a limit, because past a certain point it is a pile
+   rather than a queue, and its exact size changes nothing on any page. */
+const PARK_MAX = parseInt(process.env.PARK_MAX || "15000", 10);
 let OWNER_TRUNCATED = {};
 async function fetchContactsForOwner(ownerId){
+  const cap = (typeof ownerCounted === "function" && !ownerCounted(ownerId)) ? PARK_MAX : OWNER_MAX;
   const out = [];
   let lastId = "0", guard = 0;
   while (guard < 1400) {
@@ -194,10 +206,14 @@ async function fetchContactsForOwner(ownerId){
     rows.forEach(r => out.push(Object.assign({ id: r.id }, r.properties)));
     lastId = rows[rows.length - 1].id;
     if (rows.length < 100) break;
-    // A real ceiling, far above any real bucket, and it says so out loud if it is ever hit.
-    if (out.length >= OWNER_MAX) {
-      OWNER_TRUNCATED[String(ownerId)] = { at: new Date().toISOString(), got: out.length };
-      console.error("Owner " + ownerId + " truncated at " + out.length +
+    if (out.length >= cap) {
+      const parked = cap === PARK_MAX;
+      OWNER_TRUNCATED[String(ownerId)] = { at: new Date().toISOString(), got: out.length, parked: parked };
+      // A working agent hitting a cap is a fault worth shouting about. A parking bucket
+      // hitting one is the design.
+      if (parked) console.log("Parking bucket " + ownerId + " capped at " + out.length +
+        " leads (PARK_MAX). They are shown but never counted, so the rest changes nothing.");
+      else console.error("Owner " + ownerId + " truncated at " + out.length +
         " leads: raise OWNER_MAX or split the query. Leads past this point are NOT loaded.");
       break;
     }
@@ -2923,7 +2939,12 @@ function cn2SnapshotCached(){
 }
 
 function cn2Context(req){
-  const snap = cn2Snapshot();
+  /* Cached, not fresh. This snapshot walks the entire lead pool, and the pool is now
+     over two hundred thousand leads, so doing it per request blocked the event loop for
+     seconds at a time and the service stopped answering anything at all. Nothing in it
+     depends on the request: the filters and the role scope are applied below, on top of
+     it. One walk every fifteen seconds is plenty for a page that measures a day. */
+  const snap = cn2SnapshotCached();
   const day = snap.day, live = snap.live, liveAll = snap.liveAll, frozen = snap.frozen;
   const rows = snap.rows;
   let base = snap.base;

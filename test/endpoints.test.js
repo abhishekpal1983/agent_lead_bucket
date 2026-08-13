@@ -369,6 +369,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       kickGet.status === 200 || kickGet.status === 409, "status " + kickGet.status);
     ok("and it says nothing rather than something stale before its first run",
       srv2.indexOf("caughtUp: DELTA.at ? DELTA.caughtUp !== false : null") >= 0);
+    /* The pool grew past two hundred thousand leads when the per-owner cap came off, and
+       a snapshot per request then blocked the event loop until the service stopped
+       answering at all. */
+    ok("a request reads the cached snapshot rather than walking the pool itself",
+      srv2.indexOf("const snap = cn2SnapshotCached();") >= 0 &&
+      srv2.indexOf("blocked the event loop") >= 0);
+    ok("parking buckets are capped, working agents are not",
+      srv2.indexOf("const PARK_MAX = parseInt(process.env.PARK_MAX") >= 0 &&
+      srv2.indexOf("!ownerCounted(ownerId)) ? PARK_MAX : OWNER_MAX") >= 0);
+    ok("and a capped working agent is still an error, a capped bucket is not",
+      srv2.indexOf("Parking bucket ") >= 0 && srv2.indexOf("hitting one is the design") >= 0);
     ok("the per owner walk no longer stops at the search ceiling",
       srv2.indexOf("if (out.length >= 9900) break;") < 0 &&
       srv2.indexOf("async function fetchContactsForOwner") >= 0 &&
