@@ -372,6 +372,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     /* The pool grew past two hundred thousand leads when the per-owner cap came off, and
        a snapshot per request then blocked the event loop until the service stopped
        answering at all. */
+    ok("health says which commit and branch is actually serving",
+      health.build && "commit" in health.build && "branch" in health.build,
+      JSON.stringify(health.build));
     ok("a request reads the cached snapshot rather than walking the pool itself",
       srv2.indexOf("const snap = cn2SnapshotCached();") >= 0 &&
       srv2.indexOf("blocked the event loop") >= 0);

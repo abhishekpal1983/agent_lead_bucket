@@ -1072,6 +1072,22 @@ function agentMetrics(rows){
 
 /* ---------- API ---------- */
 const REQUIRED_ROUTES = ["/api/meta", "/api/agents", "/api/callnow", "/api/callnow/leads", "/api/vp", "/api/payment-analysis", "/api/me"];
+/* What is actually running.
+
+   The deployment header said one commit, main said another, and there was no way to tell
+   from outside which one was serving. Railway sets these on every build, so the answer
+   costs nothing and settles "is my fix live" in one look rather than by reasoning about
+   behaviour. */
+const BUILD = {
+  commit: (process.env.RAILWAY_GIT_COMMIT_SHA || "").slice(0, 7) || null,
+  branch: process.env.RAILWAY_GIT_BRANCH || null,
+  message: (process.env.RAILWAY_GIT_COMMIT_MESSAGE || "").slice(0, 120) || null,
+  deployedAt: process.env.RAILWAY_DEPLOYMENT_ID ? new Date().toISOString() : null,
+  startedAt: new Date().toISOString()
+};
+console.log("Build: " + (BUILD.commit || "unknown") + " on " + (BUILD.branch || "unknown branch") +
+  (BUILD.message ? " · " + BUILD.message : ""));
+
 app.get("/api/health", function(req, res){
   const have = [];
   (app._router && app._router.stack || []).forEach(function(l){
@@ -1079,7 +1095,7 @@ app.get("/api/health", function(req, res){
   });
   const missing = REQUIRED_ROUTES.filter(function(r){ return have.indexOf(r) < 0; });
   if (missing.length) return res.status(500).json({ ok: false, missing: missing });
-  res.json({ ok: true, routes: have.length, uptimeSec: Math.round(process.uptime()),
+  res.json({ ok: true, build: BUILD, routes: have.length, uptimeSec: Math.round(process.uptime()),
     orgPersistent: typeof ORG_PERSISTENT === "undefined" ? null : ORG_PERSISTENT,
     orgTeams: (typeof ORG === "undefined" || !ORG.teams) ? 0 : ORG.teams.length,
     dataDir: typeof DATA_DIR === "undefined" ? null : DATA_DIR,
