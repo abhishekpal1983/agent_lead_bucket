@@ -383,3 +383,25 @@ arguing in a meeting.
 
 Days captured before 11 August 2026 show a dash rather than a zero for QA scope, because
 that counter did not exist when they were frozen. Snapshot version 5.
+
+---
+
+## 16. Why a deploy can silently not happen
+
+Railway waits for `/api/health` to answer before it retires the previous deployment. That
+is the safety net working: a build that never becomes healthy is discarded and the old one
+keeps serving.
+
+It also means a slow boot looks exactly like a broken build. On 11 to 13 August 2026 the
+lead pool had grown to 217,624 and every request walked it synchronously, so the event
+loop was saturated during startup, `/api/health` could not answer inside the 120 second
+window, and every deploy for two days was thrown away. The running service stayed on an
+old commit while `main` moved on, and nothing about it looked like a failure.
+
+Two changes. The health window is now 300 seconds, because this app legitimately spends
+several minutes loading leads after a restart. And requests read a cached snapshot rather
+than walking the pool, so health answers in milliseconds even mid-sync.
+
+**How to tell what is actually running:** `/api/health` reports `build.commit` and
+`build.branch`, and the same line is printed at startup. If that commit is not the tip of
+`main`, deploys are not landing, whatever the dashboard says.
