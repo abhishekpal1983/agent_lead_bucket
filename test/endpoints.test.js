@@ -372,6 +372,21 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     /* The pool grew past two hundred thousand leads when the per-owner cap came off, and
        a snapshot per request then blocked the event loop until the service stopped
        answering at all. */
+    /* "How do I check it is working" should not need a tutorial in reading forty fields. */
+    const st = await get("/api/status");
+    ok("status answers in sentences", st.status === 200 && Array.isArray(st.body.checks) &&
+      st.body.checks.length >= 6, "status " + st.status);
+    ok("every check has a verdict and a reason",
+      st.body.checks.every(function(c){
+        return ["ok", "warn", "bad"].indexOf(c.level) >= 0 && c.what && c.detail; }));
+    ok("and there is one overall answer at the top",
+      typeof st.body.verdict === "string" && st.body.verdict.length > 0, st.body.verdict);
+    ok("a fresh restart is not reported as a fault",
+      st.body.verdict.indexOf("starting up") >= 0 || st.body.bad === 0,
+      st.body.verdict + " bad=" + st.body.bad);
+    ok("it names the running commit first, since that is the question behind the question",
+      (st.body.checks[0] || {}).what.indexOf("Running") === 0);
+
     ok("health says which commit and branch is actually serving",
       health.build && "commit" in health.build && "branch" in health.build,
       JSON.stringify(health.build));

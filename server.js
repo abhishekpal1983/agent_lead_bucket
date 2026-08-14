@@ -1088,6 +1088,91 @@ const BUILD = {
 console.log("Build: " + (BUILD.commit || "unknown") + " on " + (BUILD.branch || "unknown branch") +
   (BUILD.message ? " · " + BUILD.message : ""));
 
+/* Is everything working, in sentences.
+
+   /api/health answers that question, but only if you already know which of forty fields
+   matter and what good looks like for each. That is a fine tool for me and a poor one for
+   anybody else, and "how do I check it is working" should not require a tutorial.
+
+   Each line is a plain statement with a verdict. Open, like health, so it can be checked
+   from a phone without signing in. */
+app.get("/api/status", function(req, res){
+  const out = [];
+  const add = function(level, what, detail){ out.push({ level: level, what: what, detail: detail }); };
+  const mins = function(t){ return t ? Math.round((Date.now() - Date.parse(t)) / 60000) : null; };
+
+  add(BUILD.commit ? "ok" : "warn", "Running " + (BUILD.commit || "an unknown build") +
+    (BUILD.branch ? " from " + BUILD.branch : ""),
+    "Compare this with the newest commit on main. If it is older, deploys are not landing.");
+
+  const up = Math.round(process.uptime() / 60);
+  add(up < 3 ? "warn" : "ok", "Up for " + (up < 60 ? up + " minutes" : Math.round(up / 60) + " hours"),
+    up < 3 ? "Just restarted, so the numbers below are still settling. Give it ten minutes."
+           : "No restart loop.");
+
+  const cn = (typeof CN2_POOL !== "undefined") ? CN2_POOL : null;
+  if (!cn2Ready()) add(up < 10 ? "warn" : "bad", "Today's calling list is not built yet",
+    (CN2_POOL && CN2_POOL.lastError) || "Still loading leads after a restart.");
+  else add(cn.ms > 8000 ? "warn" : "ok",
+    "Today's list holds " + fmtN(cn.rows.length) + " leads, built in " + Math.round(cn.ms / 1000) + "s",
+    cn.ms > 8000 ? "Slow. The pool behind it may have grown again." : "Healthy build time.");
+
+  const pool = (typeof callnowPool === "function" && CACHE.loadedAt) ? CACHE.contacts.length : 0;
+  add(pool > 120000 ? "bad" : (pool > 80000 ? "warn" : "ok"),
+    "Holding " + fmtN(pool) + " leads in memory",
+    pool > 80000 ? "Large. Parking buckets are capped at " + PARK_MAX +
+      " each; if this keeps climbing, lower PARK_MAX." : "Within the size this box handles comfortably.");
+
+  const c = (typeof CALLSYNC !== "undefined") ? CALLSYNC : null;
+  const cAge = c ? mins(c.at) : null;
+  // In the first ten minutes after a restart nothing has had a turn yet. Calling that a
+  // fault trains people to ignore the page, which is worse than saying nothing.
+  const settling = up < 10;
+  add(!c || !c.at ? (settling ? "warn" : "bad") : (c.error ? "bad" : (cAge > 12 ? "warn" : "ok")),
+    c && c.at ? "Today's calls last read " + cAge + " min ago (" + fmtN(c.n) + " people called today)"
+              : "Today's calls have not been read yet",
+    c && c.error ? c.error : "This is the sweep every number on Call Now depends on. It runs every " +
+      (typeof CALLSYNC_MINUTES !== "undefined" ? CALLSYNC_MINUTES : 3) + " minutes.");
+
+  const d = (typeof DELTA !== "undefined") ? DELTA : null;
+  if (d && d.stalled) add("bad", "The general sweep is stalled", d.stalled);
+  else if (d && d.error) add("bad", "The general sweep is failing", d.error);
+  else if (d && d.mark) {
+    const behind = Math.round((Date.now() - d.mark) / 60000);
+    add(behind > 60 ? "warn" : "ok", "Stage and owner changes are current to " + behind + " min ago",
+      behind > 60 ? "Working through a backlog. It resumes where it stopped, so it should fall."
+                  : "Normal. This sweep only matters for stage, owner and form changes.");
+  } else add("warn", "The general sweep has not run since the restart", "Normal for the first few minutes.");
+
+  const t = (typeof OWNER_TRUNCATED !== "undefined") ? OWNER_TRUNCATED : {};
+  const realCaps = Object.keys(t).filter(function(k){ return !t[k].parked; });
+  add(realCaps.length ? "bad" : "ok",
+    realCaps.length ? realCaps.length + " working agent(s) had leads cut off" : "No agent's leads were cut off",
+    realCaps.length ? "Raise OWNER_MAX. Leads past the cap are not loaded at all."
+                    : "Parking buckets are capped on purpose and do not count here.");
+
+  add(LAST_500 ? "bad" : "ok", LAST_500 ? "A request failed recently" : "No failed requests recorded",
+    LAST_500 ? (LAST_500.path + ": " + LAST_500.error) : "Nothing has thrown since the last restart.");
+
+  const dr = (typeof CN2_DRIFT !== "undefined" && CN2_DRIFT.at) ? CN2_DRIFT : null;
+  if (dr) add(dr.pct >= 20 ? "warn" : "ok",
+    "HubSpot says " + fmtN(dr.hubspot) + " calls today, we see " + fmtN(dr.ours),
+    dr.pct >= 20 ? "A gap of " + dr.pct + "%. Some of it is calls on untracked creators, which is normal."
+                 : "Agreed within tolerance.");
+
+  const bad = out.filter(function(x){ return x.level === "bad"; }).length;
+  const warn = out.filter(function(x){ return x.level === "warn"; }).length;
+  res.json({
+    verdict: bad ? "something is wrong"
+      : (up < 10 ? "still starting up, check again in ten minutes"
+        : (warn ? "working, with things to watch" : "all good")),
+    bad: bad, warn: warn,
+    checks: out,
+    at: new Date().toISOString()
+  });
+});
+function fmtN(n){ return Number(n || 0).toLocaleString("en-IN"); }
+
 app.get("/api/health", function(req, res){
   const have = [];
   (app._router && app._router.stack || []).forEach(function(l){
