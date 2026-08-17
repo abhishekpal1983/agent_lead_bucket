@@ -3753,6 +3753,62 @@ async function syncFormsNow(req, res){
   }
 }
 
+/* Exactly what we hold for one person, and where each piece came from.
+
+   The card and HubSpot disagreed on a lead, and every explanation I had was a theory.
+   Theories are what produce confident wrong answers, so this returns the raw material
+   instead: every submission we hold for that email, which form and GUID it came from,
+   when it was submitted, and the field names as HubSpot returned them alongside the
+   labels we display them under.
+
+   If we are holding a submission HubSpot does not have for that person, this shows it.
+   If we are labelling the right answers with the wrong questions, this shows that too. */
+app.get("/api/callnow2/forms/for", async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  const em = String(req.query.email || "").trim().toLowerCase();
+  if (!em) return res.status(400).json({ error: "pass ?email=" });
+
+  const hit = FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
+  const out = {
+    email: em,
+    weHold: hit ? { submissions: (hit.subs || []).length, totalSeen: hit.total || (hit.subs || []).length,
+      formsThatMatched: Object.keys(hit.labels || {}) } : null,
+    formsWeRead: (formList() || []).map(function(f){ return { form: f.label, guid: f.guid, how: f.how }; }),
+    submissions: !hit ? [] : (hit.subs || []).map(function(sub){
+      const lab = (FORMS.labels || {})[sub.guid] || {};
+      return {
+        form: sub.form, guid: sub.guid,
+        submittedAt: sub.at ? new Date(sub.at).toISOString() : null,
+        // Raw name from HubSpot, the label we show it under, and the value. If the
+        // question on screen is wrong, the mismatch is visible right here.
+        answers: (sub.answers || []).map(function(a){
+          return { field: a.name, shownAs: lab[a.name] || "(no label, using the field name)", value: a.value };
+        })
+      };
+    }),
+    // So a mismatch can be traced to a form we should not be reading at all.
+    labelsLoadedFor: Object.keys(FORMS.labels || {}).length,
+    formsSyncedAt: FORMS.loadedAt, formsSource: FORMS.source, formsNote: FORMS.error || null
+  };
+
+  /* And what HubSpot says right now, so the two sit side by side rather than being
+     compared from memory. One call per form we read, only when asked for. */
+  if (String(req.query.live || "") === "1") {
+    out.liveFromHubSpot = [];
+    for (const f of (formList() || [])) {
+      try {
+        const subs = await fetchFormSubmissions(f.guid);
+        const mine = subs.filter(function(x){ return String(x.email || "").toLowerCase() === em; });
+        if (mine.length) out.liveFromHubSpot.push({ form: f.label, guid: f.guid, found: mine.length,
+          submissions: mine.map(function(x){
+            return { submittedAt: x.at ? new Date(x.at).toISOString() : null, answers: x.answers };
+          }) });
+      } catch (e) { out.liveFromHubSpot.push({ form: f.label, guid: f.guid, error: e.message }); }
+    }
+  }
+  res.json(out);
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });

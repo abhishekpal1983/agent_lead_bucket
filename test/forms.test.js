@@ -162,5 +162,14 @@ ok("the true total survives the cap, so the card can say how many were hidden",
     page.indexOf("class='fnum'") >= 0);
 }
 
+/* When the card and HubSpot disagree, look at the data rather than reason about it. */
+ok("there is a way to dump exactly what we hold for one person",
+  src.indexOf('app.get("/api/callnow2/forms/for"') >= 0 &&
+  src.indexOf("Theories are what produce confident wrong answers") >= 0);
+ok("it shows the raw field name beside the label we display it under",
+  src.indexOf("field: a.name, shownAs:") >= 0);
+ok("and can fetch the same thing live from HubSpot to sit beside it",
+  src.indexOf("out.liveFromHubSpot") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
