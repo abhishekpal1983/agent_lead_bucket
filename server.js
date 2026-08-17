@@ -2126,6 +2126,38 @@ async function fetchFormSubmissions(guid){
 
 /* Field names on a submission are internal ("what_is_your_current_role"). The question as
    the lead saw it lives on the form definition, so it is fetched once per form. */
+/* One form, one email, bounded. Stops at the first match and at the budget, and says
+   whether it read the whole form, because "not found" and "did not finish looking" are
+   different answers and only one of them is evidence. */
+async function scanFormForEmail(guid, email, budgetMs){
+  const t0 = Date.now();
+  const found = [];
+  let after, pages = 0, complete = true;
+  do {
+    if (Date.now() - t0 > budgetMs) { complete = false; break; }
+    const j = await hs("/form-integrations/v1/submissions/forms/" + guid + "?limit=50" +
+      (after ? "&after=" + encodeURIComponent(after) : ""));
+    pages++;
+    (j.results || []).forEach(function(r){
+      let em = "";
+      const answers = [];
+      (r.values || []).forEach(function(v){
+        const nm = String(v.name || "").toLowerCase();
+        if (nm === "email") { em = String(v.value || "").trim().toLowerCase(); return; }
+        if (FORM_SKIP_FIELDS.indexOf(nm) >= 0) return;
+        const val = String(v.value == null ? "" : v.value).trim();
+        if (!val) return;
+        answers.push({ name: nm, value: val.split(";").map(function(x){ return x.trim(); }).filter(Boolean) });
+      });
+      if (em === email) found.push({ at: r.submittedAt || 0, answers: answers });
+    });
+    if (found.length) break;                       // one match is enough to compare against
+    after = j.paging && j.paging.next && j.paging.next.after;
+    if (after) await sleep(120);
+  } while (after && pages < 400);
+  return { found: found, pages: pages, complete: complete && (found.length > 0 || !after) };
+}
+
 async function fetchFormLabels(guid){
   const map = {};
   const take = function(f){
@@ -3816,19 +3848,35 @@ app.get("/api/callnow2/forms/for", async function(req, res){
   };
 
   /* And what HubSpot says right now, so the two sit side by side rather than being
-     compared from memory. One call per form we read, only when asked for. */
+     compared from memory.
+
+     Bounded, because the first version was not. HubSpot cannot filter submissions by
+     email, so finding one person means scanning, and scanning all 23 forms is over ten
+     thousand records at fifty a page. It never returned before the proxy gave up, which
+     is a diagnostic that needs diagnosing. It now stops at the first match per form and
+     abandons the whole thing on a time budget, reporting exactly how far it got so a
+     "not found" is never mistaken for "not looked for". */
   if (String(req.query.live || "") === "1") {
+    const budgetMs = Math.min(45000, Math.max(5000, parseInt(req.query.budget || "20000", 10)));
+    const t0 = Date.now();
     out.liveFromHubSpot = [];
+    out.liveScan = { budgetMs: budgetMs, formsScanned: 0, formsSkipped: 0, complete: true };
     for (const f of (formList() || [])) {
+      if (Date.now() - t0 > budgetMs) { out.liveScan.formsSkipped++; out.liveScan.complete = false; continue; }
       try {
-        const subs = await fetchFormSubmissions(f.guid);
-        const mine = subs.filter(function(x){ return String(x.email || "").toLowerCase() === em; });
-        if (mine.length) out.liveFromHubSpot.push({ form: f.label, guid: f.guid, found: mine.length,
-          submissions: mine.map(function(x){
+        const r = await scanFormForEmail(f.guid, em, budgetMs - (Date.now() - t0));
+        out.liveScan.formsScanned++;
+        if (!r.complete) out.liveScan.complete = false;
+        if (r.found.length) out.liveFromHubSpot.push({ form: f.label, guid: f.guid,
+          found: r.found.length, scannedPages: r.pages, searchedAll: r.complete,
+          submissions: r.found.map(function(x){
             return { submittedAt: x.at ? new Date(x.at).toISOString() : null, answers: x.answers };
           }) });
       } catch (e) { out.liveFromHubSpot.push({ form: f.label, guid: f.guid, error: e.message }); }
     }
+    if (!out.liveScan.complete) out.liveScan.note =
+      "Ran out of time before reading every form. Nothing found is not proof of nothing there. " +
+      "Raise it with &budget=45000, or drop &live=1 and read what we already hold.";
   }
   res.json(out);
 });
