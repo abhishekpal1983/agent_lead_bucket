@@ -207,5 +207,15 @@ ok("the page is told whether forms are loaded at all",
 ok("question labels are stripped of markup before they reach the page",
   src.indexOf('String(lab[a.name] || "").replace(/<[^>]+>/g, "")') >= 0);
 
+/* A submission that exists in HubSpot and not here is on a form we are not reading, so
+   hunting it needs the whole portal rather than our own list. */
+ok("discovery keeps the whole portal list, not only the matches",
+  src.indexOf("allForms: all.map(function(f){ return { guid: f.id, label: f.name }; })") >= 0);
+ok("and the dump can search the forms we deliberately do not read",
+  src.indexOf('const everything = String(req.query.all || "") === "1";') >= 0 &&
+  src.indexOf("Untracked first") >= 0);
+ok("each hit says whether it came from a form we read",
+  src.indexOf('weRead: f.how !== "not read"') >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -2274,6 +2274,9 @@ async function discoverForms(force){
       return !matched[c] && !forms.some(function(f){ return creatorMatchesForm(c, f.label); });
     });
     FORM_LIST = { forms: forms, at: Date.now(), discovered: forms.filter(function(f){ return f.how === "discovered"; }).length,
+      // Every form in the portal, not only the ones we read. A submission we do not hold
+      // is by definition on a form we are not reading, so hunting it needs the whole list.
+      allForms: all.map(function(f){ return { guid: f.id, label: f.name }; }),
       // Every match, named. A form matched to the wrong creator would put somebody else's
       // answers on a lead card, so it has to be inspectable rather than trusted.
       pairs: pairs, unmatched: unmatched, error: null, scanned: all.length };
@@ -3869,7 +3872,20 @@ app.get("/api/callnow2/forms/for", async function(req, res){
        &form= (a GUID, or any part of its name) and it is answered in a second, including
        how many times they submitted THAT form, which is usually the actual question. */
     const want = String(req.query.form || "").trim().toLowerCase();
-    const list = (formList() || []).filter(function(f){
+    /* &all=1 searches every form in the portal, including the ones we deliberately do not
+       read. That is where a submission we do not hold has to be: if the answers exist in
+       HubSpot and not here, they are on a form nobody told us about. */
+    const everything = String(req.query.all || "") === "1";
+    const known = {};
+    (formList() || []).forEach(function(f){ known[f.guid] = 1; });
+    let list = (formList() || []).slice();
+    if (everything) {
+      const extra = ((FORM_LIST.allForms) || []).filter(function(f){ return !known[f.guid]; })
+        .map(function(f){ return { guid: f.guid, label: f.label, how: "not read" }; });
+      // Untracked first: what we already read has been answered above.
+      list = extra.concat(list);
+    }
+    list = list.filter(function(f){
       if (!want) return true;
       return String(f.guid).toLowerCase() === want || String(f.label).toLowerCase().indexOf(want) >= 0;
     });
@@ -3885,6 +3901,7 @@ app.get("/api/callnow2/forms/for", async function(req, res){
         out.liveScan.formsScanned++;
         if (!r.complete) out.liveScan.complete = false;
         if (r.found.length) out.liveFromHubSpot.push({ form: f.label, guid: f.guid,
+          weRead: f.how !== "not read",
           found: r.found.length, scannedPages: r.pages, searchedAll: r.complete,
           submissions: r.found.map(function(x){
             return { submittedAt: x.at ? new Date(x.at).toISOString() : null, answers: x.answers };
@@ -3893,7 +3910,8 @@ app.get("/api/callnow2/forms/for", async function(req, res){
     }
     if (!out.liveScan.complete) out.liveScan.note =
       "Ran out of time before reading every form, so nothing found is not proof of nothing there. " +
-      "Name the form with &form=simran (any part of the name) and it is answered in a second.";
+      "Name the form with &form=simran (any part of the name) and it is answered in a second, " +
+      "or repeat with &all=1 to include the forms we do not read.";
   }
   res.json(out);
 });
