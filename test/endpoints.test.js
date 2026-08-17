@@ -340,6 +340,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.indexOf("idempotent and self healing") >= 0 &&
       srv2.slice(srv2.indexOf("async function syncCallsToday"),
                  srv2.indexOf("async function syncDelta")).indexOf("mark") < 0);
+    ok("being turned away books a retry here too, not only on the general sweep",
+      srv2.indexOf("if (CACHE.syncing) { callsSoon(40); return; }") >= 0 &&
+      srv2.indexOf("function callsSoon") >= 0);
     ok("it runs far more often than the general sweep",
       srv2.indexOf('CALLSYNC_MINUTES || "3"') >= 0);
     ok("and its health is reported separately from the general sweep",

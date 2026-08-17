@@ -539,10 +539,23 @@ function deltaSoon(sec){
 const CALLSYNC_MINUTES = parseFloat(process.env.CALLSYNC_MINUTES || "3");
 let CALLSYNC = { at: null, running: false, n: 0, ms: 0, error: null, day: null };
 
+/* Same lesson as the general sweep, which I fixed there and left here. Being turned away
+   by a running rebuild scheduled nothing, so all three boot kicks and the first interval
+   ticks landed inside the rebuild window and were simply lost: the health page showed
+   calls at null with no error, seven minutes after start. */
+let CALLSYNC_RETRY = null;
+function callsSoon(sec){
+  if (CALLSYNC_RETRY) return;
+  CALLSYNC_RETRY = setTimeout(function(){
+    CALLSYNC_RETRY = null;
+    (typeof guard === "function" ? guard("callsToday", syncCallsToday) : syncCallsToday)();
+  }, (sec || 40) * 1000);
+}
+
 async function syncCallsToday(){
   if (!TOKEN || CALLSYNC.running) return;
-  if (CACHE.syncing) return;               // the full rebuild is doing this and more
-  if (!CACHE.loadedAt) return;
+  if (CACHE.syncing) { callsSoon(40); return; }   // the full rebuild is doing this and more
+  if (!CACHE.loadedAt) { callsSoon(40); return; }
   CALLSYNC.running = true;
   const t0 = Date.now();
   const day = istDayBounds();
