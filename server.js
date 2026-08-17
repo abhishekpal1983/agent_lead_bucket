@@ -2241,6 +2241,9 @@ async function discoverForms(force){
 }
 function formList(){ return (FORM_LIST.forms && FORM_LIST.forms.length) ? FORM_LIST.forms : WAITLIST_FORMS; }
 
+// How many of a person's submissions to keep. Enough to see that they came back and how
+// their answers moved; not so many that a serial submitter fills the card.
+const FORM_SUBS_MAX = parseInt(process.env.FORM_SUBS_MAX || "6", 10);
 const FORMS_HOURS = parseFloat(process.env.FORMS_HOURS || "6");
 async function syncForms(force){
   if (!TOKEN || FORMS.syncing) return;
@@ -2267,16 +2270,28 @@ async function syncForms(force){
         e.n++;
         if (at > e.last) e.last = at;
         if (!e.labels[f.label] || at > e.labels[f.label]) e.labels[f.label] = at;
-        // Keep the latest submission per form. Someone who filled the same form three
-        // times does not need three copies of the same answers on screen.
-        const prev = e.subs.filter(function(x){ return x.form === f.label; })[0];
-        if (!prev) e.subs.push({ form: f.label, guid: f.guid, at: at, answers: s.answers });
-        else if (at > prev.at) { prev.at = at; prev.answers = s.answers; }
+        /* Every submission, not one per form.
+
+           Keeping only the latest per form looked tidy and was quietly wrong: a lead who
+           fills two creators' forms, or the same form twice, gives different answers each
+           time, and we showed one of them with no sign the others existed. An agent
+           comparing the card against HubSpot then sees two different sets of answers for
+           the same person and reasonably concludes the app is lying.
+
+           Capped, because a handful of people submit endlessly and nobody reads the
+           eleventh. Newest first, so the cap drops the oldest. */
+        e.subs.push({ form: f.label, guid: f.guid, at: at, answers: s.answers });
       });
       counts[f.label] = subs.length;
       ok++;
     } catch (e) { counts[f.label] = null; err = e.message; }
   }
+  // Newest first, then capped. Done once here rather than on every card render.
+  map.forEach(function(e){
+    e.subs.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+    e.total = e.subs.length;
+    if (e.subs.length > FORM_SUBS_MAX) e.subs = e.subs.slice(0, FORM_SUBS_MAX);
+  });
   const quota = /429|daily limit|rate limit/i.test(err);
   const denied = /\b40[13]\b|scope/i.test(err);
   let note = null;
@@ -2325,9 +2340,10 @@ function formAnswers(c){
   const em = String(c.email || "").trim().toLowerCase();
   const hit = em && FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
   if (!hit || !hit.subs || !hit.subs.length) return [];
-  return hit.subs.slice().sort(function(a, b){ return b.at - a.at; }).map(function(sub){
+  const kept = hit.subs.length, total = hit.total || kept;
+  return hit.subs.slice().sort(function(a, b){ return b.at - a.at; }).map(function(sub, i){
     const lab = (FORMS.labels || {})[sub.guid] || {};
-    return { form: sub.form, at: sub.at,
+    return { form: sub.form, at: sub.at, n: i + 1, of: total, hidden: Math.max(0, total - kept),
       answers: (sub.answers || []).map(function(a){
         return { q: lab[a.name] || a.name.replace(/_/g, " ").replace(/^\w/, function(m){ return m.toUpperCase(); }),
           a: a.value };

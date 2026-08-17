@@ -351,6 +351,10 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .fresh.warn{color:#7A4A08;font-weight:600}
 .wrap .fresh.bad{color:#8C2D12;font-weight:700}
 /* One click to settle a number, in the queue and on the card. */
+.wrap .fcount{font-size:11.5px;color:#7A4A08;background:#FDF3E2;border:1px solid #F0DCB8;
+  border-radius:8px;padding:6px 9px;margin-bottom:7px}
+.wrap .fnum{font-size:10px;font-weight:700;color:#4B2E9E;background:#EEF0FE;
+  border-radius:5px;padding:1px 6px;margin-right:4px}
 .wrap .rfr{border:1px solid var(--line,#DCE4EC);background:#fff;border-radius:7px;
   width:24px;height:22px;line-height:1;font-size:13px;color:#4A5A6A;cursor:pointer;padding:0}
 .wrap .rfr:hover{background:#EEF0FE;border-color:#4F46E5;color:#3B2FA8}
@@ -965,15 +969,27 @@ function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
 function hsl(id){var p=(L&&L.portal)||{};return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
 function toggleDet(id){OPEN[id]=!OPEN[id];draw();}
 // What the lead told us on the form, laid out as question and answer the way they saw it.
+/* Every submission this person made, newest first, each headed with which form and when.
+
+   It used to show one per form with nothing to say others existed, so a lead who filled
+   two creators' forms appeared to have one set of answers and HubSpot showed another. The
+   app looked wrong when it was merely incomplete, which is worse. */
 function formBlock(subs){
   if(!subs||!subs.length)return "";
-  return subs.map(function(sub){
+  var of=subs[0].of||subs.length, hidden=subs[0].hidden||0;
+  var head=of>1
+    ? "<div class='fcount'>Filled a form <b>"+fmt(of)+"</b> times"+
+      (hidden?", showing the "+fmt(subs.length)+" most recent":"")+
+      ". Their answers can change between submissions.</div>"
+    : "";
+  return head+subs.map(function(sub){
     var qa=(sub.answers||[]).map(function(x){
       return "<div class='qa'><div class='q'>"+esc(x.q)+"</div>"+
         (x.a||[]).map(function(v){return "<div class='a'>"+esc(v)+"</div>";}).join("")+"</div>";
     }).join("");
-    return "<div class='fsub'><div class='fhd'>"+esc(sub.form)+
-      (sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
+    return "<div class='fsub'><div class='fhd'>"+
+      (of>1?"<span class='fnum'>"+(sub.n||1)+" of "+fmt(of)+"</span> ":"")+
+      esc(sub.form)+(sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
       (qa||"<div class='z'>No answers captured on this submission.</div>")+"</div>";
   }).join("");}
 function bandOf(k){ return ((J&&J.effortBands)||[]).filter(function(b){return b.key===k;})[0]||null; }

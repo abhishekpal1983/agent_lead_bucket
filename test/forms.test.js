@@ -142,5 +142,25 @@ ok("there is a lever to rediscover and re-read forms now",
   src.indexOf("creatorsWithNoForm:") >= 0 &&
   src.indexOf("submissionsPerForm:") >= 0);
 
+/* A person who submits twice gives different answers each time. Showing one and hiding
+   the rest made the app look like it was contradicting HubSpot. */
+ok("every submission is kept, not one per form",
+  src.indexOf("Every submission, not one per form.") >= 0 &&
+  src.indexOf("e.subs.push({ form: f.label, guid: f.guid, at: at, answers: s.answers });") >= 0);
+ok("newest first, and capped so a serial submitter cannot fill the card",
+  src.indexOf("e.subs.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });") >= 0 &&
+  src.indexOf("const FORM_SUBS_MAX") >= 0);
+ok("the true total survives the cap, so the card can say how many were hidden",
+  src.indexOf("e.total = e.subs.length;") >= 0 &&
+  src.indexOf("hidden: Math.max(0, total - kept)") >= 0);
+{
+  const page = fs.readFileSync(require("path").join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("the card says how many times they filled a form",
+    page.indexOf("Filled a form <b>") >= 0 &&
+    page.indexOf("Their answers can change between submissions") >= 0);
+  ok("and numbers each one, so it is clear which is being read",
+    page.indexOf("class='fnum'") >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
