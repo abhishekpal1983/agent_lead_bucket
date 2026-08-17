@@ -2390,7 +2390,10 @@ function formAnswers(c){
     const lab = (FORMS.labels || {})[sub.guid] || {};
     return { form: sub.form, at: sub.at, n: i + 1, of: total, hidden: Math.max(0, total - kept),
       answers: (sub.answers || []).map(function(a){
-        return { q: lab[a.name] || a.name.replace(/_/g, " ").replace(/^\w/, function(m){ return m.toUpperCase(); }),
+        /* Some question labels carry markup, e.g. the consent line with a link in it.
+           Escaped on the page it renders as visible tags, which looks like a bug. */
+        const q = String(lab[a.name] || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+        return { q: q || a.name.replace(/_/g, " ").replace(/^\w/, function(m){ return m.toUpperCase(); }),
           a: a.value };
       }) };
   });

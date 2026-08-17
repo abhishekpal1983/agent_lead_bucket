@@ -199,5 +199,9 @@ ok("the page is told whether forms are loaded at all",
     page.indexOf("Form answers have not finished loading yet") >= 0);
 }
 
+// One real label carries an anchor tag. Escaped on the page it renders as visible markup.
+ok("question labels are stripped of markup before they reach the page",
+  src.indexOf('String(lab[a.name] || "").replace(/<[^>]+>/g, "")') >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
