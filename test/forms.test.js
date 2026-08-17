@@ -172,12 +172,16 @@ ok("and can fetch the same thing live from HubSpot to sit beside it",
   src.indexOf("out.liveFromHubSpot") >= 0);
 /* The first version scanned every submission of all 23 forms and never returned. A
    diagnostic that needs diagnosing is worse than none. */
-ok("the live scan is bounded by time and stops at the first match",
-  src.indexOf("async function scanFormForEmail") >= 0 &&
-  src.indexOf("if (found.length) break;") >= 0 &&
-  src.indexOf("budgetMs") >= 0);
+ok("the live budget stays under what a proxy will wait for",
+  src.indexOf('Math.min(22000, Math.max(4000, parseInt(req.query.budget || "12000", 10)))') >= 0 &&
+  src.indexOf("Capped below the proxy's patience") >= 0);
+ok("one named form can be scanned on its own, and then it counts every submission",
+  src.indexOf('const want = String(req.query.form || "")') >= 0 &&
+  src.indexOf("if (found.length && stopAtFirst !== false) break;") >= 0);
+ok("the live scan is bounded by time",
+  src.indexOf("async function scanFormForEmail") >= 0 && src.indexOf("budgetMs") >= 0);
 ok("and it says how far it got, so not-found is never mistaken for not-looked-for",
-  src.indexOf("Nothing found is not proof of nothing there") >= 0 &&
+  src.indexOf("not proof of nothing there") >= 0 &&
   src.indexOf("searchedAll: r.complete") >= 0);
 
 /* "We hold nothing for this person" and "we hold nothing for anybody yet" look the same

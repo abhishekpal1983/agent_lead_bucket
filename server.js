@@ -2129,7 +2129,7 @@ async function fetchFormSubmissions(guid){
 /* One form, one email, bounded. Stops at the first match and at the budget, and says
    whether it read the whole form, because "not found" and "did not finish looking" are
    different answers and only one of them is evidence. */
-async function scanFormForEmail(guid, email, budgetMs){
+async function scanFormForEmail(guid, email, budgetMs, stopAtFirst){
   const t0 = Date.now();
   const found = [];
   let after, pages = 0, complete = true;
@@ -2151,7 +2151,9 @@ async function scanFormForEmail(guid, email, budgetMs){
       });
       if (em === email) found.push({ at: r.submittedAt || 0, answers: answers });
     });
-    if (found.length) break;                       // one match is enough to compare against
+    // Across many forms, one match is enough to compare against. Inside a single named
+    // form, keep going: "how many times did he submit THIS form" is the whole question.
+    if (found.length && stopAtFirst !== false) break;
     after = j.paging && j.paging.next && j.paging.next.after;
     if (after) await sleep(120);
   } while (after && pages < 400);
@@ -3860,14 +3862,26 @@ app.get("/api/callnow2/forms/for", async function(req, res){
      abandons the whole thing on a time budget, reporting exactly how far it got so a
      "not found" is never mistaken for "not looked for". */
   if (String(req.query.live || "") === "1") {
-    const budgetMs = Math.min(45000, Math.max(5000, parseInt(req.query.budget || "20000", 10)));
+    /* Capped below the proxy's patience. A budget of forty five seconds guaranteed a
+       timeout, which is a diagnostic that cannot be read: worse than a slow one. */
+    const budgetMs = Math.min(22000, Math.max(4000, parseInt(req.query.budget || "12000", 10)));
+    /* And scanning forms the lead was never in is where the time goes. Name one with
+       &form= (a GUID, or any part of its name) and it is answered in a second, including
+       how many times they submitted THAT form, which is usually the actual question. */
+    const want = String(req.query.form || "").trim().toLowerCase();
+    const list = (formList() || []).filter(function(f){
+      if (!want) return true;
+      return String(f.guid).toLowerCase() === want || String(f.label).toLowerCase().indexOf(want) >= 0;
+    });
     const t0 = Date.now();
     out.liveFromHubSpot = [];
-    out.liveScan = { budgetMs: budgetMs, formsScanned: 0, formsSkipped: 0, complete: true };
-    for (const f of (formList() || [])) {
+    out.liveScan = { budgetMs: budgetMs, scanning: want ? list.map(function(f){ return f.label; }) : "every form",
+      formsScanned: 0, formsSkipped: 0, complete: true };
+    if (want && !list.length) out.liveScan.note = "No form matches " + want + ". See formsWeRead above.";
+    for (const f of list) {
       if (Date.now() - t0 > budgetMs) { out.liveScan.formsSkipped++; out.liveScan.complete = false; continue; }
       try {
-        const r = await scanFormForEmail(f.guid, em, budgetMs - (Date.now() - t0));
+        const r = await scanFormForEmail(f.guid, em, budgetMs - (Date.now() - t0), !want);
         out.liveScan.formsScanned++;
         if (!r.complete) out.liveScan.complete = false;
         if (r.found.length) out.liveFromHubSpot.push({ form: f.label, guid: f.guid,
@@ -3878,8 +3892,8 @@ app.get("/api/callnow2/forms/for", async function(req, res){
       } catch (e) { out.liveFromHubSpot.push({ form: f.label, guid: f.guid, error: e.message }); }
     }
     if (!out.liveScan.complete) out.liveScan.note =
-      "Ran out of time before reading every form. Nothing found is not proof of nothing there. " +
-      "Raise it with &budget=45000, or drop &live=1 and read what we already hold.";
+      "Ran out of time before reading every form, so nothing found is not proof of nothing there. " +
+      "Name the form with &form=simran (any part of the name) and it is answered in a second.";
   }
   res.json(out);
 });
