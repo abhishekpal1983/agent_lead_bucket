@@ -2126,6 +2126,37 @@ async function fetchFormSubmissions(guid){
 
 /* Field names on a submission are internal ("what_is_your_current_role"). The question as
    the lead saw it lives on the form definition, so it is fetched once per form. */
+/* Which forms did this person actually submit?
+
+   Scanning every form for one email is the wrong question asked expensively: 58 forms,
+   tens of thousands of submissions, and two of them ate a 22 second budget on their own.
+   HubSpot already knows the answer. The legacy contact profile returns the submissions
+   for a contact directly, so one call gives the form ids and we then read only those.
+
+   Legacy, but it is the only endpoint that answers per contact rather than per form. If
+   it is unavailable the caller falls back to scanning, which is slow but still correct. */
+async function contactFormSubmissions(contactId){
+  const j = await hs("/contacts/v1/contact/vid/" + encodeURIComponent(contactId) +
+    "/profile?formSubmissionMode=all&showListMemberships=false&propertyMode=value_only");
+  return ((j || {})["form-submissions"] || []).map(function(f){
+    return { guid: String(f["form-id"] || ""), title: f.title || "", at: f.timestamp || 0,
+      page: f["page-url"] || "" };
+  }).filter(function(f){ return f.guid; })
+    .sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+}
+
+// The contact behind an email, from what we already hold if possible, otherwise HubSpot.
+async function contactIdForEmail(em){
+  const hit = (CACHE.contacts || []).filter(function(c){
+    return String(c.email || "").toLowerCase() === em; })[0];
+  if (hit) return String(hit.id);
+  const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+    filterGroups: [{ filters: [{ propertyName: "email", operator: "EQ", value: em }] }],
+    properties: ["email"], limit: 1 })});
+  const r = (j.results || [])[0];
+  return r ? String(r.id) : null;
+}
+
 /* One form, one email, bounded. Stops at the first match and at the budget, and says
    whether it read the whole form, because "not found" and "did not finish looking" are
    different answers and only one of them is evidence. */
@@ -3891,6 +3922,35 @@ app.get("/api/callnow2/forms/for", async function(req, res){
     });
     const t0 = Date.now();
     out.liveFromHubSpot = [];
+
+    /* Ask HubSpot which forms this person submitted, then read only those. One call
+       instead of fifty eight, and it also answers the question directly: if it lists a
+       form we do not read, that is the whole explanation. */
+    if (!want) {
+      try {
+        const cid = await contactIdForEmail(em);
+        out.contactId = cid;
+        if (cid) {
+          const subs = await contactFormSubmissions(cid);
+          const nameOf = {};
+          ((FORM_LIST.allForms) || []).forEach(function(f){ nameOf[f.guid] = f.label; });
+          out.hubspotSaysTheySubmitted = subs.map(function(f){
+            return { form: nameOf[f.guid] || f.title || ("Form " + f.guid), guid: f.guid,
+              at: f.at ? new Date(f.at).toISOString() : null,
+              weRead: !!known[f.guid] };
+          });
+          const unread = out.hubspotSaysTheySubmitted.filter(function(f){ return !f.weRead; });
+          if (unread.length) out.answer =
+            "They submitted " + unread.length + " form(s) we do not read: " +
+            unread.map(function(f){ return f.form; }).join(", ") +
+            ". Answers on those never reach the app, which is why HubSpot can show a set we do not have.";
+          if (subs.length) list = subs.map(function(f){
+            return { guid: f.guid, label: nameOf[f.guid] || f.title || ("Form " + f.guid),
+              how: known[f.guid] ? "read" : "not read" }; });
+        }
+      } catch (e) { out.contactLookupError = e.message; }
+    }
+
     out.liveScan = { budgetMs: budgetMs, scanning: want ? list.map(function(f){ return f.label; }) : "every form",
       formsScanned: 0, formsSkipped: 0, complete: true };
     if (want && !list.length) out.liveScan.note = "No form matches " + want + ". See formsWeRead above.";

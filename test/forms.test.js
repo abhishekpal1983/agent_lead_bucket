@@ -217,5 +217,19 @@ ok("and the dump can search the forms we deliberately do not read",
 ok("each hit says whether it came from a form we read",
   src.indexOf('weRead: f.how !== "not read"') >= 0);
 
+/* Scanning 58 forms for one email is the wrong question asked expensively. Two forms ate
+   a 22 second budget on their own. HubSpot already knows which forms a contact submitted. */
+ok("it asks HubSpot which forms this contact submitted, rather than searching all of them",
+  src.indexOf("async function contactFormSubmissions") >= 0 &&
+  src.indexOf("formSubmissionMode=all") >= 0);
+ok("and resolves the contact from what we already hold before asking HubSpot",
+  src.indexOf("async function contactIdForEmail") >= 0 &&
+  src.indexOf("from what we already hold if possible") >= 0);
+ok("then reads only those forms, marking which of them we do not read",
+  src.indexOf("out.hubspotSaysTheySubmitted") >= 0 &&
+  src.indexOf('weRead: !!known[f.guid]') >= 0);
+ok("and states the conclusion outright when a form we do not read is involved",
+  src.indexOf("Answers on those never reach the app") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
