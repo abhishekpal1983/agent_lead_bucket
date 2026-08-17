@@ -1185,9 +1185,11 @@ function whyBody(r){
   else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
     " <span class='z'>(no answers held for this form yet)</span>");
   else if(String(r.source||"").toLowerCase().indexOf("form")>=0)
-    bits.push("<span class='z'>Came in through a form, but we hold no submission for "+
-      "this email. Either the form is not one we read yet, or they filled it under a "+
-      "different address.</span>");
+    // Three different truths that look identical if you only say "nothing here".
+    bits.push("<span class='z'>"+(J.formsReady===false
+      ? "Form answers have not finished loading yet. They appear a minute or two after a restart."
+      : "Came in through a form, but we hold no submission for this email. Either the form "+
+        "is not one we read yet, or they filled it under a different address.")+"</span>");
   if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+(r.bookAt?" on "+esc(tmp(r.bookAt)):""));
   if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
   if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));

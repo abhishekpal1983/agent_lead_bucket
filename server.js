@@ -3264,6 +3264,9 @@ app.get("/api/callnow2", function(req, res){
     // Creators whose form we could not find. Their leads can only ever show a form name,
     // never the answers, so the gap belongs next to the creator list rather than in a log.
     creatorsWithoutForm: (typeof FORM_LIST !== "undefined" && FORM_LIST.unmatched) || [],
+    // So a card can tell "we have no submission for them" from "we have none for anybody
+    // yet". The two look identical on screen and mean completely different things.
+    formsReady: !!(typeof FORMS !== "undefined" && FORMS.loadedAt),
     formsTracked: (typeof FORM_LIST !== "undefined" && (FORM_LIST.forms || []).length) || 0,
     stageOptions: cn2StageOrder(ctx.base).map(function(x){
       return { stage: x, label: CN2_STAGE_LABELS[x] || x }; }),
@@ -3771,6 +3774,14 @@ app.get("/api/callnow2/forms/for", async function(req, res){
   const hit = FORMS.byEmail.has(em) ? FORMS.byEmail.get(em) : null;
   const out = {
     email: em,
+    /* Without this the answer to "what do you hold for this person" is a page of nulls,
+       which reads as "nothing for them" when it means "nothing for anyone yet". */
+    problem: !FORMS.loadedAt
+      ? (FORMS.syncing ? "Form submissions are loading right now. Ask again in a minute."
+                       : "Form submissions have never loaded on this instance, so nothing below is about this person. Hit /api/callnow2/sync/forms.")
+      : ((FORM_LIST.forms || []).length <= WAITLIST_FORMS.length && !FORM_LIST.at
+          ? "Form discovery has not run, so only the three hand-named forms are being read."
+          : null),
     weHold: hit ? { submissions: (hit.subs || []).length, totalSeen: hit.total || (hit.subs || []).length,
       formsThatMatched: Object.keys(hit.labels || {}) } : null,
     formsWeRead: (formList() || []).map(function(f){ return { form: f.label, guid: f.guid, how: f.how }; }),
@@ -7221,6 +7232,10 @@ SERVER = app.listen(PORT, () => {
   guard("leadsTodayBoot", bootstrapLeadsTodayOnBoot)();
   guard("backupPool", syncBackupPool)();
   setInterval(guard("backupPool", syncBackupPool), COHORT_MINUTES * 60 * 1000);
+  /* Forms need nothing from the lead sync, so they should not queue behind it. Waiting
+     150 seconds to START, then minutes to fetch, meant every restart left lead cards with
+     no answers on them for a long time, looking exactly like data we do not have. */
+  setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);
   setTimeout(runChain, 150 * 1000);
   setInterval(runChain, COHORT_MINUTES * 60 * 1000);
 });

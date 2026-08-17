@@ -171,5 +171,24 @@ ok("it shows the raw field name beside the label we display it under",
 ok("and can fetch the same thing live from HubSpot to sit beside it",
   src.indexOf("out.liveFromHubSpot") >= 0);
 
+/* "We hold nothing for this person" and "we hold nothing for anybody yet" look the same
+   on screen and mean completely different things. The first is a fact about the lead, the
+   second is a fact about the app, and reading one as the other sends you hunting a bug
+   that is not there. */
+ok("the dump says when forms have never loaded, instead of answering with nulls",
+  src.indexOf("nothing below is about this person") >= 0 &&
+  src.indexOf("Form submissions are loading right now") >= 0);
+ok("and when only the hand-named forms are being read",
+  src.indexOf("Form discovery has not run") >= 0);
+ok("forms start loading at boot rather than queueing behind the lead sync",
+  src.indexOf('setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);') >= 0);
+ok("the page is told whether forms are loaded at all",
+  src.indexOf("formsReady: !!(typeof FORMS !== \"undefined\" && FORMS.loadedAt)") >= 0);
+{
+  const page = fs.readFileSync(require("path").join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("and a card says loading rather than claiming there is nothing",
+    page.indexOf("Form answers have not finished loading yet") >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
