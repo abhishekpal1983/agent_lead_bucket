@@ -431,3 +431,23 @@ Every response carries `x-cache: hit` or `miss`, and `/api/status` reports the r
 
 Two things are deliberately **not** cached this way: the lead drill's freshness comes from
 the same version key so it follows automatically, and anything that writes.
+
+## 18. Student or professional is asked by two fields
+
+Two contact properties ask the same question. `tm_student_or_professional` is written by the
+booking flow and is a fixed choice. `are_you_a_student_or_working_professional` is written by
+several creators' forms, ayush_singh13 among them, and is free text.
+
+Neither is populated often enough on its own. A lead that came in through a form and never
+booked has only the second; a lead that booked has only the first. Reading one of them meant
+a large share of leads showed as unknown when the answer was sitting on the record.
+
+The rule: read both, take whichever the lead carries, booking answer first. The fallback can
+only ever fill a blank. It never overrules an answer the booking flow already gave, so no lead
+that counts as a student today can become a professional tomorrow. Segment splits can grow;
+they cannot flip.
+
+Every reader goes through `spRawOf`, so the two definitions cannot drift apart. The verdict
+shows as a chip in the Why call column, and both raw answers show in the expander and the lead
+card. If a lead answered both and answered differently, both are shown and the disagreement is
+named, because that is a fact about the lead and not a fault in the page.

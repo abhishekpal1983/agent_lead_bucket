@@ -109,6 +109,7 @@ td.z{color:#B7C2CD}
 .tag.p{background:#EAEFF4;color:#3F5163}
 .tag.rf{background:#FF7A59;color:#fff}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
+.tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
 .tag.paid{background:#0A5346;color:#fff}
 .tag.opt{background:#3F5163;color:#fff}
 .pill{background:#FF7A59;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:6px;display:inline-block;font-variant-numeric:tabular-nums}
@@ -1019,6 +1020,10 @@ function whyTags(r){
   if(r.source)t.push("<span class='tag src' title='Lead source: "+esc(srcLabel(r.source))+
     ". This is where the lead came from, not a form we have read.'>"+esc(srcLabel(r.source))+"</span>");
   if(r.bookTitle)t.push("<span class='tag src' title='Last Topmate booking'>"+esc(String(r.bookTitle).slice(0,30))+"</span>");
+  /* Student or professional changes the pitch, so it belongs on the row and not three
+     clicks down. Hover carries what they actually wrote, and which question asked it. */
+  if(r.sp==="S"||r.sp==="P")t.push("<span class='tag sp' title='"+
+    esc(spSaidText(r)||"Student or professional")+"'>"+(r.sp==="S"?"Student":"Professional")+"</span>");
   return t.join(" ");
 }
 /* Re-read one lead from HubSpot on demand.
@@ -1213,6 +1218,20 @@ function leadCard(rows){
       "<button class='expbtn' onclick='toggleCard(2)'><span id='cx2'>+</span> Notes and bookings</button>"+
       "<div id='cb2' hidden class='expbody'>"+noteBlock(r.id)+"</div>"+
     "</div></div>";}
+/* Two fields ask this, and a lead can answer either or both. */
+function spSaidText(r){
+  return (r.spSaid||[]).map(function(a){ return a.label+": "+a.value; }).join(" \u00b7 ");}
+function spBlock(r){
+  var a=r.spSaid||[];
+  if(!a.length)return "";
+  var head=r.sp==="S"?"Student":r.sp==="P"?"Professional":"Answered, but not clearly either";
+  return "<div class='fsub'><div class='fhd'>Student or professional: "+esc(head)+"</div>"+
+    a.map(function(x){ return "<div class='qa'><div class='q'>"+esc(x.label)+"</div>"+
+      "<div class='a'>"+esc(x.value)+"</div></div>"; }).join("")+
+    // Two answers that disagree is a real thing an agent should see, not a bug to hide.
+    (a.length>1&&a[0].value.toLowerCase()!==a[1].value.toLowerCase()
+      ? "<div class='z'>These two answers do not match. The booking answer is the one used above.</div>":"")+
+    "</div>";}
 function whyBody(r){
   var bits=[];
   bits.push("Sitting in "+esc(STAGE_LABEL[r.openStage]||r.openStage)+
@@ -1221,6 +1240,7 @@ function whyBody(r){
   /* Some creators' forms write their answers into one free-text property instead of named
      fields. It is not pretty, but an agent reading it is better than an agent reading
      nothing, so it sits with the form answers rather than in a corner. */
+  var spb=spBlock(r); if(spb)bits.push(spb);
   if(r.information)bits.push("<div class='fsub'><div class='fhd'>Form information</div>"+
     "<div class='qa'><div class='a'>"+esc(r.information).replace(/\n/g,"<br>")+"</div></div></div>");
   if(r.formSubs&&r.formSubs.length)bits.push(formBlock(r.formSubs));

@@ -29,6 +29,10 @@ const PROPS = [
   "callscurrent_stage","call_in_current_stage_by_current_owner",
   "createdate","follow_up_date_and_time","last_call_date_and_time",
   "engagement_stage_last_changed_at","tm_student_or_professional",
+  /* The same question, asked twice. Booking flows write tm_student_or_professional;
+     several creators' forms write their own field instead. Neither is populated often
+     enough on its own, so we read both and take whichever the lead actually carries. */
+  "are_you_a_student_or_working_professional",
   "not_interested_reason","counselling_done","previous_engagement_stage",
   "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
   "conversion_probability_reason","tm_last_booking_title", "tm_last_booking_type", "tm_last_booking_timestamp", "tm_total_bookings",
@@ -278,6 +282,7 @@ async function fetchFreshForOwner(ownerId){
       properties: ["firstname", "lastname", "topmate_username", "createdate", "international_number", "actual_source",
         "email", "phone", "conversion_probability_score", "recent_conversion_event_name", "first_conversion_event_name",
         "follow_up_date_and_time", "last_call_date_and_time", "tm_student_or_professional",
+        "are_you_a_student_or_working_professional",
         "hs_timezone", "country", "conversion_probability_reason"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100, after
@@ -739,6 +744,27 @@ function normSrc(v){
   const main = ["import","digital product","marketing webinar","forms","1:1 video call","revspot","webinar","integration","thinksage webinar","topmate","crm ui","text query"];
   return main.indexOf(s) >= 0 ? s : "other";
 }
+/* Which of the two fields this lead answered, and what they said in their own words.
+   Ordered by how much we trust it: the booking answer is a fixed choice, the form answer
+   is free text. A lead that answered both and answered differently is worth seeing whole,
+   so the raw wording travels with the verdict rather than being flattened to S or P. */
+const SP_FIELDS = [
+  ["tm_student_or_professional", "Student or Professional"],
+  ["are_you_a_student_or_working_professional", "Are you a Student or Working professional?"]
+];
+function spAnswers(c){
+  const out = [];
+  if (!c) return out;
+  SP_FIELDS.forEach(function(f){
+    const v = c[f[0]];
+    if (v != null && String(v).trim()) out.push({ prop: f[0], label: f[1], value: String(v).trim() });
+  });
+  return out;
+}
+// The value the rest of the app classifies on. Falling back can only ever fill a blank:
+// it never overrules an answer the booking flow already gave.
+function spRawOf(c){ const a = spAnswers(c); return a.length ? a[0].value : ""; }
+
 function segOf(v){
   const c = (function(s){
     s = (s || "").trim().toLowerCase();
@@ -767,7 +793,8 @@ async function fetchCohortRange(creator, from, to, sink){
   let after;
   do {
     const body = { filterGroups: [{ filters }],
-      properties: ["createdate", "actual_source", "tm_student_or_professional", "email", "phone"],
+      properties: ["createdate", "actual_source", "tm_student_or_professional",
+        "are_you_a_student_or_working_professional", "email", "phone"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
     (j.results || []).forEach(r => sink(r.properties));
@@ -788,7 +815,7 @@ async function syncCohorts(){
       const sink = p => {
         const ym = ymOf(p.createdate);
         if (!ym) return;
-        const src = normSrc(p.actual_source), seg = segOf(p.tm_student_or_professional);
+        const src = normSrc(p.actual_source), seg = segOf(spRawOf(p));
         if (!counts[cr]) counts[cr] = {};
         if (!counts[cr][ym]) counts[cr][ym] = {};
         if (!counts[cr][ym][src]) counts[cr][ym][src] = {};
@@ -1113,7 +1140,7 @@ function agentMetrics(rows){
     if (cd > d30) a.age30++; else if (cd > d90) a.age90++;
     if (st === "ni_not_interested") { a.ni++; if (isPostCouns(c)) a.niPost++; }
     if (st === "disqualified") a.dq++;
-    const sp = classifySP(c.tm_student_or_professional);
+    const sp = classifySP(spRawOf(c));
     if (sp === "S") a.stu++; else if (sp === "P") a.pro++;
     if (intlOf(c)) a.intl++;
   });
@@ -1438,7 +1465,7 @@ app.get("/api/drill/:id", (req, res) => {
     if (ent) { sa.tsSum += ent; sa.tsN++; }
     const cd = ts(c.createdate);
     if (cd) { const m = new Date(cd).toISOString().slice(0, 7); months[m] = (months[m] || 0) + 1; }
-    const spRaw = c.tm_student_or_professional, sp = classifySP(spRaw);
+    const spRaw = spRawOf(c), sp = classifySP(spRaw);
     if (sp === "S") spS++; else if (sp === "P") spP++; else spU++;
     if (spRaw) spTopMap[spRaw] = (spTopMap[spRaw] || 0) + 1;
     if (st === "ni_not_interested") {
@@ -1487,7 +1514,7 @@ app.get("/api/leads", (req, res) => {
       id: c.id,
       name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || "(no name)",
       cred: c.topmate_username || "",
-      spRaw: c.tm_student_or_professional || "",
+      spRaw: spRaw || "",
       created: ts(c.createdate),
       calls: num(c.callscurrent_stage),
       own: num(c.call_in_current_stage_by_current_owner),
@@ -1670,7 +1697,7 @@ app.get("/api/conversion", (req, res) => {
     if (fMonth && ymOf(ts) !== fMonth) return;
     if (!intlMatch(c, fIntl)) return;
     if (!srcMatch(c, fSrc)) return;
-    const seg = segOf(c.tm_student_or_professional);
+    const seg = segOf(spRawOf(c));
     if (fSegment && seg !== fSegment) return;
     const crm = ymOf(c.createdate) || "(unknown)";
     if (fCreate && crm !== fCreate) return;
@@ -1697,7 +1724,7 @@ app.get("/api/conversion", (req, res) => {
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
     if (!intlMatch(c, fIntl)) return;
     if (!srcMatch(c, fSrc)) return;
-    const seg = segOf(c.tm_student_or_professional);
+    const seg = segOf(spRawOf(c));
     if (fSegment && seg !== fSegment) return;
     const crm = ymOf(c.createdate) || "(unknown)";
     if (fCreate && crm !== fCreate) return;
@@ -1719,7 +1746,7 @@ app.get("/api/conversion", (req, res) => {
     if (fCreator && (c.topmate_username || "") !== fCreator) return;
     if (fAgent && c.hubspot_owner_id !== fAgent) return;
     if (!intlMatch(c, fIntl)) return;
-    if (fSegment && segOf(c.tm_student_or_professional) !== fSegment) return;
+    if (fSegment && segOf(spRawOf(c)) !== fSegment) return;
     if (!srcMatch(c, fSrc)) return;
     const crm = ymOf(c.createdate) || "(unknown)";
     if (fCreate && crm !== fCreate) return;
@@ -2587,6 +2614,7 @@ const PRIORITY_FRESH_CREATORS = (process.env.PRIORITY_FRESH_CREATORS ||
 const PFRESH_PROPS = ["firstname","lastname","topmate_username","createdate","international_number","actual_source",
   "email","phone","conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
   "follow_up_date_and_time","last_call_date_and_time","hubspot_owner_id","tm_student_or_professional",
+  "are_you_a_student_or_working_professional",
   "hs_timezone","country","conversion_probability_reason"];
 let PFRESH = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null };
 let PFRESH_LIST = PRIORITY_FRESH_CREATORS.slice();
@@ -2756,7 +2784,9 @@ function cnRow(c){
     coldReason: clip(c.reason_for_notinteresteddisqualifiedghosted || c.not_interested_reason, 300),
     lastContact: ts(c.notes_last_contacted),
     paid: (function(){ const p = paidOf(c); return p ? p.at || 1 : 0; })(),
-    sp: classifySP(c.tm_student_or_professional),
+    sp: classifySP(spRawOf(c)),
+    // Both answers, not just the winning one, so an agent sees what they actually wrote.
+    spSaid: spAnswers(c),
     /* Whichever property is labelled Information on this portal. Free text, shown as-is,
        because an agent reading a messy answer beats an agent reading nothing. */
     information: clip(infoOf(c), 2000),
@@ -4439,6 +4469,7 @@ app.get("/api/callnow2/leads", function(req, res){
         score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
         information: r.information || "",
+        sp: r.sp || "?", spSaid: r.spSaid || [],
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,
         /* Was gated on the Form label being set, which meant a lead whose form we had
@@ -6348,7 +6379,8 @@ async function fetchPlanRange(creator, from, to, sink, depth){
   let after;
   do {
     const body = { filterGroups: [{ filters }],
-      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number", "tm_student_or_professional"],
+      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number",
+        "tm_student_or_professional", "are_you_a_student_or_working_professional"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
     (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
@@ -6395,7 +6427,7 @@ function planEcon(creator){
 }
 function planIvOf(p){ const v = String(p.international_number || "").toLowerCase(); return v === "true" || v === "yes" ? "i" : (v === "false" || v === "no" ? "n" : "u"); }
 function planSpcOf(p){
-  const raw = (p.tm_student_or_professional || "").trim();
+  const raw = spRawOf(p);
   if (!raw) return "E";
   const c = classifySP(raw);
   return c === "P" ? "P" : c === "S" ? "S" : "U";
@@ -6414,7 +6446,8 @@ async function fetchPlanDelta(creator, sinceMs){
   let after;
   do {
     const body = { filterGroups: [{ filters }],
-      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number", "tm_student_or_professional"],
+      properties: ["contact_engagement_stage", "callscurrent_stage", "international_number",
+        "tm_student_or_professional", "are_you_a_student_or_working_professional"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
     (j.results || []).forEach(function(r){ out.push(Object.assign({ id: r.id }, r.properties)); });

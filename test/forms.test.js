@@ -254,5 +254,31 @@ ok("and one call distinguishes wrong name, stale copy, and page fault",
   src.indexOf("our cached copy predates it") >= 0 &&
   src.indexOf("the gap is on the page") >= 0);
 
+/* Student or professional is asked by two different fields and answered in either. */
+ok("both fields are asked for, in every property list that carries the first one",
+  (function(){
+    const a = (src.match(/tm_student_or_professional/g) || []).length;
+    const b = (src.match(/are_you_a_student_or_working_professional/g) || []).length;
+    return b >= 5 && b >= a - 2;
+  })());
+ok("every reader goes through one helper, so the two can never drift apart",
+  src.indexOf("function spRawOf(c)") >= 0 &&
+  src.indexOf("segOf(c.tm_student_or_professional)") < 0 &&
+  src.indexOf("classifySP(c.tm_student_or_professional)") < 0);
+ok("the fallback can only fill a blank, never overrule the booking answer",
+  src.indexOf('SP_FIELDS = [\n  ["tm_student_or_professional"') >= 0 &&
+  src.indexOf("return a.length ? a[0].value") >= 0);
+ok("and the raw wording of both travels to the page",
+  src.indexOf("spSaid: spAnswers(c)") >= 0 && src.indexOf("spSaid: r.spSaid || []") >= 0);
+{
+  const page = fs.readFileSync(require("path").join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("Why call carries the verdict", page.indexOf('r.sp==="S"?"Student":"Professional"') >= 0);
+  ok("the expander and the card both carry the wording, via one block",
+    page.indexOf("function spBlock(r)") >= 0 &&
+    page.indexOf("var spb=spBlock(r); if(spb)bits.push(spb);") >= 0);
+  ok("and two answers that disagree are shown, not hidden",
+    page.indexOf("These two answers do not match") >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
