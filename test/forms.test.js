@@ -231,5 +231,28 @@ ok("then reads only those forms, marking which of them we do not read",
 ok("and states the conclusion outright when a form we do not read is involved",
   src.indexOf("Answers on those never reach the app") >= 0);
 
+/* "The property is populated but the card is blank" has three causes that look identical
+   from the outside, and guessing between them costs a deploy each time. */
+ok("the Information property's internal name is looked up, not guessed",
+  src.indexOf("async function discoverInfoProperty") >= 0 &&
+  src.indexOf("guessing it is") >= 0);
+ok("and a late discovery is added to the property list the sync actually asks for",
+  src.indexOf("if (PROPS.indexOf(n) < 0) PROPS.push(n);") >= 0);
+/* This one is pinned end to end because the middle of it went missing once: the page was
+   reading r.information while the server never sent it, and nothing failed loudly. */
+ok("the property is asked for in the sync",
+  src.slice(src.indexOf("const PROPS = ["), src.indexOf("];", src.indexOf("const PROPS = ["))).indexOf('"information"') >= 0);
+ok("the row carries it", src.indexOf("information: clip(infoOf(c), 2000)") >= 0 &&
+  src.indexOf("function infoOf(c)") >= 0);
+ok("and the drill sends it to the page", src.indexOf('information: r.information || ""') >= 0);
+{
+  const page = fs.readFileSync(require("path").join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("which is where the page reads it", page.indexOf("if(r.information)") >= 0);
+}
+ok("and one call distinguishes wrong name, stale copy, and page fault",
+  src.indexOf("which we were not asking for. That is the gap") >= 0 &&
+  src.indexOf("our cached copy predates it") >= 0 &&
+  src.indexOf("the gap is on the page") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

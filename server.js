@@ -32,6 +32,9 @@ const PROPS = [
   "not_interested_reason","counselling_done","previous_engagement_stage",
   "conversion_probability_score","recent_conversion_event_name","first_conversion_event_name",
   "conversion_probability_reason","tm_last_booking_title", "tm_last_booking_type", "tm_last_booking_timestamp", "tm_total_bookings",
+  // Some creators' forms write every answer into one free-text property instead of into
+  // named fields. Without this those leads arrive with nothing an agent can read.
+  "information",
   "ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
   "call_outcome","reason_for_notinteresteddisqualifiedghosted","notes_last_contacted",
   "hs_timezone","country",
@@ -149,6 +152,46 @@ function ownerLabel(o){
   if (e) return e.split("@")[0];
   return "Owner " + o.id;
 }
+/* Which property is "Information"?
+
+   A creator's form writes its answers into a free-text property whose LABEL is
+   Information. The internal name is whatever whoever created it typed, and guessing it is
+   how you end up asking HubSpot for a field that does not exist and getting a blank back
+   with no error. So ask: read the contact property definitions once and take every
+   property labelled Information.
+
+   Cheap, one call at boot, and it self-corrects if the property is ever renamed. */
+let INFO_PROPS = ["information"];
+async function discoverInfoProperty(){
+  if (!TOKEN) return INFO_PROPS;
+  try {
+    const j = await hs("/crm/v3/properties/contacts");
+    const hits = ((j && j.results) || []).filter(function(p){
+      const lab = String(p.label || "").trim().toLowerCase();
+      return lab === "information" || lab === "form information";
+    }).map(function(p){ return String(p.name); });
+    hits.forEach(function(n){
+      if (INFO_PROPS.indexOf(n) < 0) INFO_PROPS.push(n);
+      // The sync only asks for what is in PROPS, so a property we discovered late has to
+      // be added there or it is never fetched, however correct the name is.
+      if (PROPS.indexOf(n) < 0) PROPS.push(n);
+    });
+    console.log("Information property: " + INFO_PROPS.join(", ") +
+      (hits.length ? "" : " (nothing labelled Information found, using the default)"));
+  } catch (e) {
+    console.error("Information property lookup failed: " + e.message + " (using the default)");
+  }
+  return INFO_PROPS;
+}
+// Whichever of them this contact actually carries.
+function infoOf(c){
+  for (let i = 0; i < INFO_PROPS.length; i++) {
+    const v = c[INFO_PROPS[i]];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return "";
+}
+
 async function fetchOwners(){
   const map = {};
   let after;
@@ -2714,6 +2757,9 @@ function cnRow(c){
     lastContact: ts(c.notes_last_contacted),
     paid: (function(){ const p = paidOf(c); return p ? p.at || 1 : 0; })(),
     sp: classifySP(c.tm_student_or_professional),
+    /* Whichever property is labelled Information on this portal. Free text, shown as-is,
+       because an agent reading a messy answer beats an agent reading nothing. */
+    information: clip(infoOf(c), 2000),
     forms: formsOf(c),
     formN: formMeta(c).n,
     formLast: formMeta(c).last,
@@ -4111,6 +4157,58 @@ app.get("/api/callnow2/lead/:id/notes", async function(req, res){
   }
 });
 
+/* What we hold for one lead against what HubSpot holds, field by field.
+
+   "The property is populated but the card is blank" has three causes that look the same:
+   we asked for the wrong internal name, we asked for the right one but our copy predates
+   it, or we have it and the page is not showing it. Guessing between them wastes a
+   deploy each time, so this answers it in one call. */
+app.get("/api/callnow2/lead/:id/raw", async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  const id = String(req.params.id || "");
+  const ours = ((CACHE.contacts || []).filter(function(c){ return String(c.id) === id; })[0]) || null;
+  const out = {
+    id: id,
+    weAskHubSpotFor: PROPS.length + " properties",
+    informationPropertiesWeKnowOf: INFO_PROPS,
+    ourCopy: ours ? {
+      hasTheField: INFO_PROPS.some(function(p){ return ours[p] != null; }),
+      values: INFO_PROPS.reduce(function(a, p){ a[p] = ours[p] == null ? null : String(ours[p]).slice(0, 400); return a; }, {}),
+      whatTheRowWouldShow: (typeof infoOf === "function") ? infoOf(ours).slice(0, 400) : null
+    } : "not in our lead cache at all",
+    cacheLoadedAt: CACHE.loadedAt
+  };
+  if (TOKEN) {
+    try {
+      // Every property whose name mentions information, straight from HubSpot, so a
+      // name we never thought to ask for still shows up here.
+      const defs = await hs("/crm/v3/properties/contacts");
+      const names = ((defs && defs.results) || []).filter(function(p){
+        return /inform/i.test(String(p.name || "")) || /inform/i.test(String(p.label || ""));
+      }).map(function(p){ return { name: p.name, label: p.label }; });
+      out.hubspotHasTheseInformationFields = names;
+      if (names.length) {
+        const j = await hs("/crm/v3/objects/contacts/" + encodeURIComponent(id) +
+          "?properties=" + encodeURIComponent(names.map(function(n){ return n.name; }).join(",")));
+        out.liveValues = names.reduce(function(a, n){
+          const v = ((j || {}).properties || {})[n.name];
+          a[n.name] = v == null ? null : String(v).slice(0, 400);
+          return a;
+        }, {});
+        const populated = Object.keys(out.liveValues).filter(function(k){ return out.liveValues[k]; });
+        out.answer = !populated.length
+          ? "HubSpot has no information field populated on this contact."
+          : (INFO_PROPS.indexOf(populated[0]) < 0
+              ? "HubSpot populates " + populated.join(", ") + ", which we were not asking for. That is the gap."
+              : (out.ourCopy && out.ourCopy.hasTheField
+                  ? "We have it and should be showing it, so the gap is on the page."
+                  : "We ask for the right field but our cached copy predates it. Refresh this lead, or wait for the next full rebuild."));
+      }
+    } catch (e) { out.liveError = e.message; }
+  }
+  res.json(out);
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
@@ -4340,6 +4438,7 @@ app.get("/api/callnow2/leads", function(req, res){
         band: CN2.effortBand(r.calls || 0).key, bandOwner: CN2.effortBand(r.own || 0).key,
         score: r.score || 0, intl: !!r.intl,
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
+        information: r.information || "",
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,
         /* Was gated on the Form label being set, which meant a lead whose form we had
@@ -7526,6 +7625,8 @@ SERVER = app.listen(PORT, () => {
   /* Forms need nothing from the lead sync, so they should not queue behind it. Waiting
      150 seconds to START, then minutes to fetch, meant every restart left lead cards with
      no answers on them for a long time, looking exactly like data we do not have. */
+  // Before anything fetches contacts, so the property list is right the first time.
+  guard("infoProp", discoverInfoProperty)();
   setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);
   setTimeout(runChain, 150 * 1000);
   setInterval(runChain, COHORT_MINUTES * 60 * 1000);
