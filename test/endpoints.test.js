@@ -27,6 +27,16 @@ function get(p){
     req.on("error", reject);
   });
 }
+function getHead(p){
+  return new Promise(function(resolve, reject){
+    const req = http.get({ host: "127.0.0.1", port: PORT, path: p, timeout: 20000 }, function(res){
+      res.resume();
+      res.on("end", function(){ resolve(res.headers); });
+    });
+    req.on("timeout", function(){ req.destroy(new Error("timed out")); });
+    req.on("error", reject);
+  });
+}
 function post(p){
   return new Promise(function(resolve, reject){
     const req = http.request({ host: "127.0.0.1", port: PORT, path: p, method: "POST", timeout: 20000 },
@@ -389,6 +399,27 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       st.body.verdict + " bad=" + st.body.bad);
     ok("it names the running commit first, since that is the question behind the question",
       (st.body.checks[0] || {}).what.indexOf("Running") === 0);
+
+    /* Heavy reads are memoised. The safety of that rests entirely on the key, so the key
+       is what gets tested: same question twice is reused, a different question is not,
+       and the answer is thrown away the moment the data underneath moves. */
+    ok("a repeated question is served from cache",
+      (await getHead("/api/callnow2"))["x-cache"] !== undefined);
+    {
+      await get("/api/callnow2");
+      const second = await getHead("/api/callnow2");
+      ok("the same question twice is reused", second["x-cache"] === "hit", second["x-cache"]);
+      const other = await getHead("/api/callnow2?stages=counselled");
+      ok("a different filter is a different answer", other["x-cache"] === "miss", other["x-cache"]);
+    }
+    ok("the key carries who is asking, so one role cannot be served another's payload",
+      srv2.indexOf("function askerKey(req)") >= 0 &&
+      srv2.indexOf('if (s.role === "agent") return "agent:"') >= 0);
+    ok("and a version that changes when any underlying data does",
+      srv2.indexOf("function dataVersion()") >= 0 &&
+      srv2.indexOf("A cache that has to be cleared by hand") >= 0);
+    ok("errors and half built answers are never cached",
+      srv2.indexOf("!body.error && !body.notReady") >= 0);
 
     ok("health says which commit and branch is actually serving",
       health.build && "commit" in health.build && "branch" in health.build,

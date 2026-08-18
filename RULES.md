@@ -405,3 +405,29 @@ than walking the pool, so health answers in milliseconds even mid-sync.
 **How to tell what is actually running:** `/api/health` reports `build.commit` and
 `build.branch`, and the same line is printed at startup. If that commit is not the tip of
 `main`, deploys are not landing, whatever the dashboard says.
+
+---
+
+## 17. Caching
+
+Every heavy read is memoised for fifteen seconds. The key is three parts, and the third
+is what makes it safe to leave on:
+
+| Part | Why |
+|---|---|
+| Route and query | A different filter is a different answer |
+| Role and scope | A manager must never be served a VP's payload |
+| Data version | Pool revision, list build, frozen base, forms, counselling, sheet, IST date |
+
+Because the version carries everything underneath, a delta merge, a lead refresh, a
+re-freeze or midnight all invalidate the cache on their own. **Nothing has to be cleared
+by hand.** A cache that needs manual clearing is a bug waiting for a quiet afternoon.
+
+Errors and half-built answers are never cached, because a transient failure served for
+fifteen seconds is worse than the failure, and `notReady` is precisely the moment the
+answer is about to change.
+
+Every response carries `x-cache: hit` or `miss`, and `/api/status` reports the reuse rate.
+
+Two things are deliberately **not** cached this way: the lead drill's freshness comes from
+the same version key so it follows automatically, and anything that writes.

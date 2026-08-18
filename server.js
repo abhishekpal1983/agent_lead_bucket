@@ -1164,6 +1164,11 @@ app.get("/api/status", function(req, res){
     realCaps.length ? "Raise OWNER_MAX. Leads past the cap are not loaded at all."
                     : "Parking buckets are capped on purpose and do not count here.");
 
+  const tot = RESP_HIT + RESP_MISS;
+  add("ok", "Answers reused " + (tot ? Math.round(100 * RESP_HIT / tot) : 0) + "% of the time",
+    fmtN(RESP_HIT) + " served from cache, " + fmtN(RESP_MISS) + " built. Held for " +
+    Math.round(MEMO_MS / 1000) + "s and thrown away the moment any underlying data changes.");
+
   add(LAST_500 ? "bad" : "ok", LAST_500 ? "A request failed recently" : "No failed requests recorded",
     LAST_500 ? (LAST_500.path + ": " + LAST_500.error) : "Nothing has thrown since the last restart.");
 
@@ -3257,6 +3262,84 @@ function cn2StageOrder(base){
   Object.keys(seen).forEach(function(s){ if (order.indexOf(s) < 0) order.push(s); });
   return order;
 }
+
+/* ---------- one answer, reused ----------
+
+   Every heavy endpoint here walks tens of thousands of leads to produce a number that is
+   identical for everyone asking the same question in the same fifteen seconds. Four
+   managers opening the page at nine o'clock did that work four times over.
+
+   Memoised on three things, and the third is the one that matters:
+
+     the question   route and query, so a different filter is a different answer
+     the asker      role and scope, because a manager must never be served a VP's payload
+     the data       a version string that changes the moment anything underneath does
+
+   The version is what makes this safe to leave switched on. It carries the pool revision,
+   the list build, the frozen base, forms, counselling, the sheet and the IST date, so a
+   delta merge, a lead refresh or midnight all invalidate everything without anybody
+   remembering to. A cache that has to be cleared by hand is a bug waiting for a quiet
+   afternoon.
+
+   Done as a wrapper around res.json rather than by rewriting the handlers. The handlers
+   are long and full of early returns; touching all of them to add caching would risk far
+   more than caching is worth. */
+const RESP = new Map();
+const RESP_MAX = 400;
+let RESP_HIT = 0, RESP_MISS = 0;
+const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
+const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
+  "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/vp/agent-day",
+  "/api/vp/daily", "/api/coaching/progress"];
+
+function dataVersion(){
+  return [
+    (typeof CN2_POOL !== "undefined" && CN2_POOL.at) || "",
+    (typeof POOL_REV !== "undefined" && POOL_REV) || 0,
+    (typeof CACHE !== "undefined" && CACHE.loadedAt) || "",
+    (typeof FORMS !== "undefined" && FORMS.loadedAt) || "",
+    (typeof COUNSEL !== "undefined" && COUNSEL.loadedAt) || "",
+    (typeof SHEET !== "undefined" && SHEET.loadedAt) || "",
+    ((typeof cn2Store === "function" && cn2Store()) || {}).at || "",
+    (typeof ORG !== "undefined" && ORG.teams) ? ORG.teams.length : 0,
+    istParts(new Date(cn2Now())).date
+  ].join("|");
+}
+
+// Who is asking, in the terms that decide what they are allowed to see.
+function askerKey(req){
+  const s = req.session || (typeof sessionOf === "function" ? sessionOf(req) : null) || {};
+  if (typeof isVP === "function" && isVP(req)) return "vp";
+  if (s.role === "agent") return "agent:" + (s.ownerId || "?");
+  return "mgr:" + String(s.email || "?").toLowerCase();
+}
+
+app.use(function(req, res, next){
+  if (req.method !== "GET" || MEMO_PATHS.indexOf(req.path) < 0) return next();
+  const q = Object.keys(req.query || {}).filter(function(k){ return k !== "_"; }).sort()
+    .map(function(k){ return k + "=" + req.query[k]; }).join("&");
+  const key = req.path + "?" + q + "|" + askerKey(req) + "|" + dataVersion();
+  const hit = RESP.get(key);
+  if (hit && Date.now() - hit.at < MEMO_MS) {
+    RESP_HIT++;
+    res.set("x-cache", "hit");
+    return res.json(hit.body);
+  }
+  RESP_MISS++;
+  res.set("x-cache", "miss");
+  const json = res.json.bind(res);
+  res.json = function(body){
+    /* Never cache a failure or a half built answer. A transient error served for fifteen
+       seconds is worse than the error itself, and notReady means the list is still being
+       built, which is precisely the moment the answer changes. */
+    if (res.statusCode === 200 && body && !body.error && !body.notReady) {
+      RESP.set(key, { at: Date.now(), body: body });
+      if (RESP.size > RESP_MAX) RESP.delete(RESP.keys().next().value);
+    }
+    return json(body);
+  };
+  next();
+});
 
 app.get("/api/callnow2", function(req, res){
   if (!cn2Ready()) return res.json({ notReady: true,
