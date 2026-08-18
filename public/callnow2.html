@@ -865,11 +865,56 @@ function loadSegs(){
   if(SEGS)return;
   fetch("/api/callnow2/segments").then(asJson)
     .then(function(j){SEGS=j;draw();}).catch(function(){SEGS={allowed:false,rows:[]};});}
-function segOpen(){SEGOPEN=!SEGOPEN;if(SEGOPEN)loadSegs();draw();}
-function segQ(v){SEGQ=v;draw();}
+function segOpen(){SEGOPEN=!SEGOPEN;if(SEGOPEN)loadSegs();SEGCARET=null;draw();}
+/* Typing here used to redraw the whole page on every keystroke: the filters, the hero
+   grid, the table, all of it, to change one list of 271 rows. That is slow enough to drop
+   letters, and it destroys the input the person is typing into, so focus jumps away mid
+   word. Nothing outside this dropdown depends on what has been typed, so only the
+   dropdown is rebuilt. The input itself is never touched, which is why the cursor stays
+   put with no debounce and no focus restoring. */
+function segQ(v){
+  SEGQ=v;
+  var box=document.getElementById("segq");
+  // Remembered here rather than from a document-wide listener, because this is the only
+  // place the value can change and a global listener is a thing to trip over later.
+  if(box)SEGCARET=box.selectionStart;
+  var el=document.getElementById("segbody");
+  if(el)el.innerHTML=segListHtml(); else draw();}
 function segPick(id){Q.segment=id;SEGOPEN=false;SEGQ="";load();}
 function segClear(){Q.segment="";SEGOPEN=false;SEGQ="";load();}
 
+/* autofocus does not fire on markup inserted with innerHTML, so the box was never focused
+   when the dropdown opened: the first thing typed went nowhere. And the ten minute
+   refresh below rebuilds the page, which would throw the caret out mid word. Both are the
+   same fix: after any draw, if the dropdown is open, put focus and the caret back exactly
+   where they were. */
+var SEGCARET=null;
+function segFocus(){
+  if(!SEGOPEN)return;
+  var el=document.getElementById("segq");
+  if(!el||el===document.activeElement)return;
+  el.focus();
+  var pos=SEGCARET==null?el.value.length:SEGCARET;
+  try{el.setSelectionRange(pos,pos);}catch(e){}}
+
+/* Everything inside the dropdown that depends on what has been typed, and nothing else.
+   Kept apart from segPicker so a keystroke can rebuild this alone. */
+function segListHtml(){
+  if(!SEGS)return "<div class='segnote'>loading segments...</div>";
+  if(!SEGS.allowed)return "<div class='segnote'>not available</div>";
+  var q=String(SEGQ).toLowerCase();
+  var all=SEGS.rows||[];
+  var rows=all.filter(function(r){return !q||String(r.name).toLowerCase().indexOf(q)>=0;});
+  var h="<div class='segnote'>"+fmt(rows.length)+" of "+fmt(all.length)+" segments"+
+    (rows.length>300?", showing the first 300":"")+"</div>";
+  h+="<div class='seglist'>";
+  if(Q.segment)h+="<button class='segitem clear' onclick='segClear()'>Clear, show all leads</button>";
+  rows.slice(0,300).forEach(function(r){
+    h+="<button class='segitem"+(Q.segment===r.id?" on":"")+"' onclick='segPick(\""+esc(r.id)+"\")'>"+
+      esc(r.name)+"<span class='segn'>"+(r.size?fmt(r.size):"")+"</span></button>";});
+  if(!rows.length)h+="<div class='segnote'>nothing matches</div>";
+  h+="</div>";
+  return h;}
 function segPicker(){
   if(J.scoped&&J.role==="agent")return "";
   var cur=J.seg;
@@ -879,21 +924,9 @@ function segPicker(){
     "<span class='car'>"+(SEGOPEN?"\u25be":"\u25b8")+"</span></button>";
   if(SEGOPEN){
     h+="<div class='segdrop'>"+
-      "<input class='segsearch' placeholder='search segments' value='"+esc(SEGQ)+"' "+
-      "oninput='segQ(this.value)' autofocus>";
-    if(!SEGS)h+="<div class='segnote'>loading segments...</div>";
-    else if(!SEGS.allowed)h+="<div class='segnote'>not available</div>";
-    else{
-      var q=String(SEGQ).toLowerCase();
-      var rows=(SEGS.rows||[]).filter(function(r){return !q||String(r.name).toLowerCase().indexOf(q)>=0;});
-      h+="<div class='segnote'>"+fmt(rows.length)+" of "+fmt((SEGS.rows||[]).length)+" segments</div>";
-      h+="<div class='seglist'>";
-      if(Q.segment)h+="<button class='segitem clear' onclick='segClear()'>Clear, show all leads</button>";
-      rows.slice(0,300).forEach(function(r){
-        h+="<button class='segitem"+(Q.segment===r.id?" on":"")+"' onclick='segPick(\""+esc(r.id)+"\")'>"+
-          esc(r.name)+"<span class='segn'>"+(r.size?fmt(r.size):"")+"</span></button>";});
-      if(!rows.length)h+="<div class='segnote'>nothing matches</div>";
-      h+="</div>";}
+      "<input id='segq' class='segsearch' placeholder='search segments' value='"+esc(SEGQ)+"' "+
+      "oninput='segQ(this.value)'>";
+    h+="<div id='segbody'>"+segListHtml()+"</div>";
     h+="</div>";}
   h+="</div>";
   return h;}
@@ -1910,7 +1943,9 @@ function draw(){
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
   h+=behind();
-  el.innerHTML=h;}
+  el.innerHTML=h;
+  // Every redraw replaces the segment box, so the caret has to be put back afterwards.
+  segFocus();}
 
 /* Everything that explains the numbers rather than being the numbers, in the order a
    manager asks for it, folded away so it cannot compete with the work. Open state is

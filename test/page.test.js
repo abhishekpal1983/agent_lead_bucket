@@ -709,5 +709,21 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf('["Level","Name","Team","Source"].concat(COLS.map(function(c){ return c[0]; }))') >= 0);
 }
 
+/* The segment box had the same fault the lead search had: a keystroke redrew the whole
+   page to filter one list, which drops letters and throws the caret out mid word. */
+ok("a keystroke rebuilds only the dropdown, not the page",
+  html.indexOf('el.innerHTML=segListHtml()') >= 0 &&
+  html.indexOf("function segQ(v){SEGQ=v;draw();}") < 0);
+ok("the part that depends on the typing is separated out so it can be rebuilt alone",
+  html.indexOf("function segListHtml()") >= 0 &&
+  html.indexOf("h+=\"<div id='segbody'>\"+segListHtml()+\"</div>\";") >= 0);
+ok("the input is never rebuilt by typing, so no debounce is needed",
+  html.slice(html.indexOf("function segQ(v)"), html.indexOf("function segPick")).indexOf("setTimeout") < 0);
+ok("autofocus is gone, because it does not fire on innerHTML",
+  html.indexOf("oninput='segQ(this.value)' autofocus") < 0 &&
+  html.indexOf("function segFocus()") >= 0);
+ok("and a background redraw puts the caret back where it was",
+  html.indexOf("segFocus();}") >= 0 && html.indexOf("if(box)SEGCARET=box.selectionStart;") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
