@@ -351,6 +351,15 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .fresh.warn{color:#7A4A08;font-weight:600}
 .wrap .fresh.bad{color:#8C2D12;font-weight:700}
 /* One click to settle a number, in the queue and on the card. */
+.wrap .notes{margin-top:8px;padding-top:7px;border-top:1px solid var(--line2,#EFF3F7)}
+.wrap .nlbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#7A8CA0;font-weight:700;margin-bottom:5px}
+.wrap .note{background:#F7FAFC;border:1px solid var(--line2,#EFF3F7);border-radius:8px;padding:7px 9px;margin-bottom:5px}
+.wrap .note .nhd{font-size:10.5px;color:#93A7BC;margin-bottom:3px}
+.wrap .note .nbody{font-size:12px;color:#0A2540;line-height:1.5}
+.wrap .fcount{font-size:11.5px;color:#7A4A08;background:#FDF3E2;border:1px solid #F0DCB8;
+  border-radius:8px;padding:6px 9px;margin-bottom:7px}
+.wrap .fnum{font-size:10px;font-weight:700;color:#4B2E9E;background:#EEF0FE;
+  border-radius:5px;padding:1px 6px;margin-right:4px}
 .wrap .rfr{border:1px solid var(--line,#DCE4EC);background:#fff;border-radius:7px;
   width:24px;height:22px;line-height:1;font-size:13px;color:#4A5A6A;cursor:pointer;padding:0}
 .wrap .rfr:hover{background:#EEF0FE;border-color:#4F46E5;color:#3B2FA8}
@@ -1281,8 +1290,11 @@ var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fres
   ["refill","Refilled form"],["ifc","IFC due"],["needs","Needs owner"],
   ["any","Any priority"],["all","All in stage"]];
 var SECS=[["n","Call today","Due today, overdue by a full working day, no follow-up marked, fresh, an IFC that has come due, or a form refilled since the last call. Click any number for the leads behind it."],
-  ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."],
-  ["d","DNPs","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."]];
+  // DNPs sit directly under Call today, because the question they answer is the same one:
+  // is there anybody else worth ringing. Booked for a later date is a different question
+  // and belongs after both.
+  ["d","DNPs","Did not pick up, and carrying no reason to call: no form, no score of 6 or more, not international, not fresh. The DNP leads that do carry one are counted in Call today above, not here. Kept apart so they never make the call-today list look bigger."],
+  ["a","Booked for a later date","The next call is set for a future day. Calls made on them still show, so no effort goes missing."]];
 
 // Lifted from the v1 page so the two cannot drift apart.
 var STAGE_CHIP={counselled:"#DCEDF6|#0B4A66",program_pitched:"#DCEDF6|#0B4A66",discovery:"#DCEDF6|#0B4A66",
@@ -1548,17 +1560,29 @@ function tm(ms){if(!ms)return "<span class='z'>never</span>";var d=new Date(ms);
   return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});}
 function tmp(ms){return ms?tm(ms).replace(/<[^>]+>/g,""):"";}
 function hsl(id){var p=(L&&L.portal)||{};return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
-function toggleDet(id){OPEN[id]=!OPEN[id];draw();}
+function toggleDet(id){ OPEN[id]=!OPEN[id]; if(OPEN[id])loadNotes(id); draw(); }
 // What the lead told us on the form, laid out as question and answer the way they saw it.
+/* Every submission this person made, newest first, each headed with which form and when.
+
+   It used to show one per form with nothing to say others existed, so a lead who filled
+   two creators' forms appeared to have one set of answers and HubSpot showed another. The
+   app looked wrong when it was merely incomplete, which is worse. */
 function formBlock(subs){
   if(!subs||!subs.length)return "";
-  return subs.map(function(sub){
+  var of=subs[0].of||subs.length, hidden=subs[0].hidden||0;
+  var head=of>1
+    ? "<div class='fcount'>Filled a form <b>"+fmt(of)+"</b> times"+
+      (hidden?", showing the "+fmt(subs.length)+" most recent":"")+
+      ". Their answers can change between submissions.</div>"
+    : "";
+  return head+subs.map(function(sub){
     var qa=(sub.answers||[]).map(function(x){
       return "<div class='qa'><div class='q'>"+esc(x.q)+"</div>"+
         (x.a||[]).map(function(v){return "<div class='a'>"+esc(v)+"</div>";}).join("")+"</div>";
     }).join("");
-    return "<div class='fsub'><div class='fhd'>"+esc(sub.form)+
-      (sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
+    return "<div class='fsub'><div class='fhd'>"+
+      (of>1?"<span class='fnum'>"+(sub.n||1)+" of "+fmt(of)+"</span> ":"")+
+      esc(sub.form)+(sub.at?" &middot; submitted "+esc(tmp(sub.at)):"")+"</div>"+
       (qa||"<div class='z'>No answers captured on this submission.</div>")+"</div>";
   }).join("");}
 function bandOf(k){ return ((J&&J.effortBands)||[]).filter(function(b){return b.key===k;})[0]||null; }
@@ -1612,6 +1636,23 @@ function refreshBtn(id){
   return "<button class='rfr' title='Re-read this lead from HubSpot now' onclick='refreshLead("+
     JSON.stringify(id).replace(/"/g,"&quot;")+",event)'>\u21bb</button>";}
 
+/* Typing redrew the whole table on every keystroke, which on a few hundred rows is slow
+   enough to swallow letters and throws focus out of the box mid word. Wait until they
+   stop typing, then redraw once and put the cursor back where it was. */
+var LQT=null;
+function typeSearch(v){
+  LQ=v;
+  if(LQT)clearTimeout(LQT);
+  LQT=setTimeout(function(){
+    LQT=null;
+    var el=document.getElementById("lq");
+    var pos=el?el.selectionStart:null;
+    draw();
+    var back=document.getElementById("lq");
+    if(back){ back.focus(); if(pos!=null){ try{ back.setSelectionRange(pos,pos); }catch(e){} } }
+  },220);
+}
+
 function queueView(){
   var h="<div class='sec'><h2 id='qtitle'>Call queue</h2>";
   if(!PICK)return h+"<div class='sub'>Pick a number in the Matrix, or a line on a Board card, to open those leads here.</div></div>";
@@ -1631,7 +1672,8 @@ function queueView(){
     "<button class='chipb"+(PICK.worked==="0"?" on":"")+"' onclick='PICK.worked=\"0\";loadLeads()'>Not called yet</button>"+
     "<button class='chipb"+(PICK.worked==="1"?" on":"")+"' onclick='PICK.worked=\"1\";loadLeads()'>Called today</button>"+
     "<button class='chipb"+(PICK.worked===""?" on":"")+"' onclick='PICK.worked=\"\";loadLeads()'>All</button>"+
-    "<input type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' oninput='LQ=this.value;draw()' style='min-width:200px'>"+
+    "<input id='lq' type='search' placeholder='search name / creator / agent' value='"+esc(LQ)+"' "+
+      "oninput='typeSearch(this.value)' style='min-width:200px'>"+
     (SORT.k?"<button class='chipb on' onclick='clearSort()'>Sorted by "+esc(SORT.k)+", clear</button>":"")+
     "<button class='chipb' onclick='unpick()'>Close</button></div>";
   var q=String(LQ||"").toLowerCase();
@@ -1665,16 +1707,21 @@ function queueView(){
      what they act on; the rest moves into the row expander, so nothing is lost and
      nothing has to be scrolled sideways to reach. */
   var mine=J.scoped&&J.role==="agent";
+  /* Attempts stay. They were moved into the expander to save width, but an agent decides
+     how hard to push from those two numbers, and one click away is one click too many on
+     the screen they work all day. Ownership columns are still gone: those answer whose
+     lead it is, which an agent never has to ask. */
   var COLDEF=mine
     ? [["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
-       ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0]]
+       ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0],
+       ["calls","Calls",1],["own","By you",1]]
     : [["","",0],["#","",0],["name","Lead",1],["phone","Phone",1],["","",0],
        ["stage","Stage",1],["why","Why call",0],["fu","Follow-up",1],["last","Last call",1],["","",0],
        ["owner","Agent this morning",1],["creator","Creator",1],
        ["calls","Calls",1],["own","By owner",1],["days","Days",1]];
   h+="<div class='qrow"+(SEL?" open":"")+(mine?" mine":"")+"' id='qrow'><div class='q'><div class='tw'><table><thead><tr>"+
     COLDEF.map(function(c,i){
-      var num=(mine?false:i>=12)||i===3;
+      var num=(mine?i>=10:i>=12)||i===3;
       if(!c[2])return "<th"+(num?" class='n'":"")+">"+esc(c[1])+"</th>";
       var on=SORT.k===c[0];
       return "<th class='sortable"+(num?" n":"")+(on?" on":"")+"' onclick='sortBy("+
@@ -1697,8 +1744,10 @@ function queueView(){
       "<td data-l='Why call'>"+(whyTags(r)||"<span class='z'>–</span>")+"</td>"+
       "<td data-l='Follow-up'>"+tm(r.fu)+"</td><td data-l='Last call'>"+tm(r.last)+"</td>"+
       "<td class='n'>"+refreshBtn(r.id)+"</td>"+
-      (mine?"":
-        "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
+      (mine
+        ? "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
+          "<td class='n'><b class='"+bandCls(r.bandOwner)+"' title='"+bandTitle(r.bandOwner)+", you only'>"+fmt(r.own)+"</b></td>"
+        : "<td>"+esc(r.ownerName)+(r.ownerInactive?" <span class='tag o'>INACTIVE</span>":"")+
           (r.counted===false?" <span class='tag p'>not counted</span>":"")+"</td>"+
         "<td>"+esc(r.creator||"–")+"</td>"+
         "<td class='n'><b class='"+bandCls(r.band)+"' title='"+bandTitle(r.band)+", counting every agent'>"+fmt(r.calls)+"</b></td>"+
@@ -1744,19 +1793,30 @@ function leadCard(rows){
       "<div id='cb0' hidden class='expbody'>"+whyBody(r)+"</div>"+
       "<button class='expbtn' onclick='toggleCard(1)'><span id='cx1'>+</span> AI call summary</button>"+
       "<div id='cb1' hidden class='expbody'>"+(r.aiSummary?esc(r.aiSummary):"<span class='z'>Nothing recorded.</span>")+"</div>"+
+      // Bookings arrive as notes from the Lead-manager, which is the most concrete thing
+      // on the card: what they booked, with whom, for how much, and when.
+      "<button class='expbtn' onclick='toggleCard(2)'><span id='cx2'>+</span> Notes and bookings</button>"+
+      "<div id='cb2' hidden class='expbody'>"+noteBlock(r.id)+"</div>"+
     "</div></div>";}
 function whyBody(r){
   var bits=[];
   bits.push("Sitting in "+esc(STAGE_LABEL[r.openStage]||r.openStage)+
     (r.stageEntered?" for "+days(r.stageEntered)+"d":"")+" &middot; "+fmt(r.calls)+" dial(s) in the stage, "+
     fmt(r.own)+" by this agent");
+  /* Some creators' forms write their answers into one free-text property instead of named
+     fields. It is not pretty, but an agent reading it is better than an agent reading
+     nothing, so it sits with the form answers rather than in a corner. */
+  if(r.information)bits.push("<div class='fsub'><div class='fhd'>Form information</div>"+
+    "<div class='qa'><div class='a'>"+esc(r.information).replace(/\n/g,"<br>")+"</div></div></div>");
   if(r.formSubs&&r.formSubs.length)bits.push(formBlock(r.formSubs));
   else if(r.forms&&r.forms.length)bits.push("<b>Form:</b> "+esc(r.forms.join(", "))+
     " <span class='z'>(no answers held for this form yet)</span>");
   else if(String(r.source||"").toLowerCase().indexOf("form")>=0)
-    bits.push("<span class='z'>Came in through a form, but we hold no submission for "+
-      "this email. Either the form is not one we read yet, or they filled it under a "+
-      "different address.</span>");
+    // Three different truths that look identical if you only say "nothing here".
+    bits.push("<span class='z'>"+(J.formsReady===false
+      ? "Form answers have not finished loading yet. They appear a minute or two after a restart."
+      : "Came in through a form, but we hold no submission for this email. Either the form "+
+        "is not one we read yet, or they filled it under a different address.")+"</span>");
   if(r.bookTitle)bits.push("<b>Last booking:</b> "+esc(r.bookTitle)+(r.bookAt?" on "+esc(tmp(r.bookAt)):""));
   if(r.outcome)bits.push("<b>Last call outcome:</b> "+esc(r.outcome));
   if(r.whyText)bits.push("<b>Why the score:</b> "+esc(r.whyText));
@@ -1774,6 +1834,8 @@ function detBody(r){
   }
   h+=whyBody(r);
   if(r.aiSummary)h+="<br><b>AI call summary:</b> "+esc(r.aiSummary);
+  var nb=noteBlock(r.id);
+  if(nb)h+="<div class='notes'><div class='nlbl'>Notes and bookings</div>"+nb+"</div>";
   return h;}
 function toggleCard(i){
   var b=document.getElementById("cb"+i), x=document.getElementById("cx"+i);
@@ -1785,7 +1847,29 @@ function sortBy(k){
   if(SORT.k===k)SORT.d=-SORT.d; else {SORT.k=k;SORT.d=1;}
   draw();}
 function clearSort(){ SORT={k:"",d:1}; draw(); }
-function pickLead(id){ SEL=(SEL===id?"":id); draw(); }
+/* Notes are fetched the moment a card opens and cached per lead, so opening the same
+   card twice costs nothing and opening a hundred cards costs a hundred calls rather than
+   pulling notes for the whole pool on every sync. */
+var NOTES={};
+function loadNotes(id){
+  if(!id||NOTES[id])return;
+  NOTES[id]={loading:true,rows:[]};
+  fetch("/api/callnow2/lead/"+encodeURIComponent(id)+"/notes").then(asJson)
+    .then(function(j){ NOTES[id]={loading:false,rows:j.notes||[]}; draw(); })
+    .catch(function(e){ NOTES[id]={loading:false,rows:[],error:e.message}; draw(); });
+}
+function noteBlock(id){
+  var n=NOTES[id];
+  if(!n)return "";
+  if(n.loading)return "<div class='z'>Looking for notes...</div>";
+  if(n.error)return "<div class='z'>Could not read notes: "+esc(n.error)+"</div>";
+  if(!n.rows.length)return "<div class='z'>No notes on this lead.</div>";
+  return n.rows.map(function(x){
+    return "<div class='note'><div class='nhd'>"+esc(tmp(x.at))+"</div>"+
+      "<div class='nbody'>"+esc(x.body).replace(/\n/g,"<br>")+"</div></div>";
+  }).join("");
+}
+function pickLead(id){ SEL=(SEL===id?"":id); if(SEL)loadNotes(SEL); draw(); }
 function closeLead(){ SEL=""; draw(); }
 
 function excludedNote(){

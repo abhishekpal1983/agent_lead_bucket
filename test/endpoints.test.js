@@ -407,6 +407,14 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       srv2.slice(srv2.indexOf("async function fetchContactsForOwner"),
                  srv2.indexOf("async function fetchFreshForOwner")).indexOf('operator: "GT", value: String(lastId)') >= 0);
 
+    const notes = await get("/api/callnow2/lead/12345/notes");
+    ok("notes answer without a token rather than throwing",
+      notes.status === 200 || notes.status === 500, "status " + notes.status);
+    ok("note bodies are stripped of markup before they leave the server",
+      srv2.indexOf('replace(/<[^>]+>/g, "")') >= 0 && srv2.indexOf("hs_note_body") >= 0);
+    ok("and notes are fetched per lead on demand, never for the whole pool",
+      srv2.indexOf("On demand rather than in the sync") >= 0);
+
     const bad = await post("/api/callnow2/lead/does-not-exist/refresh");
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);

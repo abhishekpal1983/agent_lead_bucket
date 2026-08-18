@@ -3976,6 +3976,58 @@ app.get("/api/callnow2/forms/for", async function(req, res){
   res.json(out);
 });
 
+/* Notes on one lead, fetched when the card is opened.
+
+   The Lead-manager writes bookings in as notes: booking id, service, expert, consumer,
+   price, when it is scheduled. That is the most concrete thing on the whole card and it
+   was nowhere on the page.
+
+   On demand rather than in the sync, because pulling notes for thirty five thousand
+   leads to show them on the one an agent happens to open is the wrong trade by four
+   orders of magnitude. Two calls, only when somebody looks. */
+const NOTE_CACHE = {};
+const NOTE_TTL_MS = 5 * 60 * 1000;
+app.get("/api/callnow2/lead/:id/notes", async function(req, res){
+  const id = String(req.params.id || "");
+  if (!id) return res.status(400).json({ error: "no lead id" });
+  if (!TOKEN) return res.json({ notes: [] });
+
+  // An agent may only read notes on a lead they hold, the same rule the drill obeys.
+  const allow = cn2Scope(req);
+  const known = (CN2_POOL.live && CN2_POOL.live[id]) || null;
+  if (allow && known && allow.indexOf(String(known.owner)) < 0) {
+    return res.status(403).json({ error: "that lead is not yours" });
+  }
+  const hit = NOTE_CACHE[id];
+  if (hit && Date.now() - hit.at < NOTE_TTL_MS) return res.json({ notes: hit.notes, cached: true });
+
+  try {
+    const a = await hs("/crm/v4/objects/contacts/" + encodeURIComponent(id) + "/associations/notes?limit=25");
+    const ids = ((a && a.results) || []).map(function(x){ return String(x.toObjectId || x.id || ""); })
+      .filter(Boolean).slice(0, 25);
+    if (!ids.length) { NOTE_CACHE[id] = { at: Date.now(), notes: [] }; return res.json({ notes: [] }); }
+    const b = await hs("/crm/v3/objects/notes/batch/read", { method: "POST", body: JSON.stringify({
+      properties: ["hs_note_body", "hs_timestamp", "hs_created_by"],
+      inputs: ids.map(function(x){ return { id: x }; }) })});
+    const notes = ((b && b.results) || []).map(function(n){
+      const p = n.properties || {};
+      // Note bodies are HTML. On a lead card that renders as tags or as a wall of markup.
+      const body = String(p.hs_note_body || "").replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/\n{3,}/g, "\n\n").trim();
+      return { id: n.id, at: ts(p.hs_timestamp), body: body.slice(0, 1500) };
+    }).filter(function(n){ return n.body; })
+      .sort(function(x, y){ return (y.at || 0) - (x.at || 0); });
+    NOTE_CACHE[id] = { at: Date.now(), notes: notes };
+    const keys = Object.keys(NOTE_CACHE);
+    if (keys.length > 400) delete NOTE_CACHE[keys[0]];
+    res.json({ notes: notes });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   const role = (req.session && req.session.role) || "manager";
   if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });

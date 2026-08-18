@@ -536,6 +536,26 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf(">Overdue</span>") >= 0);
   ok("and each split carries its own coverage bar",
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .hcard .hsplit .t i") >= 0);
+  /* Five things from the floor, each with a reason. */
+  // Matched on the section's own description, because both names also appear as hero
+  // card labels further up and those are in a different order on purpose.
+  ok("DNPs sit under Call today, before Booked for a later date",
+    vp.indexOf("Did not pick up, and carrying no reason to call") <
+    vp.indexOf("The next call is set for a future day"));
+  ok("an agent keeps the attempt columns, which is how they decide how hard to push",
+    agent.indexOf(">Calls") >= 0 && agent.indexOf(">By you") >= 0);
+  // The Creator dropdown stays, an agent works across creators. The COLUMN goes.
+  ok("but still not the ownership columns",
+    agent.indexOf("Agent this morning") < 0);
+  ok("the queue search waits for you to stop typing and keeps the cursor",
+    html.indexOf("function typeSearch(") >= 0 && html.indexOf("setSelectionRange(pos,pos)") >= 0);
+  ok("a form that writes into one free-text property is still readable",
+    html.indexOf(">Form information<") >= 0 && html.indexOf("r.information") >= 0);
+  ok("notes and bookings are on the card and in the row expander",
+    html.indexOf("Notes and bookings") >= 0 && html.indexOf("function noteBlock(") >= 0);
+  ok("and are fetched only when something is opened",
+    html.indexOf("if(SEL)loadNotes(SEL)") >= 0 &&
+    html.indexOf("if(OPEN[id])loadNotes(id)") >= 0);
   ok("a manager gets the pool they can hand out",
     mgr.indexOf("Fresh leads waiting to be assigned") >= 0);
   ok("so does a VP", vp.indexOf("Fresh leads waiting to be assigned") >= 0);
