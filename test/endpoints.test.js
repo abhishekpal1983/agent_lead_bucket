@@ -450,6 +450,58 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* One row per agent, over a day or a range. The whole risk in this one is mixing up
+       what adds up with what does not, so that is what the checks are about. */
+    const su = await get("/api/vp/agent-summary");
+    ok("agent summary answers", su.status === 200, "status " + su.status + " " + su.raw);
+    ok("it names the window it actually measured",
+      su.body && su.body.from && su.body.to && typeof su.body.days === "number",
+      JSON.stringify(su.body && { f: su.body.from, t: su.body.to, d: su.body.days }));
+    const wide = await get("/api/vp/agent-summary?from=2020-01-01&to=2020-01-07");
+    ok("days with no snapshot are named, not silently dropped",
+      wide.status === 200 && Array.isArray(wide.body.missingDays) && wide.body.missingDays.length === 7,
+      JSON.stringify(wide.body && wide.body.missingDays));
+    ok("a backwards range is refused rather than answered with nothing",
+      (await get("/api/vp/agent-summary?from=2026-08-10&to=2026-08-01")).status === 400);
+    ok("every row carries the team id the picker filters on",
+      (su.body.rows || []).every(function(r){ return "teamId" in r; }));
+    ok("nothing due reads as nothing due, not as a flattering hundred percent",
+      (su.body.rows || []).every(function(r){ return r.due ? r.completion != null : r.completion === null; }),
+      JSON.stringify((su.body.rows || []).filter(function(r){ return !r.due && r.completion !== null; })[0]));
+    ok("done can never exceed due",
+      (su.body.rows || []).every(function(r){ return r.done <= r.due; }));
+    ok("missed is what fell due and was not called",
+      (su.body.rows || []).every(function(r){ return r.missed >= 0 && r.done + r.missed <= r.due + 1; }),
+      JSON.stringify((su.body.rows || [])[0]));
+    /* A stock summed across days counts one stuck lead once per day it was stuck. The
+       standing figure must therefore stay a position, and it carries the day it is from. */
+    ok("overdue and No FU stay a position, with the day they were read",
+      (su.body.rows || []).every(function(r){
+        return typeof r.overdue === "number" && typeof r.overdueAvg === "number" &&
+               typeof r.nofu === "number" && "standingOn" in r; }),
+      JSON.stringify((su.body.rows || [])[0]));
+    ok("DNP coverage carries attempts, days and the leads behind them",
+      (su.body.rows || []).every(function(r){
+        return r.dnp && ["leads","tries","mine","days","starved","never","triesPer","daysPer","rate"]
+          .every(function(k){ return typeof r.dnp[k] === "number"; }); }),
+      JSON.stringify((su.body.rows || [])[0] && (su.body.rows || [])[0].dnp));
+    ok("attempts by the current holder can never exceed attempts by anyone",
+      (su.body.rows || []).every(function(r){ return r.dnp.mine <= r.dnp.tries; }));
+    ok("a lead with no DNP pile is not divided by zero",
+      (su.body.rows || []).every(function(r){
+        return isFinite(r.dnp.rate) && isFinite(r.dnp.triesPer) && isFinite(r.dnp.daysPer); }));
+    ok("barely tried can never exceed the pile it is drawn from",
+      (su.body.rows || []).every(function(r){ return r.dnp.starved <= r.dnp.leads && r.dnp.never <= r.dnp.leads; }));
+    ok("the floor it judges against is reported rather than hidden in the code",
+      typeof su.body.starvedEvery === "number" && su.body.starvedEvery > 0);
+    // Vacuous checks are worse than no checks: this one is why the fixture carries a
+    // stage-entry date, and it failed silently until it did.
+    ok("and there is actually a DNP pile behind all of that",
+      (su.body.totals || {}).dnp_leads > 0 && (su.body.totals || {}).dnp_days > 0,
+      JSON.stringify(su.body.totals));
+    ok("a lead we cannot date is counted and named, not dropped or called nought days old",
+      (su.body.rows || []).every(function(r){ return r.dnp.undated <= r.dnp.leads; }));
+
     /* One row per agent for one day. */
     const ad = await get("/api/vp/agent-day");
     ok("agent day answers", ad.status === 200, "status " + ad.status + " " + ad.raw);

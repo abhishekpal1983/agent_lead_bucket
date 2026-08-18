@@ -30,6 +30,9 @@ function lead(o){
     stage: STAGES[n % STAGES.length],
     owner: a.id, ownerName: a.name, creator: CREATORS[n % CREATORS.length],
     fu: 0, last: 0, formLast: 0, forms: [], score: 0, intl: false,
+    // When the lead landed in its current stage. DNP coverage measures attempts against
+    // the working days since this, so a fixture without it leaves that path untested.
+    entered: D(2026, 8, 1 + (n % 5), 10),
     calls: 0, own: 0, phone: "+9190000000" + (n % 10), needsOwner: false
   }, o);
 }

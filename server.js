@@ -3366,6 +3366,7 @@ let RESP_HIT = 0, RESP_MISS = 0;
 const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
 const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
   "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/vp/agent-day",
+  "/api/vp/agent-summary",
   "/api/vp/daily", "/api/coaching/progress"];
 
 function dataVersion(){
@@ -6122,6 +6123,209 @@ app.get("/api/vp/agent-day", async function(req, res){
           a[k] = (a[k] || 0) + (r[k] || 0); });
         return a;
       }, {}) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* Agent summary, over a day or over a range.
+
+   Four questions a VP asks about an agent and used to answer by reading four screens:
+   who is carrying the most overdue, who actually finishes what falls due, who is leaving
+   leads with no next date, and whether the DNP pile is being worked or just held.
+
+   The hard part is the range, because these are not all the same kind of number.
+
+   Due, done, missed and calls are FLOWS. They happen on a day and they add up: 40 due on
+   Monday and 30 on Tuesday is 70 due across the two days, and that is a fair denominator.
+
+   Overdue, No FU and the pool size are STOCKS. They are a position, not an event. One
+   lead sitting overdue for eight days would count eight times if you added the days
+   together, and an agent with a single stuck lead would out-rank one with six fresh ones.
+   So a stock is reported as it stood on the last day of the range, with the average
+   across the range beside it, and never as a sum. Getting this wrong is the single
+   easiest way to make this table lie, which is why it is written down here and in
+   RULES.md rather than left to whoever reads the code next. */
+function agentSummaryDays(from, to){
+  const all = (typeof ORG !== "undefined" && ORG.daily) || {};
+  return Object.keys(all).filter(function(k){ return k >= from && k <= to; }).sort();
+}
+
+/* How hard the DNP pile is actually being worked, per agent.
+
+   Attempts against the days the lead has been sitting there, which is the shape Abhishek
+   asked for: six attempts in eight days. Working days, not calendar days, for the same
+   reason overdue uses them: nobody dials on a Sunday and counting it against an agent is
+   just noise.
+
+   This one deliberately ignores the date range. A lead's attempts and its age are its
+   own clock, not the reporting window, and slicing them to a range would answer a
+   different and less useful question. */
+const DNP_STAGES = ["dnp_did_not_pick", "dnp_other"];
+// Under one attempt every three working days, once a lead has had at least three, is a
+// pile being held rather than worked. Env so it can be argued with rather than rewritten.
+const DNP_STARVED_EVERY = parseFloat(process.env.DNP_STARVED_EVERY || "3");
+function agentDnpCoverage(){
+  const out = {};
+  const todayIdx = CN2.istDayIndex(cn2Now());
+  // The same rows Call Now is built from, not the raw contact pool. One model, and it
+  // means this is exercised by the fixtures rather than only in production.
+  cn2Rows().forEach(function(r){
+    if (DNP_STAGES.indexOf(r.stage) < 0) return;
+    const oid = String(r.owner || "none");
+    if (!out[oid]) out[oid] = { leads: 0, tries: 0, mine: 0, days: 0, starved: 0, never: 0, undated: 0 };
+    /* No stage-change date and no create date means we cannot say how long it has been
+       sitting. Counting it as nought days would flatter the agent, so it is counted as a
+       lead we could not date and named on the row rather than quietly dropped. */
+    if (!r.entered) { out[oid].leads++; out[oid].undated++; out[oid].tries += (r.calls || 0);
+      out[oid].mine += (r.own || 0); if (!r.calls) out[oid].never++; return; }
+    const days = CN2.workDaysMissed(CN2.istDayIndex(r.entered), todayIdx, CN2_WORK);
+    const tries = r.calls || 0, mine = r.own || 0;
+    const o = out[oid];
+    o.leads++; o.tries += tries; o.mine += mine; o.days += days;
+    if (!tries) o.never++;
+    // A lead too new to have had a fair go is not evidence of anything.
+    if (days >= DNP_STARVED_EVERY && tries < days / DNP_STARVED_EVERY) o.starved++;
+  });
+  return out;
+}
+
+app.get("/api/vp/agent-summary", function(req, res){
+  try {
+    const today = istParts(new Date()).date;
+    const to = String(req.query.to || today);
+    const from = String(req.query.from || to);
+    if (from > to) return res.status(400).json({ error: "from is after to" });
+
+    const teamOf = {}, teamName = {};
+    (ORG.teams || []).forEach(function(t){
+      teamName[t.id] = t.name || "(unnamed)";
+      (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+    });
+    const allow = cn2Scope(req);
+    const inScope = function(id){ return !allow || allow.indexOf(String(id)) >= 0; };
+
+    const days = agentSummaryDays(from, to);
+    const liveToday = to >= today && from <= today && cn2Ready();
+
+    const FLOW = ["due", "done", "missed", "calls", "pool", "counsellings"];
+    const acc = {};
+    const at = function(id){
+      if (!acc[id]) acc[id] = { flow: { due: 0, done: 0, missed: 0, calls: 0, pool: 0, counsellings: 0 },
+        stockSum: { overdue: 0, nofu: 0, pool: 0 }, stockDays: 0,
+        last: { overdue: 0, nofu: 0, pool: 0, on: "" } };
+      return acc[id];
+    };
+    days.forEach(function(k){
+      const snap = ((ORG.daily || {})[k] || {}).agents || {};
+      Object.keys(snap).forEach(function(id){
+        const a = snap[id], o = at(id);
+        FLOW.forEach(function(f){ o.flow[f] += (a[f] || 0); });
+        o.stockSum.overdue += a.overdue || 0;
+        o.stockSum.nofu += a.nofu || 0;
+        o.stockSum.pool += a.pool || 0;
+        o.last = { overdue: a.overdue || 0, nofu: a.nofu || 0, pool: a.pool || 0, on: k };
+      });
+      Object.keys(snap).forEach(function(id){ at(id).stockDays++; });
+    });
+
+    /* Today has no snapshot until the next capture, so a range ending today would be
+       missing its most interesting day. Read it live, and only if it is not already in
+       the snapshots, so it can never be counted twice. */
+    let usedLive = false;
+    if (liveToday && days.indexOf(today) < 0) {
+      usedLive = true;
+      const snap = cn2SnapshotCached();
+      const seen = {};
+      Object.keys(snap.base).forEach(function(id){
+        const b = CN2.read(snap.base[id]);
+        if (!b.counted || b.sec !== CN2.SEC_ACTION) return;
+        const oid = String(b.owner || "none"), o = at(oid);
+        const lv = snap.live[id] || snap.liveAll[id] || null;
+        const ct = !!(lv && lv.last >= snap.day.start && lv.last < snap.day.end);
+        o.flow.pool++; if (ct) o.flow.calls++;
+        if (b.t === "due") { o.flow.due++; if (ct) o.flow.done++; else o.flow.missed++; }
+        if (!seen[oid]) { seen[oid] = { overdue: 0, nofu: 0, pool: 0 }; }
+        if (b.t === "over") seen[oid].overdue++;
+        if (b.t === "nofu") seen[oid].nofu++;
+        seen[oid].pool++;
+      });
+      Object.keys(seen).forEach(function(oid){
+        const o = at(oid);
+        o.stockSum.overdue += seen[oid].overdue;
+        o.stockSum.nofu += seen[oid].nofu;
+        o.stockSum.pool += seen[oid].pool;
+        o.stockDays++;
+        o.last = { overdue: seen[oid].overdue, nofu: seen[oid].nofu, pool: seen[oid].pool, on: today };
+      });
+    }
+
+    const dnp = agentDnpCoverage();
+    Object.keys(dnp).forEach(function(id){ at(id); });
+    Object.keys(teamOf).forEach(function(id){ at(id); });
+
+    const rows = Object.keys(acc).filter(function(id){
+      if (id === "none") return !allow;
+      return inScope(id);
+    }).map(function(id){
+      const o = acc[id], d = dnp[id] || { leads: 0, tries: 0, mine: 0, days: 0, starved: 0, never: 0 };
+      const own = CACHE.owners[id] || {};
+      const n = o.stockDays || 1;
+      return {
+        id: id, name: id === "none" ? "(unassigned)" : (own.name || ("Owner " + id)),
+        team: teamOf[id] ? teamName[teamOf[id]] : "", teamId: teamOf[id] || "",
+        active: own.active !== false, counted: ownerCounted(id === "none" ? "" : id),
+        due: o.flow.due, done: o.flow.done, missed: o.flow.missed,
+        calls: o.flow.calls, counsellings: o.flow.counsellings,
+        // Nothing due is not the same as everything done, so it stays null rather than
+        // becoming a flattering 100%.
+        completion: o.flow.due ? o.flow.done / o.flow.due : null,
+        overdue: o.last.overdue, overdueAvg: o.stockSum.overdue / n,
+        nofu: o.last.nofu, nofuAvg: o.stockSum.nofu / n,
+        pool: o.last.pool, poolAvg: o.stockSum.pool / n,
+        standingOn: o.last.on,
+        dnp: { leads: d.leads, tries: d.tries, mine: d.mine, days: d.days,
+          starved: d.starved, never: d.never, undated: d.undated || 0,
+          // Per lead, in the shape the question was asked in: N tries over M days.
+          triesPer: d.leads ? d.tries / d.leads : 0,
+          daysPer: d.leads ? d.days / d.leads : 0,
+          rate: d.days ? d.tries / d.days : 0 }
+      };
+    }).filter(function(r){ return r.pool || r.due || r.calls || r.dnp.leads || r.overdue || r.nofu; })
+      .sort(function(a, b){ return b.overdue - a.overdue || b.missed - a.missed; });
+
+    const me2 = String(whoami(req) || "").toLowerCase();
+    const teams = (ORG.teams || []).filter(function(t){
+      return isVP(req) || String(t.managerEmail || "").toLowerCase() === me2;
+    }).map(function(t){ return { id: t.id, name: t.name || "(unnamed)" }; });
+
+    res.json({
+      from: from, to: to, days: days.length + (usedLive ? 1 : 0), dates: days,
+      liveToday: usedLive, scoped: !!allow, isVP: isVP(req), teams: teams,
+      // Named rather than assumed, because a range that quietly covers three of the seven
+      // days asked for is worse than one that says so.
+      missingDays: (function(){
+        const want = [], have = {};
+        days.forEach(function(k){ have[k] = 1; }); if (usedLive) have[today] = 1;
+        let cur = from;
+        while (cur <= to) {
+          if (!have[cur]) want.push(cur);
+          const d = new Date(cur + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1);
+          cur = d.toISOString().slice(0, 10);
+        }
+        return want;
+      })(),
+      starvedEvery: DNP_STARVED_EVERY,
+      rows: rows,
+      totals: rows.reduce(function(a, r){
+        ["due","done","missed","calls","counsellings","overdue","nofu","pool"].forEach(function(k){
+          a[k] = (a[k] || 0) + (r[k] || 0); });
+        ["leads","tries","mine","days","starved","never","undated"].forEach(function(k){
+          a["dnp_" + k] = (a["dnp_" + k] || 0) + (r.dnp[k] || 0); });
+        a.completion = a.due ? a.done / a.due : null;
+        return a;
+      }, {})
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

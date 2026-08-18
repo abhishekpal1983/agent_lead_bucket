@@ -451,3 +451,39 @@ Every reader goes through `spRawOf`, so the two definitions cannot drift apart. 
 shows as a chip in the Why call column, and both raw answers show in the expander and the lead
 card. If a lead answered both and answered differently, both are shown and the disagreement is
 named, because that is a fact about the lead and not a fault in the page.
+
+## 19. Agent summary: what adds up over a range, and what does not
+
+The agent summary answers four questions per agent over a day or a date range: who is
+carrying the most overdue, who finishes what falls due, who is leaving leads with no next
+date, and whether the DNP pile is being worked or just held.
+
+Over a range these are not the same kind of number, and mixing them is the easiest way to
+make the table lie.
+
+**Flows happen on a day and add up.** Due, done, missed and calls made. Forty due on Monday
+and thirty on Tuesday is seventy due across the two days, and that is a fair denominator
+for a completion rate.
+
+**Stocks are a position, not an event.** Overdue, No FU and the pool size. One lead sitting
+overdue for eight days would count eight times if the days were added together, and an
+agent with a single stuck lead would out-rank an agent with six live ones. So a stock is
+reported as it stood on the last day of the range, with the average across the range beside
+it, and never as a sum.
+
+Days with no snapshot contribute nothing, and the page names them. A completion rate
+measured on three of the seven days asked for is not wrong so much as unlabelled, and
+unlabelled is how it gets quoted in a meeting. Snapshots are kept for ninety days. A range
+that ends today reads today live, and only when today is not already in the snapshots, so
+it can never be counted twice.
+
+**DNP coverage** is attempts against working days since the lead landed in DNP: six attempts
+in eight days. Working days, for the same reason overdue uses them. It deliberately ignores
+the selected range, because a lead's attempts and its age are its own clock and slicing them
+to a reporting window answers a different and less useful question. A lead with no
+stage-change date and no create date cannot be dated at all; it is counted as undated and
+named, rather than treated as nought days old, which would flatter whoever holds it.
+
+Barely tried means under one attempt every `DNP_STARVED_EVERY` working days, default three,
+and only once a lead has had at least that many days. The threshold is reported in the
+response so it can be argued with rather than rewritten.

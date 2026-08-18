@@ -85,6 +85,11 @@ td{padding:10px 11px;border-bottom:1px solid #EFF3F7;white-space:nowrap;vertical
 tr:last-child td{border-bottom:none}
 td.n,th.n{text-align:left;font-variant-numeric:tabular-nums}
 table.rt td.n,table.rt th.n{text-align:right}
+/* Sortable headers. The one being sorted on is filled rather than only arrowed, so the
+   answer to "sorted by what" is visible without hunting for a small glyph. */
+th.srt{cursor:pointer;user-select:none;white-space:nowrap}
+th.srt:hover{background:#EDF1F6}
+th.srt.on{background:#0A2540;color:#fff;border-radius:6px 6px 0 0}
 table.rt td:first-child,table.rt th:first-child{text-align:left}
 .tw{border:1px solid #DCE4EC;border-radius:8px;overflow:auto}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
@@ -837,8 +842,213 @@ function adCsv(){
   a.click();
 }
 
+/* Agent summary.
+
+   Four questions in one row per agent: who is carrying the most overdue, who finishes
+   what falls due, who is leaving leads with no next date, and whether their DNP pile is
+   being worked or just held.
+
+   Over a range, two of those are flows and two are stocks. Due and done happened on a
+   day and add up. Overdue and No FU are a position, and adding a position across days
+   counts one stuck lead once per day it was stuck, which would put an agent with one
+   frozen lead above an agent with six live ones. So a stock shows as it stood on the
+   last day of the range, with the average beside it. */
+var AS = null, AS_FROM = "", AS_TO = "", AS_TEAM = "", AS_AGENT = "";
+var AS_SORT = { k: "overdue", d: -1 };
+function asSet(k, v){ if(k === "team"){ AS_TEAM = v; AS_AGENT = ""; } else AS_AGENT = v; renderAgentSummary(); }
+function asSort(k){
+  if (AS_SORT.k === k) AS_SORT.d = -AS_SORT.d; else { AS_SORT.k = k; AS_SORT.d = -1; }
+  renderAgentSummary();
+}
+function asPreset(n){
+  var t = new Date();
+  var to = isoDay(t), from = isoDay(new Date(t.getTime() - (n - 1) * 86400000));
+  loadAgentSummary(from, to);
+}
+function isoDay(d){ return d.toISOString().slice(0, 10); }
+function asRows(){
+  var rows = ((AS && AS.rows) || []).filter(function(r){
+    if (AS_TEAM && r.teamId !== AS_TEAM) return false;
+    if (AS_AGENT && String(r.id) !== AS_AGENT) return false;
+    return true;
+  });
+  var val = function(r){
+    var k = AS_SORT.k;
+    if (k === "name") return String(r.name || "").toLowerCase();
+    if (k === "completion") return r.completion == null ? -1 : r.completion;
+    if (k === "dnprate") return r.dnp.rate;
+    if (k === "dnpstarved") return r.dnp.starved;
+    if (k === "dnpleads") return r.dnp.leads;
+    return r[k] || 0;
+  };
+  return rows.slice().sort(function(a, b){
+    var x = val(a), y = val(b);
+    if (x < y) return -AS_SORT.d; if (x > y) return AS_SORT.d;
+    return (b.overdue || 0) - (a.overdue || 0);
+  });
+}
+function loadAgentSummary(from, to){
+  var q = [];
+  if (from) q.push("from=" + encodeURIComponent(from));
+  if (to) q.push("to=" + encodeURIComponent(to));
+  fetch("/api/vp/agent-summary" + (q.length ? "?" + q.join("&") : ""))
+    .then(asJson)
+    .then(function(j){ AS = j; AS_FROM = j.from; AS_TO = j.to; renderAgentSummary(); })
+    .catch(function(e){
+      var el = document.getElementById("aswrap");
+      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
+    });
+}
+function asHead(k, label, title){
+  var on = AS_SORT.k === k ? (AS_SORT.d < 0 ? " ▾" : " ▴") : "";
+  return "<th class='n srt" + (AS_SORT.k === k ? " on" : "") + "'" +
+    (title ? " title='" + esc(title) + "'" : "") +
+    " onclick=\"asSort('" + k + "')\">" + esc(label) + on + "</th>";
+}
+function asPc(r){
+  if (r.completion == null) return "<span class='mut'>nothing due</span>";
+  var pc = Math.round(100 * r.completion);
+  return "<b class='" + (pc >= 80 ? "cg" : (pc >= 50 ? "ca" : "cr")) + "'>" + pc + "%</b>" +
+    "<div class='mut' style='font-size:11px'>" + fmt(r.done) + " of " + fmt(r.due) + "</div>" +
+    "<div class='pbar'><i style='width:" + Math.min(100, pc) + "%'></i></div>";
+}
+/* Six attempts in eight days, which is how the question was asked. Working days, because
+   nobody dials on a Sunday and counting it against an agent is noise. */
+function asDnp(r){
+  var d = r.dnp;
+  if (!d.leads) return "<span class='mut'>no DNP held</span>";
+  var t = d.triesPer.toFixed(1), dy = d.daysPer.toFixed(0);
+  var cls = d.rate >= 0.5 ? "cg" : (d.rate >= 1 / (AS.starvedEvery || 3) ? "ca" : "cr");
+  return "<b class='" + cls + "'>" + t + "</b><span class='mut'> tries in </span><b>" + dy + "</b><span class='mut'>d</span>" +
+    "<div class='mut' style='font-size:11px'>" + fmt(d.leads) + " leads &middot; " +
+    fmt(d.mine) + " of " + fmt(d.tries) + " by them</div>";
+}
+function renderAgentSummary(){
+  var el = document.getElementById("aswrap");
+  if (!el) return;
+  var j = AS; if (!j) return;
+  var rows = asRows();
+  var t = rows.reduce(function(a, r){
+    ["due","done","missed","calls","overdue","nofu","pool"].forEach(function(k){ a[k] = (a[k] || 0) + (r[k] || 0); });
+    ["leads","tries","days","starved","never"].forEach(function(k){ a["d_" + k] = (a["d_" + k] || 0) + (r.dnp[k] || 0); });
+    return a; }, {});
+  var oneDay = j.from === j.to;
+
+  var h = "<div class='sec'><h2>Agent summary <span class='mut' style='font-size:12.5px;font-weight:400'>" +
+    esc(j.from) + (oneDay ? "" : " to " + esc(j.to)) + " &middot; " + fmt(j.days) + " day" + (j.days === 1 ? "" : "s") +
+    "</span></h2>" +
+    "<div class='sub'>One row per agent. <b>Due and done</b> are things that happened, so over a range they add up. " +
+    "<b>Overdue</b> and <b>No FU</b> are a position rather than an event: they show as they stood on the last day " +
+    "of the range, with the average beside them, because adding a position across days counts one stuck lead " +
+    "once for every day it was stuck. <b>DNP coverage</b> reads each lead's own clock, attempts against working " +
+    "days since it landed in DNP, so it does not move with the range you pick. Click any column to sort by it." +
+    (j.scoped ? " Your team only." : "") + "</div>";
+
+  h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
+    "<input type='date' value='" + esc(j.from) + "' onchange='loadAgentSummary(this.value,AS_TO)'>" +
+    "<span class='mut'>to</span>" +
+    "<input type='date' value='" + esc(j.to) + "' onchange='loadAgentSummary(AS_FROM,this.value)'>" +
+    "<button class='btn' onclick='asPreset(1)'>Today</button>" +
+    "<button class='btn' onclick='asPreset(7)'>7 days</button>" +
+    "<button class='btn' onclick='asPreset(30)'>30 days</button>" +
+    (j.isVP && (j.teams || []).length > 1
+      ? "<select onchange=\"asSet('team',this.value)\"><option value=''>All managers</option>" +
+        (j.teams || []).map(function(x){
+          return "<option value='" + esc(x.id) + "'" + (AS_TEAM === x.id ? " selected" : "") + ">" +
+            esc(x.name) + "</option>"; }).join("") + "</select>"
+      : "") +
+    "<select onchange=\"asSet('agent',this.value)\"><option value=''>All agents</option>" +
+    ((j.rows || []).filter(function(r){ return !AS_TEAM || r.teamId === AS_TEAM; }).map(function(r){
+      return "<option value='" + esc(String(r.id)) + "'" + (AS_AGENT === String(r.id) ? " selected" : "") + ">" +
+        esc(r.name) + "</option>"; }).join("")) + "</select>" +
+    ((AS_TEAM || AS_AGENT) ? "<button class='btn' onclick=\"AS_TEAM='';AS_AGENT='';renderAgentSummary()\">Clear</button>" : "") +
+    "<button class='btn' onclick='asCsv()'>Download CSV</button>" +
+    "</div>";
+
+  /* A range that quietly covers three of the seven days asked for is worse than one that
+     says so, because the completion rate is then measured on a denominator nobody knows
+     is short. */
+  if ((j.missingDays || []).length) {
+    h += "<div class='warn'>No snapshot exists for " + fmt(j.missingDays.length) + " of the days in this range" +
+      (j.missingDays.length <= 6 ? " (" + j.missingDays.map(esc).join(", ") + ")" : "") +
+      ", so those days contribute nothing. Snapshots are kept for 90 days.</div>";
+  }
+
+  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
+    tile("grey", fmt(t.done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t.due) + "</span>",
+      "Due called across the range", t.due ? Math.round(100 * t.done / t.due) + "% finished" : "nothing fell due") +
+    tile(t.missed ? "amber" : "grey", fmt(t.missed), "Missed", "fell due and was not called") +
+    tile("grey", fmt(t.overdue), "Overdue now", "as it stood on " + esc(j.to)) +
+    tile("grey", fmt(t.nofu), "No follow-up set", "as it stood on " + esc(j.to)) +
+    tile(t.d_starved ? "amber" : "grey", fmt(t.d_starved),
+      "DNP leads barely tried", "under one attempt every " + fmt(j.starvedEvery || 3) + " working days") +
+    "</div>";
+
+  h += "<div class='tw'><table class='rt'><thead><tr>" +
+    "<th class='srt" + (AS_SORT.k === "name" ? " on" : "") + "' onclick=\"asSort('name')\">Agent</th>" +
+    asHead("overdue", "Overdue", "Leads past their follow-up date, as they stood on the last day of the range. Not summed across days.") +
+    asHead("completion", "Due today done", "Of everything that fell due across the range, how much was called.") +
+    asHead("missed", "Missed", "Fell due and was not called that day. This one does add up across the range.") +
+    asHead("nofu", "No FU", "Leads with no next call date set, as they stood on the last day of the range.") +
+    asHead("dnprate", "DNP coverage", "Attempts against working days since the lead landed in DNP. Per lead, averaged.") +
+    asHead("dnpstarved", "Barely tried", "DNP leads getting under one attempt every few working days.") +
+    asHead("calls", "Calls", "Leads on the calling list that were dialled, added across the range.") +
+    "</tr></thead><tbody>";
+
+  rows.forEach(function(r){
+    h += "<tr><td><b>" + esc(r.name) + "</b>" +
+      (r.active === false ? " <span class='pill a'>inactive</span>" : "") +
+      (r.counted === false ? " <span class='pill a'>not counted</span>" : "") +
+      (r.team ? "<div class='mut' style='font-size:11.5px'>" + esc(r.team) + "</div>" : "") + "</td>" +
+      "<td class='n'><b class='" + (r.overdue ? "cr" : "mut") + "'>" + fmt(r.overdue) + "</b>" +
+        (oneDay ? "" : "<div class='mut' style='font-size:11px'>avg " + r.overdueAvg.toFixed(0) + "</div>") + "</td>" +
+      "<td class='n'>" + asPc(r) + "</td>" +
+      "<td class='n " + (r.missed ? "ca" : "mut") + "'>" + fmt(r.missed) + "</td>" +
+      "<td class='n'><b class='" + (r.nofu ? "ca" : "mut") + "'>" + fmt(r.nofu) + "</b>" +
+        (oneDay ? "" : "<div class='mut' style='font-size:11px'>avg " + r.nofuAvg.toFixed(0) + "</div>") + "</td>" +
+      "<td class='n'>" + asDnp(r) + "</td>" +
+      "<td class='n " + (r.dnp.starved ? "cr" : "mut") + "'>" + fmt(r.dnp.starved) +
+        (r.dnp.never ? "<div class='mut' style='font-size:11px'>" + fmt(r.dnp.never) + " never tried</div>" : "") + "</td>" +
+      "<td class='n'>" + fmt(r.calls) + "</td></tr>";
+  });
+  if (!rows.length) h += "<tr><td colspan='8' class='mut'>Nothing for that filter in this range.</td></tr>";
+  h += "</tbody></table></div></div>";
+  el.innerHTML = h;
+}
+function asCsv(){
+  if (!AS) return;
+  // Name paired with the value it reads, in one list, so the header and the rows cannot
+  // drift apart the way the daily review's export once did.
+  var COLS = [["Agent", function(r){ return r.name; }], ["Team", function(r){ return r.team; }],
+    ["OverdueOnLastDay", function(r){ return r.overdue; }],
+    ["OverdueAvgPerDay", function(r){ return r.overdueAvg.toFixed(1); }],
+    ["Due", function(r){ return r.due; }], ["DueCalled", function(r){ return r.done; }],
+    ["CompletionPc", function(r){ return r.completion == null ? "" : Math.round(100 * r.completion); }],
+    ["Missed", function(r){ return r.missed; }],
+    ["NoFUOnLastDay", function(r){ return r.nofu; }],
+    ["NoFUAvgPerDay", function(r){ return r.nofuAvg.toFixed(1); }],
+    ["DnpLeads", function(r){ return r.dnp.leads; }],
+    ["DnpAttempts", function(r){ return r.dnp.tries; }],
+    ["DnpAttemptsByHolder", function(r){ return r.dnp.mine; }],
+    ["DnpWorkingDays", function(r){ return r.dnp.days; }],
+    ["DnpAttemptsPerLead", function(r){ return r.dnp.triesPer.toFixed(2); }],
+    ["DnpDaysPerLead", function(r){ return r.dnp.daysPer.toFixed(2); }],
+    ["DnpBarelyTried", function(r){ return r.dnp.starved; }],
+    ["DnpNeverTried", function(r){ return r.dnp.never; }],
+    ["Calls", function(r){ return r.calls; }]];
+  var lines = [COLS.map(function(c){ return c[0]; }).join(",")];
+  asRows().forEach(function(r){
+    lines.push(COLS.map(function(c){ return '"' + String(c[1](r) == null ? "" : c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
+  });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = "agent_summary_" + AS.from + "_to_" + AS.to + ".csv";
+  a.click();
+}
+
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
+    ["summary", "Agent summary", ""],
     ["agentday", "Agent day", ""], ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
@@ -878,7 +1088,7 @@ function draw(){
   // width. The manager table has 13 columns and genuinely needs the room, so it stays
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
-  var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets" }[VIEW] || "Overview";
+  var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets", summary: "Agent summary" }[VIEW] || "Overview";
   if (ONLY) {
     var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
     title += " · " + (only ? (only.name || "team") : "team");
@@ -889,6 +1099,7 @@ function draw(){
   if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
   else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
   else if (VIEW === "agentday") h += "<div id='adwrap'>Loading the day...</div>";
+  else if (VIEW === "summary") h += "<div id='aswrap'>Loading the summary...</div>";
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
@@ -898,6 +1109,7 @@ function draw(){
   if (VIEW === "daily") loadDaily(DAILY_DATE);
   if (VIEW === "weeks") loadWeeks();
   if (VIEW === "agentday") loadAgentDay(AD_DATE);
+  if (VIEW === "summary") loadAgentSummary(AS_FROM, AS_TO);
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +

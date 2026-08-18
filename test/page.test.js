@@ -725,5 +725,34 @@ ok("autofocus is gone, because it does not fire on innerHTML",
 ok("and a background redraw puts the caret back where it was",
   html.indexOf("segFocus();}") >= 0 && html.indexOf("if(box)SEGCARET=box.selectionStart;") >= 0);
 
+/* The VP agent summary. The whole risk in a range view is treating a position as if it
+   were an event, so that is what these pin. */
+{
+  const vp = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
+  ok("the view is reachable from the rail and renders somewhere",
+    vp.indexOf('["summary", "Agent summary", ""]') >= 0 &&
+    vp.indexOf('VIEW === "summary"') >= 0 &&
+    vp.indexOf("function renderAgentSummary()") >= 0);
+  ok("it asks for a range, not just a day",
+    vp.indexOf("loadAgentSummary(this.value,AS_TO)") >= 0 &&
+    vp.indexOf("loadAgentSummary(AS_FROM,this.value)") >= 0 &&
+    vp.indexOf("function asPreset(n)") >= 0);
+  ok("a stock is shown as a standing figure with its average, never as a sum",
+    vp.indexOf("r.overdueAvg") >= 0 && vp.indexOf("r.nofuAvg") >= 0 &&
+    vp.indexOf("as it stood on") >= 0);
+  ok("and the page says out loud which columns add up and which do not",
+    vp.indexOf("are a position rather than an event") >= 0);
+  ok("DNP coverage reads as attempts over days, the way it was asked for",
+    vp.indexOf("function asDnp(r)") >= 0 && vp.indexOf("tries in ") >= 0);
+  ok("a short range is warned about rather than quietly measured",
+    vp.indexOf("j.missingDays") >= 0 && vp.indexOf("contribute nothing") >= 0);
+  ok("nothing due does not become a flattering hundred percent",
+    vp.indexOf('r.completion == null) return "<span class=\'mut\'>nothing due</span>') >= 0);
+  ok("every column can be sorted, so worst first works on any of them",
+    vp.indexOf("function asSort(k)") >= 0 && (vp.match(/asHead\(/g) || []).length >= 7);
+  ok("the export pairs each column name with the value it reads",
+    vp.slice(vp.indexOf("function asCsv()")).indexOf('["Agent", function(r){ return r.name; }]') >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
