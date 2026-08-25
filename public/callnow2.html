@@ -134,6 +134,8 @@ td.z{color:#B7C2CD}
 .wafoot{font-size:11.5px;color:#6B7A8A;margin-top:4px}
 .wafoot .m{color:#8C2D12}
 .wan{font-size:12px;color:#566575}
+.walink{background:none;border:0;color:#185FA5;font-size:12px;cursor:pointer;padding:0 2px;text-decoration:underline}
+.walink:hover{color:#0C447C}
 .wasum{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 .waph{font-size:12px;color:#185FA5;text-decoration:none;border-bottom:1px dotted #85B7EB}
 .wafields{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:5px;font-size:12px;color:#2C4054}
@@ -996,7 +998,8 @@ function waView(){
     "</div>";
 
   h+="<div class='chips' style='margin:10px 0'>"+
-    [["uncalled","Replied since last call"],["today","Replied today"],["all","All "+fmt(t.mine||0)]]
+    [["uncalled","Replied since last call ("+fmt(t.uncalled||0)+")"],
+     ["today","Replied today ("+fmt(t.today||0)+")"],["all","All "+fmt(t.mine||0)]]
       .map(function(o){ return "<button class='chipb"+(WFILT===o[0]?" on":"")+
         "' onclick='waSetFilt(\""+o[0]+"\")'>"+esc(o[1])+"</button>"; }).join("")+
     "<span class='z' style='margin-left:auto'>"+
@@ -1011,12 +1014,20 @@ function waView(){
     /* The stage line answers three questions at once: how many are here, how many are
        waiting on a call back, and how many landed today. Counted on the whole stage, not
        on the filtered rows, so switching the chips does not move the summary. */
+    /* "Counselled, 6 leads" over a single row is a bug report waiting to happen. The
+       summary is deliberately counted on the whole stage so the chips above cannot move
+       it, which means the header has to say when it is describing more than is on screen,
+       and offer the way to see the rest. */
+    var hidden=st.n-rows.length;
     h+="<div class='wagrp'><div class='wahd'>"+
-      "<b>"+esc(st.label)+"</b><span class='wan'>"+fmt(st.n)+" lead"+(st.n===1?"":"s")+"</span>"+
+      "<b>"+esc(st.label)+"</b><span class='wan'>"+
+      (hidden>0?fmt(rows.length)+" of "+fmt(st.n)+" shown"
+               :fmt(st.n)+" lead"+(st.n===1?"":"s"))+"</span>"+
+      (hidden>0?"<button class='walink' onclick='waSetFilt(\"all\")'>show all "+fmt(st.n)+"</button>":"")+
       "<span class='wasum'>"+
         "<span class='"+(st.uncalled?"wapill hot":"wapill")+"'>"+fmt(st.uncalled)+" replied, not called yet</span>"+
         "<span class='wapill'>"+fmt(st.today)+" replied today</span>"+
-        "<span class='wapill'>"+fmt(st.replies)+" messages</span>"+
+        "<span class='wapill'>"+fmt(st.replies)+" replies from leads</span>"+
       "</span></div>";
     rows.forEach(function(r){
       var open=!!WOPEN[r.id];
@@ -1035,7 +1046,7 @@ function waView(){
           "<span><i>Replied</i>"+(r.waAt?esc(tmp(r.waAt)):"–")+"</span>"+
           "<span><i>Last call</i>"+(r.last?esc(tmp(r.last)):"never called")+"</span>"+
           "<span><i>Follow-up</i>"+(r.fu?esc(tmp(r.fu)):"none set")+"</span>"+
-          "<span><i>Messages</i>"+fmt(r.waN||0)+"</span>"+
+          "<span><i>Their replies</i>"+fmt(r.waN||0)+"</span>"+
         "</div>"+
         "<div class='wafoot'>"+waSince(r)+"</div>"+
         (open?"<div class='waexp'>"+threadBlock(r.id)+"</div>":"")+

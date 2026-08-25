@@ -280,5 +280,26 @@ ok("and the raw wording of both travels to the page",
     page.indexOf("These two answers do not match") >= 0);
 }
 
+/* Direction in a WhatsApp thread. Guessed from a property first time round and it was
+   wrong: Loop sets none, so every message fell through to the default and the thread
+   rendered as though the lead had said all of it, Loop's own words included. */
+ok("who spoke is read from the body first, ahead of any property",
+  src.indexOf("function waSpeaker(body, p)") >= 0 &&
+  src.indexOf("WA_OUT_PREFIX.test(body)) return \"out\"") >= 0 &&
+  src.indexOf("WA_IN_PREFIX.test(body)) return \"in\"") >= 0);
+ok("the property and the owner check stay behind it rather than being thrown away",
+  src.indexOf("hs_communication_direction") >= 0 && src.indexOf("p.hubspot_owner_id) return \"out\"") >= 0);
+ok("and the prefix is stripped, so a bubble does not repeat what the bubble already shows",
+  src.indexOf("function waStrip(body)") >= 0 && src.indexOf("body: waStrip(body)") >= 0);
+{
+  // The real messages from the screenshot that exposed this.
+  const OUT = /^\s*(loop\s*agent|loop|agent|bot|system|assistant)\s*[:\-]\s*/i;
+  const IN = /^\s*(lead|customer|contact|user|client)\s*[:\-]\s*/i;
+  const dir = function(b){ return OUT.test(b) ? "out" : IN.test(b) ? "in" : "?"; };
+  ok("Loop's own message reads as ours", dir("Loop Agent: Hi Mark, Nisha here") === "out");
+  ok("the lead's message reads as theirs", dir("Lead: STOP") === "in");
+  ok("and a message with no prefix is not forced either way", dir("Next 6-12 months") === "?");
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

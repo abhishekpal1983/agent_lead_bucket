@@ -570,6 +570,21 @@ and the one that matters. Above zero the row says only that a call happened, bec
 needs the call records themselves; those are read when the card is opened rather than
 guessed at.
 
+Who said what is read from the message body, not from a property. Loop sets no direction
+field, so the first version fell through to its default and rendered every thread as though
+the lead had said all of it, Loop's own words included. Loop writes the speaker as a
+`Loop Agent:` or `Lead:` prefix instead. The body is read first, the property and the owner
+check stay behind it for portals that do populate them, and the prefix is stripped once the
+side is decided.
+
+The per stage summary counts the whole stage, not the filtered rows, so the chips above
+cannot move it. That means the header has to say when it is describing more than is on
+screen: it reads "1 of 6 shown" with a way to see the rest, rather than "6 leads" printed
+over a single row.
+
+`ryl_wa_lead_reply_count` counts messages received **from the lead**, not the whole
+conversation, so it is labelled "their replies" and never "messages".
+
 Loop writes five summary properties on the contact, including the text of the last reply
 only. The conversation lives in the activity timeline as communication records and is read
 per lead. Two things there are portal specific: which field carries the direction, and what

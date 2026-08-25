@@ -4036,13 +4036,32 @@ async function syncWaReplies(){
    thread that reads backwards and nobody able to say why. */
 const WA_TTL_MS = parseInt(process.env.WA_TTL_MS || "120000", 10);
 const WA_CACHE = {};
-function waDirection(p){
+/* Who said it.
+
+   I guessed this from a direction property first time round and it was wrong: Loop does
+   not set one, so every message fell through to the default and the whole thread rendered
+   as if the lead had said all of it, Loop's own words included.
+
+   Loop writes the speaker into the body instead, as a "Loop Agent:" or "Lead:" prefix.
+   That is read first now, ahead of any property, because the text saying who is talking is
+   better evidence than a field that may be absent or set to one value for everything. The
+   property and the owner check stay behind it for portals that do populate them. */
+const WA_OUT_PREFIX = /^\s*(loop\s*agent|loop|agent|bot|system|assistant)\s*[:\-]\s*/i;
+const WA_IN_PREFIX = /^\s*(lead|customer|contact|user|client)\s*[:\-]\s*/i;
+function waSpeaker(body, p){
+  if (WA_OUT_PREFIX.test(body)) return "out";
+  if (WA_IN_PREFIX.test(body)) return "in";
   const d = String(p.hs_communication_direction || p.hs_message_direction || "").toUpperCase();
   if (d.indexOf("INCOMING") >= 0 || d.indexOf("INBOUND") >= 0) return "in";
   if (d.indexOf("OUTGOING") >= 0 || d.indexOf("OUTBOUND") >= 0) return "out";
-  // No direction field. A message sent by us carries an owner; one received does not.
+  // A message we sent carries an owner; one received does not.
   if (p.hubspot_owner_id) return "out";
   return "in";
+}
+// The prefix has done its job once the side is decided, and leaving it in makes every
+// bubble start by repeating what the bubble already shows.
+function waStrip(body){
+  return String(body).replace(WA_OUT_PREFIX, "").replace(WA_IN_PREFIX, "").trim();
 }
 function waBody(v){
   return String(v || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n")
@@ -4094,8 +4113,9 @@ async function waThread(id){
       if (ch && ch.indexOf("WHATS") < 0) return;
       const body = waBody(p.hs_communication_body);
       if (!body) return;
+      const dir = waSpeaker(body, p);
       out.push({ id: m.id, at: ts(p.hs_timestamp) || ts(p.hs_createdate),
-        dir: waDirection(p), body: body.slice(0, 2000), channel: ch || "(not set)" });
+        dir: dir, body: waStrip(body).slice(0, 2000), channel: ch || "(not set)" });
     });
   }
   // Oldest first, because a conversation read newest first is not a conversation.

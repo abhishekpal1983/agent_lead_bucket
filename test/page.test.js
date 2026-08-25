@@ -812,11 +812,21 @@ ok("the page pickers reach this view, and it re-asks when they move",
   html.indexOf('if(Q.agent)q.push("agent=') >= 0 &&
   html.indexOf('if(Q.creator)q.push("creator=') >= 0 &&
   html.indexOf('if(VIEW==="wa")loadWa();') >= 0);
+/* "Counselled, 6 leads" printed over one visible row is a bug report waiting to happen. */
+ok("a stage header says when the filter is hiding most of what it is counting",
+  html.indexOf("var hidden=st.n-rows.length;") >= 0 &&
+  html.indexOf('" of "+fmt(st.n)+" shown"') >= 0 &&
+  html.indexOf('show all "+fmt(st.n)') >= 0);
+ok("and the chips carry their own counts, so the filter is never a mystery",
+  html.indexOf('"Replied since last call ("+fmt(t.uncalled||0)+")"') >= 0);
+ok("the reply count is labelled as the lead's replies, which is what it counts",
+  html.indexOf("Their replies") >= 0 && html.indexOf("replies from leads") >= 0 &&
+  html.indexOf(">Messages<") < 0);
 ok("each stage line answers how many, how many waiting, how many today",
   html.indexOf("replied, not called yet") >= 0 && html.indexOf("replied today") >= 0 &&
   html.indexOf("st.uncalled") >= 0 && html.indexOf("st.today") >= 0);
 ok("a row shows phone, owner, creator, last call and follow-up without opening it",
-  ["Owner", "Creator", "Replied", "Last call", "Follow-up", "Messages"].every(function(f){
+  ["Owner", "Creator", "Replied", "Last call", "Follow-up", "Their replies"].every(function(f){
     return html.slice(html.indexOf("wafields")).indexOf("<i>" + f + "</i>") >= 0; }));
 ok("replying since the last call is called out on the row itself",
   html.indexOf("replied since your last call") >= 0);
