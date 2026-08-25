@@ -1307,6 +1307,21 @@ app.get("/api/health", function(req, res){
           calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
             ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
             behindMin: CALLSYNC.at ? Math.round((Date.now() - Date.parse(CALLSYNC.at)) / 60000) : null },
+          /* The Loop WA view rests on two things nothing else does: a list that has to
+             be re-read through the day, and a sweep that has to notice a reply within
+             minutes. Both can fail quietly, and a quiet failure there looks exactly like
+             nobody having replied, which is the worst way for it to break. */
+          wa: (typeof WA_LIST === "undefined") ? null : {
+            listId: WA_LIST_ID,
+            members: WA_LIST.n,
+            readAt: WA_LIST.at ? new Date(WA_LIST.at).toISOString() : null,
+            staleMin: WA_LIST.at ? Math.round((Date.now() - WA_LIST.at) / 60000) : null,
+            listError: WA_LIST.error || null,
+            truncated: !!WA_LIST.truncated,
+            replies: { at: WASYNC.at, n: WASYNC.n, ms: WASYNC.ms,
+              error: WASYNC.error || null, everyMinutes: WASYNC_MINUTES,
+              behindMin: WASYNC.at ? Math.round((Date.now() - Date.parse(WASYNC.at)) / 60000) : null }
+          },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
                   leadsSoFar: SYNC_PROGRESS.contacts, phase: SYNC_PROGRESS.phase,

@@ -503,6 +503,12 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       })());
     ok("the reply sweep is reported so silence can be told from health",
       wa.body.waSync && "at" in wa.body.waSync && wa.body.waSync.everyMinutes > 0);
+    // A quiet failure of either of these looks identical to nobody having replied.
+    const waHealth = (((await get("/api/health")).body.cn2) || {}).wa || null;
+    ok("health names the list read and the reply sweep, so neither can fail invisibly",
+      waHealth && "members" in waHealth && "staleMin" in waHealth && "listError" in waHealth &&
+      waHealth.replies && "at" in waHealth.replies && waHealth.replies.everyMinutes > 0,
+      JSON.stringify(waHealth));
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
 
