@@ -492,10 +492,14 @@ console.log("\nRole specific things appear only where they should");
     html.indexOf(".wrap .fresh.bad") >= 0 && html.indexOf(".wrap .fresh.warn") >= 0);
   /* HubSpot segments. 248 of them, so the control has to be a search box, and picking
      one has to say what it did to the list rather than silently shrinking it. */
-  ok("managers and VPs get a segment picker",
-    vp.indexOf("HubSpot segment") >= 0 && mgr.indexOf("HubSpot segment") >= 0);
-  ok("an agent does not, they work the list they are given",
-    agent.indexOf("HubSpot segment") < 0);
+  /* This used to assert the opposite: that an agent was denied the picker because they
+     work the list they are given. The reasoning did not survive contact with the floor.
+     A segment cannot widen what an agent sees, because the role scope is applied to the
+     base after the segment narrows it, so the rule only meant an agent told to work one
+     campaign had to pick it out by eye. */
+  ok("everyone who can open the page gets a segment picker, agents included",
+    vp.indexOf("HubSpot segment") >= 0 && mgr.indexOf("HubSpot segment") >= 0 &&
+    agent.indexOf("HubSpot segment") >= 0);
   ok("it is a search box, not a dropdown of 248 options",
     html.indexOf("segsearch") >= 0 && html.indexOf("search segments") >= 0);
   ok("the segment is a filter like any other, so Clear clears it",
@@ -771,6 +775,20 @@ ok("and a background redraw puts the caret back where it was",
   ok("the export names the segment, so the file cannot lie by omission",
     vp.indexOf("AS.seg ? AS.seg.name.replace") >= 0);
 }
+
+/* Agents get the segment picker now. The thing to guard is that lifting one restriction
+   did not lift its neighbour: the assignment pool is about leads nobody holds and must
+   still be closed to agents. */
+ok("the segment picker is no longer withheld from agents",
+  html.slice(html.indexOf("function segPicker()"), html.indexOf("function segNote")).indexOf('J.role==="agent"') < 0);
+ok("but the panels that show other people's work still are",
+  ["assignPanel", "summaryPanel", "churnPanel"].every(function(fn){
+    const i = html.indexOf("function " + fn + "()");
+    return i > 0 && html.slice(i, i + 220).indexOf('J.role==="agent"') >= 0;
+  }));
+ok("and a segment an agent picks is cleared and shared like every other filter",
+  html.indexOf('Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""}') >= 0 &&
+  html.slice(html.indexOf("function paramsToState")).indexOf('"segment"') >= 0);
 
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

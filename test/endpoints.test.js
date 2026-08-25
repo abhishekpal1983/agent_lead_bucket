@@ -307,6 +307,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
 
     // The segment picker is a manager and VP control; the endpoint has to say so itself.
     const segs = await get("/api/callnow2/segments");
+    /* A segment cannot widen what an agent sees: the role scope is applied to the base
+       after the segment narrows it. The assignment pool is a different question and stays
+       shut, so the two are checked together. */
+    ok("the segment catalogue is no longer refused by role",
+      (await get("/api/callnow2/segments")).status === 200);
+    ok("while the assignment pool keeps its own guard",
+      /role === "agent"/.test(require("fs").readFileSync(
+        require("path").join(__dirname, "..", "server.js"), "utf8")
+        .split('app.get("/api/callnow2/assign"')[1].slice(0, 300)));
     ok("the segment catalogue answers", segs.status === 200, "status " + segs.status);
     ok("and says whether the caller may use it", segs.body && "allowed" in segs.body,
       JSON.stringify(segs.body));

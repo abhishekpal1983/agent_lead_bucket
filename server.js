@@ -3881,7 +3881,12 @@ function segName(listId){
   return r ? r.name : ("Segment " + listId);
 }
 
-// The picker. Managers and VPs only: an agent works the list they are given.
+/* The picker, for everybody who can open the page.
+
+   Agents included. A segment cannot widen what an agent sees, because the role scope is
+   applied to the base after the segment has narrowed it, so an agent asking for a segment
+   gets their own leads within it and nothing else. The assignment pool below is a
+   different matter and stays restricted: that one is about leads nobody holds. */
 /* Re-read one contact from HubSpot, right now.
 
    The ten minute sweep is the mechanism; this is the escape hatch. An agent looking at
@@ -4241,8 +4246,6 @@ app.get("/api/callnow2/lead/:id/raw", async function(req, res){
 });
 
 app.get("/api/callnow2/segments", async function(req, res){
-  const role = (req.session && req.session.role) || "manager";
-  if (!isVP(req) && role === "agent") return res.json({ allowed: false, rows: [] });
   try {
     const rows = await segCatalogue();
     res.json({ allowed: true, rows: rows, error: SEGS.error || null, at: SEGS.at || null });

@@ -488,7 +488,20 @@ Barely tried means under one attempt every `DNP_STARVED_EVERY` working days, def
 and only once a lead has had at least that many days. The threshold is reported in the
 response so it can be argued with rather than rewritten.
 
-## 20. A segment can only narrow what is keyed by lead
+## 20. Agents get the segment picker
+
+The picker was withheld from agents on the reasoning that an agent works the list they are
+given rather than slicing it. That reasoning was wrong, and the rule has been lifted.
+
+A segment cannot widen what an agent sees. The role scope is applied to the frozen base
+*after* the segment has narrowed it, so an agent who picks a segment gets their own leads
+within that segment and nothing else. Withholding it only meant an agent told to work one
+campaign had to find those leads by eye.
+
+The assignment pool is a different question and stays closed to agents. That one is about
+leads nobody holds, which is a manager's decision to make.
+
+## 21. A segment can only narrow what is keyed by lead
 
 The agent summary takes a HubSpot segment, the same picker Call Now has. It narrows
 everything that is built from lead rows: today's calling list, the standing overdue and No

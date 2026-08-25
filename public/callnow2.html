@@ -916,7 +916,11 @@ function segListHtml(){
   h+="</div>";
   return h;}
 function segPicker(){
-  if(J.scoped&&J.role==="agent")return "";
+  /* Agents get this too. The old rule was that an agent works the list they are given
+     rather than slicing it, but a segment is not a way to see more, it is a way to see
+     less: the role scope is applied after the segment narrows the base, so an agent with
+     a segment chosen still only ever sees their own leads. Withholding it only meant an
+     agent told to work one campaign had to eyeball it. */
   var cur=J.seg;
   var label=cur?cur.name:"All leads";
   var h="<div class='segbox'><label>HubSpot segment</label>"+
