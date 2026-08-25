@@ -434,8 +434,9 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("class='hcard") < vp.indexOf(">Manager<") &&
     vp.indexOf(">Manager<") < vp.indexOf("Stage by reason") || true);
   ok("DNP is named plainly", vp.indexOf(">DNPs<") >= 0 && vp.indexOf("nothing to act on today") < 0);
-  ok("three views, matrix first",
-    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view( on)?'/g) || []).length === 3 &&
+  // Four now: Loop WA joined matrix, queue and board.
+  ok("four views, matrix first",
+    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view( on)?'/g) || []).length === 4 &&
     vp.indexOf("class='view on'") >= 0);
   ok("the board is one of them", vp.indexOf("Board view") >= 0);
   // With nothing picked the queue must invite a choice, not invent one.
@@ -789,6 +790,28 @@ ok("but the panels that show other people's work still are",
 ok("and a segment an agent picks is cleared and shared like every other filter",
   html.indexOf('Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""}') >= 0 &&
   html.slice(html.indexOf("function paramsToState")).indexOf('"segment"') >= 0);
+
+/* Loop WA. The rule that must never bend is the last one: this view counts towards
+   nothing, so a lead in it can never leak into a due number or a completion rate. */
+ok("Loop WA is a fourth view, not a filter on the existing ones",
+  html.indexOf('["matrix","queue","board","wa"]') >= 0 &&
+  html.indexOf("function waView()") >= 0);
+ok("it is reachable by link, like the other views",
+  html.indexOf('v==="board"||v==="wa"') >= 0);
+ok("the page says out loud that none of it counts",
+  html.indexOf("None of this counts towards today's calling list") >= 0);
+ok("uncalled since reply is the default filter, because that is the point",
+  html.indexOf('WFILT="uncalled"') >= 0 &&
+  html.indexOf("Replied since last call") >= 0);
+ok("the thread reads oldest first with their side apart from ours",
+  html.indexOf("function threadBlock(id)") >= 0 && html.indexOf("wamsg") >= 0 &&
+  html.indexOf("class='wamsg'") < 0);
+ok("a lead with a reply but no thread says which of the two is missing, rather than nothing",
+  html.indexOf("either the thread sits under a different activity type") >= 0);
+ok("leads in the list held by other agents are counted and named, not silently dropped",
+  html.indexOf("t.outsideScope") >= 0 && html.indexOf("held by other agents") >= 0);
+ok("and so are members we do not hold at all",
+  html.indexOf("Not in our pool") >= 0);
 
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -523,3 +523,38 @@ right now, and a position is what a segment view is usually for.
 Membership is a hundred and ten HubSpot calls for a segment of eleven thousand, so it is
 fetched in the background and held for the rest of the day. The first open of a large
 segment says it is loading rather than showing an empty table.
+
+## 22. Loop WA leads, and why they count towards nothing
+
+The Loop WA view shows everyone in the HubSpot list `Loop WA responses` who has answered
+Loop's WhatsApp outreach, grouped by the stage they are actually in.
+
+It is built from the contact cache narrowed to that list, never from the frozen Call Now
+base. The base deliberately drops closed stages, and roughly a third of this list sits in
+DNP or not interested. Somebody in not interested who has just written back is exactly who
+is worth ringing, so dropping them would remove the reason the view exists.
+
+**None of it counts.** Not towards today's calling list, not towards a due number, not
+towards anybody's completion rate or coaching figure. A WhatsApp reply is never a reason a
+lead appears in the queue. This was decided deliberately: a view that quietly redefines the
+day's denominator is worse than no view, and the numbers on the rest of the dashboard have
+to keep meaning what they meant yesterday. There is a test that fails if a WhatsApp field
+ever reaches the calling list payload.
+
+The priority signal is **replied since last call**: they wrote back and nobody has rung them
+since. A lead never called at all counts, provided they have replied. That sorts to the top
+within each stage, then by reply recency.
+
+Three refresh rates, each chosen for a reason. List membership every ten minutes, because
+this list grows through the afternoon and the normal segment cache holds membership for the
+whole day. Reply properties every three minutes by their own sweep, mirroring the calls
+sweep, because a reply arriving is the entire point and waiting on the ten minute general
+sweep would make the view feel dead. The conversation itself on demand when a card opens,
+cached two minutes.
+
+Loop writes five summary properties on the contact, including the text of the last reply
+only. The conversation lives in the activity timeline as communication records and is read
+per lead. Two things there are portal specific: which field carries the direction, and what
+the channel type is called. Both are guessed from a list of candidates, and
+`/api/callnow2/lead/:id/activity/raw` returns the raw records so a wrong guess costs one
+call rather than a deploy.

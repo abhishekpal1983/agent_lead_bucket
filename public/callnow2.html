@@ -110,6 +110,37 @@ td.z{color:#B7C2CD}
 .tag.rf{background:#FF7A59;color:#fff}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
 .tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
+.vbadge{margin-left:6px;background:#FAC775;color:#412402;border-radius:9px;padding:0 6px;font-size:11px}
+.ac-wa>h2{border-left:4px solid #1D9E75;padding-left:9px}
+.wacards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:10px}
+.wacard{background:#F4F6F9;border-radius:9px;padding:9px 11px}
+.wacard.hot{background:#FAEEDA}
+.wacard .wl{font-size:12px;color:#566575}
+.wacard.hot .wl{color:#854F0B}
+.wacard .wv{font-size:21px;font-weight:600;color:#2C4054}
+.wacard.hot .wv{color:#412402}
+.wacard .ws{font-size:11.5px;color:#6B7A8A}
+.wacard.hot .ws{color:#854F0B}
+.wagrp{margin-top:12px;border:1px solid #E4E9EF;border-radius:10px;overflow:hidden}
+.wahd{display:flex;gap:9px;align-items:center;padding:7px 11px;background:#F4F6F9;border-bottom:1px solid #E4E9EF;font-size:13px}
+.wapill{margin-left:auto;font-size:11px;background:#FAEEDA;color:#854F0B;border-radius:10px;padding:2px 8px}
+.wapill.hot{margin-left:0;background:#FAC775;color:#412402}
+.warow{padding:8px 11px;border-bottom:1px solid #EEF1F5;background:#fff}
+.warow:last-child{border-bottom:0}
+.warow.hot{background:#FFFBF3}
+.wahead{display:flex;gap:8px;align-items:baseline;cursor:pointer;flex-wrap:wrap}
+.wacar{color:#8895A5;width:11px;flex:none}
+.wasaid{font-size:13px;color:#2C4054;margin-top:4px;font-style:italic}
+.wafoot{font-size:11.5px;color:#6B7A8A;margin-top:3px}
+.waexp{margin-top:9px;padding:9px;background:#F7F9FB;border-radius:9px}
+.wathread{display:flex;flex-direction:column;gap:6px}
+.wamsg{max-width:78%;border-radius:10px;padding:6px 10px;background:#fff;border:1px solid #E4E9EF;align-self:flex-start}
+.wamsg.them{align-self:flex-end;background:#E1F5EE;border-color:#C7EADD}
+.wamsg.newest{border:2px solid #5DCAA5}
+.wabody{font-size:13px;color:#22303F;white-space:normal}
+.wamsg.them .wabody{color:#04342C}
+.wameta{font-size:11px;color:#7A8899;margin-top:3px}
+.wamsg.them .wameta{color:#0F6E56}
 .tag.paid{background:#0A5346;color:#fff}
 .tag.opt{background:#3F5163;color:#fff}
 .pill{background:#FF7A59;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:6px;display:inline-block;font-variant-numeric:tabular-nums}
@@ -609,6 +640,7 @@ tr.done td a{color:#4A5A6A}
 <script>
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
+var W=null,WFILT="uncalled",WOPEN={},WTHREAD={};
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""};
 
 /* ---- links into this page ---------------------------------------------------------
@@ -633,7 +665,7 @@ function paramsToState(search){
   ["team","creator","source","ostate","intl","stages","segment"].forEach(function(k){
     var v=p.get(k); if(v)out.q[k]=String(v);});
   var v=p.get("view");
-  if(v==="matrix"||v==="queue"||v==="board")out.view=v;
+  if(v==="matrix"||v==="queue"||v==="board"||v==="wa")out.view=v;
   return out;}
 
 (function(){
@@ -690,7 +722,9 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
   fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
-function setView(v){VIEW=v;syncUrl();if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
+function setView(v){VIEW=v;syncUrl();
+  if(v==="wa"&&!W)loadWa();
+  if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
 function pick(o){VIEW="queue";SEL="";PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function unpick(){PICK=null;L=null;draw();}
@@ -856,6 +890,128 @@ function freshness(){
     ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
     esc(msg)+
     (J.listBuiltAt?" &middot; list built "+esc(since(J.listBuiltAt)):"")+"</div>";}
+
+/* ---- Loop WA ---------------------------------------------------------------------
+
+   Everyone who has answered Loop's WhatsApp outreach, grouped by the stage they are
+   actually in rather than by whether they qualify for today's calling list. A third of
+   this list sits in DNP or not interested, and somebody in not interested who has just
+   written back is precisely who is worth ringing.
+
+   Nothing on this view counts anywhere. No due number, no completion rate, no calling
+   list. It is a way to find these people and work them, not a second definition of the
+   day. That is stated on the page as well as here, because an uncounted number sitting
+   next to counted ones will be read as counted unless it says otherwise. */
+function loadWa(){
+  fetch("/api/callnow2/wa").then(asJson)
+    .then(function(j){ W=j; draw(); })
+    .catch(function(e){ W={error:e.message}; draw(); });
+}
+function waSetFilt(v){ WFILT=v; draw(); }
+function waToggle(id){
+  WOPEN[id]=!WOPEN[id];
+  if(WOPEN[id])loadThread(id);
+  draw();
+}
+function loadThread(id){
+  if(!id||WTHREAD[id])return;
+  WTHREAD[id]={loading:true,msgs:[]};
+  fetch("/api/callnow2/lead/"+encodeURIComponent(id)+"/wa").then(asJson)
+    .then(function(j){ WTHREAD[id]={loading:false,msgs:j.messages||[]}; draw(); })
+    .catch(function(e){ WTHREAD[id]={loading:false,msgs:[],error:e.message}; draw(); });
+}
+function waRows(st){
+  return st.rows.filter(function(r){
+    if(WFILT==="uncalled")return r.uncalled;
+    if(WFILT==="today")return r.repliedToday;
+    return true;});
+}
+/* The thread. Oldest first, their side on the right, ours on the left, because that is
+   how every messaging app on earth reads and an agent should not have to translate. */
+function threadBlock(id){
+  var t=WTHREAD[id];
+  if(!t)return "";
+  if(t.loading)return "<div class='z'>Reading the conversation...</div>";
+  if(t.error)return "<div class='z'>Could not read the conversation: "+esc(t.error)+"</div>";
+  if(!t.msgs.length)return "<div class='z'>No WhatsApp messages are logged against this lead. "+
+    "Loop recorded a reply, so either the thread sits under a different activity type or it "+
+    "has not synced yet.</div>";
+  return "<div class='wathread'>"+t.msgs.map(function(m,i){
+    var mine=m.dir==="out";
+    return "<div class='wamsg"+(mine?"":" them")+(i===t.msgs.length-1&&!mine?" newest":"")+"'>"+
+      "<div class='wabody'>"+esc(m.body).replace(/\n/g,"<br>")+"</div>"+
+      "<div class='wameta'>"+(mine?"Loop":"They")+" &middot; "+esc(tmp(m.at))+
+      (i===t.msgs.length-1&&!mine?" &middot; newest":"")+"</div></div>";
+  }).join("")+"</div>";}
+function waView(){
+  if(VIEW!=="wa")return "";
+  if(!W)return "<div class='sec mini'><div class='z'>Loading the WhatsApp list...</div></div>";
+  if(W.error)return "<div class='sec mini'><div class='warn'>Could not load: "+esc(W.error)+"</div></div>";
+  if(W.notReady)return "<div class='sec mini'><div class='warn'>The Loop WA list has not been read "+
+    "from HubSpot yet. It is fetched a few seconds after a restart and then every ten minutes."+
+    (W.error?" Last error: "+esc(W.error):"")+
+    " <button class='btn' onclick='loadWa()'>Check again</button></div></div>";
+  var t=W.totals||{};
+  var h="<div class='sec mini ac ac-wa'><h2>Loop WA leads</h2>"+
+    "<div class='sub'>Everyone in the <b>Loop WA responses</b> list who has answered on WhatsApp, "+
+    "grouped by the stage they are actually in. Closed stages are included on purpose: somebody in "+
+    "not interested who has just written back is worth a call. "+
+    "<b>None of this counts towards today's calling list, due numbers or anyone's completion rate.</b> "+
+    "It is here to be worked, not to be scored.</div>";
+
+  h+="<div class='wacards'>"+
+    "<div class='wacard'><div class='wl'>In the list</div><div class='wv'>"+fmt(t.listSize||0)+"</div>"+
+      "<div class='ws'>"+fmt(t.mine||0)+(W.scoped?" are yours":" we hold")+"</div></div>"+
+    "<div class='wacard hot'><div class='wl'>Replied, not yet called</div><div class='wv'>"+fmt(t.uncalled||0)+"</div>"+
+      "<div class='ws'>work these first</div></div>"+
+    "<div class='wacard'><div class='wl'>Replied today</div><div class='wv'>"+fmt(t.today||0)+"</div></div>"+
+    "<div class='wacard'><div class='wl'>Not in our pool</div><div class='wv'>"+fmt(t.notHeld||0)+"</div>"+
+      "<div class='ws'>outside the tracked creators</div></div>"+
+    "</div>";
+
+  h+="<div class='chips' style='margin:10px 0'>"+
+    [["uncalled","Replied since last call"],["today","Replied today"],["all","All "+fmt(t.mine||0)]]
+      .map(function(o){ return "<button class='chipb"+(WFILT===o[0]?" on":"")+
+        "' onclick='waSetFilt(\""+o[0]+"\")'>"+esc(o[1])+"</button>"; }).join("")+
+    "<span class='z' style='margin-left:auto'>"+
+    (W.waSync&&W.waSync.at?"replies synced "+esc(since(W.waSync.at)||""):"reply sync has not run yet")+
+    "</span></div>";
+
+  var any=0;
+  (W.stages||[]).forEach(function(st){
+    var rows=waRows(st);
+    if(!rows.length)return;
+    any+=rows.length;
+    h+="<div class='wagrp'><div class='wahd'><b>"+esc(st.label)+"</b>"+
+      "<span class='z'>"+fmt(rows.length)+" lead"+(rows.length===1?"":"s")+"</span>"+
+      (st.uncalled?"<span class='wapill'>"+fmt(st.uncalled)+" uncalled since reply</span>":"")+
+      "</div>";
+    rows.forEach(function(r){
+      var open=!!WOPEN[r.id];
+      h+="<div class='warow"+(r.uncalled?" hot":"")+"'>"+
+        "<div class='wahead' onclick='waToggle(\""+esc(r.id)+"\")'>"+
+          "<span class='wacar'>"+(open?"−":"+")+"</span>"+
+          "<b>"+esc(r.name||"(no name)")+"</b>"+
+          "<span class='z'>"+esc(r.creator||"")+(r.ownerName?" &middot; "+esc(r.ownerName):"")+"</span>"+
+          (r.uncalled?"<span class='wapill hot'>not called since reply</span>":"")+
+        "</div>"+
+        (r.waLast?"<div class='wasaid'>“"+esc(r.waLast)+"”</div>":
+          "<div class='wasaid z'>They replied, but Loop kept no text for the last message.</div>")+
+        "<div class='wafoot'>"+fmt(r.waN||0)+" message"+(r.waN===1?"":"s")+
+          (r.waAt?" &middot; replied "+esc(tmp(r.waAt)):"")+
+          " &middot; "+(r.last?"last call "+esc(tmp(r.last)):"never called")+
+          (r.phone?" &middot; "+esc(r.phone):"")+"</div>"+
+        (open?"<div class='waexp'>"+threadBlock(r.id)+"</div>":"")+
+        "</div>";
+    });
+    h+="</div>";
+  });
+  if(!any)h+="<div class='z' style='padding:10px 2px'>"+
+    (WFILT==="uncalled"?"Everybody who replied has been called back. Try All.":
+     WFILT==="today"?"Nobody has replied yet today.":"Nothing in the list is on your leads.")+"</div>";
+  if(t.outsideScope)h+="<div class='z' style='margin-top:9px'>"+fmt(t.outsideScope)+
+    " more are in the list but held by other agents, so they are not shown here.</div>";
+  return h+"</div>";}
 
 /* ---- HubSpot segments ------------------------------------------------------------
    248 of them, so a dropdown is useless and a search box is the only usable shape.
@@ -1631,11 +1787,14 @@ function lockNote(){
 function viewTabs(){
   var note=VIEW==="matrix"?"Every stage against every reason to call":
            VIEW==="queue"?"The leads themselves, worst first":
+           VIEW==="wa"?"Everyone who answered on WhatsApp, whatever stage they are in":
            "One card per stage, click a line to open those leads";
   return "<div class='viewstrip'><span class='seg'>"+
-    ["matrix","queue","board"].map(function(v){
-      var lbl=v.charAt(0).toUpperCase()+v.slice(1);
-      return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+"</button>";
+    ["matrix","queue","board","wa"].map(function(v){
+      var lbl=v==="wa"?"Loop WA":v.charAt(0).toUpperCase()+v.slice(1);
+      var badge=v==="wa"&&W&&W.totals&&W.totals.uncalled
+        ? "<span class='vbadge'>"+fmt(W.totals.uncalled)+"</span>":"";
+      return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+badge+"</button>";
     }).join("")+"</span><span class='vnote' title='"+esc(note)+"'>"+esc(note)+"</span></div>";}
 
 // One card per stage. Clicking a line opens those leads in the queue.
@@ -1945,7 +2104,8 @@ function draw(){
      page, and rendering them again drew every one of them twice. */
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
-     "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>";
+     "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>"+
+     "<div class='view"+(VIEW==="wa"?" on":"")+"'>"+waView()+"</div>";
   h+=behind();
   el.innerHTML=h;
   // Every redraw replaces the segment box, so the caret has to be put back afterwards.

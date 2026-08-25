@@ -33,6 +33,10 @@ function lead(o){
     // When the lead landed in its current stage. DNP coverage measures attempts against
     // the working days since this, so a fixture without it leaves that path untested.
     entered: D(2026, 8, 1 + (n % 5), 10),
+    // Loop's WhatsApp summary. Zero for most leads; the block below gives a realistic
+    // handful a conversation, including some in closed stages, because that is the whole
+    // point of the Loop WA view and a fixture without them tests nothing.
+    waReplied: false, waN: 0, waAt: 0, waOut: 0, waLast: "",
     calls: 0, own: 0, phone: "+9190000000" + (n % 10), needsOwner: false
   }, o);
 }
@@ -94,7 +98,30 @@ for (let i = 0; i < 40; i++) {
   rows.push(lead({ id: "EDGE_park_" + i, stage: "counselled", fu: D(2026, 8, 1, 11), last: 0,
     owner: "165087274", ownerName: "Abhishek Pal", counted: false, score: 7 }));
 }
-module.exports = { rows: rows, now: TODAY, agents: AGENTS,
+/* Leads who have answered on WhatsApp. Deliberately spread across open and closed
+   stages, some rung since they replied and some not, so both sides of the one signal the
+   Loop WA view is built on are exercised. */
+const WA_SAID = ["Next 6-12 months", "We can talk today 2 hours from now", "Kuwait standard time",
+  "Just exploring", "Not interested", "Permanent EU job", "Ok", "5:30 berlin time"];
+const waIds = [];
+rows.forEach(function(r, i){
+  if (i % 7) return;
+  const replyAt = D(2026, 8, 5, 9 + (i % 8));
+  r.waReplied = true;
+  r.waN = 1 + (i % 12);
+  r.waAt = replyAt;
+  r.waOut = replyAt - 3600000;
+  r.waLast = WA_SAID[i % WA_SAID.length];
+  // Half of them have not been rung since they wrote back.
+  if (i % 2 === 0) r.last = 0;
+  waIds.push(r.id);
+});
+// A member we do not hold at all, so "in the list but not in our pool" is a real number
+// in the fixture rather than a branch nobody ever walks.
+waIds.push("NOT_IN_POOL_1");
+
+module.exports = {
+  waIds: waIds, rows: rows, now: TODAY, agents: AGENTS,
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
             creators: ["ayush_singh13", "ankita_gulati"] },
           { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"],

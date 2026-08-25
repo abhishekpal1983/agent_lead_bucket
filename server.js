@@ -39,6 +39,11 @@ const PROPS = [
   // Some creators' forms write every answer into one free-text property instead of into
   // named fields. Without this those leads arrive with nothing an agent can read.
   "information",
+  /* What Loop writes when it talks to a lead on WhatsApp. These are a summary, not the
+     conversation: the thread itself lives in the activity timeline as communication
+     records and is read per lead when an agent opens the card. */
+  "ryl_wa_replied","ryl_wa_lead_reply_count","ryl_wa_last_lead_reply_at",
+  "ryl_wa_last_outbound_at","ryl_wa_last_lead_reply",
   "ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
   "call_outcome","reason_for_notinteresteddisqualifiedghosted","notes_last_contacted",
   "hs_timezone","country",
@@ -2787,6 +2792,14 @@ function cnRow(c){
     sp: classifySP(spRawOf(c)),
     // Both answers, not just the winning one, so an agent sees what they actually wrote.
     spSaid: spAnswers(c),
+    /* The WhatsApp summary travels on every row so the Loop WA view needs no second
+       fetch, and so "replied since we last rang them" can be settled here rather than in
+       the page, where it would be one more thing to get wrong twice. */
+    waReplied: String(c.ryl_wa_replied || "").toLowerCase() === "true",
+    waN: num(c.ryl_wa_lead_reply_count),
+    waAt: ts(c.ryl_wa_last_lead_reply_at),
+    waOut: ts(c.ryl_wa_last_outbound_at),
+    waLast: clip(c.ryl_wa_last_lead_reply, 300),
     /* Whichever property is labelled Information on this portal. Free text, shown as-is,
        because an agent reading a messy answer beats an agent reading nothing. */
     information: clip(infoOf(c), 2000),
@@ -3366,7 +3379,7 @@ let RESP_HIT = 0, RESP_MISS = 0;
 const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
 const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
   "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/vp/agent-day",
-  "/api/vp/agent-summary",
+  "/api/vp/agent-summary", "/api/callnow2/wa",
   "/api/vp/daily", "/api/coaching/progress"];
 
 function dataVersion(){
@@ -3379,6 +3392,11 @@ function dataVersion(){
     (typeof SHEET !== "undefined" && SHEET.loadedAt) || "",
     ((typeof cn2Store === "function" && cn2Store()) || {}).at || "",
     (typeof ORG !== "undefined" && ORG.teams) ? ORG.teams.length : 0,
+    /* A WhatsApp reply landing has to invalidate the cached view immediately. Without
+       these two the Loop WA page could sit fifteen seconds behind a reply that the sweep
+       had already fetched, which is the one thing this view is not allowed to do. */
+    (typeof WASYNC !== "undefined" && WASYNC.at) || "",
+    (typeof WA_LIST !== "undefined" && WA_LIST.at) || 0,
     istParts(new Date(cn2Now())).date
   ].join("|");
 }
@@ -3859,6 +3877,170 @@ async function segMembers(listId){
   return v;
 }
 
+/* ---------- Loop WA ----------------------------------------------------------------
+
+   Leads who have answered Loop's WhatsApp outreach, whatever stage they are sitting in.
+
+   Three things make this its own machinery rather than a filter on the existing page.
+
+   First, stage. The Call Now list deliberately drops closed stages, and a good third of
+   this list is sitting in not interested or DNP. Those are exactly the people worth
+   ringing when they have just written back, so this view is built from the contact cache
+   and not from the frozen base.
+
+   Second, freshness. Segment membership is normally held for the whole day, which is
+   right for a static segment and wrong for one that grows through the afternoon. This
+   list is small enough that re-reading it every ten minutes costs two calls.
+
+   Third, and most important: none of this counts. A lead in not interested who replies on
+   WhatsApp does not join today's calling list, does not appear in a due count, and does
+   not move anybody's completion rate. The view exists so an agent can find these people
+   and work them, not to quietly redefine the day's denominator. */
+const WA_LIST_ID = String(process.env.WA_LIST_ID || "1851");
+const WA_LIST_TTL_MS = parseInt(process.env.WA_LIST_TTL_MS || "600000", 10);   // ten minutes
+let WA_LIST = { at: 0, ids: {}, n: 0, error: null, fetching: false, truncated: false };
+
+async function waListFetch(){
+  if (!TOKEN || WA_LIST.fetching) return;
+  WA_LIST.fetching = true;
+  try {
+    const ids = {};
+    let n = 0, after = "", guard = 0;
+    while (guard < 200) {
+      guard++;
+      const q = "/crm/v3/lists/" + encodeURIComponent(WA_LIST_ID) + "/memberships?limit=100" +
+        (after ? "&after=" + encodeURIComponent(after) : "");
+      const j = await hs(q);
+      const rows = (j && j.results) || [];
+      rows.forEach(function(r){ const k = String(r.recordId || r.id || ""); if (k) { ids[k] = 1; n++; } });
+      after = ((j.paging || {}).next || {}).after || "";
+      if (!after || !rows.length) break;
+      await sleep(80);
+    }
+    WA_LIST = { at: Date.now(), ids: ids, n: n, error: null, fetching: false,
+      truncated: guard >= 200 };
+    console.log("Loop WA list " + WA_LIST_ID + ": " + n + " members");
+  } catch (e) {
+    WA_LIST.fetching = false;
+    WA_LIST.error = e.message;
+    console.error("Loop WA list: " + e.message);
+  }
+}
+// Answers from what we hold and refreshes behind the request. A view that blocks on a
+// list fetch is a view that feels broken on the one day HubSpot is slow.
+function waListReady(){
+  // Fixtures carry their own membership, so the whole view is exercised locally rather
+  // than only ever running for the first time in production.
+  if (CN2_FIXTURE_DATA) {
+    const ids = {};
+    (CN2_FIXTURE_DATA.waIds || []).forEach(function(id){ ids[String(id)] = 1; });
+    return { at: cn2Now(), ids: ids, n: Object.keys(ids).length, error: null, truncated: false };
+  }
+  if (Date.now() - WA_LIST.at > WA_LIST_TTL_MS) waListFetch();
+  return WA_LIST.at ? WA_LIST : null;
+}
+
+/* A reply arriving is the whole point, so it must not wait for the ten minute general
+   sweep to notice. This asks HubSpot directly for anyone whose last WhatsApp reply moved
+   since we last looked, exactly as the calls sweep asks for anyone called today. Cheap,
+   idempotent, and it carries its own watermark so a restart does not re-read the world. */
+const WASYNC_MINUTES = parseInt(process.env.WASYNC_MINUTES || "3", 10);
+let WASYNC = { at: null, running: false, n: 0, ms: 0, error: null, since: null };
+function waSoon(sec){
+  setTimeout(function(){
+    (typeof guard === "function" ? guard("waReplies", syncWaReplies) : syncWaReplies)();
+  }, Math.max(1, sec) * 1000);
+}
+async function syncWaReplies(){
+  if (!TOKEN || WASYNC.running) return;
+  if (CACHE.syncing) { waSoon(40); return; }
+  if (!CACHE.loadedAt) { waSoon(40); return; }
+  WASYNC.running = true;
+  const t0 = Date.now();
+  // First run looks back two days rather than at all history: enough to catch anything
+  // missed over a restart, small enough to be one or two pages.
+  const since = WASYNC.since || (Date.now() - 2 * 86400000);
+  try {
+    const rows = [];
+    let lastId = "0", g = 0;
+    while (g < 200) {
+      g++;
+      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: [
+          { propertyName: "ryl_wa_last_lead_reply_at", operator: "GTE", value: String(since) },
+          { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+        ]}],
+        properties: PROPS,
+        sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+      const page = (j && j.results) || [];
+      if (!page.length) break;
+      page.forEach(function(r){ rows.push(Object.assign({ id: r.id }, r.properties)); });
+      lastId = page[page.length - 1].id;
+      if (page.length < 100) break;
+      await sleep(100);
+    }
+    if (rows.length) applyDelta(rows);
+    // Wound back a minute, because a reply landing mid-sweep must not fall in the gap.
+    WASYNC = { at: new Date().toISOString(), running: false, n: rows.length,
+      ms: Date.now() - t0, error: null, since: t0 - 60000 };
+  } catch (e) {
+    WASYNC.running = false;
+    WASYNC.error = e.message;
+    console.error("Loop WA reply sync failed: " + e.message);
+  }
+}
+
+/* The conversation itself.
+
+   HubSpot logs WhatsApp to the activity timeline as communication records. Which field
+   marks a message inbound or outbound varies with how the integration writes it, so the
+   direction is worked out from several candidates in order and the raw record is left
+   reachable through the diagnostic below. Guessing quietly is how you end up with a
+   thread that reads backwards and nobody able to say why. */
+const WA_TTL_MS = parseInt(process.env.WA_TTL_MS || "120000", 10);
+const WA_CACHE = {};
+function waDirection(p){
+  const d = String(p.hs_communication_direction || p.hs_message_direction || "").toUpperCase();
+  if (d.indexOf("INCOMING") >= 0 || d.indexOf("INBOUND") >= 0) return "in";
+  if (d.indexOf("OUTGOING") >= 0 || d.indexOf("OUTBOUND") >= 0) return "out";
+  // No direction field. A message sent by us carries an owner; one received does not.
+  if (p.hubspot_owner_id) return "out";
+  return "in";
+}
+function waBody(v){
+  return String(v || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\n{3,}/g, "\n\n").trim();
+}
+async function waThread(id){
+  const a = await hs("/crm/v4/objects/contacts/" + encodeURIComponent(id) +
+    "/associations/communications?limit=100");
+  const ids = ((a && a.results) || []).map(function(x){ return String(x.toObjectId || x.id || ""); })
+    .filter(Boolean).slice(0, 100);
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const b = await hs("/crm/v3/objects/communications/batch/read", { method: "POST",
+      body: JSON.stringify({
+        properties: ["hs_communication_channel_type", "hs_communication_body",
+          "hs_communication_logged_from", "hs_communication_direction",
+          "hs_timestamp", "hubspot_owner_id", "hs_createdate"],
+        inputs: ids.slice(i, i + 50).map(function(x){ return { id: x }; }) })});
+    ((b && b.results) || []).forEach(function(m){
+      const p = m.properties || {};
+      const ch = String(p.hs_communication_channel_type || "").toUpperCase();
+      // Communications cover SMS and LinkedIn too. Only WhatsApp belongs in this thread.
+      if (ch && ch.indexOf("WHATS") < 0) return;
+      const body = waBody(p.hs_communication_body);
+      if (!body) return;
+      out.push({ id: m.id, at: ts(p.hs_timestamp) || ts(p.hs_createdate),
+        dir: waDirection(p), body: body.slice(0, 2000), channel: ch || "(not set)" });
+    });
+  }
+  // Oldest first, because a conversation read newest first is not a conversation.
+  return out.sort(function(x, y){ return (x.at || 0) - (y.at || 0); });
+}
+
 /* Requests must never wait on a hundred HubSpot calls. This answers from the cache, and
    if the segment is not held yet it starts fetching and says "not ready"; the page shows
    that plainly and picks it up on the next load. */
@@ -4242,6 +4424,143 @@ app.get("/api/callnow2/lead/:id/raw", async function(req, res){
       }
     } catch (e) { out.liveError = e.message; }
   }
+  res.json(out);
+});
+
+/* The Loop WA view.
+
+   Built from the contact cache narrowed to the list, never from the frozen base, so a
+   lead in a closed stage still appears. Nothing here is counted anywhere else. */
+app.get("/api/callnow2/wa", function(req, res){
+  const role = (req.session && req.session.role) || "manager";
+  const mem = waListReady();
+  if (!mem) return res.json({ notReady: true, listId: WA_LIST_ID, error: WA_LIST.error || null });
+
+  const allow = cn2Scope(req);
+  const inScope = function(owner){ return !allow || allow.indexOf(String(owner || "")) >= 0; };
+  const day = CN2.dayBoundsFor(cn2Now());
+
+  const rows = [];
+  let outsideScope = 0, notHeld = 0;
+  const pool = CN2_FIXTURE_DATA ? cn2Rows() : callnowPool().map(cnRow);
+  const seen = {};
+  pool.forEach(function(r){
+    if (!mem.ids[r.id]) return;
+    seen[r.id] = 1;
+    if (!inScope(r.owner)) { outsideScope++; return; }
+    rows.push({
+      id: r.id, name: r.name, phone: r.phone, email: r.email,
+      stage: r.stage, stageLabel: CN2_STAGE_LABELS[r.stage] || r.stage,
+      creator: r.creator, owner: r.owner, ownerName: r.ownerName,
+      last: r.last, fu: r.fu, calls: r.calls, own: r.own,
+      waN: r.waN, waAt: r.waAt, waOut: r.waOut, waLast: r.waLast,
+      /* The one signal the view exists for: they wrote back and nobody has rung them
+         since. A lead with no call at all counts, so long as they have replied. */
+      uncalled: !!(r.waAt && (!r.last || r.waAt > r.last)),
+      repliedToday: !!(r.waAt && r.waAt >= day.start && r.waAt < day.end)
+    });
+  });
+  Object.keys(mem.ids).forEach(function(id){ if (!seen[id]) notHeld++; });
+
+  /* Worst first means: they answered and we have not called back, most recent reply at
+     the top. Everything else falls in behind by reply recency. */
+  rows.sort(function(a, b){
+    return (b.uncalled ? 1 : 0) - (a.uncalled ? 1 : 0) || (b.waAt || 0) - (a.waAt || 0);
+  });
+
+  const byStage = {};
+  rows.forEach(function(r){
+    if (!byStage[r.stage]) byStage[r.stage] = { stage: r.stage, label: r.stageLabel, rows: [], uncalled: 0 };
+    byStage[r.stage].rows.push(r);
+    if (r.uncalled) byStage[r.stage].uncalled++;
+  });
+  const order = CN2_STAGES.slice();
+  const stages = Object.keys(byStage).sort(function(a, b){
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  }).map(function(k){ return byStage[k]; });
+
+  res.json({
+    listId: WA_LIST_ID, listAt: WA_LIST.at || null, listSize: mem.n,
+    scoped: !!allow, role: role, isVP: isVP(req),
+    stages: stages,
+    totals: {
+      mine: rows.length, listSize: mem.n,
+      uncalled: rows.filter(function(r){ return r.uncalled; }).length,
+      today: rows.filter(function(r){ return r.repliedToday; }).length,
+      // Named, because "why is the list 167 and the page showing 41" is the first
+      // question anybody asks, and silence there reads as a bug.
+      outsideScope: outsideScope, notHeld: notHeld
+    },
+    waSync: { at: WASYNC.at, n: WASYNC.n, error: WASYNC.error, everyMinutes: WASYNC_MINUTES },
+    // This view counts towards nothing. Said in the payload so the page can say it too.
+    countsTowardsNothing: true
+  });
+});
+
+/* The conversation for one lead, oldest first. */
+app.get("/api/callnow2/lead/:id/wa", async function(req, res){
+  const id = String(req.params.id || "");
+  if (!id) return res.status(400).json({ error: "no lead id" });
+  if (!TOKEN) return res.json({ messages: [] });
+  // Same rule the notes reader obeys: an agent reads threads on leads they hold.
+  const allow = cn2Scope(req);
+  const known = (CN2_POOL.live && CN2_POOL.live[id]) || null;
+  if (allow && known && allow.indexOf(String(known.owner)) < 0) {
+    return res.status(403).json({ error: "that lead is not yours" });
+  }
+  const hit = WA_CACHE[id];
+  if (hit && Date.now() - hit.at < WA_TTL_MS) return res.json({ messages: hit.messages, cached: true });
+  try {
+    const messages = await waThread(id);
+    WA_CACHE[id] = { at: Date.now(), messages: messages };
+    const keys = Object.keys(WA_CACHE);
+    if (keys.length > 300) delete WA_CACHE[keys[0]];
+    res.json({ messages: messages });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* What is actually on this lead's timeline, unfiltered.
+
+   Two things about WhatsApp records are portal specific: which field carries the
+   direction, and what the channel type is called. Both are guessed above. This returns
+   the raw records so a wrong guess costs one call rather than a deploy, which is the
+   lesson from the Information property. */
+app.get("/api/callnow2/lead/:id/activity/raw", async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  const id = String(req.params.id || "");
+  if (!TOKEN) return res.json({ error: "no token" });
+  const out = { id: id, tried: [] };
+  const kinds = ["communications", "notes", "calls", "emails", "meetings", "tasks"];
+  for (let i = 0; i < kinds.length; i++) {
+    const k = kinds[i];
+    try {
+      const a = await hs("/crm/v4/objects/contacts/" + encodeURIComponent(id) +
+        "/associations/" + k + "?limit=20");
+      const ids = ((a && a.results) || []).map(function(x){ return String(x.toObjectId || x.id || ""); }).filter(Boolean);
+      out.tried.push({ kind: k, n: ids.length });
+      if (k === "communications" && ids.length) {
+        const b = await hs("/crm/v3/objects/communications/batch/read", { method: "POST",
+          body: JSON.stringify({ inputs: ids.slice(0, 5).map(function(x){ return { id: x }; }) })});
+        // Every property on the record, so the direction field names itself.
+        out.sampleCommunications = ((b && b.results) || []).map(function(m){
+          const p = m.properties || {};
+          const keep = {};
+          Object.keys(p).forEach(function(kk){
+            if (p[kk] == null || p[kk] === "") return;
+            keep[kk] = String(p[kk]).slice(0, 200);
+          });
+          return { id: m.id, properties: keep };
+        });
+        out.whatWeWouldShow = (await waThread(id)).slice(0, 6);
+      }
+    } catch (e) { out.tried.push({ kind: k, error: e.message }); }
+  }
+  out.readMe = "communications n of 0 means WhatsApp is logged as something else. " +
+    "Compare sampleCommunications against whatWeWouldShow: if the order or the in and out " +
+    "sides look wrong, the direction field is named in sampleCommunications.";
   res.json(out);
 });
 
@@ -7851,6 +8170,11 @@ SERVER = app.listen(PORT, () => {
   /* Today's calls, often, because this is the one every number on the page rests on. */
   setInterval(guard("callsToday", syncCallsToday), Math.max(1, CALLSYNC_MINUTES) * 60 * 1000);
   [30, 90, 180].forEach(function(sec){ setTimeout(guard("callsToday", syncCallsToday), sec * 1000); });
+  // The reply sweep, and the list itself. Both are small and both are pointless late.
+  setInterval(guard("waReplies", syncWaReplies), Math.max(1, WASYNC_MINUTES) * 60 * 1000);
+  [45, 120, 240].forEach(function(sec){ setTimeout(guard("waReplies", syncWaReplies), sec * 1000); });
+  setTimeout(guard("waList", waListFetch), 20 * 1000);
+  setInterval(guard("waList", waListFetch), WA_LIST_TTL_MS);
   setTimeout(function(){ adoptStoredCreators(); }, 3000);
   setTimeout(guard("snapshot", snapshotToday), 4 * 60 * 1000);
   setInterval(guard("snapshot", snapshotToday), 15 * 60 * 1000);

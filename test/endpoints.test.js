@@ -459,6 +459,53 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* Loop WA. Built from the contact cache narrowed to a list, never from the frozen
+       base, so a lead in a closed stage still shows. And it counts towards nothing. */
+    const wa = await get("/api/callnow2/wa");
+    ok("the Loop WA view answers", wa.status === 200, "status " + wa.status + " " + wa.raw);
+    ok("and it has a real list behind it, not an empty one",
+      (wa.body.totals || {}).listSize > 0 && (wa.body.stages || []).length > 0,
+      JSON.stringify(wa.body.totals));
+    ok("every lead shown has actually replied",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){ return r.waAt > 0 || r.waN > 0; }); }));
+    ok("closed stages are included, which is the whole point",
+      (wa.body.stages || []).some(function(st){
+        return ["ni_not_interested", "dnp_did_not_pick", "disqualified", "dnp_other"]
+          .indexOf(st.stage) >= 0; }),
+      (wa.body.stages || []).map(function(s2){ return s2.stage; }).join(","));
+    ok("uncalled since reply means exactly that",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){
+          return r.uncalled === (!!r.waAt && (!r.last || r.waAt > r.last)); }); }));
+    ok("worst first: uncalled at the top, then most recent reply",
+      (wa.body.stages || []).every(function(st){
+        for (let i = 1; i < st.rows.length; i++) {
+          const a = st.rows[i - 1], b2 = st.rows[i];
+          if (a.uncalled !== b2.uncalled) { if (!a.uncalled && b2.uncalled) return false; }
+          else if ((a.waAt || 0) < (b2.waAt || 0)) return false;
+        }
+        return true; }));
+    ok("members of the list we do not hold are counted, not quietly dropped",
+      (wa.body.totals || {}).notHeld > 0, JSON.stringify(wa.body.totals));
+    /* The rule the user set, pinned so a later change cannot walk it back by accident. */
+    ok("the view declares that it counts towards nothing",
+      wa.body.countsTowardsNothing === true);
+    /* A Loop WA lead may legitimately also be on the calling list on its own merits.
+       What must never happen is a WhatsApp reply being one of the reasons it is there,
+       because that would quietly move every denominator on the page. */
+    const cnNow = await get("/api/callnow2");
+    ok("and a WhatsApp reply is never a reason a lead is on the calling list",
+      (function(){
+        const j = JSON.stringify(cnNow.body || {});
+        return j.indexOf("waReplied") < 0 && j.indexOf("waAt") < 0 &&
+          (cnNow.body.columns || []).indexOf("wa") < 0;
+      })());
+    ok("the reply sweep is reported so silence can be told from health",
+      wa.body.waSync && "at" in wa.body.waSync && wa.body.waSync.everyMinutes > 0);
+    ok("a thread on a lead that does not exist fails cleanly",
+      [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
+
     /* One row per agent, over a day or a range. The whole risk in this one is mixing up
        what adds up with what does not, so that is what the checks are about. */
     const su = await get("/api/vp/agent-summary");
