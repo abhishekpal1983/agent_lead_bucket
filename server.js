@@ -1318,8 +1318,12 @@ app.get("/api/health", function(req, res){
             staleMin: WA_LIST.at ? Math.round((Date.now() - WA_LIST.at) / 60000) : null,
             listError: WA_LIST.error || null,
             truncated: !!WA_LIST.truncated,
-            replies: { at: WASYNC.at, n: WASYNC.n, ms: WASYNC.ms,
+            replies: { at: WASYNC.at, asked: WASYNC.asked, read: WASYNC.n,
+              // Read tells you it ran. Fresh tells you it found something. A sweep that
+              // reads 167 and finds 0 for a whole day is the thing worth noticing.
+              freshReplies: WASYNC.fresh, ms: WASYNC.ms,
               error: WASYNC.error || null, everyMinutes: WASYNC_MINUTES,
+              truncated: !!WASYNC.truncated,
               behindMin: WASYNC.at ? Math.round((Date.now() - Date.parse(WASYNC.at)) / 60000) : null }
           },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
@@ -3960,44 +3964,62 @@ function waListReady(){
    since we last looked, exactly as the calls sweep asks for anyone called today. Cheap,
    idempotent, and it carries its own watermark so a restart does not re-read the world. */
 const WASYNC_MINUTES = parseInt(process.env.WASYNC_MINUTES || "3", 10);
-let WASYNC = { at: null, running: false, n: 0, ms: 0, error: null, since: null };
+let WASYNC = { at: null, running: false, n: 0, fresh: 0, ms: 0, error: null, asked: 0 };
 function waSoon(sec){
   setTimeout(function(){
     (typeof guard === "function" ? guard("waReplies", syncWaReplies) : syncWaReplies)();
   }, Math.max(1, sec) * 1000);
 }
+
+/* Keep the list's contacts current.
+
+   This started life as a watermark search: ask HubSpot for anyone whose last WhatsApp
+   reply moved since we last looked, the way the calls sweep asks for anyone called today.
+   In production it returned zero while HubSpot held eight replies from the same window,
+   with no error, and the identical filter run by hand returned all eight. I could not
+   make it fail again on demand, and a sweep whose failure mode is a confident zero is not
+   one to leave running under a view whose whole purpose is noticing replies.
+
+   So it does the dull thing instead. The list is a hundred and sixty seven people. Read
+   those contacts by id, every three minutes, two calls. No watermark to drift, no search
+   index to be eventually consistent with, and the cost does not grow with the pile. If
+   the list ever gets big enough for this to matter, the ceiling below turns it back into
+   a problem worth solving rather than a silent half-read. */
+const WA_READ_MAX = parseInt(process.env.WA_READ_MAX || "3000", 10);
 async function syncWaReplies(){
   if (!TOKEN || WASYNC.running) return;
   if (CACHE.syncing) { waSoon(40); return; }
   if (!CACHE.loadedAt) { waSoon(40); return; }
+  const mem = WA_LIST.at ? WA_LIST : null;
+  if (!mem) { waListFetch(); waSoon(30); return; }
   WASYNC.running = true;
   const t0 = Date.now();
-  // First run looks back two days rather than at all history: enough to catch anything
-  // missed over a restart, small enough to be one or two pages.
-  const since = WASYNC.since || (Date.now() - 2 * 86400000);
   try {
+    const ids = Object.keys(mem.ids).slice(0, WA_READ_MAX);
     const rows = [];
-    let lastId = "0", g = 0;
-    while (g < 200) {
-      g++;
-      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
-        filterGroups: [{ filters: [
-          { propertyName: "ryl_wa_last_lead_reply_at", operator: "GTE", value: String(since) },
-          { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
-        ]}],
-        properties: PROPS,
-        sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
-      const page = (j && j.results) || [];
-      if (!page.length) break;
-      page.forEach(function(r){ rows.push(Object.assign({ id: r.id }, r.properties)); });
-      lastId = page[page.length - 1].id;
-      if (page.length < 100) break;
-      await sleep(100);
+    for (let i = 0; i < ids.length; i += 100) {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ properties: PROPS,
+          inputs: ids.slice(i, i + 100).map(function(x){ return { id: x }; }) })});
+      ((j && j.results) || []).forEach(function(r){
+        rows.push(Object.assign({ id: r.id }, r.properties));
+      });
+      if (i + 100 < ids.length) await sleep(80);
     }
+    /* How many carry a reply newer than the one we already held. This is the number that
+       says the sweep is doing something rather than merely running, and it is the number
+       that would have made the false zero obvious on day one. */
+    const had = {};
+    CACHE.contacts.forEach(function(c){ if (c) had[c.id] = ts(c.ryl_wa_last_lead_reply_at); });
+    let fresh = 0;
+    rows.forEach(function(r){
+      const now2 = ts(r.ryl_wa_last_lead_reply_at);
+      if (now2 && (had[r.id] === undefined || had[r.id] < now2)) fresh++;
+    });
     if (rows.length) applyDelta(rows);
-    // Wound back a minute, because a reply landing mid-sweep must not fall in the gap.
-    WASYNC = { at: new Date().toISOString(), running: false, n: rows.length,
-      ms: Date.now() - t0, error: null, since: t0 - 60000 };
+    WASYNC = { at: new Date().toISOString(), running: false, n: rows.length, fresh: fresh,
+      ms: Date.now() - t0, error: null, asked: ids.length,
+      truncated: Object.keys(mem.ids).length > WA_READ_MAX };
   } catch (e) {
     WASYNC.running = false;
     WASYNC.error = e.message;
@@ -4027,6 +4049,30 @@ function waBody(v){
     .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\n{3,}/g, "\n\n").trim();
 }
+/* Calls logged against this lead after a given moment. Association then batch read,
+   which is two requests, so it belongs on a card being opened and not on a list of two
+   hundred rows. */
+async function waCallsSince(id, since){
+  if (!since) return null;
+  const a = await hs("/crm/v4/objects/contacts/" + encodeURIComponent(id) +
+    "/associations/calls?limit=100");
+  const ids = ((a && a.results) || []).map(function(x){ return String(x.toObjectId || x.id || ""); })
+    .filter(Boolean).slice(0, 100);
+  if (!ids.length) return 0;
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 50) {
+    const b = await hs("/crm/v3/objects/calls/batch/read", { method: "POST",
+      body: JSON.stringify({ properties: ["hs_timestamp", "hs_createdate"],
+        inputs: ids.slice(i, i + 50).map(function(x){ return { id: x }; }) })});
+    ((b && b.results) || []).forEach(function(c){
+      const p = c.properties || {};
+      const t = ts(p.hs_timestamp) || ts(p.hs_createdate);
+      if (t && t > since) n++;
+    });
+  }
+  return n;
+}
+
 async function waThread(id){
   const a = await hs("/crm/v4/objects/contacts/" + encodeURIComponent(id) +
     "/associations/communications?limit=100");
@@ -4455,39 +4501,65 @@ app.get("/api/callnow2/wa", function(req, res){
   const inScope = function(owner){ return !allow || allow.indexOf(String(owner || "")) >= 0; };
   const day = CN2.dayBoundsFor(cn2Now());
 
+  /* The same filters the rest of the page carries, applied here rather than in the
+     browser, so the stage summaries and the rows underneath them can never disagree.
+     A summary computed on one set of rows and displayed above another is the oldest
+     dashboard bug there is. */
+  const wantAgent = String(req.query.agent || "");
+  const wantCreator = String(req.query.creator || "");
+  const wantTeam = String(req.query.team || "");
+  let teamAgents = null;
+  if (wantTeam) {
+    const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
+    if (tt) teamAgents = (tt.agentIds || []).map(String);
+  }
+  const agentKey = function(o){ return String(o || "") || "none"; };
+
   const rows = [];
-  let outsideScope = 0, notHeld = 0;
+  let outsideScope = 0, notHeld = 0, filteredOut = 0;
   const pool = CN2_FIXTURE_DATA ? cn2Rows() : callnowPool().map(cnRow);
   const seen = {};
   pool.forEach(function(r){
     if (!mem.ids[r.id]) return;
     seen[r.id] = 1;
     if (!inScope(r.owner)) { outsideScope++; return; }
+    if (wantAgent && agentKey(r.owner) !== wantAgent) { filteredOut++; return; }
+    if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) { filteredOut++; return; }
+    if (wantCreator && r.creator !== wantCreator) { filteredOut++; return; }
+    /* The signal the whole view exists for: they wrote back and nobody has rung them
+       since. A lead never called at all counts, so long as they have replied. */
+    const uncalled = !!(r.waAt && (!r.last || r.waAt > r.last));
     rows.push({
       id: r.id, name: r.name, phone: r.phone, email: r.email,
       stage: r.stage, stageLabel: CN2_STAGE_LABELS[r.stage] || r.stage,
       creator: r.creator, owner: r.owner, ownerName: r.ownerName,
       last: r.last, fu: r.fu, calls: r.calls, own: r.own,
       waN: r.waN, waAt: r.waAt, waOut: r.waOut, waLast: r.waLast,
-      /* The one signal the view exists for: they wrote back and nobody has rung them
-         since. A lead with no call at all counts, so long as they have replied. */
-      uncalled: !!(r.waAt && (!r.last || r.waAt > r.last)),
+      uncalled: uncalled,
+      /* Calls made since they replied. Zero is exact and is the case that matters: it is
+         the definition of the highlight. Anything above zero we know only as "at least
+         one" from the timestamps, because a count needs the call records themselves, so
+         it is filled in from the lead's own activity when the card is opened rather than
+         guessed at here. */
+      callsSinceReply: uncalled ? 0 : null,
       repliedToday: !!(r.waAt && r.waAt >= day.start && r.waAt < day.end)
     });
   });
   Object.keys(mem.ids).forEach(function(id){ if (!seen[id]) notHeld++; });
 
-  /* Worst first means: they answered and we have not called back, most recent reply at
-     the top. Everything else falls in behind by reply recency. */
   rows.sort(function(a, b){
     return (b.uncalled ? 1 : 0) - (a.uncalled ? 1 : 0) || (b.waAt || 0) - (a.waAt || 0);
   });
 
   const byStage = {};
   rows.forEach(function(r){
-    if (!byStage[r.stage]) byStage[r.stage] = { stage: r.stage, label: r.stageLabel, rows: [], uncalled: 0 };
-    byStage[r.stage].rows.push(r);
-    if (r.uncalled) byStage[r.stage].uncalled++;
+    if (!byStage[r.stage]) byStage[r.stage] =
+      { stage: r.stage, label: r.stageLabel, rows: [], n: 0, uncalled: 0, today: 0, replies: 0 };
+    const b = byStage[r.stage];
+    b.rows.push(r); b.n++;
+    b.replies += (r.waN || 0);
+    if (r.uncalled) b.uncalled++;
+    if (r.repliedToday) b.today++;
   });
   const order = CN2_STAGES.slice();
   const stages = Object.keys(byStage).sort(function(a, b){
@@ -4498,16 +4570,18 @@ app.get("/api/callnow2/wa", function(req, res){
   res.json({
     listId: WA_LIST_ID, listAt: WA_LIST.at || null, listSize: mem.n,
     scoped: !!allow, role: role, isVP: isVP(req),
+    filters: { agent: wantAgent, creator: wantCreator, team: wantTeam },
     stages: stages,
     totals: {
       mine: rows.length, listSize: mem.n,
       uncalled: rows.filter(function(r){ return r.uncalled; }).length,
       today: rows.filter(function(r){ return r.repliedToday; }).length,
-      // Named, because "why is the list 167 and the page showing 41" is the first
-      // question anybody asks, and silence there reads as a bug.
-      outsideScope: outsideScope, notHeld: notHeld
+      // Named, because "why is the list 167 and the page showing 41" is the first thing
+      // anybody asks, and silence there reads as a bug.
+      outsideScope: outsideScope, notHeld: notHeld, filteredOut: filteredOut
     },
-    waSync: { at: WASYNC.at, n: WASYNC.n, error: WASYNC.error, everyMinutes: WASYNC_MINUTES },
+    waSync: { at: WASYNC.at, read: WASYNC.n, fresh: WASYNC.fresh,
+      error: WASYNC.error, everyMinutes: WASYNC_MINUTES },
     // This view counts towards nothing. Said in the payload so the page can say it too.
     countsTowardsNothing: true
   });
@@ -4525,13 +4599,29 @@ app.get("/api/callnow2/lead/:id/wa", async function(req, res){
     return res.status(403).json({ error: "that lead is not yours" });
   }
   const hit = WA_CACHE[id];
-  if (hit && Date.now() - hit.at < WA_TTL_MS) return res.json({ messages: hit.messages, cached: true });
+  if (hit && Date.now() - hit.at < WA_TTL_MS) {
+    return res.json({ messages: hit.messages, callsSince: hit.callsSince,
+      since: hit.since, cached: true });
+  }
   try {
     const messages = await waThread(id);
-    WA_CACHE[id] = { at: Date.now(), messages: messages };
+    /* How many times we have rung them since they wrote back. The row can only say zero
+       or "at least one" from the timestamps; the exact number needs the call records, so
+       it is counted here, where we are already opening the lead. */
+    let callsSince = null, since = 0;
+    try {
+      const known = (CN2_POOL.live && CN2_POOL.live[id]) || null;
+      since = (known && known.waAt) || 0;
+      if (!since) {
+        const last = messages.filter(function(m){ return m.dir === "in"; }).pop();
+        since = last ? last.at : 0;
+      }
+      if (since) callsSince = await waCallsSince(id, since);
+    } catch (e) { callsSince = null; }
+    WA_CACHE[id] = { at: Date.now(), messages: messages, callsSince: callsSince, since: since };
     const keys = Object.keys(WA_CACHE);
     if (keys.length > 300) delete WA_CACHE[keys[0]];
-    res.json({ messages: messages });
+    res.json({ messages: messages, callsSince: callsSince, since: since });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

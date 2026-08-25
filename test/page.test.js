@@ -808,6 +808,20 @@ ok("the thread reads oldest first with their side apart from ours",
   html.indexOf("class='wamsg'") < 0);
 ok("a lead with a reply but no thread says which of the two is missing, rather than nothing",
   html.indexOf("either the thread sits under a different activity type") >= 0);
+ok("the page pickers reach this view, and it re-asks when they move",
+  html.indexOf('if(Q.agent)q.push("agent=') >= 0 &&
+  html.indexOf('if(Q.creator)q.push("creator=') >= 0 &&
+  html.indexOf('if(VIEW==="wa")loadWa();') >= 0);
+ok("each stage line answers how many, how many waiting, how many today",
+  html.indexOf("replied, not called yet") >= 0 && html.indexOf("replied today") >= 0 &&
+  html.indexOf("st.uncalled") >= 0 && html.indexOf("st.today") >= 0);
+ok("a row shows phone, owner, creator, last call and follow-up without opening it",
+  ["Owner", "Creator", "Replied", "Last call", "Follow-up", "Messages"].every(function(f){
+    return html.slice(html.indexOf("wafields")).indexOf("<i>" + f + "</i>") >= 0; }));
+ok("replying since the last call is called out on the row itself",
+  html.indexOf("replied since your last call") >= 0);
+ok("calls since the reply is exact at zero and does not invent a number above it",
+  html.indexOf("function waSince(r)") >= 0 && html.indexOf("(open to count)") >= 0);
 ok("leads in the list held by other agents are counted and named, not silently dropped",
   html.indexOf("t.outsideScope") >= 0 && html.indexOf("held by other agents") >= 0);
 ok("and so are members we do not hold at all",

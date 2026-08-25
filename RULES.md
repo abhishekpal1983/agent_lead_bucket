@@ -547,10 +547,28 @@ within each stage, then by reply recency.
 
 Three refresh rates, each chosen for a reason. List membership every ten minutes, because
 this list grows through the afternoon and the normal segment cache holds membership for the
-whole day. Reply properties every three minutes by their own sweep, mirroring the calls
-sweep, because a reply arriving is the entire point and waiting on the ten minute general
-sweep would make the view feel dead. The conversation itself on demand when a card opens,
-cached two minutes.
+whole day. The list's contacts re-read every three minutes. The conversation itself on
+demand when a card opens, cached two minutes.
+
+That middle one began as a watermark search, mirroring the calls sweep: ask HubSpot for
+anyone whose last reply moved since we last looked. In production it returned zero while
+HubSpot held eight replies from that window, with no error, and the identical filter run by
+hand returned all eight. It could not be made to fail again on demand. A sweep whose failure
+mode is a confident zero has no business sitting under a view whose only job is noticing
+replies, so it was replaced with the dull thing: the list is a hundred and sixty seven
+people, so read those contacts by id. Two calls, no watermark to drift, no search index to
+be eventually consistent with. Health now reports both how many were read and how many
+carried a reply newer than the one we held, because reporting only the first is exactly how
+a zero goes unnoticed for a day.
+
+The Manager, Agent and Creator pickers apply to this view, filtered on the server so the
+per stage summaries and the rows beneath them are computed from one set of leads. What the
+filter hid is counted and shown, as is anything held by another agent.
+
+Calls since the reply is exact when it is zero, which is the case the highlight is built on
+and the one that matters. Above zero the row says only that a call happened, because a count
+needs the call records themselves; those are read when the card is opened rather than
+guessed at.
 
 Loop writes five summary properties on the contact, including the text of the last reply
 only. The conversation lives in the activity timeline as communication records and is read

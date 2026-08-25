@@ -507,8 +507,41 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     const waHealth = (((await get("/api/health")).body.cn2) || {}).wa || null;
     ok("health names the list read and the reply sweep, so neither can fail invisibly",
       waHealth && "members" in waHealth && "staleMin" in waHealth && "listError" in waHealth &&
-      waHealth.replies && "at" in waHealth.replies && waHealth.replies.everyMinutes > 0,
+      waHealth.replies && "at" in waHealth.replies && waHealth.replies.everyMinutes > 0 &&
+      // Read says it ran; freshReplies says it found something. Reporting only the first
+      // is how a sweep returns a confident zero for a day without anybody noticing.
+      "read" in waHealth.replies && "freshReplies" in waHealth.replies,
       JSON.stringify(waHealth));
+    /* The pickers above the page apply here too, and the summary is computed on the same
+       rows it sits above. A summary built from one set and shown over another is the
+       oldest dashboard bug there is. */
+    const waAll = wa.body.totals.mine;
+    const anyCreator = (function(){
+      for (const st of (wa.body.stages || [])) for (const r of st.rows) if (r.creator) return r.creator;
+      return ""; })();
+    const waC = await get("/api/callnow2/wa?creator=" + encodeURIComponent(anyCreator));
+    ok("the creator filter applies here as it does everywhere else",
+      waC.status === 200 && (waC.body.stages || []).every(function(st){
+        return st.rows.every(function(r){ return r.creator === anyCreator; }); }),
+      anyCreator);
+    ok("and what it hid is counted rather than just vanishing",
+      waC.body.totals.mine + waC.body.totals.filteredOut === waAll,
+      JSON.stringify(waC.body.totals) + " vs all " + waAll);
+    ok("each stage carries its own totals, counted on the stage and not on the chip",
+      (wa.body.stages || []).every(function(st){
+        return st.n === st.rows.length &&
+          st.uncalled === st.rows.filter(function(r){ return r.uncalled; }).length &&
+          st.today === st.rows.filter(function(r){ return r.repliedToday; }).length; }),
+      JSON.stringify((wa.body.stages || [])[0]));
+    ok("every row carries what an agent needs before dialling",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){
+          return "phone" in r && "ownerName" in r && "creator" in r &&
+                 "last" in r && "fu" in r && "waAt" in r && "waN" in r; }); }));
+    ok("calls since the reply is exact when it is zero, and honest when it is not",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){
+          return r.uncalled ? r.callsSinceReply === 0 : r.callsSinceReply === null; }); }));
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
 
