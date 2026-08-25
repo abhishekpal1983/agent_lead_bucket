@@ -501,6 +501,18 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       JSON.stringify(su.body.totals));
     ok("a lead we cannot date is counted and named, not dropped or called nought days old",
       (su.body.rows || []).every(function(r){ return r.dnp.undated <= r.dnp.leads; }));
+    /* A segment can only narrow what is keyed by lead. The nightly snapshots are not, so
+       the range has to stop applying rather than half of the row being filtered. */
+    const seg = await get("/api/vp/agent-summary?segment=9999&from=2026-08-01&to=2026-08-19");
+    ok("asking for a segment answers rather than failing", seg.status === 200, "status " + seg.status);
+    ok("a segment that is not held yet says so instead of showing an empty table",
+      seg.body.seg && (seg.body.seg.loading === true || seg.body.segmentIsLiveOnly === true),
+      JSON.stringify(seg.body.seg));
+    ok("and when it is applied the range is switched off, not silently mixed",
+      !seg.body.segmentIsLiveOnly || (seg.body.dates || []).length === 0,
+      JSON.stringify(seg.body.dates));
+    ok("no segment means no segment block, so the normal view cannot inherit one",
+      su.body.seg == null && !su.body.segmentIsLiveOnly);
 
     /* One row per agent for one day. */
     const ad = await get("/api/vp/agent-day");

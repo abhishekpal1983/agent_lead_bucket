@@ -752,6 +752,24 @@ ok("and a background redraw puts the caret back where it was",
     vp.indexOf("function asSort(k)") >= 0 && (vp.match(/asHead\(/g) || []).length >= 7);
   ok("the export pairs each column name with the value it reads",
     vp.slice(vp.indexOf("function asCsv()")).indexOf('["Agent", function(r){ return r.name; }]') >= 0);
+  /* The segment picker, and the honesty around what it can and cannot narrow. */
+  ok("segments are searchable rather than a select with 271 options",
+    vp.indexOf("function vsegListHtml()") >= 0 && vp.indexOf("vsegsearch") >= 0);
+  ok("a keystroke rebuilds only the list, the same way Call Now's does",
+    vp.indexOf('el.innerHTML = vsegListHtml()') >= 0 &&
+    vp.slice(vp.indexOf("function vsegQ(v)"), vp.indexOf("function vsegPick")).indexOf("setTimeout") < 0);
+  ok("and the caret survives a redraw",
+    vp.indexOf("function vsegFocus()") >= 0 && vp.indexOf("vsegFocus();") >= 0);
+  ok("the chosen segment is sent to the server",
+    vp.indexOf('q.push("segment=" + encodeURIComponent(AS_SEG))') >= 0);
+  ok("a segment still loading is named, not shown as an empty table",
+    vp.indexOf("j.seg && j.seg.loading") >= 0 && vp.indexOf("Check again") >= 0);
+  ok("and the range being switched off is explained rather than just happening",
+    vp.indexOf("j.segmentIsLiveOnly") >= 0 &&
+    vp.indexOf("The date range does not apply to a segment") >= 0 &&
+    vp.indexOf("today only, while a segment is chosen") >= 0);
+  ok("the export names the segment, so the file cannot lie by omission",
+    vp.indexOf("AS.seg ? AS.seg.name.replace") >= 0);
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

@@ -90,6 +90,19 @@ table.rt td.n,table.rt th.n{text-align:right}
 th.srt{cursor:pointer;user-select:none;white-space:nowrap}
 th.srt:hover{background:#EDF1F6}
 th.srt.on{background:#0A2540;color:#fff;border-radius:6px 6px 0 0}
+.vsegbox{position:relative;display:inline-block}
+.vsegdrop{position:absolute;z-index:40;top:calc(100% + 4px);left:0;width:340px;background:#fff;
+  border:1px solid #DCE4EC;border-radius:10px;box-shadow:0 10px 28px rgba(10,37,64,.16);padding:7px}
+.vsegsearch{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #DCE4EC;border-radius:8px;font-size:13px}
+.vseglist{max-height:260px;overflow:auto}
+.vsegitem{display:flex;width:100%;gap:8px;align-items:center;justify-content:space-between;
+  background:none;border:0;text-align:left;padding:6px 9px;border-radius:7px;cursor:pointer;font-size:13px}
+.vsegitem:hover{background:#EDF1F6}
+.vsegitem.on{background:#0A2540;color:#fff}
+.vsegitem.clear{color:#8C2D12;font-weight:600}
+.vsegn{color:#6B7A8A;font-size:11.5px;flex:none}
+.vsegitem.on .vsegn{color:#B8C7D6}
+.btn.on{background:#0A2540;color:#fff;border-color:#0A2540}
 table.rt td:first-child,table.rt th:first-child{text-align:left}
 .tw{border:1px solid #DCE4EC;border-radius:8px;overflow:auto}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
@@ -853,6 +866,67 @@ function adCsv(){
    counts one stuck lead once per day it was stuck, which would put an agent with one
    frozen lead above an agent with six live ones. So a stock shows as it stood on the
    last day of the range, with the average beside it. */
+/* The HubSpot segment picker, same idea as Call Now's.
+
+   A plain select with two hundred and seventy segments in it is not a control, it is a
+   scroll. So: a search box that filters in place. Only the list is rebuilt on a keystroke,
+   never the input, which is why it types continuously with no debounce and the caret never
+   moves. The page-wide redraw would still replace it, so focus is restored after a draw. */
+var VSEGS = null, VSEGQ = "", VSEGOPEN = false, VSEGCARET = null;
+var AS_SEG = "";
+function vsegOpen(){ VSEGOPEN = !VSEGOPEN; if (VSEGOPEN) loadVsegs(); VSEGCARET = null; renderAgentSummary(); }
+function vsegQ(v){
+  VSEGQ = v;
+  var box = document.getElementById("vsegq");
+  if (box) VSEGCARET = box.selectionStart;
+  var el = document.getElementById("vsegbody");
+  if (el) el.innerHTML = vsegListHtml(); else renderAgentSummary();
+}
+function vsegPick(id){ AS_SEG = id; VSEGOPEN = false; VSEGQ = ""; loadAgentSummary(AS_FROM, AS_TO); }
+function vsegClear(){ AS_SEG = ""; VSEGOPEN = false; VSEGQ = ""; loadAgentSummary(AS_FROM, AS_TO); }
+function loadVsegs(){
+  if (VSEGS) return;
+  fetch("/api/callnow2/segments").then(asJson)
+    .then(function(j){ VSEGS = j; renderAgentSummary(); })
+    .catch(function(e){ VSEGS = { allowed: false, error: e.message, rows: [] }; renderAgentSummary(); });
+}
+function vsegFocus(){
+  if (!VSEGOPEN) return;
+  var el = document.getElementById("vsegq");
+  if (!el || el === document.activeElement) return;
+  el.focus();
+  var pos = VSEGCARET == null ? el.value.length : VSEGCARET;
+  try { el.setSelectionRange(pos, pos); } catch (e) {}
+}
+function vsegListHtml(){
+  if (!VSEGS) return "<div class='mut' style='padding:7px 9px'>loading segments...</div>";
+  if (!VSEGS.allowed) return "<div class='mut' style='padding:7px 9px'>not available</div>";
+  var q = String(VSEGQ).toLowerCase();
+  var all = VSEGS.rows || [];
+  var rows = all.filter(function(r){ return !q || String(r.name).toLowerCase().indexOf(q) >= 0; });
+  var h = "<div class='mut' style='padding:5px 9px;font-size:11.5px'>" + fmt(rows.length) + " of " + fmt(all.length) +
+    " segments" + (rows.length > 300 ? ", showing the first 300" : "") + "</div><div class='vseglist'>";
+  if (AS_SEG) h += "<button class='vsegitem clear' onclick='vsegClear()'>Clear, show all leads</button>";
+  rows.slice(0, 300).forEach(function(r){
+    h += "<button class='vsegitem" + (AS_SEG === r.id ? " on" : "") + "' onclick='vsegPick(\"" + esc(r.id) + "\")'>" +
+      esc(r.name) + "<span class='vsegn'>" + (r.size ? fmt(r.size) : "") + "</span></button>";
+  });
+  if (!rows.length) h += "<div class='mut' style='padding:7px 9px'>nothing matches</div>";
+  return h + "</div>";
+}
+function vsegPicker(){
+  var cur = AS && AS.seg ? AS.seg.name : "";
+  var h = "<div class='vsegbox'><button class='btn" + (AS_SEG ? " on" : "") + "' onclick='vsegOpen()'>" +
+    esc(cur || "HubSpot segment") + " " + (VSEGOPEN ? "▾" : "▸") + "</button>";
+  if (VSEGOPEN) {
+    h += "<div class='vsegdrop'>" +
+      "<input id='vsegq' class='vsegsearch' placeholder='search segments' value='" + esc(VSEGQ) + "' " +
+      "oninput='vsegQ(this.value)'>" +
+      "<div id='vsegbody'>" + vsegListHtml() + "</div></div>";
+  }
+  return h + "</div>";
+}
+
 var AS = null, AS_FROM = "", AS_TO = "", AS_TEAM = "", AS_AGENT = "";
 var AS_SORT = { k: "overdue", d: -1 };
 function asSet(k, v){ if(k === "team"){ AS_TEAM = v; AS_AGENT = ""; } else AS_AGENT = v; renderAgentSummary(); }
@@ -891,6 +965,7 @@ function loadAgentSummary(from, to){
   var q = [];
   if (from) q.push("from=" + encodeURIComponent(from));
   if (to) q.push("to=" + encodeURIComponent(to));
+  if (AS_SEG) q.push("segment=" + encodeURIComponent(AS_SEG));
   fetch("/api/vp/agent-summary" + (q.length ? "?" + q.join("&") : ""))
     .then(asJson)
     .then(function(j){ AS = j; AS_FROM = j.from; AS_TO = j.to; renderAgentSummary(); })
@@ -927,6 +1002,17 @@ function renderAgentSummary(){
   var el = document.getElementById("aswrap");
   if (!el) return;
   var j = AS; if (!j) return;
+  /* A segment of eleven thousand people is a hundred and ten calls to HubSpot. It is
+     fetched in the background and held for the day, so the first open says so plainly
+     rather than showing an empty table that looks like an answer. */
+  if (j.seg && j.seg.loading) {
+    el.innerHTML = "<div class='sec'><h2>Agent summary</h2>" +
+      "<div class='warn'>Reading <b>" + esc(j.seg.name) + "</b> from HubSpot. A large segment takes " +
+      "a minute the first time each day, then it is instant. " +
+      "<button class='btn' onclick='loadAgentSummary(AS_FROM,AS_TO)'>Check again</button> " +
+      "<button class='btn' onclick='vsegClear()'>Show all leads</button></div></div>";
+    return;
+  }
   var rows = asRows();
   var t = rows.reduce(function(a, r){
     ["due","done","missed","calls","overdue","nofu","pool"].forEach(function(k){ a[k] = (a[k] || 0) + (r[k] || 0); });
@@ -945,12 +1031,15 @@ function renderAgentSummary(){
     (j.scoped ? " Your team only." : "") + "</div>";
 
   h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
-    "<input type='date' value='" + esc(j.from) + "' onchange='loadAgentSummary(this.value,AS_TO)'>" +
-    "<span class='mut'>to</span>" +
-    "<input type='date' value='" + esc(j.to) + "' onchange='loadAgentSummary(AS_FROM,this.value)'>" +
-    "<button class='btn' onclick='asPreset(1)'>Today</button>" +
-    "<button class='btn' onclick='asPreset(7)'>7 days</button>" +
-    "<button class='btn' onclick='asPreset(30)'>30 days</button>" +
+    // Disabled rather than hidden, so it is obvious the range exists and why it is off.
+    (j.segmentIsLiveOnly
+      ? "<span class='mut' style='font-size:12px'>today only, while a segment is chosen</span>"
+      : "<input type='date' value='" + esc(j.from) + "' onchange='loadAgentSummary(this.value,AS_TO)'>" +
+        "<span class='mut'>to</span>" +
+        "<input type='date' value='" + esc(j.to) + "' onchange='loadAgentSummary(AS_FROM,this.value)'>" +
+        "<button class='btn' onclick='asPreset(1)'>Today</button>" +
+        "<button class='btn' onclick='asPreset(7)'>7 days</button>" +
+        "<button class='btn' onclick='asPreset(30)'>30 days</button>") +
     (j.isVP && (j.teams || []).length > 1
       ? "<select onchange=\"asSet('team',this.value)\"><option value=''>All managers</option>" +
         (j.teams || []).map(function(x){
@@ -962,12 +1051,28 @@ function renderAgentSummary(){
       return "<option value='" + esc(String(r.id)) + "'" + (AS_AGENT === String(r.id) ? " selected" : "") + ">" +
         esc(r.name) + "</option>"; }).join("")) + "</select>" +
     ((AS_TEAM || AS_AGENT) ? "<button class='btn' onclick=\"AS_TEAM='';AS_AGENT='';renderAgentSummary()\">Clear</button>" : "") +
+    vsegPicker() +
     "<button class='btn' onclick='asCsv()'>Download CSV</button>" +
     "</div>";
 
   /* A range that quietly covers three of the seven days asked for is worse than one that
      says so, because the completion rate is then measured on a denominator nobody knows
      is short. */
+  /* The one thing that must not be quiet. A segment can only narrow what is keyed by
+     lead, and the nightly snapshots are per-agent counters with no lead ids in them. So
+     the range stops applying, and saying so beats showing a filtered overdue next to an
+     unfiltered due count. */
+  if (j.segmentIsLiveOnly && j.seg) {
+    h += "<div class='warn'><b>" + esc(j.seg.name) + "</b>: " + fmt(j.seg.size || 0) + " people, " +
+      fmt(j.seg.onList || 0) + " of them on today's calling list" +
+      (j.seg.outside ? " and " + fmt(j.seg.outside) + " not on it" : "") + ". " +
+      "Everything below is <b>today</b>, live. The date range does not apply to a segment: the nightly " +
+      "snapshots keep per-agent counts and not which leads they were, so past days cannot be narrowed " +
+      "to a segment after the fact. Overdue, No FU and DNP coverage are positions read right now, which " +
+      "is what a segment view is good for anyway." +
+      (j.seg.truncated ? " <b>This segment is larger than we read in one day, so it is a partial view.</b>" : "") +
+      "</div>";
+  }
   if ((j.missingDays || []).length) {
     h += "<div class='warn'>No snapshot exists for " + fmt(j.missingDays.length) + " of the days in this range" +
       (j.missingDays.length <= 6 ? " (" + j.missingDays.map(esc).join(", ") + ")" : "") +
@@ -1014,6 +1119,7 @@ function renderAgentSummary(){
   if (!rows.length) h += "<tr><td colspan='8' class='mut'>Nothing for that filter in this range.</td></tr>";
   h += "</tbody></table></div></div>";
   el.innerHTML = h;
+  vsegFocus();
 }
 function asCsv(){
   if (!AS) return;
@@ -1042,7 +1148,8 @@ function asCsv(){
   });
   var a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
-  a.download = "agent_summary_" + AS.from + "_to_" + AS.to + ".csv";
+  a.download = "agent_summary_" + (AS.seg ? AS.seg.name.replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") +
+    AS.from + "_to_" + AS.to + ".csv";
   a.click();
 }
 

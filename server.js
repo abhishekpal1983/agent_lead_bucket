@@ -6165,12 +6165,13 @@ const DNP_STAGES = ["dnp_did_not_pick", "dnp_other"];
 // Under one attempt every three working days, once a lead has had at least three, is a
 // pile being held rather than worked. Env so it can be argued with rather than rewritten.
 const DNP_STARVED_EVERY = parseFloat(process.env.DNP_STARVED_EVERY || "3");
-function agentDnpCoverage(){
+function agentDnpCoverage(mem){
   const out = {};
   const todayIdx = CN2.istDayIndex(cn2Now());
   // The same rows Call Now is built from, not the raw contact pool. One model, and it
   // means this is exercised by the fixtures rather than only in production.
   cn2Rows().forEach(function(r){
+    if (mem && !mem.ids[r.id]) return;
     if (DNP_STAGES.indexOf(r.stage) < 0) return;
     const oid = String(r.owner || "none");
     if (!out[oid]) out[oid] = { leads: 0, tries: 0, mine: 0, days: 0, starved: 0, never: 0, undated: 0 };
@@ -6205,7 +6206,32 @@ app.get("/api/vp/agent-summary", function(req, res){
     const allow = cn2Scope(req);
     const inScope = function(id){ return !allow || allow.indexOf(String(id)) >= 0; };
 
-    const days = agentSummaryDays(from, to);
+    /* A HubSpot segment narrows all of this to those people.
+
+       It can only narrow what is keyed by lead, and that is the whole story here. Today's
+       list, the standing overdue and No FU positions, and DNP coverage are all built from
+       lead rows, so a segment slices them exactly. The nightly snapshots are not: they
+       keep per-agent counters and nothing else, because keeping ninety days of lead ids
+       for two hundred thousand leads is not a thing to put in a JSON file.
+
+       So with a segment chosen, the past-day flows are not shown at all rather than shown
+       unfiltered next to filtered columns. Half a filtered row is worse than an honest
+       gap: it looks like an answer. */
+    const wantSegment = String(req.query.segment || "");
+    let seg = null, mem = null;
+    if (wantSegment) {
+      mem = segMembersReady(wantSegment);
+      if (!mem) {
+        return res.json({ from: from, to: to, days: 0, dates: [], rows: [], totals: {},
+          scoped: !!allow, isVP: isVP(req), teams: [], missingDays: [],
+          starvedEvery: DNP_STARVED_EVERY,
+          seg: { id: wantSegment, name: segName(wantSegment), loading: true } });
+      }
+      seg = { id: wantSegment, name: segName(wantSegment), loading: false,
+        size: mem.n, truncated: !!mem.truncated };
+    }
+
+    const days = mem ? [] : agentSummaryDays(from, to);
     const liveToday = to >= today && from <= today && cn2Ready();
 
     const FLOW = ["due", "done", "missed", "calls", "pool", "counsellings"];
@@ -6233,13 +6259,16 @@ app.get("/api/vp/agent-summary", function(req, res){
        missing its most interesting day. Read it live, and only if it is not already in
        the snapshots, so it can never be counted twice. */
     let usedLive = false;
+    let segOnList = 0;
     if (liveToday && days.indexOf(today) < 0) {
       usedLive = true;
       const snap = cn2SnapshotCached();
       const seen = {};
       Object.keys(snap.base).forEach(function(id){
+        if (mem && !mem.ids[id]) return;
         const b = CN2.read(snap.base[id]);
         if (!b.counted || b.sec !== CN2.SEC_ACTION) return;
+        segOnList++;
         const oid = String(b.owner || "none"), o = at(oid);
         const lv = snap.live[id] || snap.liveAll[id] || null;
         const ct = !!(lv && lv.last >= snap.day.start && lv.last < snap.day.end);
@@ -6260,7 +6289,7 @@ app.get("/api/vp/agent-summary", function(req, res){
       });
     }
 
-    const dnp = agentDnpCoverage();
+    const dnp = agentDnpCoverage(mem);
     Object.keys(dnp).forEach(function(id){ at(id); });
     Object.keys(teamOf).forEach(function(id){ at(id); });
 
@@ -6305,6 +6334,7 @@ app.get("/api/vp/agent-summary", function(req, res){
       // Named rather than assumed, because a range that quietly covers three of the seven
       // days asked for is worse than one that says so.
       missingDays: (function(){
+        if (mem) return [];   // the range is not in play at all, so nothing is missing
         const want = [], have = {};
         days.forEach(function(k){ have[k] = 1; }); if (usedLive) have[today] = 1;
         let cur = from;
@@ -6316,6 +6346,10 @@ app.get("/api/vp/agent-summary", function(req, res){
         return want;
       })(),
       starvedEvery: DNP_STARVED_EVERY,
+      seg: seg ? Object.assign(seg, { onList: segOnList,
+        outside: Math.max(0, (seg.size || 0) - segOnList) }) : null,
+      // Named, not implied. The page has to be able to say why the flow columns are gone.
+      segmentIsLiveOnly: !!mem,
       rows: rows,
       totals: rows.reduce(function(a, r){
         ["due","done","missed","calls","counsellings","overdue","nofu","pool"].forEach(function(k){

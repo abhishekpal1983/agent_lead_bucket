@@ -487,3 +487,26 @@ named, rather than treated as nought days old, which would flatter whoever holds
 Barely tried means under one attempt every `DNP_STARVED_EVERY` working days, default three,
 and only once a lead has had at least that many days. The threshold is reported in the
 response so it can be argued with rather than rewritten.
+
+## 20. A segment can only narrow what is keyed by lead
+
+The agent summary takes a HubSpot segment, the same picker Call Now has. It narrows
+everything that is built from lead rows: today's calling list, the standing overdue and No
+FU positions, and DNP coverage. Those are exact.
+
+It cannot narrow the nightly snapshots. Those store per-agent counters and nothing else,
+because keeping ninety days of lead ids for two hundred thousand leads is not something to
+put in a JSON file on a volume. There is no way to ask, after the fact, which of the forty
+leads that fell due on the 3rd were in a segment.
+
+So choosing a segment switches the date range off and the view becomes today, live, and the
+page says why. The alternative, filtering the columns that can be filtered and leaving the
+rest whole, would put a segment-sized overdue count next to a team-sized due count in the
+same row. That is not a smaller answer, it is a wrong one that looks like an answer.
+
+This is not much of a loss in practice. Overdue, No FU and DNP coverage are positions read
+right now, and a position is what a segment view is usually for.
+
+Membership is a hundred and ten HubSpot calls for a segment of eleven thousand, so it is
+fetched in the background and held for the rest of the day. The first open of a large
+segment says it is loading rather than showing an empty table.
