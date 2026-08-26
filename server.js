@@ -1324,7 +1324,10 @@ app.get("/api/health", function(req, res){
               freshReplies: WASYNC.fresh, ms: WASYNC.ms,
               error: WASYNC.error || null, everyMinutes: WASYNC_MINUTES,
               truncated: !!WASYNC.truncated,
-              behindMin: WASYNC.at ? Math.round((Date.now() - Date.parse(WASYNC.at)) / 60000) : null }
+              behindMin: WASYNC.at ? Math.round((Date.now() - Date.parse(WASYNC.at)) / 60000) : null },
+            calls: { at: WA_CALLS.at ? new Date(WA_CALLS.at).toISOString() : null,
+              counted: WA_CALLS.calls, error: WA_CALLS.error || null,
+              truncated: !!WA_CALLS.truncated }
           },
           sync: { running: !!CACHE.syncing, error: CACHE.error || null,
                   agents: SYNC_PROGRESS.owners, agentsDone: SYNC_PROGRESS.done,
@@ -4017,6 +4020,17 @@ async function syncWaReplies(){
       if (now2 && (had[r.id] === undefined || had[r.id] < now2)) fresh++;
     });
     if (rows.length) applyDelta(rows);
+    /* Counted here rather than per row, because per row is one request each and this is
+       one request per hundred. */
+    try {
+      const replyAt = {};
+      rows.forEach(function(r){ replyAt[String(r.id)] = ts(r.ryl_wa_last_lead_reply_at); });
+      const st = await waCallStats(rows.map(function(r){ return String(r.id); }), replyAt);
+      WA_CALLS = { at: Date.now(), byId: st.byId, calls: st.calls, error: null, truncated: st.truncated };
+    } catch (e) {
+      WA_CALLS.error = e.message;
+      console.error("Loop WA call counts failed: " + e.message);
+    }
     WASYNC = { at: new Date().toISOString(), running: false, n: rows.length, fresh: fresh,
       ms: Date.now() - t0, error: null, asked: ids.length,
       truncated: Object.keys(mem.ids).length > WA_READ_MAX };
@@ -4068,6 +4082,91 @@ function waBody(v){
     .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\n{3,}/g, "\n\n").trim();
 }
+/* How many times each lead in the list has actually been rung, and how many of those
+   came after they last wrote back.
+
+   There is a contact property called Call Attempts that looks exactly like the answer.
+   It is populated on three leads out of twenty five, so it is not the answer. There is
+   also Number of times contacted, which counts emails and WhatsApp messages alongside
+   calls: one lead here reads sixty seven, of which twenty four are his own WhatsApp
+   replies. Neither field can be used, and both would have looked plausible on a dashboard
+   for months.
+
+   So this counts call records. Associations come back a hundred contacts at a time, and
+   the calls themselves a hundred at a time after that, which for a list this size is
+   about twenty requests rather than one per lead. */
+const WA_CALLS_MAX = parseInt(process.env.WA_CALLS_MAX || "6000", 10);
+let WA_CALLS = { at: 0, byId: {}, calls: 0, error: null, truncated: false };
+/* Fixtures have no token, so without this the counts are always null locally and every
+   test written about them passes while proving nothing. That has now happened three times
+   in this view alone, so the fixture gets the numbers too. */
+function waCallsReady(){
+  if (CN2_FIXTURE_DATA && !WA_CALLS.at) {
+    const byId = {};
+    let n = 0;
+    (CN2_FIXTURE_DATA.rows || []).forEach(function(r){
+      if (!r.waAt) return;
+      const total = (r.calls || 0) + (r.own || 0);
+      // Cannot have rung somebody since they replied without having rung them at all.
+      const after = (total && r.last && r.last > r.waAt) ? 1 : 0;
+      byId[String(r.id)] = { total: total, since: after };
+      n += total;
+    });
+    WA_CALLS = { at: cn2Now(), byId: byId, calls: n, error: null, truncated: false };
+  }
+  return WA_CALLS;
+}
+async function waCallStats(ids, replyAt){
+  const byContact = {};
+  for (let i = 0; i < ids.length; i += 100) {
+    const j = await hs("/crm/v4/associations/contacts/calls/batch/read", { method: "POST",
+      body: JSON.stringify({ inputs: ids.slice(i, i + 100).map(function(x){ return { id: String(x) }; }) })});
+    ((j && j.results) || []).forEach(function(r){
+      const from = String((r.from && (r.from.id || r.from.objectId)) || r.fromObjectId || "");
+      if (!from) return;
+      const to = ((r.to || []).map(function(x){ return String(x.toObjectId || x.id || ""); })).filter(Boolean);
+      byContact[from] = (byContact[from] || []).concat(to);
+    });
+    if (i + 100 < ids.length) await sleep(80);
+  }
+  const all = {};
+  Object.keys(byContact).forEach(function(k){ byContact[k].forEach(function(c){ all[c] = 1; }); });
+  const callIds = Object.keys(all);
+  const truncated = callIds.length > WA_CALLS_MAX;
+  const use = callIds.slice(0, WA_CALLS_MAX);
+  const when = {};
+  for (let i = 0; i < use.length; i += 100) {
+    const b = await hs("/crm/v3/objects/calls/batch/read", { method: "POST",
+      body: JSON.stringify({ properties: ["hs_timestamp", "hs_createdate"],
+        inputs: use.slice(i, i + 100).map(function(x){ return { id: x }; }) })});
+    ((b && b.results) || []).forEach(function(c){
+      const p = c.properties || {};
+      when[String(c.id)] = ts(p.hs_timestamp) || ts(p.hs_createdate);
+    });
+    if (i + 100 < use.length) await sleep(80);
+  }
+  const out = {};
+  Object.keys(byContact).forEach(function(id){
+    const since = replyAt[id] || 0;
+    let total = 0, after = 0, dated = 0;
+    byContact[id].forEach(function(c){
+      total++;
+      const t = when[c];
+      if (t === undefined) return;
+      dated++;
+      if (since && t > since) after++;
+    });
+    // A call we could not date cannot be placed either side of the reply, so the "since"
+    // figure is only offered when every call was dated. Half an answer presented as a
+    // whole one is worse than saying we do not know.
+    // after is drawn from the same list as total, so it cannot exceed it. Clamped anyway,
+    // because "since" reading higher than "total" on a row is the sort of thing that gets
+    // a whole dashboard disbelieved.
+    out[id] = { total: total, since: (since && dated === total) ? Math.min(after, total) : null };
+  });
+  return { byId: out, calls: callIds.length, truncated: truncated };
+}
+
 /* Calls logged against this lead after a given moment. Association then batch read,
    which is two requests, so it belongs on a card being opened and not on a list of two
    hundred rows. */
@@ -4549,6 +4648,7 @@ app.get("/api/callnow2/wa", function(req, res){
     /* The signal the whole view exists for: they wrote back and nobody has rung them
        since. A lead never called at all counts, so long as they have replied. */
     const uncalled = !!(r.waAt && (!r.last || r.waAt > r.last));
+    const cs = waCallsReady().byId[String(r.id)] || null;
     rows.push({
       id: r.id, name: r.name, phone: r.phone, email: r.email,
       stage: r.stage, stageLabel: CN2_STAGE_LABELS[r.stage] || r.stage,
@@ -4561,7 +4661,13 @@ app.get("/api/callnow2/wa", function(req, res){
          one" from the timestamps, because a count needs the call records themselves, so
          it is filled in from the lead's own activity when the card is opened rather than
          guessed at here. */
-      callsSinceReply: uncalled ? 0 : null,
+      /* Counted from call records, because the two properties that look like this answer
+         are an empty field and a field that counts emails and WhatsApp alongside calls.
+         Null means we have not counted yet, which the page says rather than showing a
+         zero it has not earned. */
+      callsTotal: cs ? cs.total : null,
+      callsSinceReply: cs ? (cs.since != null ? cs.since : (uncalled ? 0 : null))
+                          : (uncalled ? 0 : null),
       repliedToday: !!(r.waAt && r.waAt >= day.start && r.waAt < day.end)
     });
   });
@@ -4601,7 +4707,12 @@ app.get("/api/callnow2/wa", function(req, res){
       outsideScope: outsideScope, notHeld: notHeld, filteredOut: filteredOut
     },
     waSync: { at: WASYNC.at, read: WASYNC.n, fresh: WASYNC.fresh,
-      error: WASYNC.error, everyMinutes: WASYNC_MINUTES },
+      error: WASYNC.error, everyMinutes: WASYNC_MINUTES,
+      callsCountedAt: waCallsReady().at || null, callsCounted: WA_CALLS.calls,
+      callsError: WA_CALLS.error || null },
+    // The view needs to link out, and it may be open without the drill ever having loaded,
+    // so it carries its own copy rather than borrowing one from another payload.
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
     // This view counts towards nothing. Said in the payload so the page can say it too.
     countsTowardsNothing: true
   });

@@ -575,10 +575,23 @@ The Manager, Agent and Creator pickers apply to this view, filtered on the serve
 per stage summaries and the rows beneath them are computed from one set of leads. What the
 filter hid is counted and shown, as is anything held by another agent.
 
-Calls since the reply is exact when it is zero, which is the case the highlight is built on
-and the one that matters. Above zero the row says only that a call happened, because a count
-needs the call records themselves; those are read when the card is opened rather than
-guessed at.
+Call counts come from call records, not from a contact property, and this is worth writing
+down because two properties look exactly like the answer. `call_attempts`, labelled "Total
+number of call attempts made to this contact", is populated on three leads out of twenty
+five. `num_contacted_notes`, "number of times contacted", counts emails and WhatsApp
+messages alongside calls: one lead in this list reads sixty seven, of which twenty four are
+his own WhatsApp replies. Either would have looked plausible on a dashboard for months.
+
+So the sweep batch reads call associations for the list, a hundred contacts per request,
+then the calls themselves a hundred per request. About twenty requests for a list this
+size, against one per lead if it were done row by row. Every row then carries calls all
+time and calls since the last reply. A call we cannot date is not placed either side of the
+reply, so the "since" figure is only offered when every call was dated; half an answer shown
+as a whole one is worse than saying we do not know.
+
+The lead name links through to the contact in HubSpot. The view carries its own portal
+details rather than borrowing them from the drill, because it can be open without the drill
+ever having loaded.
 
 Who said what is read from the message body, not from a property. Loop sets no direction
 field, so the first version fell through to its default and rendered every thread as though

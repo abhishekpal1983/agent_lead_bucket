@@ -138,6 +138,8 @@ td.z{color:#B7C2CD}
 .walink:hover{color:#0C447C}
 .wasum{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 .waph{font-size:12px;color:#185FA5;text-decoration:none;border-bottom:1px dotted #85B7EB}
+.walead{font-weight:600;color:#0A2540;text-decoration:none;border-bottom:1px solid #C7D3DF}
+.walead:hover{color:#185FA5;border-bottom-color:#85B7EB}
 .wafields{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:5px;font-size:12px;color:#2C4054}
 .wafields span{white-space:nowrap}
 .wafields i{display:block;font-style:normal;font-size:10.5px;color:#8895A5;text-transform:uppercase;letter-spacing:.03em}
@@ -937,6 +939,11 @@ function loadThread(id){
     .then(function(j){ WTHREAD[id]={loading:false,msgs:j.messages||[],callsSince:j.callsSince}; draw(); })
     .catch(function(e){ WTHREAD[id]={loading:false,msgs:[],error:e.message}; draw(); });
 }
+/* The drill carries a portal, but this view can be open without the drill ever having
+   loaded, so it prefers its own copy and falls back to the shared one. */
+function waHsl(id){
+  var p=(W&&W.portal)||(L&&L.portal)||{};
+  return "https://"+(p.uiDomain||"app.hubspot.com")+"/contacts/"+(p.portalId||"")+"/contact/"+id;}
 function waRows(st){
   return st.rows.filter(function(r){
     if(WFILT==="uncalled")return r.uncalled;
@@ -964,12 +971,14 @@ function threadBlock(id){
    can only say "at least one" until the card is opened and the calls are counted, so it
    says that rather than showing a number it has not earned. */
 function waSince(r){
+  // The open card counts it live; otherwise the sweep has already counted it. Only when
+  // neither has does it say so, rather than showing a zero it has not earned.
   var t=WTHREAD[r.id];
-  if(t&&typeof t.callsSince==="number")
-    return t.callsSince===0?"<b class='m'>0 calls since they replied</b>"
-      :"<b>"+fmt(t.callsSince)+"</b> call"+(t.callsSince===1?"":"s")+" since they replied";
-  if(r.uncalled)return "<b class='m'>0 calls since they replied</b>";
-  return "called since they replied<span class='z'> (open to count)</span>";
+  var n=(t&&typeof t.callsSince==="number")?t.callsSince
+       :(typeof r.callsSinceReply==="number"?r.callsSinceReply:null);
+  if(n===null)return "<span class='z'>calls since their reply not counted yet</span>";
+  return n===0?"<b class='m'>0 calls since they replied</b>"
+    :"<b>"+fmt(n)+"</b> call"+(n===1?"":"s")+" since they replied";
 }
 function waView(){
   if(VIEW!=="wa")return "";
@@ -1034,7 +1043,9 @@ function waView(){
       h+="<div class='warow"+(r.uncalled?" hot":"")+"'>"+
         "<div class='wahead' onclick='waToggle(\""+esc(r.id)+"\")'>"+
           "<span class='wacar'>"+(open?"−":"+")+"</span>"+
-          "<b>"+esc(r.name||"(no name)")+"</b>"+
+          "<a class='walead' href='"+esc(waHsl(r.id))+"' target='_blank' rel='noopener' "+
+            "title='Open this contact in HubSpot' onclick='event.stopPropagation()'>"+
+            esc(r.name||"(no name)")+" \u2197</a>"+
           (r.phone?"<a class='waph' href='tel:"+esc(r.phone)+"' onclick='event.stopPropagation()'>"+esc(r.phone)+"</a>":"")+
           (r.uncalled?"<span class='wapill hot'>replied since your last call</span>":"")+
         "</div>"+
@@ -1047,6 +1058,7 @@ function waView(){
           "<span><i>Last call</i>"+(r.last?esc(tmp(r.last)):"never called")+"</span>"+
           "<span><i>Follow-up</i>"+(r.fu?esc(tmp(r.fu)):"none set")+"</span>"+
           "<span><i>Their replies</i>"+fmt(r.waN||0)+"</span>"+
+          "<span><i>Calls, all time</i>"+(r.callsTotal==null?"<span class='z'>counting</span>":fmt(r.callsTotal))+"</span>"+
         "</div>"+
         "<div class='wafoot'>"+waSince(r)+"</div>"+
         (open?"<div class='waexp'>"+threadBlock(r.id)+"</div>":"")+

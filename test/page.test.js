@@ -855,8 +855,17 @@ ok("a row shows phone, owner, creator, last call and follow-up without opening i
     return html.slice(html.indexOf("wafields")).indexOf("<i>" + f + "</i>") >= 0; }));
 ok("replying since the last call is called out on the row itself",
   html.indexOf("replied since your last call") >= 0);
-ok("calls since the reply is exact at zero and does not invent a number above it",
-  html.indexOf("function waSince(r)") >= 0 && html.indexOf("(open to count)") >= 0);
+ok("the lead name opens the contact in HubSpot without collapsing the row",
+  html.indexOf("function waHsl(id)") >= 0 && html.indexOf("class='walead'") >= 0 &&
+  html.indexOf("target='_blank'") >= 0 &&
+  html.slice(html.indexOf("class='walead'")).indexOf("event.stopPropagation()") >= 0);
+ok("the link works even when the drill has never loaded",
+  html.indexOf("(W&&W.portal)||(L&&L.portal)") >= 0);
+ok("both call counts are on the row",
+  html.indexOf("Calls, all time") >= 0 && html.indexOf("function waSince(r)") >= 0);
+ok("an uncounted call figure says so rather than showing a zero it has not earned",
+  html.indexOf("calls since their reply not counted yet") >= 0 &&
+  html.indexOf("<span class='z'>counting</span>") >= 0);
 ok("leads in the list held by other agents are counted and named, not silently dropped",
   html.indexOf("t.outsideScope") >= 0 && html.indexOf("held by other agents") >= 0);
 ok("and so are members we do not hold at all",

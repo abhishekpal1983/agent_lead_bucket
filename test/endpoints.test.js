@@ -538,10 +538,30 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return st.rows.every(function(r){
           return "phone" in r && "ownerName" in r && "creator" in r &&
                  "last" in r && "fu" in r && "waAt" in r && "waN" in r; }); }));
-    ok("calls since the reply is exact when it is zero, and honest when it is not",
+    /* Two contact properties look like a total call count. Call Attempts is populated on
+       three leads in twenty five, and Number of times contacted counts emails and
+       WhatsApp alongside calls. Both would have looked plausible for months, so the count
+       comes from call records instead. */
+    ok("every row carries a total call count and one since the reply",
       (wa.body.stages || []).every(function(st){
         return st.rows.every(function(r){
-          return r.uncalled ? r.callsSinceReply === 0 : r.callsSinceReply === null; }); }));
+          return "callsTotal" in r && "callsSinceReply" in r; }); }));
+    ok("and they were actually counted, not left null the way an untested path would be",
+      (wa.body.waSync || {}).callsCounted > 0 &&
+      (wa.body.stages || []).some(function(st){
+        return st.rows.some(function(r){ return typeof r.callsTotal === "number"; }); }),
+      JSON.stringify(wa.body.waSync));
+    ok("calls since the reply can never exceed calls in total",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){
+          return r.callsSinceReply == null || r.callsTotal == null ||
+                 r.callsSinceReply <= r.callsTotal; }); }));
+    ok("a lead nobody has rung since replying reads zero, not blank",
+      (wa.body.stages || []).every(function(st){
+        return st.rows.every(function(r){ return !r.uncalled || r.callsSinceReply === 0; }); }));
+    ok("the view carries its own portal, so it can link out without the drill",
+      wa.body.portal && wa.body.portal.uiDomain && wa.body.portal.portalId,
+      JSON.stringify(wa.body.portal));
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
 
