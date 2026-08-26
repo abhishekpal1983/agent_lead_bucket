@@ -561,6 +561,16 @@ be eventually consistent with. Health now reports both how many were read and ho
 carried a reply newer than the one we held, because reporting only the first is exactly how
 a zero goes unnoticed for a day.
 
+Agents get this view. They are who it is for. It renders identically for VP, manager and
+agent, and there is a test that renders all three and checks the tab, the lead row, the
+phone number and the highlight rather than inferring it from the absence of a guard.
+
+What differs is scope, and only scope. The role scope is applied to the list on the server:
+an agent sees the members of the list that they hold, a manager sees their team's, a VP sees
+all. Leads in the list held by somebody else are counted and named at the foot of the view
+rather than dropped without a word. The thread endpoint obeys the same rule as the notes
+reader, so an agent cannot read a conversation on a lead that is not theirs.
+
 The Manager, Agent and Creator pickers apply to this view, filtered on the server so the
 per stage summaries and the rows beneath them are computed from one set of leads. What the
 filter hid is counted and shown, as is anything held by another agent.

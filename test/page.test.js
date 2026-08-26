@@ -92,7 +92,7 @@ const leadRows = Object.keys(base).slice(0, 3).map(function(id){
     stageEntered: fixture.now - 5 * 86400000 };
 });
 
-function render(role){
+function render(role, extra){
   let out = "";
   const app = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; }, style: {} };
   const stub = { innerHTML: "", style: {}, textContent: "", scrollIntoView(){} };
@@ -141,12 +141,15 @@ function render(role){
   // The explanatory cards live in a fold that is shut by default. Open it, or every
   // assertion about them tests the fold rather than the card.
   ctx.BEHIND = true;
+  // Extra context a caller wants pinned, such as a Loop WA payload and which view is on.
+  if (extra) Object.keys(extra).forEach(function(k){ ctx[k] = extra[k]; });
   ctx.draw();                                   // the matrix, filters, agent table
   ctx.PICK = { stage: "counselled", sec: "n", col: "all", t: "", worked: "", moved: "", notcounted: "" };
   ctx.LEADS = false;
   ctx.OPEN = {}; ctx.OPEN[leadRows[0].id] = true;
   ctx.L = { total: leadRows.length, shown: leadRows.length, rows: leadRows,
     portal: { uiDomain: "app.hubspot.com", portalId: "1" } };
+  if (extra) Object.keys(extra).forEach(function(k){ ctx[k] = extra[k]; });
   ctx.draw();                                   // again, with the drill open and expanded
   return out;
 }
@@ -793,6 +796,28 @@ ok("and a segment an agent picks is cleared and shared like every other filter",
 
 /* Loop WA. The rule that must never bend is the last one: this view counts towards
    nothing, so a lead in it can never leak into a due number or a completion rate. */
+/* An agent is the person this view is for, so "does the agent get it" is not a detail to
+   infer from reading the code. Rendered for all three roles and checked. */
+{
+  const W = { listId: "1851", listSize: 167, scoped: true, role: "agent",
+    totals: { mine: 12, listSize: 167, uncalled: 4, today: 2, notHeld: 3, outsideScope: 0, filteredOut: 0 },
+    waSync: { at: new Date().toISOString(), read: 167, fresh: 1, everyMinutes: 3 },
+    countsTowardsNothing: true,
+    stages: [{ stage: "counselled", label: "Counselled", n: 6, uncalled: 1, today: 0, replies: 19,
+      rows: [{ id: "L1", name: "Mark Oduro Amoateng", phone: "+233572957159",
+        creator: "payalineurope", ownerName: "Bibin Christopher", owner: "9",
+        stage: "counselled", stageLabel: "Counselled", last: 0, fu: 0, waN: 1,
+        waAt: fixture.now - 3600000, waLast: "STOP", uncalled: true,
+        callsSinceReply: 0, repliedToday: false }] }] };
+  ROLES.forEach(function(r){
+    const tabs = render(r[1], { W: W, VIEW: "matrix" });
+    const view = render(r[1], { W: W, VIEW: "wa" });
+    ok(r[0] + " gets the Loop WA tab", tabs.indexOf("Loop WA") >= 0);
+    ok(r[0] + " gets the view, the lead, the phone and the highlight",
+      view.indexOf("Loop WA leads") >= 0 && view.indexOf("Mark Oduro") >= 0 &&
+      view.indexOf("+233572957159") >= 0 && view.indexOf("replied since your last call") >= 0);
+  });
+}
 ok("Loop WA is a fourth view, not a filter on the existing ones",
   html.indexOf('["matrix","queue","board","wa"]') >= 0 &&
   html.indexOf("function waView()") >= 0);
