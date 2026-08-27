@@ -744,9 +744,18 @@ function unpick(){PICK=null;L=null;draw();}
 function rebuild(btn){if(btn){btn.disabled=true;btn.textContent="Building...";}
   fetch("/api/callnow2/rebuild",{method:"POST"}).then(asJson).then(function(){setTimeout(load,8000);})
     .catch(function(e){alert(e.message);});}
+/* Re-locking now merges rather than replaces, so it can only add leads. The old wording
+   warned that progress would be measured from this moment instead of midnight, which was
+   true when this replaced the list and is not true now. It is the repair for a list that
+   was locked while the pool was still loading. */
 function refreeze(){
-  if(!confirm("Lock the list again using the leads as they are right now? Today's progress will then be measured from this moment instead of from midnight."))return;
-  fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(){load();}).catch(function(e){alert(e.message);});}
+  if(!confirm("Add any leads that were missing when today's list was locked?\n\nNothing is removed: every lead already on the list stays, so nobody loses work they have started."))return;
+  fetch("/api/callnow2/refreeze",{method:"POST"}).then(asJson).then(function(j){
+    alert(j.added
+      ? "Added "+fmt(j.added)+" leads. The list now holds "+fmt(j.n)+".\n\n"+(j.note||"")
+      : "Nothing to add. The list holds "+fmt(j.n)+".\n\n"+(j.note||""));
+    load();
+  }).catch(function(e){alert(e.message);});}
 
 var TIMING=[["due","Due today"],["over","Overdue"],["nofu","No FU"],["newlead","Fresh"],["sched","Later date"]];
 var COLS=[["form","Form"],["score","Score &ge;6"],["intl","Intl"],["fresh","Fresh"],

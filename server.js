@@ -5207,10 +5207,24 @@ app.post("/api/callnow2/rebuild", function(req, res){
   res.status(202).json({ ok: true, building: true });
 });
 
+/* Re-lock today's list against the pool as it stands now.
+
+   Since the freeze merges rather than replaces, this can only ever add leads: nothing an
+   agent has already been given can disappear underneath them. That makes it the repair
+   for a list that was locked while the pool was still loading, which is what happened on
+   27 August. It reports what it added and whether the pool is complete yet, because
+   clicking it too early adds nothing and saying so beats looking broken. */
 app.post("/api/callnow2/refreeze", function(req, res){
   if (!isVP(req)) return res.status(403).json({ error: "Call Now 2.0 is restricted" });
+  const before = (function(){ const st = cn2Store(); return st && st.rows ? Object.keys(st.rows).length : 0; })();
   const st = cn2Freeze(true);
-  res.json({ ok: !!st, at: st ? st.at : null, n: st ? Object.keys(st.rows).length : 0 });
+  const after = st && st.rows ? Object.keys(st.rows).length : 0;
+  res.json({ ok: !!st, at: st ? st.at : null, n: after, added: Math.max(0, after - before),
+    poolComplete: !CN2_POOL.lastError, missing: CN2_POOL.lastError || null,
+    note: CN2_POOL.lastError
+      ? "The pool is still loading (" + CN2_POOL.lastError + "), so this added what is " +
+        "available now. The rest is added automatically once it lands."
+      : "The pool is complete, so this is the full list for today." });
 });
 
 app.get("/api/callnow", (req, res) => {
