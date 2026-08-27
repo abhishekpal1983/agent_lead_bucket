@@ -110,6 +110,8 @@ td.z{color:#B7C2CD}
 .tag.rf{background:#FF7A59;color:#fff}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
 .tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
+.wrap .warn.bad.shortlist{margin-bottom:10px}
+.wrap .warn.bad.shortlist .btn{margin-left:6px}
 .vbadge{margin-left:6px;background:#FAC775;color:#412402;border-radius:9px;padding:0 6px;font-size:11px}
 .ac-wa>h2{border-left:4px solid #1D9E75;padding-left:9px}
 .wacards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:10px}
@@ -855,6 +857,28 @@ function totRow(label,cells,secKey,cls){
   TIMING.forEach(function(t,i){h+=col(t[0],"gA",i,true);});
   COLS.forEach(function(t,i){h+=col(t[0],"gB",i,false);});
   return h+"</tr>";}
+/* Today's list came up short, said where anybody will see it.
+
+   The repair for this used to be a text link at the bottom of the page, inside a fold
+   that is shut by default. That is the wrong place for the thing that fixes the whole
+   floor's morning, and on 27 August it meant a quarter sized list sat there unnoticed
+   until agents started asking why their dashboards were empty. */
+function shortList(){
+  var b=J.base;
+  if(!b)return "";
+  if(!b.partial&&!b.short)return "";
+  var why=b.partial?"it was locked while the lead pool was still loading ("+esc(b.partial)+")"
+                   :"it holds "+fmt(b.n)+" leads against a usual "+fmt(b.usual);
+  return "<div class='warn bad shortlist'><b>Today's calling list is short:</b> "+why+". "+
+    "Leads that were missing at that moment are not on anyone's list for today."+
+    (b.poolComplete
+      ? " The pool has finished loading now, so they can be added."
+      : " The pool is still loading"+(b.missing?" ("+esc(b.missing)+")":"")+
+        ", so wait a minute before adding them.")+
+    (J.isVP
+      ? " <button class='btn' onclick='refreeze()'>Add the missing leads</button>"
+      : " Ask a VP to add them from Call Now.")+
+    "</div>";}
 function baseNote(){
   if(!J.frozen)return "<div class='warn'>Today's calling list has not been locked yet, so these numbers are still moving. It locks automatically at "+esc(J.freezeHour)+" IST.</div>";
   return "<div class='sec mini ac ac-list'><div class='sub' style='margin:0'><b>Today's calling list locked at "+
@@ -2155,7 +2179,7 @@ function draw(){
      blocks sized against each other rather than against the cards, so one of the three
      always finished short and left a band of white under it. As siblings they stretch to
      one height and the band has no hole in it. */
-  var h=quality()+
+  var h=shortList()+quality()+
     "<div class='headband"+(mineOnly?" solo":"")+"'>"+
       "<div class='heroside'>"+hero()+viewTabs()+lockNote()+"</div>"+
       barTop()+

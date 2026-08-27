@@ -871,5 +871,37 @@ ok("leads in the list held by other agents are counted and named, not silently d
 ok("and so are members we do not hold at all",
   html.indexOf("Not in our pool") >= 0);
 
+/* The repair for a short list used to be a text link at the bottom of the page, inside a
+   fold that is shut by default. On 27 August that meant a quarter sized list sat unnoticed
+   until agents started asking why their dashboards were empty. */
+{
+  const shortBase = { n: 1031, usual: 4265, partial: "built without fresh leads yet",
+    upgradedAt: null, poolComplete: true, missing: null, short: true };
+  const vpS = render(Object.assign({}, ROLES[0][1], { base: shortBase }));
+  const agS = render(Object.assign({}, ROLES[2][1], { base: shortBase }));
+  ok("a short list is called out at the top of the page, not buried in a fold",
+    vpS.indexOf("Today's calling list is short") >= 0 &&
+    vpS.indexOf("shortlist") < vpS.indexOf("headband"));
+  ok("it says why it is short rather than only that it is",
+    vpS.indexOf("built without fresh leads yet") >= 0);
+  ok("a VP gets the button to fix it there and then",
+    vpS.indexOf("Add the missing leads") >= 0);
+  ok("and anyone else is told who can", agS.indexOf("Ask a VP to add them") >= 0);
+  ok("a healthy list says nothing at all",
+    render(Object.assign({}, ROLES[0][1],
+      { base: { n: 4200, usual: 4265, partial: null, poolComplete: true, short: false } }))
+      .indexOf("Today's calling list is short") < 0);
+  ok("and it waits rather than telling somebody to fix a pool still loading",
+    render(Object.assign({}, ROLES[0][1],
+      { base: Object.assign({}, shortBase, { poolComplete: false, missing: "fresh leads" }) }))
+      .indexOf("wait a minute") >= 0);
+}
+/* Re-locking merges now, so the old warning about progress being measured from this
+   moment is no longer true, and a warning that does not apply is how a safe button stops
+   being pressed. */
+ok("the confirmation says nothing is removed",
+  html.indexOf("Nothing is removed: every lead already on the list stays") >= 0 &&
+  html.indexOf("measured from this moment instead of from midnight") < 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

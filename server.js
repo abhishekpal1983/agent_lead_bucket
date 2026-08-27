@@ -3550,6 +3550,21 @@ app.get("/api/callnow2", function(req, res){
     timing: CN2.TIMING, columns: CN2.COLUMNS,
     frozen: ctx.frozen, frozenAt: ctx.frozenAt, freezeHour: CN2_FREEZE_HM, workDays: CN2_WORK_DAYS,
     baseSize: Object.keys(ctx.base).length,
+    /* Whether today's list was locked against a pool that had not finished loading, and
+       how it compares with a normal day. A short list looks exactly like a quiet one, so
+       the page has to be able to say it out loud rather than leaving somebody to notice
+       that their morning is oddly empty. */
+    base: (function(){
+      const st = cn2Store();
+      if (!st) return null;
+      const n = st.rows ? Object.keys(st.rows).length : 0;
+      const usual = st.lastGood || 0;
+      return { n: n, usual: usual, partial: st.partial || null,
+        upgradedAt: st.upgradedAt || null,
+        poolComplete: !CN2_POOL.lastError, missing: CN2_POOL.lastError || null,
+        // Below this and it is worth interrupting somebody about.
+        short: !!(usual && n < usual * 0.85) };
+    })(),
     // Leads routed to a working agent since the list was written. The denominator can
     // only grow, and only by this, so it is reported rather than left to be noticed.
     promoted: ctx.promoted, corrected: ctx.corrected, seg: ctx.seg,
