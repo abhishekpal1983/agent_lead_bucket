@@ -459,6 +459,36 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* Seven different faults make an agent's dashboard read zero and they all look
+       identical from outside. This walks them in order and names the first one that
+       fails, so nobody has to reason it out from HubSpot as I had to. */
+    ok("why-zero refuses without an owner or an email",
+      (await get("/api/callnow2/why-zero")).status === 400);
+    const wz = await get("/api/callnow2/why-zero?owner=201");
+    ok("it answers for a healthy agent", wz.status === 200 && wz.body.verdict,
+      JSON.stringify(wz.body && wz.body.verdict));
+    ok("and every gate it checked is reported, not just the failing one",
+      (wz.body.gates || []).length >= 6 &&
+      (wz.body.gates || []).every(function(g){ return "gate" in g && "ok" in g && "detail" in g; }));
+    ok("a healthy agent trips nothing",
+      (wz.body.gates || []).every(function(g){ return g.ok; }),
+      JSON.stringify((wz.body.gates || []).filter(function(g){ return !g.ok; })));
+    const wzOff = await get("/api/callnow2/why-zero?owner=205");
+    ok("a deactivated agent is named as the cause rather than left to inference",
+      (wzOff.body.verdict || "").indexOf("active") >= 0, wzOff.body.verdict);
+    const wzNo = await get("/api/callnow2/why-zero?owner=999999");
+    ok("an owner we have never heard of is named too",
+      (wzNo.body.verdict || "").indexOf("cache") >= 0, wzNo.body.verdict);
+    /* The first version contradicted itself under fixtures: no leads held, fifty on
+       today's list. A diagnostic that disagrees with itself sends people the wrong way. */
+    ok("it never reports holding no leads while also reporting leads on the list",
+      (function(){
+        const g = {};
+        (wz.body.gates || []).forEach(function(x){ g[x.gate] = x.ok; });
+        return !(g["we hold leads for them at all"] === false &&
+                 g["they are on today's frozen list"] === true);
+      })());
+
     /* Loop WA. Built from the contact cache narrowed to a list, never from the frozen
        base, so a lead in a closed stage still shows. And it counts towards nothing. */
     const wa = await get("/api/callnow2/wa");

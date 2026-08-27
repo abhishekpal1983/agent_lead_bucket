@@ -4800,6 +4800,112 @@ app.get("/api/callnow2/lead/:id/activity/raw", async function(req, res){
   res.json(out);
 });
 
+/* Why is this agent's dashboard empty.
+
+   A lead has to pass a series of gates to reach an agent's screen, and when one of them
+   drops everything the symptom is identical every time: zero. Owner not in our cache,
+   creator not tracked, stage not in the set, lead not qualifying, list frozen before they
+   were assigned, owner not countable, login email not matching the HubSpot owner. Seven
+   different faults, one appearance.
+
+   This walks them in order and names the one that emptied the page, rather than leaving
+   somebody to reason it out from the outside as I just had to. */
+app.get("/api/callnow2/why-zero", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP only" });
+  const q = String(req.query.owner || "").trim();
+  const email = String(req.query.email || "").trim().toLowerCase();
+  let id = q;
+  if (!id && email) id = ownerIdForEmail(email);
+  if (!id) return res.status(400).json({ error: "pass ?owner=<ownerId> or ?email=<work email>" });
+
+  /* Fixtures hold their leads as rows rather than as raw contacts, and their owners in
+     their own list. Without this the diagnostic contradicts itself locally, reporting no
+     leads held next to fifty on today's list, which is exactly the sort of output that
+     sends somebody chasing the wrong thing. */
+  const fx = !!CN2_FIXTURE_DATA;
+  const own = fx
+    ? (CN2_FIXTURE_DATA.agents.filter(function(a){ return String(a.id) === String(id); })[0] || null)
+    : ((CACHE.owners || {})[id] || null);
+  const day = CN2.dayBoundsFor(cn2Now());
+  const out = { ownerId: id, gates: [] };
+  const gate = function(name, ok, detail){ out.gates.push({ gate: name, ok: !!ok, detail: detail }); };
+
+  gate("owner is in our cache", !!own,
+    own ? (own.name || "") + " <" + (own.email || "no email") + ">"
+        : "We hold no owner with this id. The owners list is read at boot, so a very new " +
+          "joiner can be missing until the next restart.");
+  if (own) {
+    gate("owner is active in HubSpot", own.active !== false,
+      own.active === false ? "Deactivated. Their leads are shown but never counted." : "active");
+    if (!fx) {
+      gate("login email resolves to this owner", ownerIdForEmail(own.email || "") === String(id),
+        "We match a Google login to a HubSpot owner on an exact email match. If they sign in " +
+        "with a different address from the one on their HubSpot user, they are scoped to no " +
+        "owner at all and every number reads zero.");
+    }
+  }
+  gate("owner is countable", ownerCounted(id),
+    ownerCounted(id) ? "counted" : "listed in NONCOUNT_OWNERS, so shown but never counted");
+
+  const team = cn2Teams().filter(function(t){ return (t.agentIds || []).map(String).indexOf(String(id)) >= 0; })[0];
+  gate("owner is mapped to a team", !!team,
+    team ? (team.name || team.id)
+         : "Not on any team in Teams and targets. Their own Call Now still works, but every " +
+           "team rollup, the daily review and the agent summary are built from team-mapped " +
+           "agents, so they are missing there.");
+
+  // Everything we hold for them, gate by gate, counted rather than described.
+  const mine = fx
+    ? cn2Rows().filter(function(r){ return String(r.owner || "") === String(id); })
+    : (CACHE.contacts || []).filter(function(c){ return c && String(c.hubspot_owner_id || "") === String(id); });
+  const byCreator = {}, byStage = {}, untracked = {};
+  let qualify = 0;
+  mine.forEach(function(c){
+    const u = (fx ? c.creator : c.topmate_username) || "(none)";
+    byCreator[u] = (byCreator[u] || 0) + 1;
+    if (!fx && PFRESH_LIST.indexOf(c.topmate_username || "") < 0) untracked[u] = (untracked[u] || 0) + 1;
+    const st = fx ? c.stage : cnStage(c);
+    byStage[st] = (byStage[st] || 0) + 1;
+    if (fx) { qualify++; return; }
+    if (PFRESH_LIST.indexOf(c.topmate_username || "") >= 0 && cn2CheapQualify(c, day)) qualify++;
+  });
+  gate("we hold leads for them at all", mine.length > 0, mine.length + " leads in the cache");
+  gate("their creators are tracked", Object.keys(untracked).length === 0,
+    Object.keys(untracked).length
+      ? "Leads on creators we do not track are never fetched into the calling list: " +
+        JSON.stringify(untracked)
+      : "all on tracked creators");
+  gate("some leads qualify for the list", qualify > 0,
+    qualify + " of " + mine.length + " pass the stage and qualifying test");
+
+  // And what actually reached today's frozen list.
+  let inBase = 0, counted = 0, action = 0;
+  if (cn2Ready()) {
+    const snap = cn2SnapshotCached();
+    Object.keys(snap.base).forEach(function(k){
+      const b = CN2.read(snap.base[k]);
+      if (String(b.owner || "") !== String(id)) return;
+      inBase++;
+      if (b.counted) counted++;
+      if (b.counted && b.sec === CN2.SEC_ACTION) action++;
+    });
+  }
+  gate("they are on today's frozen list", inBase > 0,
+    inBase + " on the list, " + counted + " counted, " + action + " needing action today. " +
+    "The list is frozen at 00:05 and never shrinks, so leads assigned to them after that " +
+    "join only through routing, or tomorrow.");
+
+  const failed = out.gates.filter(function(g){ return !g.ok; });
+  out.verdict = failed.length
+    ? "First gate that fails: " + failed[0].gate + ". " + failed[0].detail
+    : "Every gate passes, so an empty screen is not about this agent's data. Check which " +
+      "view they are on and whether a filter is set.";
+  out.creators = byCreator;
+  out.stages = byStage;
+  out.listFrozenAt = cn2Ready() ? cn2SnapshotCached().frozenAt : null;
+  res.json(out);
+});
+
 app.get("/api/callnow2/segments", async function(req, res){
   try {
     const rows = await segCatalogue();

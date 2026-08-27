@@ -614,3 +614,22 @@ per lead. Two things there are portal specific: which field carries the directio
 the channel type is called. Both are guessed from a list of candidates, and
 `/api/callnow2/lead/:id/activity/raw` returns the raw records so a wrong guess costs one
 call rather than a deploy.
+
+## 23. Why an agent's dashboard reads zero
+
+A lead passes several gates on its way to an agent's screen, and when any one of them drops
+everything, the symptom is the same: zero. The owner is not in our cache, because the owners
+list is read at boot and a new joiner arrived after it. The creator is not tracked, so the
+lead was never fetched. The stage is outside the set. Nothing qualifies. The list was frozen
+at 00:05 before the leads were assigned. The owner is deactivated, or listed in
+`NONCOUNT_OWNERS`. Or the person signs in with an address that does not exactly match the
+email on their HubSpot user, in which case they are scoped to no owner at all.
+
+Seven faults, one appearance, and working out which one it is from the outside takes an
+afternoon of querying HubSpot. `/api/callnow2/why-zero?owner=<id>` or `?email=<work email>`
+walks them in order, reports every gate with its detail, and names the first that fails.
+
+Team mapping deserves a note of its own, because it fails partially rather than completely.
+An agent who is on no team still sees their own Call Now list, since that is scoped by owner
+id. But the daily review, the team rollups and the agent summary are built from team-mapped
+agents, so they are missing from all three. Half working is harder to spot than not working.
