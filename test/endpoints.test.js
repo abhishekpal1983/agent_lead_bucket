@@ -459,6 +459,28 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("refreshing a lead that does not exist fails cleanly",
       bad.status === 404 || bad.status === 503 || bad.status === 500, "status " + bad.status);
 
+    /* On 27 August the day's list was locked from a pool that had not finished loading:
+       1,031 leads across 34 agents against 4,015 across 37 the day before, and several
+       agents opened an empty dashboard. The guard said everything feeding the pool had to
+       have landed; the code only checked that a list existed. */
+    const baseH = ((await get("/api/health")).body.cn2 || {}).base || null;
+    ok("health reports today's frozen list and whether it was complete",
+      baseH && "n" in baseH && "usualN" in baseH && "partial" in baseH && "poolComplete" in baseH,
+      JSON.stringify(baseH));
+    ok("a list frozen from a partial pool is upgraded, not left short",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        return src.indexOf("if (st.partial && !CN2_POOL.lastError") >= 0 &&
+               src.indexOf("cn2Freeze(true)") >= 0;
+      })());
+    ok("and the upgrade can only add, so a lead an agent was given never vanishes",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        return src.indexOf("if (rows[k] === undefined) { rows[k] = st.rows[k]; }") >= 0;
+      })());
+
     /* Seven different faults make an agent's dashboard read zero and they all look
        identical from outside. This walks them in order and names the first one that
        fails, so nobody has to reason it out from HubSpot as I had to. */

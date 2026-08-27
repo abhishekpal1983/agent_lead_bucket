@@ -1303,6 +1303,18 @@ app.get("/api/health", function(req, res){
             discovered: FORM_LIST.discovered || 0, scanned: FORM_LIST.scanned || 0,
             noFormFor: FORM_LIST.unmatched || [], matched: FORM_LIST.pairs || [],
             error: FORM_LIST.error || null },
+          /* Today's frozen list, and whether it was locked from a pool that had not
+             finished loading. A short list looks exactly like a quiet day, which is how
+             27 August went most of the morning before anyone asked. */
+          base: (function(){
+            const st = (typeof cn2Store === "function") ? cn2Store() : null;
+            if (!st) return null;
+            return { date: st.date || null, at: st.at || null,
+              n: st.rows ? Object.keys(st.rows).length : 0,
+              usualN: st.lastGood || 0,
+              partial: st.partial || null, upgradedAt: st.upgradedAt || null,
+              poolComplete: !CN2_POOL.lastError };
+          })(),
           // The sweep the page's numbers actually depend on.
           calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
             ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
@@ -3133,12 +3145,24 @@ function cn2Freeze(force){
   const st = cn2Store();
   if (!st) return null;
   /* Freezing against a pool that is still loading is worse than not freezing: the
-     denominator is wrong all day and looks authoritative. Everything feeding the pool
-     has to have landed, and the result has to be in the same league as last time. */
+     denominator is wrong all day and looks authoritative.
+
+     This comment already said everything feeding the pool had to have landed. The code
+     did not check it. cn2Ready() goes true the moment a list exists, including one built
+     "without fresh leads, unassigned leads yet", so a restart near midnight froze a
+     quarter sized list and locked it for the whole day. That is exactly what happened on
+     27 August: 1,031 leads across 34 agents against 4,015 across 37 the day before, and
+     several agents opened an empty dashboard.
+
+     Now the shortfall is recorded rather than hidden. A partial pool still freezes, so
+     nobody is left with no list at all, but it is stamped partial and upgraded the moment
+     the missing pieces land. The upgrade only ever adds, so the rule that a frozen list
+     never shrinks still holds. */
   if (!CN2_FIXTURE_DATA) {
     if (!CACHE.loadedAt || CACHE.syncing) return null;
     if (!cn2Ready()) return null;   // never lock a list that has not finished building
   }
+  const partial = (!CN2_FIXTURE_DATA && CN2_POOL.lastError) ? String(CN2_POOL.lastError) : null;
   const date = istParts(new Date(cn2Now())).date;
   if (!force && st.date === date && st.rows && Object.keys(st.rows).length) return st;
   const day = CN2.dayBoundsFor(cn2Now());
@@ -3158,17 +3182,42 @@ function cn2Freeze(force){
       ", the pool looks incomplete. Retrying on the next pass.");
     return null;
   }
+  /* Upgrading today's list rather than replacing it. Every lead already on it stays,
+     whatever it looks like now, because a lead an agent was told to call this morning
+     must not vanish at lunchtime. The upgrade can only add. */
+  let added = 0;
+  if (st.date === date && st.rows) {
+    Object.keys(st.rows).forEach(function(k){
+      if (rows[k] === undefined) { rows[k] = st.rows[k]; }
+    });
+    Object.keys(rows).forEach(function(k){ if (st.rows[k] === undefined) added++; });
+    Object.keys(st.names || {}).forEach(function(k){ if (!names[k]) names[k] = st.names[k]; });
+  }
+  const total = Object.keys(rows).length;
   ORG.cn2base = { date: date, at: new Date().toISOString(), rows: rows, names: names,
-    lastGood: Math.max(n, st.lastGood || 0) };
-  if (typeof orgSave === "function") orgSave("cn2.base", date + ":" + n, "system");
-  console.log("Call Now v2 base frozen for " + date + ": " + n + " leads");
+    partial: partial, upgradedAt: (st.date === date && added) ? new Date().toISOString() : (st.upgradedAt || null),
+    lastGood: Math.max(total, st.lastGood || 0) };
+  if (typeof orgSave === "function") orgSave("cn2.base", date + ":" + total, "system");
+  console.log("Call Now v2 base " + (st.date === date ? "upgraded" : "frozen") + " for " + date +
+    ": " + total + " leads" + (added ? " (+" + added + ")" : "") +
+    (partial ? " [partial: " + partial + "]" : ""));
   return ORG.cn2base;
 }
 function cn2FreezeDue(){
   const st = cn2Store();
   if (!st) return;
   const date = istParts(new Date(cn2Now())).date;
-  if (st.date === date) return;
+  if (st.date === date) {
+    /* Today's list was locked from a pool that had not finished loading. As soon as the
+       missing pieces land, add what they brought. Once only: after that the list is what
+       it is for the day. */
+    if (st.partial && !CN2_POOL.lastError && cn2Ready() && !CACHE.syncing) {
+      console.log("Call Now v2 base was frozen from a partial pool (" + st.partial +
+        "). The pool is complete now, so the missing leads are being added.");
+      cn2Freeze(true);
+    }
+    return;
+  }
   if (istParts(new Date(cn2Now())).hm < CN2_FREEZE_HM) return;
   cn2Freeze(false);
 }

@@ -633,3 +633,28 @@ Team mapping deserves a note of its own, because it fails partially rather than 
 An agent who is on no team still sees their own Call Now list, since that is scoped by owner
 id. But the daily review, the team rollups and the agent summary are built from team-mapped
 agents, so they are missing from all three. Half working is harder to spot than not working.
+
+## 24. A frozen list must never be born short
+
+The day's calling list is frozen once, early, and never shrinks. That rule protected against
+a list getting smaller during the day. It did nothing about a list that was small to begin
+with.
+
+On 27 August the app restarted near midnight. The first capture after the freeze hour landed
+at 00:12, six minutes into a boot, while the priority fresh and unassigned lead syncs were
+still running. The list froze against a quarter of the pool and locked. The floor got 1,031
+leads across 34 agents instead of roughly 4,015 across 37, and several agents opened an empty
+dashboard. Nothing errored, because a short list and a quiet day look identical.
+
+The guard's own comment said "everything feeding the pool has to have landed". The code
+checked only `cn2Ready()`, which goes true the moment a list exists, including one built
+without fresh leads. The comment described the intent and the code never implemented it,
+which is worse than having no comment: it stops the next person looking.
+
+The rule now: a partial pool may still freeze, so nobody is left with no list at all, but the
+base is stamped with what was missing and upgraded once the missing pieces land. The upgrade
+merges rather than replaces, so it can only add. A lead an agent was told to call at nine
+does not disappear at lunchtime.
+
+Health reports the base size, the usual size, whether it was partial, and whether the pool is
+complete now. A quarter sized list is a number somebody can see rather than a quiet morning.
