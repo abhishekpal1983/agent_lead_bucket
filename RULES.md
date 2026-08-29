@@ -664,13 +664,21 @@ complete now. A quarter sized list is a number somebody can see rather than a qu
 The idle tracker introduced three definitions and they are not interchangeable. Anything
 reporting "calls" has to say which it means.
 
-**Dialled** is calls after de-duplication. A call reaches HubSpot twice: FreJun logs the
+**Dialled** is calls after de-duplication. A call can reach HubSpot twice: FreJun logs the
 dial as an `INTEGRATION` record, then the agent writes the same call up and the CRM logs it
-again fifteen to fifty seconds later. On a sampled agent that was 101 records for 55
-conversations. Records from different sources, on the same lead, by the same agent, within
-two minutes, are one call. Two FreJun dials to the same lead four minutes apart stay two,
-because those are real retries and merging them would hide an agent redialling a dead
-number all afternoon.
+again fifteen to fifty seconds later. Records from different sources, on the same lead, by
+the same agent, within two minutes, are one call. Two FreJun dials to the same lead four
+minutes apart stay two, because those are real retries and merging them would hide an agent
+redialling a dead number all afternoon.
+
+How much this matters depends entirely on the agent, and the first estimate written here
+was wrong. One sampled agent logged nearly every call manually straight after FreJun, at
+101 records for 55 calls, and that was generalised to the floor. Measured properly in
+production the floor merges about 87 records out of 1,400, roughly six per cent. The split
+is stable: around 29 per cent of records are manual, but most manual logs are genuine
+standalone calls rather than second copies. So the correction is worth having, for the
+agents it affects it is large, and floor totals move by single digits. Do not quote the
+per-agent figure as a floor figure.
 
 **Answered** is duration above zero. It includes voicemail. It cannot not include voicemail:
 the floor marked exactly one call "Left voicemail" in two days, so the disposition is
