@@ -526,6 +526,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return true; })());
     ok("it says out loud that agents cannot yet explain a gap",
       live.body.declarationsLive === false);
+    /* The merge needs the lead behind each call, fetched by a second request. If that
+       returns nothing the merge rate silently collapses to zero and everything still
+       looks healthy, so the inputs are reported and not just the output. */
+    {
+      const act = ((await get("/api/health")).body.cn2 || {}).activity || null;
+      ok("health reports how many calls have a lead attached, and their sources",
+        act && "withContact" in act && act.bySource && typeof act.bySource === "object",
+        JSON.stringify(act && { w: act.withContact, s: act.bySource }));
+    }
 
     const day = await get("/api/vp/idle/day?now=" + noon);
     ok("the day summary answers", day.status === 200, "status " + day.status);

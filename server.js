@@ -1320,6 +1320,13 @@ app.get("/api/health", function(req, res){
           activity: (typeof ACT === "undefined") ? null : {
             date: ACT.date, at: ACT.at, fullAt: ACT.fullAt, error: ACT.error || null,
             records: ACT.records, calls: ACT.n, ms: ACT.ms,
+            /* De-duplication needs the lead behind each call, and that comes from a second
+               request. If that request quietly returns nothing, no two records ever match
+               and the merge rate collapses to zero while everything still looks healthy.
+               So the inputs to the merge are reported, not just its output. */
+            withContact: Object.values(ACT.byId).filter(function(r){ return !!r.contact; }).length,
+            bySource: Object.values(ACT.byId).reduce(function(m, r){
+              m[r.source || "?"] = (m[r.source || "?"] || 0) + 1; return m; }, {}),
             everyMinutes: ACT_MINUTES, reconcileMinutes: ACT_FULL_MINUTES,
             behindMin: ACT.at ? Math.round((Date.now() - Date.parse(ACT.at)) / 60000) : null
           },
