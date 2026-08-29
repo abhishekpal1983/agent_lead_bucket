@@ -1187,6 +1187,18 @@ function secs(ms){
   var s2 = Math.round(ms / 1000);
   return s2 >= 60 ? Math.floor(s2 / 60) + "m " + (s2 % 60) + "s" : s2 + "s";
 }
+/* vp.html has agoMin but no words for it, and the idle views wanted words. Defined here
+   rather than reaching for callnow2's since(), which is what the first version did and is
+   why the page fell over with "since is not defined". */
+function agoWords(at){
+  var m = agoMin(at);
+  if (m == null) return "";
+  if (m < 1) return "just now";
+  if (m === 1) return "1 min ago";
+  if (m < 60) return m + " min ago";
+  var h = Math.floor(m / 60);
+  return h + (h === 1 ? " hour " : " hours ") + (m % 60) + " min ago";
+}
 function loadIdleLive(){
   fetch("/api/vp/idle/live").then(asJson).then(function(j){ IL = j; renderIdleLive(); })
     .catch(function(e){ IL = { error: e.message }; renderIdleLive(); });
@@ -1220,7 +1232,7 @@ function renderIdleLive(){
        : (sh.inShift ? "" : "<span class='pill a'>outside shift hours</span>"))
       : "<span class='pill a'>not a working day</span>") +
     "<span style='margin-left:auto;font-size:11px' class='mut'>" +
-      (j.sync && j.sync.at ? "calls read " + esc(since(j.sync.at) || "") : "not read yet") +
+      (j.sync && j.sync.at ? "calls read " + esc(agoWords(j.sync.at)) : "not read yet") +
       (j.sync && j.sync.futureDated ? " &middot; " + fmt(j.sync.futureDated) + " future-dated ignored" : "") +
     "</span></div>";
   h += shiftBar(sh, j.now) +

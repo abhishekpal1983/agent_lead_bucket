@@ -929,6 +929,61 @@ ok("the confirmation says nothing is removed",
     vp.indexOf("a real meeting looks the same as an empty hour") >= 0);
   ok("future-dated calls are reported on screen, not silently dropped",
     vp.indexOf("future-dated ignored") >= 0);
+
+  /* Actually run them. The first version of these tests only grepped for strings and the
+     Live floor shipped calling since(), which exists in callnow2.html and not here, so the
+     page rendered "since is not defined" for everybody. Checking that a string is present
+     proves nothing about whether the function around it runs. */
+  const vpScript = (vp.match(/<script>([\s\S]*?)<\/script>/g) || [])
+    .map(function(b){ return b.replace(/^<script>/, "").replace(/<\/script>$/, ""); }).join("\n");
+  const runVp = function(name, state){
+    let out = "", err = null;
+    const el = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; } };
+    const ctx = { console: { log(){}, error(){} },
+      document: { getElementById: function(){ return el; },
+        addEventListener(){}, createElement: function(){ return { click(){}, style: {} }; } },
+      fetch: function(){ return new Promise(function(){}); },
+      setInterval(){}, setTimeout(){}, Date, Math, JSON, Object, String, Number, Array,
+      encodeURIComponent, decodeURIComponent, Promise, RegExp, isNaN, parseInt, parseFloat,
+      Intl, confirm(){ return false; }, alert(){}, localStorage: { getItem(){ return null; }, setItem(){} },
+      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){},
+      location: { search: "", pathname: "/vp.html" }, history: { replaceState(){} },
+      URLSearchParams: URLSearchParams, window: {} };
+    vm.createContext(ctx);
+    try { vm.runInContext(vpScript, ctx); Object.assign(ctx, state); ctx[name](); }
+    catch (e) { err = e; }
+    return { out: out, err: err };
+  };
+  const shiftPay = { start: Date.UTC(2026, 7, 29, 7, 0), end: Date.UTC(2026, 7, 29, 16, 30),
+    isWorkDay: true, inShift: true, inBreak: false,
+    breaks: [{ start: Date.UTC(2026, 7, 29, 9, 0), end: Date.UTC(2026, 7, 29, 9, 30) }] };
+  const rowPay = { id: "9", name: "Santanu Ghosh", team: "Team Sid", active: true,
+    state: "idle", idleMs: 84 * 60000, last: Date.UTC(2026, 7, 29, 9, 48), lastEnd: 0,
+    lastDurMs: 0, first: 0, dialled: 31, answered: 9, conversations: 4, talkMs: 0,
+    records: 33, gaps: [{ from: Date.UTC(2026, 7, 29, 9, 48), to: Date.UTC(2026, 7, 29, 11, 12), ms: 84 * 60000 }],
+    gapMs: 84 * 60000, shiftMs: 222 * 60000, dnp: { dnps: 22, emailed: 0 } };
+  const liveRun = runVp("renderIdleLive", { IL: { now: Date.UTC(2026, 7, 29, 11, 12),
+    date: "2026-08-29", shift: shiftPay,
+    thresholds: { quietMs: 900000, idleMs: 2400000, conversationMs: 60000 },
+    counts: { oncall: 1, between: 2, quiet: 1, idle: 1, none: 0, onbreak: 0 },
+    rows: [rowPay], scoped: false, isVP: true, declarationsLive: false,
+    sync: { at: new Date().toISOString(), error: null, records: 1409, unowned: 1, futureDated: 3,
+      everyMinutes: 3, fullAt: null } } });
+  ok("the Live floor actually renders", !liveRun.err, liveRun.err && liveRun.err.message);
+  ok("and shows the agent, the idle clock and the counts",
+    liveRun.out.indexOf("Santanu Ghosh") >= 0 && liveRun.out.indexOf("1:24") >= 0 &&
+    liveRun.out.indexOf("31/9/4") >= 0, liveRun.out.slice(0, 160));
+  const dayRun = runVp("renderIdleDay", { ID: { date: "2026-08-29", now: Date.UTC(2026, 7, 29, 11, 12),
+    shift: shiftPay,
+    totals: { dialled: 31, answered: 9, conversations: 4, records: 33, gapMs: 84 * 60000,
+      agentsWithGaps: 1, dnps: 22, emailed: 0 },
+    thresholds: { conversationMs: 60000, minGapMs: 900000 },
+    rows: [rowPay], scoped: false, isVP: true, followUpIsEmailOnly: true, declarationsLive: false,
+    sync: { at: new Date().toISOString(), error: null, unowned: 1, futureDated: 3 } } });
+  ok("the Idle day actually renders", !dayRun.err, dayRun.err && dayRun.err.message);
+  ok("and draws the gap on the rail with its hours beside it",
+    dayRun.out.indexOf("Santanu Ghosh") >= 0 && dayRun.out.indexOf("1h 24m") >= 0 &&
+    dayRun.out.indexOf("emailed afterwards") >= 0, dayRun.out.slice(0, 160));
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");
