@@ -120,8 +120,52 @@ rows.forEach(function(r, i){
 // in the fixture rather than a branch nobody ever walks.
 waIds.push("NOT_IN_POOL_1");
 
+/* A shift's worth of call records for the idle tracker.
+
+   Deliberately awkward, because every one of these shapes exists in the portal and each
+   one breaks a naive implementation: FreJun and the agent logging the same call, genuine
+   redials to one lead, dials that never connected, a call with no agent on it, and one
+   with a date somebody typed wrong. */
+const AT = function(h, m){ return D(2026, 8, 6, h) + (m || 0) * 60000; };
+const calls = [];
+let cseq = 0;
+function call(owner, contact, h, m, durMs, source, disposition){
+  cseq++;
+  calls.push({ id: "CALL" + (9000 + cseq), at: AT(h, m), durMs: durMs || 0,
+    disposition: disposition || "", owner: owner, source: source || "INTEGRATION",
+    contact: contact ? String(contact) : "" });
+  return calls[calls.length - 1];
+}
+// 201 works steadily right through, and logs many of his calls twice.
+[[12,40],[12,52],[13,10],[13,26],[13,44],[14,5],[14,20],[15,10],[15,28],[15,50],
+ [16,12],[16,30],[16,48],[17,40],[18,2],[18,30],[19,10],[19,44],[20,20],[21,5]]
+  .forEach(function(t, i){
+    const cid = 7000 + i;
+    call("201", cid, t[0], t[1], i % 3 === 0 ? 0 : 40000 + i * 9000);
+    // The manual write-up, half a minute later, on the same lead.
+    if (i % 2 === 0) call("201", cid, t[0], t[1], 0, "CRM_UI");
+  });
+// Three real redials to one lead, minutes apart. These must never be merged.
+call("201", 7999, 13, 5, 0);
+call("201", 7999, 13, 9, 669200);
+call("201", 7999, 13, 21, 4400);
+// 202 stops after lunch and never comes back: the case the tracker exists for.
+[[12,45],[13,15],[13,50],[14,10]].forEach(function(t, i){
+  call("202", 7100 + i, t[0], t[1], i === 1 ? 0 : 52000);
+});
+// 203 has one long unexplained gap in the middle of the shift.
+[[12,35],[13,5],[13,40],[17,50],[18,20],[19,0],[20,10],[21,20]].forEach(function(t, i){
+  call("203", 7200 + i, t[0], t[1], i % 2 ? 0 : 91000);
+});
+// 204 barely starts.
+call("204", 7300, 20, 15, 12000);
+// Nobody's call, and a call somebody dated in October.
+call("", 7400, 15, 0, 30000);
+calls.push({ id: "CALLBAD", at: D(2026, 10, 15, 11), durMs: 0, disposition: "",
+  owner: "201", source: "CRM_UI", contact: "7401" });
+
 module.exports = {
-  waIds: waIds, rows: rows, now: TODAY, agents: AGENTS,
+  waIds: waIds, calls: calls, rows: rows, now: TODAY, agents: AGENTS,
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
             creators: ["ayush_singh13", "ankita_gulati"] },
           { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"],

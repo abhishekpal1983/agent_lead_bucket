@@ -481,6 +481,70 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return src.indexOf("if (rows[k] === undefined) { rows[k] = st.rows[k]; }") >= 0;
       })());
 
+    /* The idle tracker. Fixtures carry a shift of call records so this is exercised
+       rather than merely reachable, and the fixture clock can be moved so the live view
+       can be seen at a moment inside the shift. */
+    const noon = Date.UTC(2026, 7, 6, 11, 12);      // 16:42 IST on the fixture's Thursday
+    const lunch = Date.UTC(2026, 7, 6, 9, 15);      // 14:45 IST, inside the lunch break
+    const late = Date.UTC(2026, 7, 6, 17, 0);       // 22:30 IST, after the shift
+    const live = await get("/api/vp/idle/live?now=" + noon);
+    ok("the live floor answers", live.status === 200, "status " + live.status + " " + live.raw);
+    ok("and it has real activity behind it, not an empty floor",
+      (live.body.rows || []).some(function(r){ return r.dialled > 0; }),
+      JSON.stringify((live.body.rows || []).map(function(r){ return r.dialled; })));
+    ok("the shift is 12:30 to 22:00 IST",
+      new Date(live.body.shift.start).toISOString().slice(11, 16) === "07:00" &&
+      new Date(live.body.shift.end).toISOString().slice(11, 16) === "16:30");
+    ok("mid afternoon is inside the shift and not a break",
+      live.body.shift.inShift === true && live.body.shift.inBreak === false);
+    /* Nothing may fire during lunch or after hours, or the alarm is noise by day two. */
+    const atLunch = await get("/api/vp/idle/live?now=" + lunch);
+    ok("during lunch nobody is idle, everyone is on a break",
+      atLunch.body.counts.idle === 0 && atLunch.body.counts.quiet === 0 &&
+      atLunch.body.counts.onbreak > 0, JSON.stringify(atLunch.body.counts));
+    const afterHours = await get("/api/vp/idle/live?now=" + late);
+    ok("after the shift nothing is idle at all",
+      afterHours.body.counts.idle === 0 && afterHours.body.counts.between === 0 &&
+      afterHours.body.shift.inShift === false, JSON.stringify(afterHours.body.counts));
+    ok("a call dated in the future is dropped, not counted as activity",
+      live.body.sync.futureDated > 0, String(live.body.sync.futureDated));
+    ok("deactivated agents are not shown as idle, they have left",
+      (live.body.rows || []).every(function(r){ return r.name !== "Gone Gita"; }));
+    ok("the unowned bucket is a count, never a person",
+      (live.body.rows || []).every(function(r){ return r.id && r.id !== "none"; }));
+    ok("answered can never exceed dialled, nor conversations exceed answered",
+      (live.body.rows || []).every(function(r){
+        return r.answered <= r.dialled && r.conversations <= r.answered; }),
+      JSON.stringify((live.body.rows || [])[0]));
+    ok("the worst state sorts to the top, which is the point of the page",
+      (function(){
+        const order = { idle: 0, quiet: 1, none: 2, between: 3, oncall: 4, break: 5, offshift: 6 };
+        const rows = live.body.rows || [];
+        for (let i = 1; i < rows.length; i++) {
+          if (order[rows[i - 1].state] > order[rows[i].state]) return false;
+        }
+        return true; })());
+    ok("it says out loud that agents cannot yet explain a gap",
+      live.body.declarationsLive === false);
+
+    const day = await get("/api/vp/idle/day?now=" + noon);
+    ok("the day summary answers", day.status === 200, "status " + day.status);
+    ok("its totals are built from the same rows it shows",
+      day.body.totals.dialled === (day.body.rows || []).reduce(function(n, r){ return n + r.dialled; }, 0));
+    ok("records exceed calls, which is the double logging being removed",
+      day.body.totals.records > day.body.totals.dialled,
+      day.body.totals.records + " records for " + day.body.totals.dialled + " calls");
+    ok("every gap is at least the minimum, or it would not be a gap",
+      (day.body.rows || []).every(function(r){
+        return (r.gaps || []).every(function(g){ return g.ms >= day.body.thresholds.minGapMs; }); }));
+    ok("no agent's gap time exceeds their shift",
+      (day.body.rows || []).every(function(r){ return r.gapMs <= r.shiftMs + 1000; }),
+      JSON.stringify((day.body.rows || []).map(function(r){ return [r.gapMs, r.shiftMs]; })));
+    ok("the email-only limit is in the payload, so the page cannot forget to say it",
+      day.body.followUpIsEmailOnly === true);
+    ok("a past date is refused rather than answered with today's numbers",
+      (await get("/api/vp/idle/day?date=2026-08-01&now=" + noon)).status === 400);
+
     /* Seven different faults make an agent's dashboard read zero and they all look
        identical from outside. This walks them in order and names the first one that
        fails, so nobody has to reason it out from HubSpot as I had to. */

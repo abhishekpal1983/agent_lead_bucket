@@ -903,5 +903,33 @@ ok("the confirmation says nothing is removed",
   html.indexOf("Nothing is removed: every lead already on the list stays") >= 0 &&
   html.indexOf("measured from this moment instead of from midnight") < 0);
 
+/* The idle tracker's two views. Live is a state and Day is a record, so they must not be
+   the same screen with a different title. */
+{
+  const vp = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
+  ok("both views are reachable from the rail",
+    vp.indexOf('["idlelive", "Live floor", ""]') >= 0 &&
+    vp.indexOf('["idleday", "Idle day", ""]') >= 0 &&
+    vp.indexOf("function renderIdleLive()") >= 0 &&
+    vp.indexOf("function renderIdleDay()") >= 0);
+  ok("live sorts the worst state to the top rather than sorting by name",
+    vp.indexOf("IL_STATE") >= 0 && vp.indexOf("on air") >= 0);
+  ok("the shift bar marks the breaks, so a gap over lunch reads correctly",
+    vp.indexOf("function shiftBar(sh, now)") >= 0 && vp.indexOf("sh.breaks") >= 0);
+  ok("the day view draws each shift as a rail with its gaps on it",
+    vp.indexOf("r.gaps || []).map") >= 0 && vp.indexOf("#D85A30") >= 0);
+  ok("colour carries the state rather than decorating it",
+    vp.indexOf("#A32D2D") >= 0 && vp.indexOf("#0F6E56") >= 0 && vp.indexOf("#EF9F27") >= 0);
+  /* Two honesty notes that must survive any redesign. */
+  ok("the day view states that follow-up is email only",
+    vp.indexOf("Follow-up counts email only") >= 0 &&
+    vp.indexOf("WhatsApp") >= 0 && vp.indexOf("own phones") >= 0);
+  ok("and both views admit that a gap cannot yet be explained",
+    vp.indexOf("agents cannot yet explain a gap") >= 0 &&
+    vp.indexOf("a real meeting looks the same as an empty hour") >= 0);
+  ok("future-dated calls are reported on screen, not silently dropped",
+    vp.indexOf("future-dated ignored") >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

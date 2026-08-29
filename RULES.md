@@ -658,3 +658,57 @@ does not disappear at lunchtime.
 
 Health reports the base size, the usual size, whether it was partial, and whether the pool is
 complete now. A quarter sized list is a number somebody can see rather than a quiet morning.
+
+## 25. Three call numbers, because one would be a lie
+
+The idle tracker introduced three definitions and they are not interchangeable. Anything
+reporting "calls" has to say which it means.
+
+**Dialled** is calls after de-duplication. A call reaches HubSpot twice: FreJun logs the
+dial as an `INTEGRATION` record, then the agent writes the same call up and the CRM logs it
+again fifteen to fifty seconds later. On a sampled agent that was 101 records for 55
+conversations. Records from different sources, on the same lead, by the same agent, within
+two minutes, are one call. Two FreJun dials to the same lead four minutes apart stay two,
+because those are real retries and merging them would hide an agent redialling a dead
+number all afternoon.
+
+**Answered** is duration above zero. It includes voicemail. It cannot not include voicemail:
+the floor marked exactly one call "Left voicemail" in two days, so the disposition is
+useless for separating it, and 403 of 1,039 calls marked Connected lasted under thirty
+seconds.
+
+**Conversations** is duration at or above `CONVERSATION_MS`, default sixty seconds. This is
+a proxy and the screens label it as a duration, not as "spoke to a human".
+
+The Loop WA per-lead call counts were counting records and have been corrected to use the
+same de-duplication. Agent day was already safe: it counts contacts with a call today, not
+call records.
+
+## 26. Idle time is measured in working minutes
+
+The shift is 12:30 to 22:00 IST, Monday to Saturday, with breaks at 14:30 to 15:00 and
+17:00 to 17:30. All of it is configurable, none of it is hardcoded in a view.
+
+An agent whose last call was at 14:20 has been idle for 22 minutes at 15:12, not 52,
+because lunch sits in between. Wall-clock subtraction would make the whole floor look idle
+after every break, and the alarm would be ignored by the second day. Nothing fires outside
+the shift, during a break, or on a Sunday.
+
+The stretch before the first call of the day counts as a gap. Leaving it out would reward
+turning up late.
+
+A call cannot have happened yet. Hand-logged calls with mistyped dates put records months
+in the future, and one of them would leave that agent looking busy until October. Those are
+dropped rather than clamped, because clamping invents activity at a moment nothing
+happened, and the count of dropped records is shown on the page.
+
+## 27. What the idle tracker cannot see, and says so
+
+Agents follow up with leads on WhatsApp from their own phones. Those messages never reach
+HubSpot, so follow-up is counted from email only and both the payload and the screen say
+so. A low number means little email was sent, not that nothing was done. Reporting it
+without that sentence would punish exactly the behaviour the floor wants.
+
+Phase one has no way for an agent to explain a gap, so a genuine client meeting looks
+identical to an empty hour. Both views state this. Until declarations exist, the tracker is
+for managers to look at, not for anybody to be judged on.

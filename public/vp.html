@@ -1153,8 +1153,195 @@ function asCsv(){
   a.click();
 }
 
+/* ---- Idle tracker ------------------------------------------------------------------
+
+   Two views over the same numbers. Live is a state: who is on a call and who is not,
+   sorted so the top of the list is the list to act on. Day is a record: the whole shift
+   drawn as a rail, with every gap and how long it ran.
+
+   Colour carries the state here rather than decorating it, because the point of the page
+   is to be read across a room in two seconds. */
+var IL = null, ID = null;
+var IL_STATE = { idle:["#A32D2D","#fff","#F7C1C1","idle"], quiet:["#EF9F27","#412402","#633806","quiet"],
+  none:["#444441","#fff","#D3D1C7","no calls"], between:["#5F5E5A","#fff","#D3D1C7","between"],
+  oncall:["#0F6E56","#fff","#9FE1CB","on a call"], break:["#26215C","#fff","#CECBF6","on break"],
+  offshift:["#888780","#fff","#F1EFE8","off shift"] };
+var IL_TINT = { idle:"#FCEBEB", quiet:"#FAEEDA", none:"#F1EFE8", between:"#F1EFE8",
+  oncall:"#E1F5EE", break:"#EEEDFE", offshift:"#F1EFE8" };
+function mmss(ms){
+  if (ms == null) return "";
+  var m = Math.max(0, Math.round(ms / 60000));
+  return m >= 60 ? Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") : "0:" + String(m).padStart(2, "0");
+}
+function mins(ms){
+  var m = Math.max(0, Math.round(ms / 60000));
+  return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + "m";
+}
+function hhmm(ms){
+  if (!ms) return "";
+  var d = new Date(ms + 5.5 * 3600000);
+  return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+}
+function secs(ms){
+  if (!ms) return "0s";
+  var s2 = Math.round(ms / 1000);
+  return s2 >= 60 ? Math.floor(s2 / 60) + "m " + (s2 % 60) + "s" : s2 + "s";
+}
+function loadIdleLive(){
+  fetch("/api/vp/idle/live").then(asJson).then(function(j){ IL = j; renderIdleLive(); })
+    .catch(function(e){ IL = { error: e.message }; renderIdleLive(); });
+}
+function loadIdleDay(){
+  fetch("/api/vp/idle/day").then(asJson).then(function(j){ ID = j; renderIdleDay(); })
+    .catch(function(e){ ID = { error: e.message }; renderIdleDay(); });
+}
+/* Where we are in the shift, with the breaks cut out of it. */
+function shiftBar(sh, now){
+  var span = sh.end - sh.start;
+  var pc = function(t){ return Math.max(0, Math.min(100, 100 * (t - sh.start) / span)); };
+  var h = "<div style='position:relative;height:12px;background:#D3D1C7;border-radius:3px;overflow:hidden'>";
+  if (now > sh.start) h += "<div style='position:absolute;left:0;width:" + pc(now) + "%;top:0;bottom:0;background:#534AB7'></div>";
+  (sh.breaks || []).forEach(function(b){
+    h += "<div style='position:absolute;left:" + pc(b.start) + "%;width:" + (pc(b.end) - pc(b.start)) +
+      "%;top:0;bottom:0;background:#2C2C2A'></div>";
+  });
+  return h + "</div>";
+}
+function renderIdleLive(){
+  var el = document.getElementById("ilwrap");
+  if (!el) return;
+  var j = IL; if (!j) return;
+  if (j.error) { el.innerHTML = "<div class='warn bad'>Could not load: " + esc(j.error) + "</div>"; return; }
+  var sh = j.shift, c = j.counts;
+  var h = "<div style='display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px'>" +
+    "<span style='background:#E24B4A;color:#fff;font-size:11px;font-weight:500;padding:3px 10px;border-radius:4px;letter-spacing:.05em'>LIVE</span>" +
+    "<span style='font-size:14px;font-weight:500'>" + esc(hhmm(j.now)) + "</span>" +
+    (sh.isWorkDay ? (sh.inBreak ? "<span class='pill a'>on break</span>"
+       : (sh.inShift ? "" : "<span class='pill a'>outside shift hours</span>"))
+      : "<span class='pill a'>not a working day</span>") +
+    "<span style='margin-left:auto;font-size:11px' class='mut'>" +
+      (j.sync && j.sync.at ? "calls read " + esc(since(j.sync.at) || "") : "not read yet") +
+      (j.sync && j.sync.futureDated ? " &middot; " + fmt(j.sync.futureDated) + " future-dated ignored" : "") +
+    "</span></div>";
+  h += shiftBar(sh, j.now) +
+    "<div style='display:flex;font-size:10.5px;margin:2px 0 12px' class='mut'>" +
+    "<span style='flex:1'>" + esc(hhmm(sh.start)) + "</span>" +
+    "<span style='text-align:right'>" + esc(hhmm(sh.end)) + "</span></div>";
+
+  h += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(94px,1fr));gap:6px;margin-bottom:13px'>";
+  [["oncall", c.oncall], ["between", c.between], ["quiet", c.quiet], ["idle", c.idle],
+   ["none", c.none], ["break", c.onbreak]].forEach(function(k){
+    var st = IL_STATE[k[0]];
+    h += "<div style='background:" + st[0] + ";padding:9px 10px;border-radius:6px'>" +
+      "<div style='font-size:23px;font-weight:500;color:" + st[1] + ";line-height:1.1'>" + fmt(k[1]) + "</div>" +
+      "<div style='font-size:11px;color:" + st[2] + ";text-transform:uppercase;letter-spacing:.04em'>" + esc(st[3]) + "</div></div>";
+  });
+  h += "</div>";
+
+  (j.rows || []).forEach(function(r){
+    var st = IL_STATE[r.state] || IL_STATE.between;
+    var big = r.state === "oncall" ? "on air" : (r.state === "none" ? "none" :
+      (r.state === "break" || r.state === "offshift" ? "-" : mmss(r.idleMs)));
+    h += "<div style='display:flex;align-items:stretch;margin-bottom:4px;border-radius:6px;overflow:hidden'>" +
+      "<div style='background:" + st[0] + ";color:" + st[1] + ";width:78px;flex:none;padding:9px 8px;text-align:center'>" +
+        "<div style='font-size:" + (big.length > 5 ? "13px" : "19px") + ";font-weight:500;line-height:1.3'>" + esc(big) + "</div>" +
+        "<div style='font-size:10px;color:" + st[2] + ";text-transform:uppercase;letter-spacing:.04em'>" + esc(st[3]) + "</div></div>" +
+      "<div style='flex:1;background:" + (IL_TINT[r.state] || "#F1EFE8") + ";padding:9px 11px;display:flex;align-items:center;gap:10px;flex-wrap:wrap'>" +
+        "<div style='flex:1;min-width:150px'>" +
+          "<div style='font-size:13.5px;font-weight:500'>" + esc(r.name) + "</div>" +
+          "<div style='font-size:11px' class='mut'>" + esc(r.team || "no team") +
+            (r.last ? " &middot; last call " + esc(hhmm(r.last)) + ", " + esc(secs(r.lastDurMs))
+                    : " &middot; no calls today") + "</div></div>" +
+        "<div style='font-size:12px' class='mut'>" + fmt(r.dialled) + "/" + fmt(r.answered) + "/" + fmt(r.conversations) + "</div>" +
+      "</div></div>";
+  });
+  if (!(j.rows || []).length) h += "<div class='mut'>Nobody to show.</div>";
+  h += "<div style='margin-top:11px;font-size:11px' class='mut'>dialled / answered / conversations &middot; " +
+    "a conversation is over " + Math.round((j.thresholds.conversationMs || 60000) / 1000) + " seconds &middot; " +
+    "the idle clock stops during breaks and outside the shift" +
+    (j.declarationsLive ? "" : " &middot; agents cannot yet explain a gap, so a legitimate absence reads as idle") + "</div>";
+  el.innerHTML = h;
+}
+function renderIdleDay(){
+  var el = document.getElementById("idwrap");
+  if (!el) return;
+  var j = ID; if (!j) return;
+  if (j.error) { el.innerHTML = "<div class='warn bad'>Could not load: " + esc(j.error) + "</div>"; return; }
+  var sh = j.shift, t = j.totals;
+  var span = sh.end - sh.start;
+  var pc = function(x){ return Math.max(0, Math.min(100, 100 * (x - sh.start) / span)); };
+  var h = "<div style='display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px'>" +
+    "<span style='background:#26215C;color:#fff;font-size:11px;font-weight:500;padding:3px 10px;border-radius:4px;letter-spacing:.05em'>DAY SUMMARY</span>" +
+    "<span style='font-size:14px;font-weight:500'>" + esc(j.date) + "</span>" +
+    "<span style='margin-left:auto;font-size:11px' class='mut'>up to " + esc(hhmm(j.now)) + "</span></div>";
+
+  h += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:6px;margin-bottom:15px'>" +
+    idTile("#534AB7", "#CECBF6", "#AFA9EC", "Dialled", fmt(t.dialled), "from " + fmt(t.records) + " records") +
+    idTile("#185FA5", "#B5D4F4", "#85B7EB", "Answered", fmt(t.answered), "voicemail included") +
+    idTile("#0F6E56", "#9FE1CB", "#5DCAA5", "Conversations", fmt(t.conversations), "over 60 seconds") +
+    idTile("#993C1D", "#F5C4B3", "#F0997B", "Gap time", mins(t.gapMs), "across " + fmt(t.agentsWithGaps) + " agents") +
+    "</div>";
+
+  h += "<div style='display:flex;font-size:10.5px;margin-bottom:4px;padding-left:118px' class='mut'>" +
+    "<span style='flex:1'>" + esc(hhmm(sh.start)) + "</span>" +
+    "<span style='text-align:right'>" + esc(hhmm(sh.end)) + "</span></div>";
+
+  (j.rows || []).forEach(function(r){
+    var worst = r.gapMs >= 3600000 ? "#993C1D" : (r.gapMs >= j.thresholds.minGapMs ? "#854F0B" : "#0F6E56");
+    var tint = r.gapMs >= 3600000 ? "#FAECE7" : (r.gapMs >= j.thresholds.minGapMs ? "#FAEEDA" : "#E1F5EE");
+    var ink = r.gapMs >= 3600000 ? "#4A1B0C" : (r.gapMs >= j.thresholds.minGapMs ? "#412402" : "#04342C");
+    h += "<div style='display:flex;align-items:stretch;margin-bottom:4px;border-radius:6px;overflow:hidden'>" +
+      "<div style='background:" + worst + ";color:#fff;width:116px;flex:none;padding:9px 10px'>" +
+        "<div style='font-size:12.5px;font-weight:500'>" + esc(r.name) + "</div>" +
+        "<div style='font-size:11px;opacity:.85'>" + fmt(r.dialled) + "/" + fmt(r.answered) + "/" + fmt(r.conversations) + "</div></div>" +
+      "<div style='flex:1;background:" + tint + ";padding:8px 10px'>" +
+        "<div style='position:relative;height:22px;background:#fff;border-radius:3px;overflow:hidden'>" +
+          (sh.breaks || []).map(function(b){
+            return "<div style='position:absolute;left:" + pc(b.start) + "%;width:" + (pc(b.end) - pc(b.start)) +
+              "%;top:0;bottom:0;background:#2C2C2A'></div>"; }).join("") +
+          "<div style='position:absolute;left:0;width:" + pc(Math.min(j.now, sh.end)) + "%;top:0;bottom:0;background:#1D9E75'></div>" +
+          (r.gaps || []).map(function(g){
+            return "<div style='position:absolute;left:" + pc(g.from) + "%;width:" + Math.max(0.4, pc(g.to) - pc(g.from)) +
+              "%;top:0;bottom:0;background:" + (g.ms >= 3600000 ? "#D85A30" : "#EF9F27") + "'></div>"; }).join("") +
+          (sh.breaks || []).map(function(b){
+            return "<div style='position:absolute;left:" + pc(b.start) + "%;width:" + (pc(b.end) - pc(b.start)) +
+              "%;top:0;bottom:0;background:#2C2C2A'></div>"; }).join("") +
+        "</div>" +
+        "<div style='margin-top:6px;font-size:11.5px;color:" + ink + "'>" +
+          (r.gaps && r.gaps.length
+            ? "<b>" + mins(r.gapMs) + " in " + fmt(r.gaps.length) + " gap" + (r.gaps.length > 1 ? "s" : "") + "</b>: " +
+              r.gaps.slice(0, 3).map(function(g){ return hhmm(g.from) + " to " + hhmm(g.to); }).join(", ") +
+              (r.gaps.length > 3 ? " and " + (r.gaps.length - 3) + " more" : "")
+            : "<b>No gap over " + Math.round(j.thresholds.minGapMs / 60000) + " minutes.</b>") +
+          "<div style='margin-top:2px;opacity:.85'>" + fmt(r.dnp ? r.dnp.dnps : 0) + " DNPs &middot; <b>" +
+            fmt(r.dnp ? r.dnp.emailed : 0) + "</b> emailed afterwards</div>" +
+        "</div></div></div>";
+  });
+
+  h += "<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:11px' class='mut'>" +
+    idKey("#1D9E75", "calling") + idKey("#EF9F27", "gap") + idKey("#D85A30", "over an hour") +
+    idKey("#2C2C2A", "break") + "</div>";
+  h += "<div style='margin-top:10px;padding:9px 11px;background:#412402;border-radius:6px;font-size:11.5px;color:#FAC775'>" +
+    "<b style='color:#fff'>Follow-up counts email only.</b> Agents message leads from their own phones, so WhatsApp " +
+    "never reaches HubSpot and cannot be counted here. A low number means little email was sent, not that nothing was done." +
+    (j.declarationsLive ? "" : " Agents cannot yet explain a gap either, so a real meeting looks the same as an empty hour.") +
+    "</div>";
+  el.innerHTML = h;
+}
+function idTile(bg, lab, sub, title, big, small){
+  return "<div style='background:" + bg + ";padding:10px 11px;border-radius:6px'>" +
+    "<div style='font-size:11px;color:" + lab + ";text-transform:uppercase;letter-spacing:.04em'>" + esc(title) + "</div>" +
+    "<div style='font-size:23px;font-weight:500;color:#fff;line-height:1.15'>" + big + "</div>" +
+    "<div style='font-size:10.5px;color:" + sub + "'>" + esc(small) + "</div></div>";
+}
+function idKey(c, label){
+  return "<span><span style='display:inline-block;width:16px;height:9px;background:" + c +
+    ";border-radius:2px'></span> " + esc(label) + "</span>";
+}
+
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
+    ["idlelive", "Live floor", ""], ["idleday", "Idle day", ""],
     ["summary", "Agent summary", ""],
     ["agentday", "Agent day", ""], ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
@@ -1195,7 +1382,8 @@ function draw(){
   // width. The manager table has 13 columns and genuinely needs the room, so it stays
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
-  var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets", summary: "Agent summary" }[VIEW] || "Overview";
+  var title = { overview: "Overview", managers: "Managers", mapping: "Mapping", admin: "Teams and targets", summary: "Agent summary",
+    idlelive: "Live floor", idleday: "Idle day" }[VIEW] || "Overview";
   if (ONLY) {
     var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
     title += " · " + (only ? (only.name || "team") : "team");
@@ -1207,6 +1395,8 @@ function draw(){
   else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
   else if (VIEW === "agentday") h += "<div id='adwrap'>Loading the day...</div>";
   else if (VIEW === "summary") h += "<div id='aswrap'>Loading the summary...</div>";
+  else if (VIEW === "idlelive") h += "<div id='ilwrap'>Reading the floor...</div>";
+  else if (VIEW === "idleday") h += "<div id='idwrap'>Reading the day...</div>";
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
@@ -1217,6 +1407,8 @@ function draw(){
   if (VIEW === "weeks") loadWeeks();
   if (VIEW === "agentday") loadAgentDay(AD_DATE);
   if (VIEW === "summary") loadAgentSummary(AS_FROM, AS_TO);
+  if (VIEW === "idlelive") loadIdleLive();
+  if (VIEW === "idleday") loadIdleDay();
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +

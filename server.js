@@ -1315,6 +1315,14 @@ app.get("/api/health", function(req, res){
               partial: st.partial || null, upgradedAt: st.upgradedAt || null,
               poolComplete: !CN2_POOL.lastError };
           })(),
+          /* The idle tracker's reads. A quiet floor and a broken sweep look identical,
+             so both the incremental pass and the full reconcile are reported. */
+          activity: (typeof ACT === "undefined") ? null : {
+            date: ACT.date, at: ACT.at, fullAt: ACT.fullAt, error: ACT.error || null,
+            records: ACT.records, calls: ACT.n, ms: ACT.ms,
+            everyMinutes: ACT_MINUTES, reconcileMinutes: ACT_FULL_MINUTES,
+            behindMin: ACT.at ? Math.round((Date.now() - Date.parse(ACT.at)) / 60000) : null
+          },
           // The sweep the page's numbers actually depend on.
           calls: (typeof CALLSYNC === "undefined") ? null : { at: CALLSYNC.at, n: CALLSYNC.n,
             ms: CALLSYNC.ms, error: CALLSYNC.error || null, everyMinutes: CALLSYNC_MINUTES,
@@ -2988,6 +2996,7 @@ function ownerCounted(id){
    plumbing. v1 is untouched on purpose, the floor uses it every day.
    ========================================================================== */
 const CN2 = require("./lib/cn2");
+const IDLE = require("./lib/idle");
 const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
 const CN2_WORK_DAYS = process.env.WORK_DAYS || CN2.DEFAULT_WORK_DAYS;
@@ -3450,7 +3459,7 @@ let RESP_HIT = 0, RESP_MISS = 0;
 const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
 const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
   "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/vp/agent-day",
-  "/api/vp/agent-summary", "/api/callnow2/wa",
+  "/api/vp/agent-summary", "/api/callnow2/wa", "/api/vp/idle/live", "/api/vp/idle/day",
   "/api/vp/daily", "/api/coaching/progress"];
 
 function dataVersion(){
@@ -3468,6 +3477,9 @@ function dataVersion(){
        had already fetched, which is the one thing this view is not allowed to do. */
     (typeof WASYNC !== "undefined" && WASYNC.at) || "",
     (typeof WA_LIST !== "undefined" && WA_LIST.at) || 0,
+    // The live idle view is the one page where fifteen seconds of staleness is the whole
+    // point of the page, so a new sweep has to invalidate it immediately.
+    (typeof ACT !== "undefined" && ACT.at) || "",
     istParts(new Date(cn2Now())).date
   ].join("|");
 }
@@ -3963,6 +3975,171 @@ async function segMembers(listId){
   return v;
 }
 
+/* ---------- Agent activity, for the idle tracker -----------------------------------
+
+   What each agent has actually been doing, read from call records rather than from the
+   contact properties, because only the call carries the agent, the duration and the
+   moment it happened.
+
+   Two things shape this.
+
+   The contact has to come with the call, or de-duplication is impossible. The search API
+   will not return associations, so the calls are fetched first and their contacts read in
+   a second batch, a hundred at a time.
+
+   And it does not trust its own watermark. The incremental pass every few minutes is what
+   keeps the live view current, but a watermark that quietly stops matching looks exactly
+   like a quiet floor. The WhatsApp sweep did precisely that in production a few days ago.
+   So the whole IST day is re-read on a slower cycle, and the two are reconciled. */
+const IDLE_CFG = {
+  shiftStart: process.env.SHIFT_START || "12:30",
+  shiftEnd: process.env.SHIFT_END || "22:00",
+  breaks: process.env.SHIFT_BREAKS || "14:30-15:00,17:00-17:30",
+  workDays: String(process.env.SHIFT_DAYS || "1,2,3,4,5,6").split(",")
+    .map(function(x){ return parseInt(x.trim(), 10); }).filter(function(n){ return !isNaN(n); }),
+  dedupeMs: parseInt(process.env.CALL_DEDUPE_MS || "120000", 10),
+  conversationMs: parseInt(process.env.CONVERSATION_MS || "60000", 10),
+  quietMs: parseInt(process.env.IDLE_QUIET_MS || "900000", 10),
+  idleMs: parseInt(process.env.IDLE_RED_MS || "2400000", 10),
+  onCallMs: parseInt(process.env.ON_CALL_MS || "180000", 10),
+  minGapMs: parseInt(process.env.MIN_GAP_MS || "900000", 10)
+};
+const CALL_PROPS = ["hs_timestamp", "hs_call_duration", "hs_call_disposition",
+  "hubspot_owner_id", "hs_object_source_label", "hs_createdate"];
+const ACT_MINUTES = parseInt(process.env.ACT_MINUTES || "3", 10);
+const ACT_FULL_MINUTES = parseInt(process.env.ACT_FULL_MINUTES || "30", 10);
+let ACT = { date: null, byId: {}, at: null, running: false, error: null,
+  n: 0, records: 0, fullAt: null, ms: 0 };
+
+/* Pull call records in a window, with the lead each one is attached to. */
+async function callsBetween(from, to){
+  const rows = [];
+  let lastId = "0", guard = 0;
+  while (guard < 400) {
+    guard++;
+    const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "hs_timestamp", operator: "GTE", value: String(from) },
+        { propertyName: "hs_timestamp", operator: "LT", value: String(to) },
+        { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+      ]}],
+      properties: CALL_PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+    const page = (j && j.results) || [];
+    if (!page.length) break;
+    page.forEach(function(r){ rows.push(Object.assign({ id: String(r.id) }, r.properties)); });
+    lastId = page[page.length - 1].id;
+    if (page.length < 100) break;
+    await sleep(90);
+  }
+  // The lead behind each call, a hundred calls per request.
+  const contactOf = {};
+  for (let i = 0; i < rows.length; i += 100) {
+    const j = await hs("/crm/v4/associations/calls/contacts/batch/read", { method: "POST",
+      body: JSON.stringify({ inputs: rows.slice(i, i + 100).map(function(r){ return { id: r.id }; }) })});
+    ((j && j.results) || []).forEach(function(a){
+      const from2 = String((a.from && (a.from.id || a.from.objectId)) || a.fromObjectId || "");
+      const to2 = ((a.to || [])[0] || {});
+      const cid = String(to2.toObjectId || to2.id || "");
+      if (from2 && cid) contactOf[from2] = cid;
+    });
+    if (i + 100 < rows.length) await sleep(80);
+  }
+  return rows.map(function(r){
+    return {
+      id: r.id,
+      at: ts(r.hs_timestamp) || ts(r.hs_createdate),
+      durMs: num(r.hs_call_duration),
+      disposition: String(r.hs_call_disposition || ""),
+      owner: String(r.hubspot_owner_id || ""),
+      source: String(r.hs_object_source_label || "UNKNOWN"),
+      contact: contactOf[r.id] || ""
+    };
+  }).filter(function(r){ return r.at > 0; });
+}
+
+function actStore(dateKey){
+  if (ACT.date !== dateKey) {
+    ACT = { date: dateKey, byId: {}, at: null, running: false,
+      error: null, n: 0, records: 0, fullAt: null, ms: 0 };
+    /* Fixtures carry a shift's worth of call records, so both views can be driven and
+       tested locally. Without this every idle test would run against an empty floor and
+       pass while proving nothing, which has already happened three times on this app. */
+    if (CN2_FIXTURE_DATA && CN2_FIXTURE_DATA.calls) {
+      CN2_FIXTURE_DATA.calls.forEach(function(c){ ACT.byId[c.id] = Object.assign({}, c); });
+      ACT.records = Object.keys(ACT.byId).length;
+      ACT.n = IDLE.dedupe(Object.values(ACT.byId), IDLE_CFG).length;
+      ACT.at = new Date(cn2Now()).toISOString();
+      ACT.fullAt = ACT.at;
+    }
+  }
+  return ACT;
+}
+/* Fixtures only: let a test say what time it is, so the live view can be exercised at a
+   moment inside the shift rather than only whenever the suite happens to run. */
+function idleNow(req){
+  if (CN2_FIXTURE_DATA && req && req.query && req.query.now) {
+    const n = parseInt(req.query.now, 10);
+    if (!isNaN(n) && n > 0) return n;
+  }
+  return cn2Now();
+}
+function actMerge(rows){
+  const st = actStore(istParts(new Date(cn2Now())).date);
+  rows.forEach(function(r){ st.byId[r.id] = r; });
+  const all = Object.values(st.byId);
+  st.records = all.length;
+  st.n = IDLE.dedupe(all, IDLE_CFG).length;
+  st.at = new Date().toISOString();
+}
+
+async function syncActivity(full){
+  if (!TOKEN || ACT.running) return;
+  ACT.running = true;
+  const t0 = Date.now();
+  const dateKey = istParts(new Date(cn2Now())).date;
+  const shift = IDLE.shiftFor(dateKey, IDLE_CFG);
+  const st = actStore(dateKey);
+  try {
+    const needFull = full || !st.fullAt ||
+      (Date.now() - Date.parse(st.fullAt)) > ACT_FULL_MINUTES * 60000;
+    // The whole day on the slow cycle, the last few minutes on the fast one. Overlapping
+    // by five minutes so a record written late cannot fall between two passes.
+    const from = needFull ? shift.start - 4 * 3600000
+      : Math.max(shift.start - 4 * 3600000, Date.parse(st.at || 0) - 5 * 60000);
+    const rows = await callsBetween(from, Date.now() + 60000);
+    actMerge(rows);
+    if (needFull) { st.fullAt = new Date().toISOString(); }
+    st.running = false; st.error = null; st.ms = Date.now() - t0;
+  } catch (e) {
+    ACT.running = false;
+    ACT.error = e.message;
+    console.error("Agent activity sync failed: " + e.message);
+  }
+}
+
+/* One agent's day, deduped and summarised. Shared by both views so the live number and
+   the day summary can never disagree about what a call is. */
+function actFor(dateKey, now){
+  const shift = IDLE.shiftFor(dateKey, IDLE_CFG);
+  const st = actStore(dateKey);
+  const all = Object.values(st.byId);
+  /* A call cannot have happened yet. Somebody hand-logging a call and mistyping the date
+     puts records in October, and counting those would leave that agent looking busy until
+     October. Dropped rather than clamped, because clamping invents an activity at a moment
+     nothing happened. The count is reported so the bad data stays visible. */
+  const rows = all.filter(function(r){ return r.at > 0 && r.at <= now; });
+  const future = all.length - rows.length;
+  const byOwner = {};
+  IDLE.dedupe(rows, IDLE_CFG).forEach(function(a){
+    if (!a.owner) return;                      // the floor's, but nobody's in particular
+    (byOwner[a.owner] = byOwner[a.owner] || []).push(a);
+  });
+  return { shift: shift, byOwner: byOwner, at: st.at, error: st.error,
+    records: rows.length, future: future,
+    unowned: rows.filter(function(r){ return !r.owner; }).length };
+}
+
 /* ---------- Loop WA ----------------------------------------------------------------
 
    Leads who have answered Loop's WhatsApp outreach, whatever stage they are sitting in.
@@ -4198,28 +4375,33 @@ async function waCallStats(ids, replyAt){
   const callIds = Object.keys(all);
   const truncated = callIds.length > WA_CALLS_MAX;
   const use = callIds.slice(0, WA_CALLS_MAX);
-  const when = {};
+  const when = {}, src = {};
   for (let i = 0; i < use.length; i += 100) {
     const b = await hs("/crm/v3/objects/calls/batch/read", { method: "POST",
-      body: JSON.stringify({ properties: ["hs_timestamp", "hs_createdate"],
+      body: JSON.stringify({ properties: ["hs_timestamp", "hs_createdate", "hs_object_source_label"],
         inputs: use.slice(i, i + 100).map(function(x){ return { id: x }; }) })});
     ((b && b.results) || []).forEach(function(c){
       const p = c.properties || {};
       when[String(c.id)] = ts(p.hs_timestamp) || ts(p.hs_createdate);
+      src[String(c.id)] = String(p.hs_object_source_label || "UNKNOWN");
     });
     if (i + 100 < use.length) await sleep(80);
   }
   const out = {};
   Object.keys(byContact).forEach(function(id){
     const since = replyAt[id] || 0;
-    let total = 0, after = 0, dated = 0;
-    byContact[id].forEach(function(c){
-      total++;
-      const t = when[c];
-      if (t === undefined) return;
-      dated++;
-      if (since && t > since) after++;
-    });
+    /* The same call reaches HubSpot twice: FreJun logs the dial, then the agent writes it
+       up and the CRM logs it again a few seconds later. Counting records made these
+       numbers nearly half as large again as the truth. Deduped through the same function
+       the idle tracker uses, so the two can never disagree about what a call is. */
+    const calls = IDLE.dedupe(byContact[id].map(function(c){
+      return { id: c, at: when[c] || 0, durMs: 0, owner: id,
+        contact: id, source: src[c] || "UNKNOWN" };
+    }).filter(function(r){ return r.at > 0; }), IDLE_CFG);
+    const undated = byContact[id].filter(function(c){ return when[c] === undefined; }).length;
+    let total = calls.length, after = 0, dated = total;
+    calls.forEach(function(c){ if (since && c.at > since) after++; });
+    if (undated) { total += undated; }
     // A call we could not date cannot be placed either side of the reply, so the "since"
     // figure is only offered when every call was dated. Half an answer presented as a
     // whole one is worse than saying we do not know.
@@ -4968,6 +5150,205 @@ app.get("/api/callnow2/why-zero", function(req, res){
   out.stages = byStage;
   out.listFrozenAt = cn2Ready() ? cn2SnapshotCached().frozenAt : null;
   res.json(out);
+});
+
+/* Did anything follow the DNP.
+
+   Only email can be answered honestly. Agents message leads from their own phones, so
+   WhatsApp follow-up never reaches HubSpot and cannot be counted; the views say so rather
+   than letting a zero be read as "did nothing". Read on the day view rather than in the
+   sweep, because it is a heavier walk and nobody opens the day view every three minutes. */
+const DNP_STAGES_IDLE = ["dnp_did_not_pick", "dnp_other", "FU_DNP"];
+let DNPFU = {};
+const DNPFU_TTL_MS = parseInt(process.env.DNPFU_TTL_MS || "600000", 10);
+async function dnpEmailFollowUp(dateKey, byOwner){
+  const hit = DNPFU[dateKey];
+  if (hit && Date.now() - hit.at < DNPFU_TTL_MS) return hit.byOwner;
+  const stageOf = {};
+  (CACHE.contacts || []).forEach(function(c){ if (c) stageOf[String(c.id)] = cnStage(c); });
+  const want = {}, calledAt = {};
+  Object.keys(byOwner).forEach(function(oid){
+    byOwner[oid].forEach(function(a){
+      if (!a.contact) return;
+      if (DNP_STAGES_IDLE.indexOf(stageOf[a.contact]) < 0) return;
+      want[a.contact] = oid;
+      // The earliest call today, so an email sent between two calls still counts.
+      if (!calledAt[a.contact] || a.at < calledAt[a.contact]) calledAt[a.contact] = a.at;
+    });
+  });
+  const ids = Object.keys(want);
+  const out = {};
+  ids.forEach(function(cid){
+    const o = want[cid];
+    if (!out[o]) out[o] = { dnps: 0, emailed: 0 };
+    out[o].dnps++;
+  });
+  if (!ids.length || !TOKEN) { DNPFU[dateKey] = { at: Date.now(), byOwner: out }; return out; }
+  try {
+    const emailIds = {}, byContact = {};
+    for (let i = 0; i < ids.length; i += 100) {
+      const j = await hs("/crm/v4/associations/contacts/emails/batch/read", { method: "POST",
+        body: JSON.stringify({ inputs: ids.slice(i, i + 100).map(function(x){ return { id: x }; }) })});
+      ((j && j.results) || []).forEach(function(a){
+        const cid = String((a.from && (a.from.id || a.from.objectId)) || a.fromObjectId || "");
+        const list = ((a.to || []).map(function(x){ return String(x.toObjectId || x.id || ""); })).filter(Boolean);
+        if (!cid || !list.length) return;
+        byContact[cid] = (byContact[cid] || []).concat(list);
+        list.forEach(function(e){ emailIds[e] = 1; });
+      });
+      if (i + 100 < ids.length) await sleep(80);
+    }
+    const when = {};
+    const eids = Object.keys(emailIds).slice(0, 8000);
+    for (let i = 0; i < eids.length; i += 100) {
+      const b = await hs("/crm/v3/objects/emails/batch/read", { method: "POST",
+        body: JSON.stringify({ properties: ["hs_timestamp", "hs_createdate"],
+          inputs: eids.slice(i, i + 100).map(function(x){ return { id: x }; }) })});
+      ((b && b.results) || []).forEach(function(e){
+        const p = e.properties || {};
+        when[String(e.id)] = ts(p.hs_timestamp) || ts(p.hs_createdate);
+      });
+      if (i + 100 < eids.length) await sleep(80);
+    }
+    Object.keys(byContact).forEach(function(cid){
+      const after = (byContact[cid] || []).some(function(e){
+        return when[e] && when[e] > (calledAt[cid] || 0);
+      });
+      if (after && out[want[cid]]) out[want[cid]].emailed++;
+    });
+  } catch (e) {
+    console.error("DNP follow-up read failed: " + e.message);
+  }
+  DNPFU[dateKey] = { at: Date.now(), byOwner: out };
+  return out;
+}
+
+/* Deactivated agents are not idle, they have left. Fixtures keep their own agent list, so
+   this cannot just read CACHE.owners or every local test shows a departed agent as a
+   problem to chase. */
+function idleAgentActive(id){
+  if (CN2_FIXTURE_DATA) {
+    const a = (CN2_FIXTURE_DATA.agents || []).filter(function(x){ return String(x.id) === String(id); })[0];
+    return !!a && a.active !== false;
+  }
+  return (CACHE.owners[id] || {}).active !== false;
+}
+function idleRow(oid, acts, shift, now, teamOf, teamName){
+  const st = IDLE.stateFor(acts, shift, now, IDLE_CFG);
+  const sum = IDLE.summarise(acts, shift, now, IDLE_CFG);
+  const own = CACHE.owners[oid] || {};
+  return {
+    id: oid, name: cn2OwnerName(oid),
+    team: teamOf[oid] ? teamName[teamOf[oid]] : "", teamId: teamOf[oid] || "",
+    active: own.active !== false,
+    state: st.state, idleMs: st.idleMs,
+    last: sum.last, lastEnd: sum.lastEnd, lastDurMs: sum.lastDurMs, first: sum.first,
+    dialled: sum.dialled, answered: sum.answered, conversations: sum.conversations,
+    talkMs: sum.talkMs, records: sum.records,
+    gaps: sum.gaps, gapMs: sum.gapMs, shiftMs: sum.shiftMs
+  };
+}
+
+/* Who is on a call and who is not, right now. */
+app.get("/api/vp/idle/live", function(req, res){
+  const role = (req.session && req.session.role) || "manager";
+  if (!isVP(req) && role === "agent") return res.status(403).json({ error: "managers and VP only" });
+  const now = idleNow(req);
+  const dateKey = istParts(new Date(now)).date;
+  const ctx = actFor(dateKey, now);
+  const allow = cn2Scope(req);
+  const teamOf = {}, teamName = {};
+  cn2Teams().forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  // Everyone on a team, not merely everyone who happens to have called. An agent who has
+  // not dialled all day is the single most important row on this page.
+  const ids = {};
+  Object.keys(teamOf).forEach(function(id){ ids[id] = 1; });
+  Object.keys(ctx.byOwner).forEach(function(id){ ids[id] = 1; });
+  const rows = Object.keys(ids).filter(function(id){
+    // "none" is the floor's unowned calls, reported as a count rather than as a person.
+    if (!id || id === "none") return false;
+    if (allow && allow.indexOf(String(id)) < 0) return false;
+    return idleAgentActive(id);
+  }).map(function(id){
+    return idleRow(id, ctx.byOwner[id] || [], ctx.shift, now, teamOf, teamName);
+  });
+  const ORDER = { idle: 0, quiet: 1, none: 2, between: 3, oncall: 4, break: 5, offshift: 6 };
+  rows.sort(function(a, b){
+    return (ORDER[a.state] - ORDER[b.state]) || (b.idleMs - a.idleMs) || (a.dialled - b.dialled);
+  });
+  const count = function(s){ return rows.filter(function(r){ return r.state === s; }).length; };
+  res.json({
+    now: now, date: dateKey,
+    shift: { start: ctx.shift.start, end: ctx.shift.end, isWorkDay: ctx.shift.isWorkDay,
+      breaks: ctx.shift.breaks, inBreak: IDLE.inBreak(now, ctx.shift),
+      inShift: IDLE.inShift(now, ctx.shift) },
+    thresholds: { quietMs: IDLE_CFG.quietMs, idleMs: IDLE_CFG.idleMs,
+      conversationMs: IDLE_CFG.conversationMs },
+    counts: { oncall: count("oncall"), between: count("between"), quiet: count("quiet"),
+      idle: count("idle"), none: count("none"), onbreak: count("break") },
+    rows: rows, scoped: !!allow, isVP: isVP(req),
+    sync: { at: ctx.at, error: ctx.error, records: ctx.records, unowned: ctx.unowned,
+      futureDated: ctx.future, everyMinutes: ACT_MINUTES, fullAt: ACT.fullAt },
+    // Phase one has no way for an agent to explain a gap, so nothing here is a judgement.
+    declarationsLive: false
+  });
+});
+
+/* The whole shift, per agent, with the gaps laid out. */
+app.get("/api/vp/idle/day", async function(req, res){
+  const role = (req.session && req.session.role) || "manager";
+  if (!isVP(req) && role === "agent") return res.status(403).json({ error: "managers and VP only" });
+  const today = istParts(new Date(cn2Now())).date;
+  const dateKey = String(req.query.date || today);
+  if (dateKey !== today) {
+    return res.status(400).json({ error: "Only today for now. Earlier days need the call " +
+      "history to be re-read, which is the next thing to add." });
+  }
+  const now = idleNow(req);
+  const ctx = actFor(dateKey, now);
+  const allow = cn2Scope(req);
+  const teamOf = {}, teamName = {};
+  cn2Teams().forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const ids = {};
+  Object.keys(teamOf).forEach(function(id){ ids[id] = 1; });
+  Object.keys(ctx.byOwner).forEach(function(id){ ids[id] = 1; });
+  const keep = Object.keys(ids).filter(function(id){
+    if (!id || id === "none") return false;
+    if (allow && allow.indexOf(String(id)) < 0) return false;
+    return idleAgentActive(id);
+  });
+  let fu = {};
+  try { fu = await dnpEmailFollowUp(dateKey, ctx.byOwner); } catch (e) { fu = {}; }
+  const rows = keep.map(function(id){
+    const r = idleRow(id, ctx.byOwner[id] || [], ctx.shift, now, teamOf, teamName);
+    r.dnp = fu[id] || { dnps: 0, emailed: 0 };
+    return r;
+  }).sort(function(a, b){ return b.gapMs - a.gapMs || b.idleMs - a.idleMs; });
+  const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+  res.json({
+    date: dateKey, now: now,
+    shift: { start: ctx.shift.start, end: ctx.shift.end, isWorkDay: ctx.shift.isWorkDay,
+      breaks: ctx.shift.breaks },
+    totals: {
+      dialled: sum("dialled"), answered: sum("answered"), conversations: sum("conversations"),
+      records: sum("records"), gapMs: sum("gapMs"),
+      agentsWithGaps: rows.filter(function(r){ return r.gapMs > 0; }).length,
+      dnps: rows.reduce(function(n, r){ return n + r.dnp.dnps; }, 0),
+      emailed: rows.reduce(function(n, r){ return n + r.dnp.emailed; }, 0)
+    },
+    thresholds: { conversationMs: IDLE_CFG.conversationMs, minGapMs: IDLE_CFG.minGapMs },
+    rows: rows, scoped: !!allow, isVP: isVP(req),
+    sync: { at: ctx.at, error: ctx.error, unowned: ctx.unowned, futureDated: ctx.future },
+    // Said in the payload so the page cannot forget to say it.
+    followUpIsEmailOnly: true,
+    declarationsLive: false
+  });
 });
 
 app.get("/api/callnow2/segments", async function(req, res){
@@ -8593,6 +8974,10 @@ SERVER = app.listen(PORT, () => {
   // The reply sweep, and the list itself. Both are small and both are pointless late.
   setInterval(guard("waReplies", syncWaReplies), Math.max(1, WASYNC_MINUTES) * 60 * 1000);
   [45, 120, 240].forEach(function(sec){ setTimeout(guard("waReplies", syncWaReplies), sec * 1000); });
+  // The idle tracker's own reads: quick and often, plus a full day reconcile.
+  setInterval(guard("activity", function(){ return syncActivity(false); }), Math.max(1, ACT_MINUTES) * 60 * 1000);
+  setInterval(guard("activityFull", function(){ return syncActivity(true); }), Math.max(5, ACT_FULL_MINUTES) * 60 * 1000);
+  [25, 70, 160].forEach(function(sec){ setTimeout(guard("activity", function(){ return syncActivity(true); }), sec * 1000); });
   setTimeout(guard("waList", waListFetch), 20 * 1000);
   setInterval(guard("waList", waListFetch), WA_LIST_TTL_MS);
   setTimeout(function(){ adoptStoredCreators(); }, 3000);
