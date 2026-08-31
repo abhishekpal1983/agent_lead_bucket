@@ -742,3 +742,20 @@ does need to be quick, is untouched.
 The rule when adding a sweep: ask how often the number it produces actually changes, not
 how fresh you would like it to feel. Anything re-reading a large fixed set on a short timer
 is the shape to be suspicious of.
+
+## 29. The creator planner was removed
+
+Removed on 31 August 2026 at the user's request. It was three pages, not one:
+`creator_plan.html`, `plan_summary.html` and `plan_tracking.html`, which shared the
+`/api/creator-plan`, `/api/plan-tracking` and `/api/plan-prefs` endpoints, an `adminOnly`
+gate used by nothing else, and a twelve hourly sync that walked every contact for nine
+creators to keep the plan from ageing. About 430 lines of `server.js` and 87KB of page.
+
+Removing only the page it was asked about would have left two siblings linking to a dead
+address and a large sync feeding nothing, which is the worse outcome: the HubSpot cost
+stays and the reason for it disappears.
+
+The data files `plan_data.json`, `plan_prefs.json` and `plan_state.json` may still be on
+the volume. Nothing reads them. They were left rather than deleted, because discarding
+somebody's saved targets during a tidy-up is not a decision to make on their behalf. Delete
+them by hand if the volume needs the room.
