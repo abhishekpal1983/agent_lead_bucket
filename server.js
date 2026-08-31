@@ -123,8 +123,50 @@ async function syncSheet(){
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 const HS_TIMEOUT_MS = parseInt(process.env.HS_TIMEOUT_MS || "30000", 10);
+/* How much HubSpot we are actually using.
+
+   "Is this heavy?" is a question about a number nobody was keeping, so twenty scheduled
+   readers had to be reasoned about one at a time and the answer was an estimate. It is
+   counted now: every request, bucketed by endpoint, with a rolling hour so the rate is a
+   fact rather than arithmetic. Costs one increment per call and no extra requests. */
+const HS_STATS = { total: 0, since: Date.now(), byPath: {}, retries: 0,
+  ring: new Array(60).fill(0), ringAt: Math.floor(Date.now() / 60000) };
+function hsCount(path, isRetry){
+  HS_STATS.total++;
+  if (isRetry) HS_STATS.retries++;
+  // Ids collapse to :id, or the bucket list grows without bound and tells you nothing.
+  const key = String(path).split("?")[0].replace(/\/\d{4,}/g, "/:id");
+  HS_STATS.byPath[key] = (HS_STATS.byPath[key] || 0) + 1;
+  const now = Math.floor(Date.now() / 60000);
+  if (now !== HS_STATS.ringAt) {
+    const gap = Math.min(60, now - HS_STATS.ringAt);
+    for (let i = 0; i < gap; i++) HS_STATS.ring[(HS_STATS.ringAt + 1 + i) % 60] = 0;
+    HS_STATS.ringAt = now;
+  }
+  HS_STATS.ring[now % 60]++;
+}
+function hsLoad(){
+  const perHour = HS_STATS.ring.reduce(function(a, b){ return a + b; }, 0);
+  const mins = Math.max(1 / 60, (Date.now() - HS_STATS.since) / 3600000);
+  const top = Object.keys(HS_STATS.byPath).sort(function(a, b){
+    return HS_STATS.byPath[b] - HS_STATS.byPath[a]; }).slice(0, 12);
+  return {
+    total: HS_STATS.total,
+    sinceBoot: new Date(HS_STATS.since).toISOString(),
+    lastHour: perHour,
+    perSecond: Math.round((perHour / 3600) * 100) / 100,
+    // HubSpot's burst ceiling is per ten seconds, so that is the one worth comparing to.
+    burstPer10s: Math.round((perHour / 360) * 10) / 10,
+    projectedPerDay: Math.round(perHour * 24),
+    avgPerHourSinceBoot: Math.round(HS_STATS.total / mins),
+    retries: HS_STATS.retries,
+    busiest: top.map(function(k){ return { path: k, n: HS_STATS.byPath[k] }; })
+  };
+}
+
 async function hs(path, opts, attempt){
   attempt = attempt || 0;
+  hsCount(path, attempt > 0);
   let res;
   try {
     // Without a timeout a hung socket stalls a sync forever. Without catching the throw,
@@ -1364,6 +1406,7 @@ app.get("/api/health", function(req, res){
     })(),
     // Whether tomorrow's morning review will have anything to show. Dates and counts
     // only, no lead data, so this stays safe on an endpoint with no login.
+    hubspot: hsLoad(),
     last500: LAST_500,
     cn2Drift: CN2_DRIFT.at ? CN2_DRIFT : null,
     daily: (function(){
@@ -4268,17 +4311,6 @@ async function syncWaReplies(){
       if (now2 && (had[r.id] === undefined || had[r.id] < now2)) fresh++;
     });
     if (rows.length) applyDelta(rows);
-    /* Counted here rather than per row, because per row is one request each and this is
-       one request per hundred. */
-    try {
-      const replyAt = {};
-      rows.forEach(function(r){ replyAt[String(r.id)] = ts(r.ryl_wa_last_lead_reply_at); });
-      const st = await waCallStats(rows.map(function(r){ return String(r.id); }), replyAt);
-      WA_CALLS = { at: Date.now(), byId: st.byId, calls: st.calls, error: null, truncated: st.truncated };
-    } catch (e) {
-      WA_CALLS.error = e.message;
-      console.error("Loop WA call counts failed: " + e.message);
-    }
     WASYNC = { at: new Date().toISOString(), running: false, n: rows.length, fresh: fresh,
       ms: Date.now() - t0, error: null, asked: ids.length,
       truncated: Object.keys(mem.ids).length > WA_READ_MAX };
@@ -4345,6 +4377,34 @@ function waBody(v){
    about twenty requests rather than one per lead. */
 const WA_CALLS_MAX = parseInt(process.env.WA_CALLS_MAX || "6000", 10);
 let WA_CALLS = { at: 0, byId: {}, calls: 0, error: null, truncated: false };
+/* Recounting the calls behind the Loop WA list.
+
+   This used to run inside the three minute reply sweep, which meant re-reading every call
+   record on the list twenty times an hour: about two thousand records and twenty four
+   requests each pass, roughly half of everything the app asked HubSpot for in a day. The
+   number it produces changes when somebody makes a call, not every three minutes, so it
+   has its own slower cycle now. The reply sweep, which is the one that has to be quick,
+   is untouched. */
+const WA_CALLS_MINUTES = parseInt(process.env.WA_CALLS_MINUTES || "15", 10);
+async function syncWaCallCounts(){
+  if (!TOKEN || !WA_LIST.at || WA_CALLS.running) return;
+  WA_CALLS.running = true;
+  try {
+    const ids = Object.keys(WA_LIST.ids);
+    const replyAt = {};
+    (CACHE.contacts || []).forEach(function(c){
+      if (c && WA_LIST.ids[c.id]) replyAt[String(c.id)] = ts(c.ryl_wa_last_lead_reply_at);
+    });
+    const st = await waCallStats(ids, replyAt);
+    WA_CALLS = { at: Date.now(), byId: st.byId, calls: st.calls, error: null,
+      truncated: st.truncated, running: false };
+  } catch (e) {
+    WA_CALLS.running = false;
+    WA_CALLS.error = e.message;
+    console.error("Loop WA call counts failed: " + e.message);
+  }
+}
+
 /* Fixtures have no token, so without this the counts are always null locally and every
    test written about them passes while proving nothing. That has now happened three times
    in this view alone, so the fixture gets the numbers too. */
@@ -8987,6 +9047,10 @@ SERVER = app.listen(PORT, () => {
   [25, 70, 160].forEach(function(sec){ setTimeout(guard("activity", function(){ return syncActivity(true); }), sec * 1000); });
   setTimeout(guard("waList", waListFetch), 20 * 1000);
   setInterval(guard("waList", waListFetch), WA_LIST_TTL_MS);
+  // The call counts behind the WA view change when somebody calls, not every three
+  // minutes, so they get their own slower cycle.
+  setInterval(guard("waCallCounts", syncWaCallCounts), Math.max(2, WA_CALLS_MINUTES) * 60 * 1000);
+  setTimeout(guard("waCallCounts", syncWaCallCounts), 200 * 1000);
   setTimeout(function(){ adoptStoredCreators(); }, 3000);
   setTimeout(guard("snapshot", snapshotToday), 4 * 60 * 1000);
   setInterval(guard("snapshot", snapshotToday), 15 * 60 * 1000);

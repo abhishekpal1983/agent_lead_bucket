@@ -720,3 +720,25 @@ without that sentence would punish exactly the behaviour the floor wants.
 Phase one has no way for an agent to explain a gap, so a genuine client meeting looks
 identical to an empty hour. Both views state this. Until declarations exist, the tracker is
 for managers to look at, not for anybody to be judged on.
+
+## 28. How much HubSpot the app actually uses
+
+`/api/health` reports it under `hubspot`: total since boot, the last rolling hour, the
+implied burst per ten seconds, a projected day, and the twelve busiest endpoints with ids
+collapsed. Counting costs one increment per request and no extra calls.
+
+This exists because "is it heavy" used to be a question about a number nobody kept, which
+meant reasoning about twenty scheduled readers one at a time and arriving at an estimate.
+The burst figure is the one to watch: HubSpot's ceiling is per ten seconds, not per hour,
+so a sweep that fires everything at once is riskier than a larger total spread evenly.
+
+The busiest-endpoint list is the point of it. It is what showed that recounting the calls
+behind the Loop WA list was running inside the three minute reply sweep, re-reading about
+two thousand call records twenty times an hour for a number that changes when somebody
+makes a call. That was roughly half of the app's daily HubSpot usage for no benefit. It now
+runs every fifteen minutes on its own cycle, `WA_CALLS_MINUTES`, and the reply sweep, which
+does need to be quick, is untouched.
+
+The rule when adding a sweep: ask how often the number it produces actually changes, not
+how fresh you would like it to feel. Anything re-reading a large fixed set on a short timer
+is the shape to be suspicious of.

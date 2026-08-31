@@ -531,7 +531,21 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        looks healthy, so the inputs are reported and not just the output. */
     {
       const act = ((await get("/api/health")).body.cn2 || {}).activity || null;
-      ok("health reports how many calls have a lead attached, and their sources",
+      /* "Is this heavy?" was a question about a number nobody kept, so twenty scheduled
+       readers had to be reasoned about one at a time. It is counted now. */
+    {
+      const hb = (await get("/api/health")).body.hubspot || null;
+      ok("health counts what we ask HubSpot for",
+        hb && typeof hb.total === "number" && typeof hb.lastHour === "number" &&
+        typeof hb.burstPer10s === "number" && Array.isArray(hb.busiest),
+        JSON.stringify(hb && { t: hb.total, h: hb.lastHour }));
+      ok("and names the busiest endpoints, so waste has somewhere to show up",
+        hb.busiest.every(function(b){ return b.path && typeof b.n === "number"; }));
+      ok("ids are collapsed, or the bucket list grows without bound and says nothing",
+        hb.busiest.every(function(b){ return !/\/\d{4,}/.test(b.path); }),
+        JSON.stringify(hb.busiest.map(function(b){ return b.path; })));
+    }
+    ok("health reports how many calls have a lead attached, and their sources",
         act && "withContact" in act && act.bySource && typeof act.bySource === "object",
         JSON.stringify(act && { w: act.withContact, s: act.bySource }));
     }
