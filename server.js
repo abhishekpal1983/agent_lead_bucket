@@ -150,9 +150,13 @@ function hsLoad(){
   const mins = Math.max(1 / 60, (Date.now() - HS_STATS.since) / 3600000);
   const top = Object.keys(HS_STATS.byPath).sort(function(a, b){
     return HS_STATS.byPath[b] - HS_STATS.byPath[a]; }).slice(0, 12);
+  const windowMins = Math.min(60, Math.max(1, Math.round((Date.now() - HS_STATS.since) / 60000)));
   return {
     total: HS_STATS.total,
     sinceBoot: new Date(HS_STATS.since).toISOString(),
+    // A projection from eight minutes of boot traffic is not a projection from an hour, so
+    // the window is reported next to the numbers drawn from it.
+    windowMins: windowMins,
     lastHour: perHour,
     perSecond: Math.round((perHour / 3600) * 100) / 100,
     // HubSpot's burst ceiling is per ten seconds, so that is the one worth comparing to.
@@ -4134,8 +4138,8 @@ function idleNow(req){
   }
   return cn2Now();
 }
-function actMerge(rows){
-  const st = actStore(istParts(new Date(cn2Now())).date);
+function actMerge(rows, st){
+  st = st || actStore(istParts(new Date(cn2Now())).date);
   rows.forEach(function(r){ st.byId[r.id] = r; });
   const all = Object.values(st.byId);
   st.records = all.length;
@@ -4144,12 +4148,20 @@ function actMerge(rows){
 }
 
 async function syncActivity(full){
-  if (!TOKEN || ACT.running) return;
-  ACT.running = true;
+  if (!TOKEN) return;
   const t0 = Date.now();
   const dateKey = istParts(new Date(cn2Now())).date;
   const shift = IDLE.shiftFor(dateKey, IDLE_CFG);
+  /* The store first, then the guard, and the guard on the store rather than on ACT.
+
+     The other way round did not work: setting ACT.running and then calling actStore let
+     actStore replace ACT wholesale when the day rolled or on the very first run, which
+     threw the flag away. The three boot kicks and the interval then all ran at once,
+     each paging the whole day. It cost 688 requests to the calls search in eight minutes
+     on a day holding five calls, and it was invisible until requests were counted. */
   const st = actStore(dateKey);
+  if (st.running) return;
+  st.running = true;
   try {
     const needFull = full || !st.fullAt ||
       (Date.now() - Date.parse(st.fullAt)) > ACT_FULL_MINUTES * 60000;
@@ -4158,12 +4170,12 @@ async function syncActivity(full){
     const from = needFull ? shift.start - 4 * 3600000
       : Math.max(shift.start - 4 * 3600000, Date.parse(st.at || 0) - 5 * 60000);
     const rows = await callsBetween(from, Date.now() + 60000);
-    actMerge(rows);
+    actMerge(rows, st);
     if (needFull) { st.fullAt = new Date().toISOString(); }
     st.running = false; st.error = null; st.ms = Date.now() - t0;
   } catch (e) {
-    ACT.running = false;
-    ACT.error = e.message;
+    st.running = false;
+    st.error = e.message;
     console.error("Agent activity sync failed: " + e.message);
   }
 }
