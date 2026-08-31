@@ -481,6 +481,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return src.indexOf("if (rows[k] === undefined) { rows[k] = st.rows[k]; }") >= 0;
       })());
 
+    /* Assignment during the day. The logic is covered properly in the cn2 suite, where a
+       frozen base and a live pool can be made to disagree. Here the fixture builds both
+       from the same rows so they never diverge, and the most this can prove is that the
+       snapshot runs the rule and reports it. Said plainly rather than dressed up as
+       coverage it is not. */
+    ok("the snapshot reports what assignment did to today's list",
+      typeof m.body.assignedIn === "number" && typeof m.body.assignedMoved === "number",
+      JSON.stringify({ i: m.body.assignedIn, mv: m.body.assignedMoved }));
+
     /* The idle tracker. Fixtures carry a shift of call records so this is exercised
        rather than merely reachable, and the fixture clock can be moved so the live view
        can be seen at a moment inside the shift. */

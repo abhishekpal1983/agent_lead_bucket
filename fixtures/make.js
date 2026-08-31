@@ -37,6 +37,8 @@ function lead(o){
     // handful a conversation, including some in closed stages, because that is the whole
     // point of the Loop WA view and a fixture without them tests nothing.
     waReplied: false, waN: 0, waAt: 0, waOut: 0, waLast: "",
+    // Assigned long before today unless a case below says otherwise.
+    assignedAt: D(2026, 7, 20, 11), role: "", tech: "",
     calls: 0, own: 0, phone: "+9190000000" + (n % 10), needsOwner: false
   }, o);
 }
@@ -119,6 +121,25 @@ rows.forEach(function(r, i){
 // A member we do not hold at all, so "in the list but not in our pool" is a real number
 // in the fixture rather than a branch nobody ever walks.
 waIds.push("NOT_IN_POOL_1");
+
+/* Leads assigned today, in the three shapes assignment actually comes in. Without these
+   the assignment rule is untested and would pass against a fixture where nothing ever
+   changes hands. */
+rows.push(lead({ id: "ASSIGN_NEW", stage: "counselled", owner: "201", ownerName: "Sid Menon",
+  creator: "ayush_singh13", fu: D(2026, 8, 6, 15), last: 0,
+  // Created and handed over after the list was written this morning.
+  assignedAt: TODAY + 60 * 60000 }));
+rows.push(lead({ id: "ASSIGN_FROM_NOBODY", stage: "discovery", owner: "202",
+  ownerName: "Rhea Kapoor", creator: "payalineurope", fu: D(2026, 8, 6, 16), last: 0,
+  needsOwner: false, assignedAt: TODAY + 90 * 60000 }));
+rows.push(lead({ id: "ASSIGN_MOVED", stage: "program_pitched", owner: "203",
+  ownerName: "Vikram Rao", creator: "ayush_singh13", fu: D(2026, 8, 6, 14), last: 0,
+  assignedAt: TODAY + 120 * 60000 }));
+// A few roles to classify, including one that is genuinely either.
+rows.slice(0, 6).forEach(function(r, i){
+  r.role = ["Senior Software Engineer", "Chef", "Business Analyst", "Data Engineer",
+            "Consultant", ""][i];
+});
 
 /* A shift's worth of call records for the idle tracker.
 

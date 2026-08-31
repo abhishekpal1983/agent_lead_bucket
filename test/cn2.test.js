@@ -295,5 +295,56 @@ head("Lead source survives the pack, and an older locked list still parses");
   ok("and counts for the agent who took it", cn2.read(p1.base.L).owner === "10");
 }
 
+/* Assignment moves a lead. Three shapes, and the third reverses a rule the app used to
+   hold deliberately, so all three are pinned. */
+console.log("\nThe day's list follows assignment");
+{
+  const day = cn2.dayBoundsFor(Date.UTC(2026, 7, 6, 6, 30));
+  const yes = function(){ return true; };
+  const cls = function(r){ return cn2.classify(r, day, { work: cn2.workDaySet(), scoreMin: 6 }); };
+  const packed = function(r){ return cn2.pack(cls(r)); };
+  const baseOf = function(rows){
+    const b = {}; rows.forEach(function(r){ b[r.id] = packed(r); }); return b; };
+
+  const held = { id: "A", stage: "counselled", owner: "201", fu: 0, last: 0, forms: [],
+    score: 0, calls: 0, own: 0, counted: true };
+  const newly = { id: "B", stage: "counselled", owner: "202", fu: 0, last: 0, forms: [],
+    score: 0, calls: 0, own: 0, counted: true, assignedAt: day.start + 3600000 };
+  const moved = Object.assign({}, held, { owner: "204", assignedAt: day.start + 3600000 });
+
+  const r1 = cn2.assignBase(baseOf([held]), { B: newly },
+    { since: day.start, countable: yes, qualifies: yes, classify: cls });
+  ok("a lead created and assigned after the freeze joins the list", r1.added === 1 && r1.moved === 0,
+    JSON.stringify({ a: r1.added, m: r1.moved }));
+  ok("and it is counted for the agent who was given it",
+    cn2.read(r1.base.B).counted === true && cn2.read(r1.base.B).owner === "202");
+
+  const r2 = cn2.assignBase(baseOf([held]), { A: moved },
+    { since: day.start, countable: yes, qualifies: yes, classify: cls });
+  ok("a lead handed from one agent to another moves", r2.moved === 1 && r2.added === 0);
+  ok("and now counts for whoever holds it, not who held it this morning",
+    cn2.read(r2.base.A).owner === "204" && cn2.read(r2.base.A).moved === true);
+
+  const r3 = cn2.assignBase(baseOf([held]), { A: Object.assign({}, held, { assignedAt: day.start - 86400000 }) },
+    { since: day.start, countable: yes, qualifies: yes, classify: cls });
+  ok("a lead assigned yesterday is left exactly where it was", r3.added === 0 && r3.moved === 0);
+
+  const r4 = cn2.assignBase(baseOf([held]), { C: Object.assign({}, newly, { id: "C", stage: "deal_won" }) },
+    { since: day.start, countable: yes,
+      qualifies: function(r){ return r.stage !== "deal_won"; }, classify: cls });
+  ok("a lead that does not belong on the list is not added just because it was assigned",
+    r4.added === 0);
+
+  const r5 = cn2.assignBase(baseOf([held]), { B: newly },
+    { since: day.start, countable: function(){ return false; }, qualifies: yes, classify: cls });
+  ok("assigning to a parking bucket or somebody who has left adds nothing", r5.added === 0);
+
+  const before = baseOf([held]);
+  const r6 = cn2.assignBase(before, { A: moved, B: newly },
+    { since: day.start, countable: yes, qualifies: yes, classify: cls });
+  ok("the list can only grow in size, never shrink",
+    Object.keys(r6.base).length >= Object.keys(before).length);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

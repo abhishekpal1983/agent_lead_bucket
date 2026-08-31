@@ -42,6 +42,12 @@ const PROPS = [
   /* What Loop writes when it talks to a lead on WhatsApp. These are a summary, not the
      conversation: the thread itself lives in the activity timeline as communication
      records and is read per lead when an agent opens the card. */
+  /* What the lead typed when a form asked their job. Different creators ask it in
+     different fields, so all of them are read and whichever the lead carries wins. */
+  "what_is_your_current_role","your_current_role","whats_your_current_role",
+  "what_best_describes_your_current_role","current_role","current_background",
+  // When the lead became this agent's. The day's list follows assignment, so it needs this.
+  "hubspot_owner_assigneddate",
   "ryl_wa_replied","ryl_wa_lead_reply_count","ryl_wa_last_lead_reply_at",
   "ryl_wa_last_outbound_at","ryl_wa_last_lead_reply",
   "ryl_aicall_summary","ryl_aicall_hotness","ryl_aicall_optout",
@@ -2896,6 +2902,14 @@ function cnRow(c){
     waAt: ts(c.ryl_wa_last_lead_reply_at),
     waOut: ts(c.ryl_wa_last_outbound_at),
     waLast: clip(c.ryl_wa_last_lead_reply, 300),
+    /* What the lead typed when a form asked their job, read on whichever axis their
+       creator cares about: tech against non-tech for Simran, blue against white collar for
+       the relocation cohorts. There is no such field in HubSpot, so this is a judgement and
+       it carries the words it judged. */
+    role: clip(ROLE.readingOf(c, c.topmate_username || "").role, 120),
+    roleAxis: ROLE.readingOf(c, c.topmate_username || "").axis,
+    roleClass: ROLE.readingOf(c, c.topmate_username || "").value,
+    assignedAt: ts(c.hubspot_owner_assigneddate),
     /* Whichever property is labelled Information on this portal. Free text, shown as-is,
        because an agent reading a messy answer beats an agent reading nothing. */
     information: clip(infoOf(c), 2000),
@@ -3051,6 +3065,7 @@ function ownerCounted(id){
    ========================================================================== */
 const CN2 = require("./lib/cn2");
 const IDLE = require("./lib/idle");
+const ROLE = require("./lib/role");
 const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
 const CN2_WORK_DAYS = process.env.WORK_DAYS || CN2.DEFAULT_WORK_DAYS;
@@ -3351,9 +3366,18 @@ function cn2Snapshot(){
   base = corr.base;
   const prom = CN2.promoteBase(base, liveAll, { countable: cn2Countable });
   base = prom.base;
+  /* Anything assigned since the list was written follows its new owner. Adds a lead that
+     did not exist at 00:05, and moves one handed from one agent to another. */
+  const asg = CN2.assignBase(base, live, {
+    since: day.start, countable: cn2Countable,
+    qualifies: function(r){ return CN2_STAGES.indexOf(r.stage) >= 0; },
+    classify: function(r){ return CN2.classify(r, day, { work: CN2_WORK, scoreMin: CONV_SCORE_MIN }); }
+  });
+  base = asg.base;
   return { day: day, base: base, live: live, liveAll: liveAll, rows: rows, frozen: frozen,
     names: (frozen && store.names) || {},
-    frozenAt: frozen ? store.at : null, corrected: corr.corrected, promoted: prom.promoted };
+    frozenAt: frozen ? store.at : null, corrected: corr.corrected, promoted: prom.promoted,
+    assignedIn: asg.added, assignedMoved: asg.moved };
 }
 
 /* Walking 31,000 leads is cheap, but Overview draws four teams and the Daily review runs
@@ -3475,6 +3499,7 @@ function cn2Context(req){
   }
   return { day: day, base: base, baseAll: baseAll, live: live, liveAll: liveAll, rows: scopedRows, allRows: rows, frozen: frozen,
     promoted: snap.promoted, corrected: snap.corrected, seg: seg,
+    assignedIn: snap.assignedIn, assignedMoved: snap.assignedMoved,
     names: snap.names, frozenAt: snap.frozenAt };
 }
 
@@ -3634,6 +3659,8 @@ app.get("/api/callnow2", function(req, res){
     // Leads routed to a working agent since the list was written. The denominator can
     // only grow, and only by this, so it is reported rather than left to be noticed.
     promoted: ctx.promoted, corrected: ctx.corrected, seg: ctx.seg,
+    // Leads that joined or moved because somebody was given them today.
+    assignedIn: ctx.assignedIn, assignedMoved: ctx.assignedMoved,
     agentOptions: Object.keys(agents).map(function(id){
       return { id: id, name: cn2OwnerName(id === "none" ? "" : id), n: agents[id] };
     }).sort(function(a, b){ return b.n - a.n; }),
@@ -5659,6 +5686,7 @@ app.get("/api/callnow2/leads", function(req, res){
         entered: r.entered || 0, aiSummary: r.aiSummary || "", outcome: r.outcome || "",
         information: r.information || "",
         sp: r.sp || "?", spSaid: r.spSaid || [],
+        role: r.role || "", roleAxis: r.roleAxis || "", roleClass: r.roleClass || "",
         whyText: r.why || "", coldReason: r.coldReason || "", needsOwner: !!r.needsOwner,
         forms: r.forms || [], formN: r.formN || 0,
         /* Was gated on the Form label being set, which meant a lead whose form we had

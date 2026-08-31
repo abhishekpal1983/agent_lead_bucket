@@ -886,6 +886,14 @@ function baseNote(){
     " leads. If a lead changes stage, gets a new follow-up date, or moves to another agent during the day, it still counts where it started this morning and against the agent who had it this morning."+
     // The one thing allowed to move, and only upward. Stated on the page so a manager who
     // sees the denominator grow has the reason in front of them rather than a suspicion.
+    /* Assignment moves a lead now, so the count can go up for one agent and down for
+       another during the day. Said here, because a denominator that moves without
+       explanation is how a manager stops trusting the page. */
+    (J.assignedIn?" <b>"+fmt(J.assignedIn)+"</b> lead"+(J.assignedIn>1?"s were":" was")+
+      " assigned to somebody today and joined the list.":"")+
+    (J.assignedMoved?" <b>"+fmt(J.assignedMoved)+"</b> moved between agents today and now "+
+      (J.assignedMoved>1?"count":"counts")+" for whoever holds "+(J.assignedMoved>1?"them":"it")+
+      " now, not this morning.":"")+
     (J.promoted?" <b>"+fmt(J.promoted)+"</b> lead"+(J.promoted>1?"s":"")+" had no working owner this morning and "+
       (J.promoted>1?"have":"has")+" since been routed to an agent, so "+(J.promoted>1?"they are":"it is")+
       " now counted against whoever took "+(J.promoted>1?"them":"it")+". That is the only way the total can grow during the day.":"")+
@@ -1312,6 +1320,17 @@ function whyTags(r){
      clicks down. Hover carries what they actually wrote, and which question asked it. */
   if(r.sp==="S"||r.sp==="P")t.push("<span class='tag sp' title='"+
     esc(spSaidText(r)||"Student or professional")+"'>"+(r.sp==="S"?"Student":"Professional")+"</span>");
+  /* Tech or not, worked out from the job title the lead typed on the form. There is no
+     such field in HubSpot, so the chip carries the exact words it judged: an agent can see
+     in one hover whether to trust it. Unclear is shown rather than hidden, because a lead
+     who said "consultant" is a different thing from one who said nothing. */
+  if(r.roleClass){
+    var TL={tech:["Tech","#E6F1FB","#0C447C"],nontech:["Non-tech","#FAECE7","#993C1D"],
+            white:["White collar","#E6F1FB","#0C447C"],blue:["Blue collar","#FAEEDA","#854F0B"],
+            unclear:["Role unclear","#F1EFE8","#5F5E5A"]}[r.roleClass];
+    if(TL)t.push("<span class='tag' style='background:"+TL[1]+";color:"+TL[2]+
+      "' title='"+esc(r.role?"They wrote: "+r.role:"")+"'>"+esc(TL[0])+"</span>");
+  }
   return t.join(" ");
 }
 /* Re-read one lead from HubSpot on demand.

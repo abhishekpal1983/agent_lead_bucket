@@ -986,5 +986,19 @@ ok("the confirmation says nothing is removed",
     dayRun.out.indexOf("emailed afterwards") >= 0, dayRun.out.slice(0, 160));
 }
 
+/* Tech or not, and blue or white collar, are judgements from free text rather than
+   lookups, so the chip carries the words it judged and must tell "they said consultant"
+   apart from "they said nothing". */
+ok("the why-call chips read the role on both axes",
+  html.indexOf("Non-tech") >= 0 && html.indexOf("Blue collar") >= 0 &&
+  html.indexOf("White collar") >= 0 && html.indexOf("Role unclear") >= 0 &&
+  html.indexOf("They wrote: ") >= 0);
+ok("a lead who never answered gets no chip at all", html.indexOf("if(r.roleClass){") >= 0);
+/* Assignment can now move a lead between agents, so a denominator moves during the day
+   and the page has to say why. */
+ok("the page explains a list that grew or moved because of assignment",
+  html.indexOf("assigned to somebody today and joined the list") >= 0 &&
+  html.indexOf("moved between agents today") >= 0);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

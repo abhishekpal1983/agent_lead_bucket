@@ -759,3 +759,56 @@ The data files `plan_data.json`, `plan_prefs.json` and `plan_state.json` may sti
 the volume. Nothing reads them. They were left rather than deleted, because discarding
 somebody's saved targets during a tidy-up is not a decision to make on their behalf. Delete
 them by hand if the volume needs the room.
+
+## 30. Tech or not, blue or white collar
+
+The forms ask "what is your current role" and the lead types free text: "software
+engineer", "chef", "forklift operator", "i don't have one atm". There is no tech field and
+no collar field in HubSpot, so this is a classification and it will be wrong sometimes.
+
+Different creators are asking different questions, so the axis follows the creator.
+`simrankhokha` reads tech against non-tech, because her cohort is a move into technology
+and what matters is whether they are already in it. `payalineurope` and
+`wanderess_priyanka` read blue collar against white collar, because those are relocation
+cohorts where a welder and a data engineer are both "non-tech" and that tells nobody which
+visa route they are on. A creator with no axis set gets no chip rather than the wrong one.
+Override with `CREATOR_ROLE_AXIS` as `creator:axis,creator:axis`.
+
+Three answers, not two. Titles like consultant, manager, associate or product manager
+genuinely go either way, and forcing them would put a confident wrong label in front of an
+agent about to dial, so they come back **unclear**. A lead who never answered gets nothing
+at all: never answering and answering ambiguously are different facts and collapsing them
+would hide how much of the list has no answer.
+
+The chip carries the exact words it judged on hover, so a wrong call can be traced to what
+the lead actually typed rather than argued about.
+
+Order in the rule list matters more than the word lists. "data analyst" is tech and
+"business analyst" is not; "software engineer" is tech and "civil engineer" is not. Specific
+patterns sit above general ones and the first match wins. The patterns are stems that allow
+the word to continue: ending them at a word boundary meant "physiotherap" never matched
+"physiotherapist".
+
+Coverage is uneven and worth knowing before reading anything into it. The role field is
+populated on 1,572 of Simran's leads, but only 10 for payalineurope and 2 for
+wanderess_priyanka.
+
+## 31. The day's list follows assignment
+
+The list is written once, early. It used to be that a lead counted against whoever held it
+that morning whatever happened afterwards, which protected an agent's denominator from
+moving under them. It also meant a lead handed to somebody at eleven never appeared on
+their screen, which is the opposite of useful, so that rule is now reversed.
+
+Assignment moves a lead, in all three shapes it comes in. A lead created and assigned after
+the list froze joins it. A lead that sat unassigned and was picked up joins it, which
+already worked through promotion. And a lead taken from one agent and given to another
+moves, which is the real change: the receiving agent's count goes up and the previous
+agent's goes down.
+
+Only leads assigned today, only to somebody who is actually working, and only if the lead
+belongs on the list on its own merits. Calls already made stay credited to whoever made
+them, because calls are counted from call records rather than from this list.
+
+Both numbers are reported on the page, because a denominator that moves without explanation
+is how a manager stops trusting a dashboard.
