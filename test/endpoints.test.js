@@ -507,6 +507,37 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       co.body.countsEveryStage === true);
     ok("and it names the tracked creators it is limited to",
       Array.isArray(co.body.creators) && co.body.creators.length > 0);
+    /* A month is not one number. Two hundred leads is a good month or a bad one depending
+       on how many were international, how many were already professionals, and whether they
+       are the kind the cohort converts, so the same cohort can be read on four axes. */
+    for (const dim of ["intl", "sp", "role"]) {
+      const cd = await get("/api/callnow2/cohort?month=2026-08&rows=" + dim);
+      ok("rows can be " + dim + ", and still add to the same total",
+        cd.status === 200 && cd.body.rowsBy === dim && cd.body.grand === co.body.grand &&
+        (cd.body.stages || []).reduce(function(n, s2){ return n + s2.total; }, 0) === cd.body.grand,
+        JSON.stringify({ by: cd.body.rowsBy, g: cd.body.grand, want: co.body.grand }));
+    }
+    ok("an unknown rows dimension falls back to stage rather than emptying the table",
+      (await get("/api/callnow2/cohort?month=2026-08&rows=nonsense")).body.rowsBy === "stage");
+    ok("every split is reported at once, so the shape of the month reads without switching",
+      co.body.splits && co.body.splits.intl && co.body.splits.sp && co.body.splits.role &&
+      co.body.splits.intl.parts.length > 0);
+    ok("and each split adds up to the whole cohort",
+      ["intl", "sp", "role"].every(function(k){
+        return co.body.splits[k].parts.reduce(function(n, p2){ return n + p2.n; }, 0) === co.body.grand; }),
+      JSON.stringify(Object.keys(co.body.splits || {})));
+    /* The point of the splits: narrow to one kind of lead and see where they sat. */
+    const narrow = await get("/api/callnow2/cohort?month=2026-08&intl=yes&sp=student");
+    ok("narrowing to international students narrows the cohort",
+      narrow.body.grand > 0 && narrow.body.grand < co.body.grand,
+      narrow.body.grand + " of " + co.body.grand);
+    {
+      const cell2 = (narrow.body.stages || [])[0];
+      const d2 = await get("/api/callnow2/cohort/leads?month=2026-08&intl=yes&sp=student&stage=" +
+        encodeURIComponent(cell2.stage));
+      ok("a narrowed cell opens exactly the leads it counted",
+        d2.body.total === cell2.total, d2.body.total + " vs " + cell2.total);
+    }
     const coF = await get("/api/callnow2/cohort?month=2026-08&creator=payalineurope");
     ok("the creator filter narrows it", coF.body.grand > 0 && coF.body.grand < co.body.grand,
       coF.body.grand + " of " + co.body.grand);

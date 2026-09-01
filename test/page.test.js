@@ -1010,6 +1010,25 @@ ok("By month is a fifth view",
   html.indexOf("function cohortView()") >= 0);
 ok("stages down the side, create days across the top",
   html.indexOf("C.colTotals") >= 0 && html.indexOf("st.cells.map") >= 0);
+/* The cohort can be read on four axes and narrowed by three of them, and the fold that
+   explains today's calling list has no business on a view that is not about it. */
+ok("the rows can be switched between the four axes",
+  html.indexOf("function setCohortRows(v)") >= 0 && html.indexOf("C.dims") >= 0);
+ok("each split is shown as chips that narrow the whole matrix",
+  html.indexOf("function setCohortSeg(dim,v)") >= 0 && html.indexOf("C.splits") >= 0);
+/* One dispatcher, called by name, rather than three handlers reached through a string:
+   the audit flags the latter because a rename breaks them with nothing to search for. */
+ok("the chips call their handler by name, so a rename cannot break them silently",
+  html.indexOf("onclick='setCohortSeg(") >= 0);
+ok("national and international drive the existing Number filter, not a second one",
+  html.indexOf("Q.intl=(Q.intl===want") >= 0);
+ok("the drill carries the narrowing, so a cell and its leads cannot disagree",
+  html.indexOf("sp:PICK.sp,role:PICK.role,intl:PICK.intl") >= 0);
+ok("Behind the numbers is hidden where it does not apply",
+  html.indexOf('if(VIEW!=="cohort"&&VIEW!=="wa")h+=behind();') >= 0);
+ok("five tabs wrap rather than being cut off in a narrow column",
+  html.indexOf(".wrap .viewstrip .seg{flex-wrap:wrap") >= 0 &&
+  html.indexOf("flex-wrap:wrap}\n.wrap .viewstrip .vnote") < 0);
 ok("it warns that its totals do not match the rest of the page",
   html.indexOf("do not match the rest of the page and are not meant to") >= 0);
 ok("clicking a cell opens the queue rather than a second lead table",

@@ -111,6 +111,10 @@ td.z{color:#B7C2CD}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
 .tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
 .ac-cohort>h2{border-left:4px solid #534AB7;padding-left:9px}
+.csegs{display:flex;flex-wrap:wrap;gap:12px 18px;margin:4px 0 10px}
+.cseg{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.cseg .clab{font-size:10.5px;color:#7A8CA0;text-transform:uppercase;letter-spacing:.05em}
+.cseg .chipb b{font-weight:700}
 .wrap .warn.bad.shortlist{margin-bottom:10px}
 .wrap .warn.bad.shortlist .btn{margin-left:6px}
 .vbadge{margin-left:6px;background:#FAC775;color:#412402;border-radius:9px;padding:0 6px;font-size:11px}
@@ -482,10 +486,15 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .headband .heroside > .hnote{margin-top:auto !important;padding-top:6px}
 @media (max-width:1250px){ .wrap .headband,.wrap .headband.solo{grid-template-columns:1fr !important} }
 
-/* The view switch: one line, tabs then caption, no card around it. */
-.wrap .viewstrip{display:flex;align-items:center;gap:10px;margin-top:7px;min-width:0}
-.wrap .viewstrip .vnote{font-size:10.5px;color:#7A8CA0;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;min-width:0}
+/* The view switch. It was one line, tabs then caption, which worked at three tabs and
+   broke at five: the strip lives in a 330px column and the last tab was cut in half.
+   Now it wraps, the buttons are tighter, and the caption drops to its own line rather
+   than competing for width it does not have. */
+.wrap .viewstrip{display:flex;align-items:center;gap:7px;margin-top:7px;min-width:0;flex-wrap:wrap}
+.wrap .viewstrip .seg{flex-wrap:wrap;margin-left:0;row-gap:2px}
+.wrap .viewstrip .seg button{padding:5px 11px;font-size:12px}
+.wrap .viewstrip .vnote{font-size:10.5px;color:#7A8CA0;min-width:0;flex-basis:100%;
+  white-space:normal;line-height:1.35}
 
 /* Four hero cards, two by two and compact: the number still reads across the room, the
    furniture around it does not. */
@@ -655,7 +664,7 @@ tr.done td a{color:#4A5A6A}
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var W=null,WFILT="uncalled",WOPEN={},WTHREAD={};
-var C=null,CMONTH="";
+var C=null,CMONTH="",CROWS="stage",CSP="",CROLE="";
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""};
 
 /* ---- links into this page ---------------------------------------------------------
@@ -740,7 +749,9 @@ function load(){LOADING=true;
    table would be two tables to keep in step and one of them would fall behind. */
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
   var url=PICK.cohort
-    ? "/api/callnow2/cohort/leads?"+qs({month:PICK.month,stage:PICK.stage,day:PICK.day})
+    ? "/api/callnow2/cohort/leads?"+qs({month:PICK.month,rows:PICK.rows,stage:PICK.stage,
+        day:PICK.day,sp:PICK.sp,role:PICK.role,intl:PICK.intl,agent:PICK.agent,
+        creator:PICK.creator,source:PICK.source,team:PICK.team})
     : "/api/callnow2/leads?"+qs(PICK);
   fetch(url).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
@@ -748,7 +759,9 @@ function loadLeads(){if(!PICK)return;LEADS=true;draw();
 /* Open one cohort cell: a stage, and either one day or the whole month. */
 function pickCohort(stage,day){
   VIEW="queue";SEL="";OPEN={};LQ="";L=null;
-  PICK={cohort:true,month:(C&&C.month)||"",stage:stage||"",day:day||"",worked:""};
+  PICK={cohort:true,month:(C&&C.month)||"",rows:CROWS,stage:stage||"",day:day||"",
+    sp:CSP,role:CROLE,intl:Q.intl||"",agent:Q.agent||"",creator:Q.creator||"",
+    source:Q.source||"",team:Q.team||"",worked:""};
   syncUrl();loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function setView(v){VIEW=v;syncUrl();
@@ -970,6 +983,9 @@ function freshness(){
    Days with nothing in them are dropped. A month of empty columns is not a table. */
 function loadCohort(){
   var q=[]; if(CMONTH)q.push("month="+encodeURIComponent(CMONTH));
+  if(CROWS)q.push("rows="+encodeURIComponent(CROWS));
+  if(CSP)q.push("sp="+encodeURIComponent(CSP));
+  if(CROLE)q.push("role="+encodeURIComponent(CROLE));
   ["agent","creator","source","intl","team"].forEach(function(k){
     if(Q[k])q.push(k+"="+encodeURIComponent(Q[k]));});
   fetch("/api/callnow2/cohort"+(q.length?"?"+q.join("&"):"")).then(asJson)
@@ -977,6 +993,26 @@ function loadCohort(){
     .catch(function(e){C={error:e.message};draw();});
 }
 function setCohortMonth(v){ CMONTH=v; C=null; loadCohort(); }
+function setCohortRows(v){ CROWS=v; C=null; loadCohort(); }
+/* Clicking a split narrows the whole matrix to that kind of lead, so "where do the
+   international students sit" is two clicks rather than a mental filter.
+
+   One dispatcher rather than three handlers, because the chips are built from a loop and
+   three handlers meant naming them in a string. The audit was right to flag that: a rename
+   would have broken the chips silently, since nothing would have been calling them by a
+   name a search could find.
+
+   National and international drive the page-level Number filter rather than a second
+   control of their own, or the two could disagree about the same question. */
+function setCohortSeg(dim,v){
+  if(dim==="intl"){
+    var want=v==="intl"?"yes":"no";
+    Q.intl=(Q.intl===want?"":want); C=null; load(); return;
+  }
+  if(dim==="sp")CSP=(CSP===v?"":v);
+  if(dim==="role")CROLE=(CROLE===v?"":v);
+  C=null; loadCohort();}
+function clearCohortSeg(){ CSP=""; CROLE=""; Q.intl=""; C=null; load(); }
 function cday(d){
   var p=String(d||"").split("-");
   return p.length===3 ? (+p[2])+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(+p[1])-1] : d;
@@ -998,11 +1034,34 @@ function cohortView(){
     (C.months||[]).map(function(m){
       return "<option value='"+esc(m)+"'"+(m===C.month?" selected":"")+">"+esc(m)+"</option>";}).join("")+
     "</select></div>"+
+    "<div><label>Rows</label><select onchange='setCohortRows(this.value)'>"+
+    (C.dims||[]).map(function(d){
+      return "<option value='"+esc(d.key)+"'"+(d.key===C.rowsBy?" selected":"")+">"+esc(d.label)+"</option>";}).join("")+
+    "</select></div>"+
     "<div class='z' style='align-self:end;padding-bottom:6px'>"+
       fmt(C.grand)+" lead"+(C.grand===1?"":"s")+" across "+fmt((C.stages||[]).length)+" stages"+
       (C.emptyDays?" &middot; "+fmt(C.emptyDays)+" day"+(C.emptyDays===1?"":"s")+" with nothing, hidden":"")+
       " &middot; "+fmt((C.creators||[]).length)+" tracked creators"+
     "</div></div>";
+
+  /* The shape of the month on every axis at once. A month is not one number: two hundred
+     leads is a good month or a bad one depending on how many were international, how many
+     were already professionals, and whether they are the kind this cohort converts. */
+  var seg=function(key,cur){
+    var sp2=(C.splits||{})[key]; if(!sp2||!sp2.parts.length)return "";
+    return "<div class='cseg'><span class='clab'>"+esc(sp2.label)+"</span>"+
+      sp2.parts.map(function(p){
+        var on=cur===p.key;
+        return "<button class='chipb"+(on?" on":"")+"' onclick='setCohortSeg("+
+          JSON.stringify(key).replace(/"/g,"&quot;")+","+
+          JSON.stringify(p.key).replace(/"/g,"&quot;")+")'>"+
+          esc(p.label)+" <b>"+fmt(p.n)+"</b></button>";}).join("")+"</div>";};
+  h+="<div class='csegs'>"+
+    seg("intl",Q.intl==="yes"?"intl":(Q.intl==="no"?"national":""))+
+    seg("sp",CSP)+
+    seg("role",CROLE)+
+    ((CSP||CROLE||Q.intl)?"<button class='chipb' onclick='clearCohortSeg()'>Clear split</button>":"")+
+    "</div>";
 
   if(!(C.stages||[]).length)return h+"<div class='z' style='padding:10px 2px'>Nothing was created in this month under these filters.</div></div>";
 
@@ -1478,7 +1537,7 @@ function queueView(){
   if(PICK.cohort){
     h+="<div class='sub'><b>"+fmt(L.total)+"</b> lead"+(L.total===1?"":"s")+" created "+
       (PICK.day?"on "+esc(PICK.day):"in "+esc(PICK.month))+
-      (PICK.stage?", now sitting in "+esc(STAGE_LABEL[PICK.stage]||PICK.stage):"")+
+      (PICK.stage?", "+esc(L.stageLabel||STAGE_LABEL[PICK.stage]||PICK.stage):"")+
       (L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
       " &middot; newest first. These are counted by when they arrived, not by whether they are worth ringing today.</div>";
   } else {
@@ -2318,7 +2377,11 @@ function draw(){
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>"+
      "<div class='view"+(VIEW==="wa"?" on":"")+"'>"+waView()+"</div>"+
      "<div class='view"+(VIEW==="cohort"?" on":"")+"'>"+cohortView()+"</div>";
-  h+=behind();
+  /* Behind the numbers explains how today's calling list was built, what is held aside
+     and where the effort went. On Loop WA and the create-date cohort none of that applies:
+     neither view is drawn from that list. Showing it there invites somebody to reconcile
+     two sets of numbers that were never counting the same thing. */
+  if(VIEW!=="cohort"&&VIEW!=="wa")h+=behind();
   el.innerHTML=h;
   // Every redraw replaces the segment box, so the caret has to be put back afterwards.
   segFocus();}

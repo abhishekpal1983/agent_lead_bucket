@@ -36,6 +36,11 @@ function lead(o){
     // When the lead arrived. Spread across the month so the create-date cohort has
     // columns to draw rather than one lonely bar.
     created: D(2026, 8, 1 + (n % 28), 9 + (n % 8)),
+    /* The qualifying axes the cohort splits on. Spread deliberately, including leads that
+       answered nothing, because "no answer" is a real and common outcome and a fixture
+       where everybody answered would hide it. */
+    sp: ["S", "P", "?", "P", "S", "?"][n % 6],
+    roleClass: ["tech", "nontech", "white", "blue", "unclear", ""][n % 6],
     // Loop's WhatsApp summary. Zero for most leads; the block below gives a realistic
     // handful a conversation, including some in closed stages, because that is the whole
     // point of the Loop WA view and a fixture without them tests nothing.

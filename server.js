@@ -5510,6 +5510,34 @@ app.get("/api/vp/idle/day", async function(req, res){
 
    Tracked creators only, which is the same list the rest of the app uses, so adding a
    creator here is the existing add-and-sync and needs nothing new. */
+/* The four ways of asking "what kind of lead was this", alongside the stage it reached.
+
+   A month's inflow is not one number. Two hundred leads is a good month or a bad one
+   depending on how many were international, how many were already professionals, and
+   whether they are the sort the cohort actually converts. Stage alone answers where they
+   ended up and never what they were. */
+const COHORT_DIMS = {
+  stage: { label: "Engagement stage", of: function(r){ return r.stage || "__fresh"; },
+    order: null, name: function(k){ return CN2_STAGE_LABELS[k] || k; } },
+  intl: { label: "National or international",
+    of: function(r){ return r.intl ? "intl" : "national"; },
+    order: ["national", "intl"],
+    name: function(k){ return k === "intl" ? "International" : "National"; } },
+  sp: { label: "Student or professional",
+    of: function(r){ return r.sp === "S" ? "student" : (r.sp === "P" ? "professional" : "unknown"); },
+    order: ["student", "professional", "unknown"],
+    name: function(k){ return { student: "Student", professional: "Professional",
+      unknown: "Not known" }[k] || k; } },
+  role: { label: "Tech, or blue and white collar",
+    /* One column, two questions. Simran's leads are read tech against non-tech and the
+       relocation cohorts blue against white, so a single row set would be mixing two
+       scales. They are kept as separate values rather than merged into one axis. */
+    of: function(r){ return r.roleClass || "noanswer"; },
+    order: ["tech", "nontech", "white", "blue", "unclear", "noanswer"],
+    name: function(k){ return { tech: "Tech", nontech: "Non-tech", white: "White collar",
+      blue: "Blue collar", unclear: "Role unclear", noanswer: "No role given" }[k] || k; } }
+};
+
 const COHORT_STAGE_ORDER = ["__fresh", "rcb_requested_callback", "discovery",
   "program_pitched", "pricing_pitched", "counselled", "Follow up", "FU_DNP", "FU_RCB",
   "payment_prospect", "IFC", "dnp_did_not_pick", "dnp_other", "ghosted",
@@ -5536,6 +5564,9 @@ function cohortPick(req, mon){
   const wantSource = String(req.query.source || "");
   const wantIntl = String(req.query.intl || "");
   const wantTeam = String(req.query.team || "");
+  // The qualifying axes, so the matrix can be narrowed to one kind of lead.
+  const wantSp = String(req.query.sp || "");
+  const wantRole = String(req.query.role || "");
   let teamAgents = null;
   if (wantTeam) {
     const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
@@ -5554,6 +5585,8 @@ function cohortPick(req, mon){
     if (wantSource && (r.source || "(not set)") !== wantSource) return;
     if (wantIntl === "yes" && !r.intl) return;
     if (wantIntl === "no" && r.intl) return;
+    if (wantSp && COHORT_DIMS.sp.of(r) !== wantSp) return;
+    if (wantRole && COHORT_DIMS.role.of(r) !== wantRole) return;
     out.push(r);
   });
   return { rows: out, scoped: !!allow };
@@ -5565,11 +5598,20 @@ app.get("/api/callnow2/cohort", function(req, res){
   const picked = cohortPick(req, mon);
   const dayIx = {};
   mon.days.forEach(function(d, i){ dayIx[d] = i; });
+  const dimKey = COHORT_DIMS[String(req.query.rows || "stage")] ? String(req.query.rows || "stage") : "stage";
+  const dim = COHORT_DIMS[dimKey];
   const byStage = {};
   const colTotal = new Array(mon.days.length).fill(0);
   let grand = 0;
+  /* The split of the whole filtered cohort on every axis at once, so the shape of the
+     month is readable without switching the rows four times. */
+  const splits = { intl: {}, sp: {}, role: {}, stage: {} };
   picked.rows.forEach(function(r){
-    const st = r.stage || "__fresh";
+    Object.keys(splits).forEach(function(k){
+      const v = COHORT_DIMS[k].of(r);
+      splits[k][v] = (splits[k][v] || 0) + 1;
+    });
+    const st = dim.of(r);
     const d = istParts(new Date(r.created)).date;
     const i = dayIx[d];
     if (i === undefined) return;
@@ -5578,11 +5620,11 @@ app.get("/api/callnow2/cohort", function(req, res){
     colTotal[i]++;
     grand++;
   });
-  const order = COHORT_STAGE_ORDER.slice();
+  const order = (dim.order || COHORT_STAGE_ORDER).slice();
   Object.keys(byStage).forEach(function(st){ if (order.indexOf(st) < 0) order.push(st); });
   const stages = order.filter(function(st){ return byStage[st]; }).map(function(st){
     const cells = byStage[st];
-    return { stage: st, label: CN2_STAGE_LABELS[st] || st, cells: cells,
+    return { stage: st, label: dim.name(st), cells: cells,
       total: cells.reduce(function(a, b){ return a + b; }, 0) };
   });
   /* Only the days that have anything, plus everything up to today in the current month.
@@ -5598,6 +5640,21 @@ app.get("/api/callnow2/cohort", function(req, res){
     }),
     colTotals: keep.map(function(i){ return colTotal[i]; }),
     grand: grand,
+    rowsBy: dimKey,
+    dims: Object.keys(COHORT_DIMS).map(function(k){
+      return { key: k, label: COHORT_DIMS[k].label }; }),
+    splits: (function(){
+      const out = {};
+      Object.keys(splits).forEach(function(k){
+        const d2 = COHORT_DIMS[k];
+        const keys = (d2.order || Object.keys(splits[k]));
+        out[k] = { label: d2.label, parts: keys.filter(function(v){ return splits[k][v]; })
+          .map(function(v){ return { key: v, label: d2.name(v), n: splits[k][v] }; }) };
+      });
+      return out;
+    })(),
+    filters: { sp: String(req.query.sp || ""), role: String(req.query.role || ""),
+      intl: String(req.query.intl || "") },
     emptyDays: mon.days.length - keep.length,
     creators: PFRESH_LIST.slice(),
     scoped: picked.scoped, isVP: isVP(req),
@@ -5622,16 +5679,19 @@ app.get("/api/callnow2/cohort/leads", function(req, res){
   const mon = cohortMonth(req.query.month);
   const wantStage = String(req.query.stage || "");
   const wantDay = String(req.query.day || "");
+  const dimKey = COHORT_DIMS[String(req.query.rows || "stage")] ? String(req.query.rows || "stage") : "stage";
+  const dim = COHORT_DIMS[dimKey];
   const day = CN2.dayBoundsFor(cn2Now());
   const picked = cohortPick(req, mon);
   const rows = picked.rows.filter(function(r){
-    if (wantStage && (r.stage || "__fresh") !== wantStage) return false;
+    if (wantStage && dim.of(r) !== wantStage) return false;
     if (wantDay && istParts(new Date(r.created)).date !== wantDay) return false;
     return true;
   }).sort(function(a, b){ return (b.created || 0) - (a.created || 0); });
   const cap = parseInt(process.env.COHORT_ROWS || "400", 10);
   res.json({
-    month: mon.key, stage: wantStage, day: wantDay,
+    month: mon.key, stage: wantStage, day: wantDay, rowsBy: dimKey,
+    stageLabel: wantStage ? dim.name(wantStage) : "",
     total: rows.length, shown: Math.min(rows.length, cap),
     portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
     rows: rows.slice(0, cap).map(function(r){
