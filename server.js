@@ -3540,6 +3540,7 @@ const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
 const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
   "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/vp/agent-day",
   "/api/vp/agent-summary", "/api/callnow2/wa", "/api/vp/idle/live", "/api/vp/idle/day",
+  "/api/callnow2/cohort", "/api/callnow2/cohort/leads",
   "/api/vp/daily", "/api/coaching/progress"];
 
 function dataVersion(){
@@ -5493,6 +5494,159 @@ app.get("/api/vp/idle/day", async function(req, res){
     // Said in the payload so the page cannot forget to say it.
     followUpIsEmailOnly: true,
     declarationsLive: false
+  });
+});
+
+/* ---------- Leads by the month they arrived ----------------------------------------
+
+   A different question from the rest of Call Now, and deliberately not built on it.
+
+   Everything else here answers "who should be rung today", which means it starts from the
+   frozen calling list and only holds stages worth ringing. This starts from the month a
+   lead was created and holds every stage there is, including the ones nobody calls: no
+   stage at all, not interested, disqualified, deal won. It is a record of what came in and
+   what became of it, not a work queue, and the totals will not match anything else on the
+   page because they are not counting the same thing.
+
+   Tracked creators only, which is the same list the rest of the app uses, so adding a
+   creator here is the existing add-and-sync and needs nothing new. */
+const COHORT_STAGE_ORDER = ["__fresh", "rcb_requested_callback", "discovery",
+  "program_pitched", "pricing_pitched", "counselled", "Follow up", "FU_DNP", "FU_RCB",
+  "payment_prospect", "IFC", "dnp_did_not_pick", "dnp_other", "ghosted",
+  "ni_not_interested", "disqualified", "deal_won"];
+
+function cohortMonth(key){
+  const m = /^(\d{4})-(\d{2})$/.exec(String(key || ""));
+  const now = istParts(new Date(cn2Now()));
+  const y = m ? +m[1] : +now.date.slice(0, 4);
+  const mo = m ? +m[2] : +now.date.slice(5, 7);
+  const start = Date.UTC(y, mo - 1, 1) - 5.5 * 3600000;
+  const end = Date.UTC(mo === 12 ? y + 1 : y, mo === 12 ? 0 : mo, 1) - 5.5 * 3600000;
+  const days = [];
+  for (let t = start; t < end; t += 86400000) days.push(istParts(new Date(t)).date);
+  return { key: String(y) + "-" + String(mo).padStart(2, "0"), start: start, end: end, days: days };
+}
+
+/* One pass over the pool, shared by the matrix and the drill so a cell and the leads
+   behind it can never disagree about who is in it. */
+function cohortPick(req, mon){
+  const allow = cn2Scope(req);
+  const wantAgent = String(req.query.agent || "");
+  const wantCreator = String(req.query.creator || "");
+  const wantSource = String(req.query.source || "");
+  const wantIntl = String(req.query.intl || "");
+  const wantTeam = String(req.query.team || "");
+  let teamAgents = null;
+  if (wantTeam) {
+    const tt = cn2Teams().filter(function(t){ return t.id === wantTeam; })[0];
+    if (tt) teamAgents = (tt.agentIds || []).map(String);
+  }
+  const agentKey = function(o){ return String(o || "") || "none"; };
+  const out = [];
+  (CN2_FIXTURE_DATA ? cn2Rows() : callnowPool().map(cnRow)).forEach(function(r){
+    if (PFRESH_LIST.indexOf(r.creator || "") < 0) return;
+    const created = r.created || 0;
+    if (!created || created < mon.start || created >= mon.end) return;
+    if (allow && allow.indexOf(String(r.owner || "")) < 0) return;
+    if (wantAgent && agentKey(r.owner) !== wantAgent) return;
+    if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) return;
+    if (wantCreator && r.creator !== wantCreator) return;
+    if (wantSource && (r.source || "(not set)") !== wantSource) return;
+    if (wantIntl === "yes" && !r.intl) return;
+    if (wantIntl === "no" && r.intl) return;
+    out.push(r);
+  });
+  return { rows: out, scoped: !!allow };
+}
+
+app.get("/api/callnow2/cohort", function(req, res){
+  if (!cn2Ready()) return res.json({ notReady: true });
+  const mon = cohortMonth(req.query.month);
+  const picked = cohortPick(req, mon);
+  const dayIx = {};
+  mon.days.forEach(function(d, i){ dayIx[d] = i; });
+  const byStage = {};
+  const colTotal = new Array(mon.days.length).fill(0);
+  let grand = 0;
+  picked.rows.forEach(function(r){
+    const st = r.stage || "__fresh";
+    const d = istParts(new Date(r.created)).date;
+    const i = dayIx[d];
+    if (i === undefined) return;
+    if (!byStage[st]) byStage[st] = new Array(mon.days.length).fill(0);
+    byStage[st][i]++;
+    colTotal[i]++;
+    grand++;
+  });
+  const order = COHORT_STAGE_ORDER.slice();
+  Object.keys(byStage).forEach(function(st){ if (order.indexOf(st) < 0) order.push(st); });
+  const stages = order.filter(function(st){ return byStage[st]; }).map(function(st){
+    const cells = byStage[st];
+    return { stage: st, label: CN2_STAGE_LABELS[st] || st, cells: cells,
+      total: cells.reduce(function(a, b){ return a + b; }, 0) };
+  });
+  /* Only the days that have anything, plus everything up to today in the current month.
+     Thirty one empty columns is not a table, it is a horizontal scroll. */
+  const today = istParts(new Date(cn2Now())).date;
+  const keep = [];
+  mon.days.forEach(function(d, i){ if (colTotal[i] > 0 || d === today) keep.push(i); });
+  res.json({
+    month: mon.key, days: keep.map(function(i){ return mon.days[i]; }),
+    stages: stages.map(function(s2){
+      return { stage: s2.stage, label: s2.label, total: s2.total,
+        cells: keep.map(function(i){ return s2.cells[i]; }) };
+    }),
+    colTotals: keep.map(function(i){ return colTotal[i]; }),
+    grand: grand,
+    emptyDays: mon.days.length - keep.length,
+    creators: PFRESH_LIST.slice(),
+    scoped: picked.scoped, isVP: isVP(req),
+    months: (function(){
+      const out = [], now = istParts(new Date(cn2Now())).date;
+      let y = +now.slice(0, 4), m = +now.slice(5, 7);
+      for (let i = 0; i < 12; i++) {
+        out.push(String(y) + "-" + String(m).padStart(2, "0"));
+        m--; if (m < 1) { m = 12; y--; }
+      }
+      return out;
+    })(),
+    // Said plainly: this counts everything that arrived, not what is worth ringing.
+    countsEveryStage: true
+  });
+});
+
+/* The leads behind one cell, in the same shape the queue drill returns so the page can
+   render them with the row and expander it already has. */
+app.get("/api/callnow2/cohort/leads", function(req, res){
+  if (!cn2Ready()) return res.json({ notReady: true });
+  const mon = cohortMonth(req.query.month);
+  const wantStage = String(req.query.stage || "");
+  const wantDay = String(req.query.day || "");
+  const day = CN2.dayBoundsFor(cn2Now());
+  const picked = cohortPick(req, mon);
+  const rows = picked.rows.filter(function(r){
+    if (wantStage && (r.stage || "__fresh") !== wantStage) return false;
+    if (wantDay && istParts(new Date(r.created)).date !== wantDay) return false;
+    return true;
+  }).sort(function(a, b){ return (b.created || 0) - (a.created || 0); });
+  const cap = parseInt(process.env.COHORT_ROWS || "400", 10);
+  res.json({
+    month: mon.key, stage: wantStage, day: wantDay,
+    total: rows.length, shown: Math.min(rows.length, cap),
+    portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
+    rows: rows.slice(0, cap).map(function(r){
+      const why = CN2.reasonsOf(r, CN2.timingOf(r, day, CN2_WORK),
+        { scoreMin: CONV_SCORE_MIN });
+      return Object.assign({}, r, {
+        openStage: r.stage, nowStage: r.stage,
+        openTiming: CN2.timingOf(r, day, CN2_WORK),
+        why: why, whyText: r.why || "",
+        counted: true, gone: false, worked: !!(r.last && r.last >= day.start && r.last < day.end),
+        band: CN2.effortBand(r.calls || 0).key, bandOwner: CN2.effortBand(r.own || 0).key,
+        stageEntered: r.entered || 0,
+        formSubs: formAnswers({ email: r.email })
+      });
+    })
   });
 });
 

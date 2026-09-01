@@ -33,6 +33,9 @@ function lead(o){
     // When the lead landed in its current stage. DNP coverage measures attempts against
     // the working days since this, so a fixture without it leaves that path untested.
     entered: D(2026, 8, 1 + (n % 5), 10),
+    // When the lead arrived. Spread across the month so the create-date cohort has
+    // columns to draw rather than one lonely bar.
+    created: D(2026, 8, 1 + (n % 28), 9 + (n % 8)),
     // Loop's WhatsApp summary. Zero for most leads; the block below gives a realistic
     // handful a conversation, including some in closed stages, because that is the whole
     // point of the Loop WA view and a fixture without them tests nothing.

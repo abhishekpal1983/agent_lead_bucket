@@ -481,6 +481,50 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return src.indexOf("if (rows[k] === undefined) { rows[k] = st.rows[k]; }") >= 0;
       })());
 
+    /* Leads by the month they arrived. A different question from the rest of Call Now,
+       and deliberately not built on the frozen list, so the checks are about it holding
+       every stage and adding up both ways. */
+    const co = await get("/api/callnow2/cohort?month=2026-08");
+    ok("the cohort answers", co.status === 200, "status " + co.status + " " + co.raw);
+    ok("and has real leads in it, not an empty month",
+      co.body.grand > 0 && (co.body.stages || []).length > 0, JSON.stringify(co.body.grand));
+    ok("the rows add up to the grand total",
+      (co.body.stages || []).reduce(function(n, s2){ return n + s2.total; }, 0) === co.body.grand);
+    ok("and so do the columns, which is the same number reached the other way",
+      (co.body.colTotals || []).reduce(function(n, x){ return n + x; }, 0) === co.body.grand);
+    ok("every stage row has one cell per day column",
+      (co.body.stages || []).every(function(s2){ return s2.cells.length === co.body.days.length; }));
+    ok("each row's cells add up to its own total",
+      (co.body.stages || []).every(function(s2){
+        return s2.cells.reduce(function(n, x){ return n + x; }, 0) === s2.total; }));
+    /* The whole point: stages the calling list refuses to hold. */
+    ok("it holds stages Call Now never shows, including no stage at all",
+      (co.body.stages || []).some(function(s2){ return s2.stage === "__fresh"; }),
+      (co.body.stages || []).map(function(s2){ return s2.stage; }).join(","));
+    ok("empty days are dropped rather than drawn as a month of zeroes",
+      co.body.emptyDays >= 0 && co.body.days.length <= 31);
+    ok("it says out loud that it counts every stage",
+      co.body.countsEveryStage === true);
+    ok("and it names the tracked creators it is limited to",
+      Array.isArray(co.body.creators) && co.body.creators.length > 0);
+    const coF = await get("/api/callnow2/cohort?month=2026-08&creator=payalineurope");
+    ok("the creator filter narrows it", coF.body.grand > 0 && coF.body.grand < co.body.grand,
+      coF.body.grand + " of " + co.body.grand);
+    /* A cell and the leads behind it must agree, or the number is decoration. */
+    const cell = (co.body.stages || []).filter(function(s2){ return s2.total > 0; })[0];
+    const drill = await get("/api/callnow2/cohort/leads?month=2026-08&stage=" + encodeURIComponent(cell.stage));
+    ok("a cell opens exactly the leads it counted",
+      drill.body.total === cell.total, drill.body.total + " vs " + cell.total);
+    ok("and they all really are in that stage",
+      (drill.body.rows || []).every(function(r){ return (r.stage || "__fresh") === cell.stage; }));
+    ok("the drill returns the same shape the queue renders",
+      (drill.body.rows || []).every(function(r){
+        return "name" in r && "phone" in r && "openStage" in r && r.why &&
+               "calls" in r && "own" in r && "band" in r; }),
+      JSON.stringify(Object.keys((drill.body.rows || [])[0] || {}).slice(0, 8)));
+    ok("and carries a portal so the rows can link out",
+      drill.body.portal && drill.body.portal.portalId);
+
     /* Assignment during the day. The logic is covered properly in the cn2 suite, where a
        frozen base and a live pool can be made to disagree. Here the fixture builds both
        from the same rows so they never diverge, and the most this can prove is that the

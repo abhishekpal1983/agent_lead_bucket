@@ -828,3 +828,32 @@ just a saved filter over a field the app can read directly.
 `WA_SOURCE=list` goes back to reading the list, and `WA_LIST_ID` still names it. Health and
 the view both report which source was used, because "showing 0 of 0" means something very
 different depending on the answer.
+
+## 33. Leads by the month they arrived
+
+A fifth Call Now view, and deliberately not built on the rest of it.
+
+Everything else on that page answers "who should be rung today", which means it starts from
+the frozen calling list and only holds stages worth ringing. This starts from the month a
+lead was created and holds every stage there is, including the ones nobody calls: no stage
+at all, not interested, disqualified, deal won.
+
+**Its totals will not match anything else on the page and are not meant to.** It counts what
+arrived; the rest counts what is worth working. The view says that in its own subtitle,
+because two numbers on one screen that disagree will be read as a bug unless the screen
+explains why they differ.
+
+Stages down the side, create days across the top, one column per day that has anything in
+it. Days with nothing are dropped: a month of empty columns is a horizontal scroll, not a
+table. Rows and columns both add to the same grand total and there is a test for each,
+because a pivot that adds up one way and not the other is the classic way this shape goes
+wrong.
+
+Tracked creators only, the same list the rest of the app uses, so adding a creator is the
+existing add-and-sync and needed nothing new. The Manager, Agent, Creator, Source and Number
+pickers all apply.
+
+Clicking a cell opens the ordinary queue, with the same sorting, search, row colours and
+expander, rather than a second lead table. Two lead tables would be two things to keep in
+step and one of them would fall behind. The loader branches on the pick and the queue header
+describes whichever drill opened it.

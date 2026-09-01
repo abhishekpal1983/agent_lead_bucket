@@ -437,9 +437,9 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("class='hcard") < vp.indexOf(">Manager<") &&
     vp.indexOf(">Manager<") < vp.indexOf("Stage by reason") || true);
   ok("DNP is named plainly", vp.indexOf(">DNPs<") >= 0 && vp.indexOf("nothing to act on today") < 0);
-  // Four now: Loop WA joined matrix, queue and board.
-  ok("four views, matrix first",
-    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view( on)?'/g) || []).length === 4 &&
+  // Five now: Loop WA and By month joined matrix, queue and board.
+  ok("five views, matrix first",
+    vp.indexOf("class='seg'") >= 0 && (vp.match(/class='view( on)?'/g) || []).length === 5 &&
     vp.indexOf("class='view on'") >= 0);
   ok("the board is one of them", vp.indexOf("Board view") >= 0);
   // With nothing picked the queue must invite a choice, not invent one.
@@ -818,9 +818,8 @@ ok("and a segment an agent picks is cleared and shared like every other filter",
       view.indexOf("+233572957159") >= 0 && view.indexOf("replied since your last call") >= 0);
   });
 }
-ok("Loop WA is a fourth view, not a filter on the existing ones",
-  html.indexOf('["matrix","queue","board","wa"]') >= 0 &&
-  html.indexOf("function waView()") >= 0);
+ok("Loop WA is its own view, not a filter on the existing ones",
+  html.indexOf('"board","wa","cohort"') >= 0 && html.indexOf("function waView()") >= 0);
 ok("it is reachable by link, like the other views",
   html.indexOf('v==="board"||v==="wa"') >= 0);
 ok("the page says out loud that none of it counts",
@@ -1003,6 +1002,25 @@ ok("the Loop WA view can say where its membership came from",
 ok("the page explains a list that grew or moved because of assignment",
   html.indexOf("assigned to somebody today and joined the list") >= 0 &&
   html.indexOf("moved between agents today") >= 0);
+
+/* The create-date cohort. Its job is to be a different question from the rest of the
+   page, so the checks are that it says so and that its drill reuses the queue. */
+ok("By month is a fifth view",
+  html.indexOf('["matrix","queue","board","wa","cohort"]') >= 0 &&
+  html.indexOf("function cohortView()") >= 0);
+ok("stages down the side, create days across the top",
+  html.indexOf("C.colTotals") >= 0 && html.indexOf("st.cells.map") >= 0);
+ok("it warns that its totals do not match the rest of the page",
+  html.indexOf("do not match the rest of the page and are not meant to") >= 0);
+ok("clicking a cell opens the queue rather than a second lead table",
+  html.indexOf("function pickCohort(stage,day)") >= 0 &&
+  html.indexOf('PICK.cohort') >= 0 &&
+  html.indexOf('"/api/callnow2/cohort/leads?"') >= 0);
+ok("and the queue header describes which drill opened it",
+  html.indexOf("These are counted by when they arrived") >= 0);
+ok("the month picker and the page filters both reload it",
+  html.indexOf("function setCohortMonth(v)") >= 0 &&
+  html.indexOf('if(VIEW==="cohort"){C=null;loadCohort();}') >= 0);
 
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

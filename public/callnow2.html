@@ -110,6 +110,7 @@ td.z{color:#B7C2CD}
 .tag.rf{background:#FF7A59;color:#fff}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
 .tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
+.ac-cohort>h2{border-left:4px solid #534AB7;padding-left:9px}
 .wrap .warn.bad.shortlist{margin-bottom:10px}
 .wrap .warn.bad.shortlist .btn{margin-left:6px}
 .vbadge{margin-left:6px;background:#FAC775;color:#412402;border-radius:9px;padding:0 6px;font-size:11px}
@@ -654,6 +655,7 @@ tr.done td a{color:#4A5A6A}
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var W=null,WFILT="uncalled",WOPEN={},WTHREAD={};
+var C=null,CMONTH="";
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""};
 
 /* ---- links into this page ---------------------------------------------------------
@@ -678,7 +680,7 @@ function paramsToState(search){
   ["team","creator","source","ostate","intl","stages","segment"].forEach(function(k){
     var v=p.get(k); if(v)out.q[k]=String(v);});
   var v=p.get("view");
-  if(v==="matrix"||v==="queue"||v==="board"||v==="wa")out.view=v;
+  if(v==="matrix"||v==="queue"||v==="board"||v==="wa"||v==="cohort")out.view=v;
   return out;}
 
 (function(){
@@ -731,14 +733,27 @@ function load(){LOADING=true;
       if(J.scoped&&J.role==="agent"&&(Q.agent||Q.team)){Q.agent="";Q.team="";}
       // Every filter change comes through here, and the WA view is filtered server side,
       // so it has to be re-asked or its summaries would describe the previous filter.
-      syncUrl();show();draw();if(PICK)loadLeads();if(VIEW==="wa")loadWa();})
+      syncUrl();show();draw();if(PICK)loadLeads();if(VIEW==="wa")loadWa();if(VIEW==="cohort"){C=null;loadCohort();}})
     .catch(function(e){LOADING=false;J={error:e.message,retry:true};show();draw();});}
+/* One loader for both drills. The cohort cell opens the same queue the matrix opens,
+   with the same sorting, search, row colours and expander, because building a second lead
+   table would be two tables to keep in step and one of them would fall behind. */
 function loadLeads(){if(!PICK)return;LEADS=true;draw();
-  fetch("/api/callnow2/leads?"+qs(PICK)).then(asJson)
+  var url=PICK.cohort
+    ? "/api/callnow2/cohort/leads?"+qs({month:PICK.month,stage:PICK.stage,day:PICK.day})
+    : "/api/callnow2/leads?"+qs(PICK);
+  fetch(url).then(asJson)
     .then(function(j){LEADS=false;L=j;draw();})
     .catch(function(e){LEADS=false;L={error:e.message};draw();});}
+/* Open one cohort cell: a stage, and either one day or the whole month. */
+function pickCohort(stage,day){
+  VIEW="queue";SEL="";OPEN={};LQ="";L=null;
+  PICK={cohort:true,month:(C&&C.month)||"",stage:stage||"",day:day||"",worked:""};
+  syncUrl();loadLeads();
+  setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 function setView(v){VIEW=v;syncUrl();
   if(v==="wa"&&!W)loadWa();
+  if(v==="cohort"&&!C)loadCohort();
   if(v==="queue"&&!PICK)pick({sec:"n",col:"all"});else draw();}
 function pick(o){VIEW="queue";SEL="";PICK=Object.assign({stage:"",sec:"",col:"all",t:"",worked:"",moved:"",notcounted:"",band:"",bandBy:""},o);L=null;OPEN={};LQ="";loadLeads();
   setTimeout(function(){var el=document.getElementById("drill");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
@@ -944,6 +959,78 @@ function freshness(){
     ". Today&#39;s list built "+(J.listBuiltAt?new Date(J.listBuiltAt).toLocaleTimeString("en-IN"):"not yet")+".'>"+
     esc(msg)+
     (J.listBuiltAt?" &middot; list built "+esc(since(J.listBuiltAt)):"")+"</div>";}
+
+/* ---- Leads by the month they arrived ----------------------------------------------
+
+   Stages down the side, the day each lead was created across the top. A different
+   question from the rest of this page: not "who should be rung today" but "what came in,
+   and what became of it". Every stage is here, including the ones nobody calls, so the
+   totals will not match anything else on the page and are not meant to.
+
+   Days with nothing in them are dropped. A month of empty columns is not a table. */
+function loadCohort(){
+  var q=[]; if(CMONTH)q.push("month="+encodeURIComponent(CMONTH));
+  ["agent","creator","source","intl","team"].forEach(function(k){
+    if(Q[k])q.push(k+"="+encodeURIComponent(Q[k]));});
+  fetch("/api/callnow2/cohort"+(q.length?"?"+q.join("&"):"")).then(asJson)
+    .then(function(j){C=j;if(!CMONTH)CMONTH=j.month;draw();})
+    .catch(function(e){C={error:e.message};draw();});
+}
+function setCohortMonth(v){ CMONTH=v; C=null; loadCohort(); }
+function cday(d){
+  var p=String(d||"").split("-");
+  return p.length===3 ? (+p[2])+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(+p[1])-1] : d;
+}
+function cohortView(){
+  if(VIEW!=="cohort")return "";
+  if(!C)return "<div class='sec mini'><div class='z'>Loading the month...</div></div>";
+  if(C.error)return "<div class='sec mini'><div class='warn'>Could not load: "+esc(C.error)+"</div></div>";
+  if(C.notReady)return "<div class='sec mini'><div class='z'>The lead pool is still building.</div></div>";
+  var h="<div class='sec mini ac ac-cohort'><h2>Leads by the month they arrived</h2>"+
+    "<div class='sub'>Every lead created in the month, in whatever stage it has reached, including "+
+    "the stages nobody calls: no stage yet, not interested, disqualified, deal won. "+
+    "<b>These totals do not match the rest of the page and are not meant to</b>, because this counts "+
+    "what arrived rather than what is worth ringing today. Tracked creators only. "+
+    "The Manager, Agent, Creator, Source and Number pickers above apply here too.</div>";
+
+  h+="<div class='bar ctl' style='margin:9px 0'>"+
+    "<div><label>Create month</label><select onchange='setCohortMonth(this.value)'>"+
+    (C.months||[]).map(function(m){
+      return "<option value='"+esc(m)+"'"+(m===C.month?" selected":"")+">"+esc(m)+"</option>";}).join("")+
+    "</select></div>"+
+    "<div class='z' style='align-self:end;padding-bottom:6px'>"+
+      fmt(C.grand)+" lead"+(C.grand===1?"":"s")+" across "+fmt((C.stages||[]).length)+" stages"+
+      (C.emptyDays?" &middot; "+fmt(C.emptyDays)+" day"+(C.emptyDays===1?"":"s")+" with nothing, hidden":"")+
+      " &middot; "+fmt((C.creators||[]).length)+" tracked creators"+
+    "</div></div>";
+
+  if(!(C.stages||[]).length)return h+"<div class='z' style='padding:10px 2px'>Nothing was created in this month under these filters.</div></div>";
+
+  h+="<div class='tw scrolly'><table><thead><tr><th>Stage</th>"+
+    (C.days||[]).map(function(d){ return "<th class='n' title='"+esc(d)+"'>"+esc(cday(d))+"</th>"; }).join("")+
+    "<th class='n edge'>Total</th></tr></thead><tbody>";
+  (C.stages||[]).forEach(function(st){
+    h+="<tr><td>"+chip(st.stage,st.label)+"</td>"+
+      st.cells.map(function(n,i){
+        if(!n)return "<td class='n z'>0</td>";
+        return "<td class='n cell' onclick='pickCohort("+JSON.stringify(st.stage).replace(/"/g,"&quot;")+
+          ","+JSON.stringify(C.days[i]).replace(/"/g,"&quot;")+")'>"+fmt(n)+"</td>";
+      }).join("")+
+      "<td class='n cell edge' onclick='pickCohort("+JSON.stringify(st.stage).replace(/"/g,"&quot;")+
+        ",\"\")'><b>"+fmt(st.total)+"</b></td></tr>";
+  });
+  h+="<tr class='tot'><td><b>All stages</b></td>"+
+    (C.colTotals||[]).map(function(n,i){
+      if(!n)return "<td class='n z'>0</td>";
+      return "<td class='n cell' onclick='pickCohort(\"\","+JSON.stringify(C.days[i]).replace(/"/g,"&quot;")+
+        ")'><b>"+fmt(n)+"</b></td>";}).join("")+
+    "<td class='n cell edge' onclick='pickCohort(\"\",\"\")'><b>"+fmt(C.grand)+"</b></td></tr>";
+  h+="</tbody></table></div>";
+  h+="<div class='z' style='margin-top:8px'>Click any number to open those leads below, with the same "+
+    "detail the queue shows. To add a creator to this list, sync them from Revenue command; "+
+    "this view follows the same tracked creator list as the rest of the app.</div>";
+  return h+"</div>";
+}
 
 /* ---- Loop WA ---------------------------------------------------------------------
 
@@ -1388,9 +1475,17 @@ function queueView(){
   if(!L)return h+"</div>";
   if(L.error)return h+"<div class='warn'>"+esc(L.error)+"</div></div>";
   var wk=L.rows.filter(function(r){return r.worked;}).length;
-  h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight &middot; <b>"+fmt(wk)+"</b> called today &middot; "+
-    fmt(L.total-wk)+" not yet"+(L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
-    " &middot; not yet called first, then earliest follow-up</div>";
+  if(PICK.cohort){
+    h+="<div class='sub'><b>"+fmt(L.total)+"</b> lead"+(L.total===1?"":"s")+" created "+
+      (PICK.day?"on "+esc(PICK.day):"in "+esc(PICK.month))+
+      (PICK.stage?", now sitting in "+esc(STAGE_LABEL[PICK.stage]||PICK.stage):"")+
+      (L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
+      " &middot; newest first. These are counted by when they arrived, not by whether they are worth ringing today.</div>";
+  } else {
+    h+="<div class='sub'>"+fmt(L.total)+" leads here at midnight &middot; <b>"+fmt(wk)+"</b> called today &middot; "+
+      fmt(L.total-wk)+" not yet"+(L.shown<L.total?" &middot; showing first "+fmt(L.shown):"")+
+      " &middot; not yet called first, then earliest follow-up</div>";
+  }
   h+="<div class='sub' style='margin:0 0 7px'>Row colour is attempts in this stage by the agent holding the lead: "+
     ((J.effortBands||[]).map(function(b){
       return "<span class='tag' style='background:transparent;border-left:3px solid "+
@@ -1903,10 +1998,11 @@ function viewTabs(){
   var note=VIEW==="matrix"?"Every stage against every reason to call":
            VIEW==="queue"?"The leads themselves, worst first":
            VIEW==="wa"?"Everyone who answered on WhatsApp, whatever stage they are in":
+           VIEW==="cohort"?"Every lead by the month it arrived, in whatever stage it reached":
            "One card per stage, click a line to open those leads";
   return "<div class='viewstrip'><span class='seg'>"+
-    ["matrix","queue","board","wa"].map(function(v){
-      var lbl=v==="wa"?"Loop WA":v.charAt(0).toUpperCase()+v.slice(1);
+    ["matrix","queue","board","wa","cohort"].map(function(v){
+      var lbl=v==="wa"?"Loop WA":(v==="cohort"?"By month":v.charAt(0).toUpperCase()+v.slice(1));
       var badge=v==="wa"&&W&&W.totals&&W.totals.uncalled
         ? "<span class='vbadge'>"+fmt(W.totals.uncalled)+"</span>":"";
       return "<button class='"+(VIEW===v?"on":"")+"' onclick='setView(\""+v+"\")'>"+lbl+badge+"</button>";
@@ -2220,7 +2316,8 @@ function draw(){
   h+="<div class='view"+(VIEW==="matrix"?" on":"")+"'>"+matrix+"</div>"+
      "<div class='view"+(VIEW==="queue"?" on":"")+"'>"+queueView()+"</div>"+
      "<div class='view"+(VIEW==="board"?" on":"")+"'>"+boardView()+"</div>"+
-     "<div class='view"+(VIEW==="wa"?" on":"")+"'>"+waView()+"</div>";
+     "<div class='view"+(VIEW==="wa"?" on":"")+"'>"+waView()+"</div>"+
+     "<div class='view"+(VIEW==="cohort"?" on":"")+"'>"+cohortView()+"</div>";
   h+=behind();
   el.innerHTML=h;
   // Every redraw replaces the segment box, so the caret has to be put back afterwards.
