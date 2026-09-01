@@ -505,6 +505,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       co.body.emptyDays >= 0 && co.body.days.length <= 31);
     ok("it says out loud that it counts every stage",
       co.body.countsEveryStage === true);
+    /* The first version read the calling pool and showed 16 leads where HubSpot held 375
+       for the same day, because the pool drops anything with no owner and files unstaged
+       leads under an owner, so a lead with neither is in neither half of it. A census
+       cannot be built on a work queue. */
+    ok("the month is read from its own source, and says which",
+      co.body.source === "hubspot" || co.body.source === "fixtures", co.body.source);
+    ok("and reports how many it read, so an undercount is visible rather than inferred",
+      typeof co.body.readN === "number" && co.body.readN >= co.body.grand,
+      JSON.stringify({ read: co.body.readN, shown: co.body.grand }));
+    ok("a read that hit its page ceiling says so",
+      co.body.truncated === false || co.body.truncated === true);
     ok("and it names the tracked creators it is limited to",
       Array.isArray(co.body.creators) && co.body.creators.length > 0);
     /* A month is not one number. Two hundred leads is a good month or a bad one depending

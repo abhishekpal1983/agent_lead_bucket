@@ -5555,9 +5555,61 @@ function cohortMonth(key){
   return { key: String(y) + "-" + String(mo).padStart(2, "0"), start: start, end: end, days: days };
 }
 
-/* One pass over the pool, shared by the matrix and the drill so a cell and the leads
+/* The month's leads, read from HubSpot rather than from the calling pool.
+
+   The first version of this read callnowPool() and undercounted badly: 16 leads where
+   HubSpot held 375 for the same day. The pool is not a census and was never meant to be.
+   It holds what a calling list needs: staged leads with an owner, plus fresh leads for the
+   priority creators, plus unassigned priority leads. applyDelta drops anything with no
+   owner outright, and an unstaged lead only exists filed under an owner, so a lead created
+   yesterday with neither is in neither half of the cache. On 1 September that was 287 of
+   375 leads with no stage at all.
+
+   A create-date view asks a different question and needs its own read. One search per
+   month, held for half an hour, which is right for a monthly report and would be absurd
+   for a live queue. */
+const COHORT_TTL_MS = parseInt(process.env.COHORT_TTL_MS || "1800000", 10);
+const COHORT_MAX_MONTHS = 3;
+let COHORT_CACHE = {};
+async function cohortFetch(mon){
+  const hit = COHORT_CACHE[mon.key];
+  if (hit && !hit.error && Date.now() - hit.at < COHORT_TTL_MS) return hit;
+  if (!TOKEN) return { at: Date.now(), rows: [], error: "no token", truncated: false };
+  const rows = [];
+  let lastId = "0", guard = 0, truncated = false;
+  try {
+    while (guard < 400) {
+      guard++;
+      const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+        filterGroups: [{ filters: [
+          { propertyName: "createdate", operator: "GTE", value: String(mon.start) },
+          { propertyName: "createdate", operator: "LT", value: String(mon.end) },
+          { propertyName: "topmate_username", operator: "IN", values: PFRESH_LIST },
+          { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+        ]}],
+        properties: PROPS,
+        sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+      const page = (j && j.results) || [];
+      if (!page.length) break;
+      page.forEach(function(r){ rows.push(cnRow(Object.assign({ id: r.id }, r.properties))); });
+      lastId = page[page.length - 1].id;
+      if (page.length < 100) break;
+      await sleep(90);
+    }
+    truncated = guard >= 400;
+  } catch (e) {
+    return { at: Date.now(), rows: rows, error: e.message, truncated: truncated };
+  }
+  const v = { at: Date.now(), rows: rows, error: null, truncated: truncated };
+  COHORT_CACHE[mon.key] = v;
+  const keys = Object.keys(COHORT_CACHE).sort();
+  while (keys.length > COHORT_MAX_MONTHS) delete COHORT_CACHE[keys.shift()];
+  return v;
+}
+
+/* One pass over the month, shared by the matrix and the drill so a cell and the leads
    behind it can never disagree about who is in it. */
-function cohortPick(req, mon){
+function cohortPick(req, mon, fetched){
   const allow = cn2Scope(req);
   const wantAgent = String(req.query.agent || "");
   const wantCreator = String(req.query.creator || "");
@@ -5574,7 +5626,8 @@ function cohortPick(req, mon){
   }
   const agentKey = function(o){ return String(o || "") || "none"; };
   const out = [];
-  (CN2_FIXTURE_DATA ? cn2Rows() : callnowPool().map(cnRow)).forEach(function(r){
+  const src = CN2_FIXTURE_DATA ? cn2Rows() : ((fetched && fetched.rows) || []);
+  src.forEach(function(r){
     if (PFRESH_LIST.indexOf(r.creator || "") < 0) return;
     const created = r.created || 0;
     if (!created || created < mon.start || created >= mon.end) return;
@@ -5592,10 +5645,13 @@ function cohortPick(req, mon){
   return { rows: out, scoped: !!allow };
 }
 
-app.get("/api/callnow2/cohort", function(req, res){
-  if (!cn2Ready()) return res.json({ notReady: true });
+app.get("/api/callnow2/cohort", async function(req, res){
   const mon = cohortMonth(req.query.month);
-  const picked = cohortPick(req, mon);
+  const got = CN2_FIXTURE_DATA ? null : await cohortFetch(mon);
+  if (got && got.error && !got.rows.length) {
+    return res.json({ error: "Could not read the month from HubSpot: " + got.error });
+  }
+  const picked = cohortPick(req, mon, got);
   const dayIx = {};
   mon.days.forEach(function(d, i){ dayIx[d] = i; });
   const dimKey = COHORT_DIMS[String(req.query.rows || "stage")] ? String(req.query.rows || "stage") : "stage";
@@ -5668,21 +5724,28 @@ app.get("/api/callnow2/cohort", function(req, res){
       return out;
     })(),
     // Said plainly: this counts everything that arrived, not what is worth ringing.
-    countsEveryStage: true
+    countsEveryStage: true,
+    /* Read straight from HubSpot rather than from the calling pool, because the pool only
+       holds leads a calling list needs and undercounted this by more than twenty to one. */
+    source: CN2_FIXTURE_DATA ? "fixtures" : "hubspot",
+    readAt: got ? new Date(got.at).toISOString() : null,
+    readN: got ? got.rows.length : (picked.rows.length),
+    truncated: !!(got && got.truncated),
+    readError: got ? (got.error || null) : null
   });
 });
 
 /* The leads behind one cell, in the same shape the queue drill returns so the page can
    render them with the row and expander it already has. */
-app.get("/api/callnow2/cohort/leads", function(req, res){
-  if (!cn2Ready()) return res.json({ notReady: true });
+app.get("/api/callnow2/cohort/leads", async function(req, res){
   const mon = cohortMonth(req.query.month);
+  const got = CN2_FIXTURE_DATA ? null : await cohortFetch(mon);
   const wantStage = String(req.query.stage || "");
   const wantDay = String(req.query.day || "");
   const dimKey = COHORT_DIMS[String(req.query.rows || "stage")] ? String(req.query.rows || "stage") : "stage";
   const dim = COHORT_DIMS[dimKey];
   const day = CN2.dayBoundsFor(cn2Now());
-  const picked = cohortPick(req, mon);
+  const picked = cohortPick(req, mon, got);
   const rows = picked.rows.filter(function(r){
     if (wantStage && dim.of(r) !== wantStage) return false;
     if (wantDay && istParts(new Date(r.created)).date !== wantDay) return false;

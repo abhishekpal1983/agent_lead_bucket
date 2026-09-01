@@ -849,6 +849,20 @@ table. Rows and columns both add to the same grand total and there is a test for
 because a pivot that adds up one way and not the other is the classic way this shape goes
 wrong.
 
+**It is read straight from HubSpot, not from the calling pool.** The first version read
+`callnowPool()` and showed 16 leads where HubSpot held 375 for the same day. The pool is
+not a census and was never meant to be: it holds what a calling list needs, which is staged
+leads with an owner, plus fresh leads for the priority creators, plus unassigned priority
+leads. `applyDelta` drops anything with no owner outright, and an unstaged lead only exists
+filed under an owner, so a lead created yesterday with neither is in neither half of it. On
+1 September that was 287 of 375 leads with no stage at all.
+
+The lesson generalises: a census question cannot be answered from a work queue. Anything
+asking "what exists" rather than "what should be worked" needs its own read. This one is a
+single search per month held for half an hour, which is right for a monthly report and
+would be absurd for a live queue. The view reports when it was read and whether the read
+hit its page ceiling.
+
 Tracked creators only, the same list the rest of the app uses, so adding a creator is the
 existing add-and-sync and needed nothing new. The Manager, Agent, Creator, Source and Number
 pickers all apply.

@@ -1026,7 +1026,8 @@ function cohortView(){
     "<div class='sub'>Every lead created in the month, in whatever stage it has reached, including "+
     "the stages nobody calls: no stage yet, not interested, disqualified, deal won. "+
     "<b>These totals do not match the rest of the page and are not meant to</b>, because this counts "+
-    "what arrived rather than what is worth ringing today. Tracked creators only. "+
+    "what arrived rather than what is worth ringing today, and it is read straight from HubSpot rather "+
+    "than from the calling list. Tracked creators only. "+
     "The Manager, Agent, Creator, Source and Number pickers above apply here too.</div>";
 
   h+="<div class='bar ctl' style='margin:9px 0'>"+
@@ -1042,6 +1043,8 @@ function cohortView(){
       fmt(C.grand)+" lead"+(C.grand===1?"":"s")+" across "+fmt((C.stages||[]).length)+" stages"+
       (C.emptyDays?" &middot; "+fmt(C.emptyDays)+" day"+(C.emptyDays===1?"":"s")+" with nothing, hidden":"")+
       " &middot; "+fmt((C.creators||[]).length)+" tracked creators"+
+      (C.readAt?" &middot; read from HubSpot "+esc(since(C.readAt)||""):"")+
+      (C.truncated?" &middot; <b>hit the read ceiling, this month is partial</b>":"")+
     "</div></div>";
 
   /* The shape of the month on every axis at once. A month is not one number: two hundred
