@@ -514,6 +514,16 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("and reports how many it read, so an undercount is visible rather than inferred",
       typeof co.body.readN === "number" && co.body.readN >= co.body.grand,
       JSON.stringify({ read: co.body.readN, shown: co.body.grand }));
+    /* A month is about a hundred requests. Doing that overnight is nothing; doing it when
+       three people open three months at half past two is noticeable. */
+    {
+      const ch = ((await get("/api/health")).body.cn2 || {}).cohort || null;
+      ok("health reports the warmed months and how old each read is",
+        ch && "warmHour" in ch && Array.isArray(ch.months),
+        JSON.stringify(ch && { h: ch.warmHour, n: (ch.months || []).length }));
+    }
+    ok("a month can be forced fresh rather than waiting for the next night",
+      (await get("/api/callnow2/cohort?month=2026-08&refresh=1")).status === 200);
     ok("a read that hit its page ceiling says so",
       co.body.truncated === false || co.body.truncated === true);
     ok("and it names the tracked creators it is limited to",

@@ -858,10 +858,24 @@ filed under an owner, so a lead created yesterday with neither is in neither hal
 1 September that was 287 of 375 leads with no stage at all.
 
 The lesson generalises: a census question cannot be answered from a work queue. Anything
-asking "what exists" rather than "what should be worked" needs its own read. This one is a
-single search per month held for half an hour, which is right for a monthly report and
-would be absurd for a live queue. The view reports when it was read and whether the read
-hit its page ceiling.
+asking "what exists" rather than "what should be worked" needs its own read.
+
+That read is about a hundred requests per month, which is nothing spread across a night and
+noticeable if three people open three different months at once, so it is warmed nightly at
+`COHORT_WARM_HM`, default 00:30 IST. Current month and the one before it, because on the
+2nd of a month last month is what people are still reading, and because a past month is not
+frozen either: a lead created in August can change stage in September and this matrix shows
+where a lead sits now.
+
+00:30 rather than midnight keeps it clear of the list freeze and the daily snapshot. It
+fires once per IST day and remembers which day, checked every fifteen minutes rather than
+scheduled once, so a restart at 00:20 does not lose the window.
+
+The cache holds twelve hours because the warm is now the normal way it fills. The view says
+how old the read is, offers a refresh for anyone who wants a month brought up to date mid
+shift, and flags a read that hit its page ceiling. Health lists every warmed month with its
+age, because a month that quietly stopped refreshing looks exactly like a month where
+nothing happened.
 
 Tracked creators only, the same list the rest of the app uses, so adding a creator is the
 existing add-and-sync and needed nothing new. The Manager, Agent, Creator, Source and Number

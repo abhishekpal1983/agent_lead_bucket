@@ -981,8 +981,9 @@ function freshness(){
    totals will not match anything else on the page and are not meant to.
 
    Days with nothing in them are dropped. A month of empty columns is not a table. */
-function loadCohort(){
+function loadCohort(force){
   var q=[]; if(CMONTH)q.push("month="+encodeURIComponent(CMONTH));
+  if(force)q.push("refresh=1");
   if(CROWS)q.push("rows="+encodeURIComponent(CROWS));
   if(CSP)q.push("sp="+encodeURIComponent(CSP));
   if(CROLE)q.push("role="+encodeURIComponent(CROLE));
@@ -994,6 +995,9 @@ function loadCohort(){
 }
 function setCohortMonth(v){ CMONTH=v; C=null; loadCohort(); }
 function setCohortRows(v){ CROWS=v; C=null; loadCohort(); }
+/* The months are read fresh every night, so this is for when somebody wants a month
+   brought up to date mid-shift rather than waiting for the next one. */
+function refreshCohort(){ C=null; draw(); loadCohort(true); }
 /* Clicking a split narrows the whole matrix to that kind of lead, so "where do the
    international students sit" is two clicks rather than a mental filter.
 
@@ -1043,7 +1047,8 @@ function cohortView(){
       fmt(C.grand)+" lead"+(C.grand===1?"":"s")+" across "+fmt((C.stages||[]).length)+" stages"+
       (C.emptyDays?" &middot; "+fmt(C.emptyDays)+" day"+(C.emptyDays===1?"":"s")+" with nothing, hidden":"")+
       " &middot; "+fmt((C.creators||[]).length)+" tracked creators"+
-      (C.readAt?" &middot; read from HubSpot "+esc(since(C.readAt)||""):"")+
+      (C.readAt?" &middot; read from HubSpot "+esc(since(C.readAt)||"")+
+        " <a href='#' class='a2' onclick='refreshCohort();return false'>refresh</a>":"")+
       (C.truncated?" &middot; <b>hit the read ceiling, this month is partial</b>":"")+
     "</div></div>";
 

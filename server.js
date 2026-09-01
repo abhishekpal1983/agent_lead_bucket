@@ -1369,6 +1369,18 @@ app.get("/api/health", function(req, res){
           })(),
           /* The idle tracker's reads. A quiet floor and a broken sweep look identical,
              so both the incremental pass and the full reconcile are reported. */
+          /* The create-date months, warmed nightly. A month that quietly stopped
+             refreshing looks like a month where nothing happened. */
+          cohort: (typeof COHORT_CACHE === "undefined") ? null : {
+            warmHour: COHORT_WARM_HM, warmedFor: COHORT_WARMED || null,
+            months: Object.keys(COHORT_CACHE).sort().map(function(k){
+              const c = COHORT_CACHE[k];
+              return { month: k, leads: c.rows.length,
+                readAt: new Date(c.at).toISOString(),
+                ageMin: Math.round((Date.now() - c.at) / 60000),
+                truncated: !!c.truncated, error: c.error || null };
+            })
+          },
           activity: (typeof ACT === "undefined") ? null : {
             date: ACT.date, at: ACT.at, fullAt: ACT.fullAt, error: ACT.error || null,
             records: ACT.records, calls: ACT.n, ms: ACT.ms,
@@ -5568,7 +5580,10 @@ function cohortMonth(key){
    A create-date view asks a different question and needs its own read. One search per
    month, held for half an hour, which is right for a monthly report and would be absurd
    for a live queue. */
-const COHORT_TTL_MS = parseInt(process.env.COHORT_TTL_MS || "1800000", 10);
+/* Twelve hours, not half an hour, because the month is warmed every night now and an
+   on-demand refetch is the exception rather than the way it normally fills. */
+const COHORT_TTL_MS = parseInt(process.env.COHORT_TTL_MS || "43200000", 10);
+const COHORT_WARM_HM = process.env.COHORT_WARM_HM || "00:30";
 const COHORT_MAX_MONTHS = 3;
 let COHORT_CACHE = {};
 async function cohortFetch(mon){
@@ -5605,6 +5620,47 @@ async function cohortFetch(mon){
   const keys = Object.keys(COHORT_CACHE).sort();
   while (keys.length > COHORT_MAX_MONTHS) delete COHORT_CACHE[keys.shift()];
   return v;
+}
+
+/* Warm the months somebody is likely to open, once a night.
+
+   A month is about a hundred requests, which is nothing spread over a night and noticeable
+   if three people open three different months at half past two. Doing it while nobody is
+   working means the view is instant when the floor arrives.
+
+   Both the current month and the one before it, because on the 2nd of a month last month
+   is the one people are still reading. Past months are not frozen either: a lead created in
+   August can change stage in September, and this matrix shows where a lead sits now.
+
+   Runs at 00:30 IST rather than midnight, to stay out of the way of the list freeze and
+   the daily snapshot. Fires once per IST day and remembers which, so a restart does not
+   run it again and a missed window is picked up on the next pass rather than skipped. */
+let COHORT_WARMED = "";
+async function cohortWarmDue(force){
+  if (!TOKEN || CN2_FIXTURE_DATA) return;
+  const p = istParts(new Date(cn2Now()));
+  if (!force) {
+    if (COHORT_WARMED === p.date) return;
+    if (p.hm < COHORT_WARM_HM) return;
+  }
+  COHORT_WARMED = p.date;
+  const now = cohortMonth(p.date.slice(0, 7));
+  const prevKey = (function(){
+    const y = +p.date.slice(0, 4), m = +p.date.slice(5, 7);
+    return (m === 1 ? (y - 1) + "-12" : y + "-" + String(m - 1).padStart(2, "0"));
+  })();
+  const months = [now, cohortMonth(prevKey)];
+  for (let i = 0; i < months.length; i++) {
+    try {
+      delete COHORT_CACHE[months[i].key];          // a warm is a refresh, not a no-op
+      const got = await cohortFetch(months[i]);
+      console.log("Cohort warmed " + months[i].key + ": " + got.rows.length + " leads" +
+        (got.error ? " (" + got.error + ")" : ""));
+    } catch (e) {
+      console.error("Cohort warm " + months[i].key + " failed: " + e.message);
+    }
+    await sleep(2000);
+  }
 }
 
 /* One pass over the month, shared by the matrix and the drill so a cell and the leads
@@ -5647,6 +5703,8 @@ function cohortPick(req, mon, fetched){
 
 app.get("/api/callnow2/cohort", async function(req, res){
   const mon = cohortMonth(req.query.month);
+  // The nightly warm covers the normal case; this is for when somebody wants it now.
+  if (String(req.query.refresh || "") === "1") delete COHORT_CACHE[mon.key];
   const got = CN2_FIXTURE_DATA ? null : await cohortFetch(mon);
   if (got && got.error && !got.rows.length) {
     return res.json({ error: "Could not read the month from HubSpot: " + got.error });
@@ -9018,6 +9076,10 @@ SERVER = app.listen(PORT, () => {
   setTimeout(guard("cn2Build", function(){ return cn2Build(); }), 25 * 1000);
   setInterval(guard("cn2Build", function(){ return cn2Build(); }), 60 * 1000);
   setInterval(guard("cn2Freeze", cn2FreezeDue), 5 * 60 * 1000);
+  /* The create-date months, warmed overnight. Checked every fifteen minutes rather than
+     scheduled once, so a restart at 00:20 does not lose the window. */
+  setInterval(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 15 * 60 * 1000);
+  setTimeout(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 6 * 60 * 1000);
   // Compare ourselves to HubSpot on a timer rather than on request.
   setTimeout(guard("cn2Drift", cn2DriftCheck), 6 * 60 * 1000);
   setInterval(guard("cn2Drift", cn2DriftCheck), 20 * 60 * 1000);
