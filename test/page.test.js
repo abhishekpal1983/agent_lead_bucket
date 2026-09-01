@@ -994,6 +994,10 @@ ok("the why-call chips read the role on both axes",
   html.indexOf("White collar") >= 0 && html.indexOf("Role unclear") >= 0 &&
   html.indexOf("They wrote: ") >= 0);
 ok("a lead who never answered gets no chip at all", html.indexOf("if(r.roleClass){") >= 0);
+/* The Loop WA view showed "of 0 in the list" for a whole morning because a HubSpot list
+   had been edited to empty. The page should say where the membership came from. */
+ok("the Loop WA view can say where its membership came from",
+  html.indexOf("listSource") >= 0 || html.indexOf("W.listSource") >= 0);
 /* Assignment can now move a lead between agents, so a denominator moves during the day
    and the page has to say why. */
 ok("the page explains a list that grew or moved because of assignment",

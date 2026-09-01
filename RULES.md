@@ -812,3 +812,19 @@ them, because calls are counted from call records rather than from this list.
 
 Both numbers are reported on the page, because a denominator that moves without explanation
 is how a manager stops trusting a dashboard.
+
+## 32. Loop WA membership comes from the property, not the list
+
+On 1 September the Loop WA view showed zero all morning. Nothing was broken in the app:
+somebody edited HubSpot list 1851 at 06:33 UTC and its size went from 197 to nothing, so
+the app read an empty list and reported it honestly. The 197 leads were still there the
+whole time, still carrying `ryl_wa_replied = true`, and replies were still arriving.
+
+Membership now comes from that property. A property cannot be emptied by an edit to a saved
+view, needs no list scope, and stays live. This is the same call already made for the
+conversion score list, for the same reason, and it should be the default whenever a list is
+just a saved filter over a field the app can read directly.
+
+`WA_SOURCE=list` goes back to reading the list, and `WA_LIST_ID` still names it. Health and
+the view both report which source was used, because "showing 0 of 0" means something very
+different depending on the answer.

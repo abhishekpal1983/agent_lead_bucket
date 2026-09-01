@@ -653,6 +653,20 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       wa.body.waSync && "at" in wa.body.waSync && wa.body.waSync.everyMinutes > 0);
     // A quiet failure of either of these looks identical to nobody having replied.
     const waHealth = (((await get("/api/health")).body.cn2) || {}).wa || null;
+    /* On 1 September somebody edited HubSpot list 1851 and its size went from 197 to
+       nothing. The app read it correctly and the view showed zero all morning while the
+       197 leads sat there. Membership now comes from the property Loop writes, which no
+       edit to a saved view can empty. */
+    ok("membership names where it came from, so a zero can be told from a broken list",
+      waHealth && (waHealth.source === "property" || waHealth.source === "list"),
+      JSON.stringify(waHealth && waHealth.source));
+    ok("and the default is the property, not the list",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        return src.indexOf('WA_SOURCE || "property"') >= 0 &&
+               src.indexOf('WA_REPLIED_PROP || "ryl_wa_replied"') >= 0;
+      })());
     ok("health names the list read and the reply sweep, so neither can fail invisibly",
       waHealth && "members" in waHealth && "staleMin" in waHealth && "listError" in waHealth &&
       waHealth.replies && "at" in waHealth.replies && waHealth.replies.everyMinutes > 0 &&

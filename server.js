@@ -1391,6 +1391,7 @@ app.get("/api/health", function(req, res){
              minutes. Both can fail quietly, and a quiet failure there looks exactly like
              nobody having replied, which is the worst way for it to break. */
           wa: (typeof WA_LIST === "undefined") ? null : {
+            source: WA_LIST.source || WA_SOURCE,
             listId: WA_LIST_ID,
             members: WA_LIST.n,
             readAt: WA_LIST.at ? new Date(WA_LIST.at).toISOString() : null,
@@ -4252,30 +4253,66 @@ const WA_LIST_ID = String(process.env.WA_LIST_ID || "1851");
 const WA_LIST_TTL_MS = parseInt(process.env.WA_LIST_TTL_MS || "600000", 10);   // ten minutes
 let WA_LIST = { at: 0, ids: {}, n: 0, error: null, fetching: false, truncated: false };
 
+/* Who has answered on WhatsApp.
+
+   Read from the property Loop writes, not from the HubSpot list.
+
+   The list was the original source and it broke: on 1 September somebody edited list 1851
+   and its size went from 197 to nothing, so the view showed zero all morning while the 197
+   leads sat there untouched. The app read the list correctly and reported honestly; the
+   definition underneath it had simply moved.
+
+   A property cannot be edited out from under the app by a change to a saved view, needs no
+   list scope, and stays live. That is the same call already made for the conversion score
+   list, for the same reason. Set WA_SOURCE=list to go back to reading the list, and
+   WA_LIST_ID still names it. */
+const WA_SOURCE = String(process.env.WA_SOURCE || "property").toLowerCase();
+const WA_REPLIED_PROP = process.env.WA_REPLIED_PROP || "ryl_wa_replied";
 async function waListFetch(){
   if (!TOKEN || WA_LIST.fetching) return;
   WA_LIST.fetching = true;
   try {
     const ids = {};
-    let n = 0, after = "", guard = 0;
-    while (guard < 200) {
-      guard++;
-      const q = "/crm/v3/lists/" + encodeURIComponent(WA_LIST_ID) + "/memberships?limit=100" +
-        (after ? "&after=" + encodeURIComponent(after) : "");
-      const j = await hs(q);
-      const rows = (j && j.results) || [];
-      rows.forEach(function(r){ const k = String(r.recordId || r.id || ""); if (k) { ids[k] = 1; n++; } });
-      after = ((j.paging || {}).next || {}).after || "";
-      if (!after || !rows.length) break;
-      await sleep(80);
+    let n = 0, guard = 0;
+    if (WA_SOURCE === "list") {
+      let after = "";
+      while (guard < 200) {
+        guard++;
+        const q = "/crm/v3/lists/" + encodeURIComponent(WA_LIST_ID) + "/memberships?limit=100" +
+          (after ? "&after=" + encodeURIComponent(after) : "");
+        const j = await hs(q);
+        const rows = (j && j.results) || [];
+        rows.forEach(function(r){ const k = String(r.recordId || r.id || ""); if (k) { ids[k] = 1; n++; } });
+        after = ((j.paging || {}).next || {}).after || "";
+        if (!after || !rows.length) break;
+        await sleep(80);
+      }
+    } else {
+      let lastId = "0";
+      while (guard < 200) {
+        guard++;
+        const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+          filterGroups: [{ filters: [
+            { propertyName: WA_REPLIED_PROP, operator: "EQ", value: "true" },
+            { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+          ]}],
+          properties: ["hs_object_id"],
+          sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+        const rows = (j && j.results) || [];
+        if (!rows.length) break;
+        rows.forEach(function(r){ ids[String(r.id)] = 1; n++; });
+        lastId = rows[rows.length - 1].id;
+        if (rows.length < 100) break;
+        await sleep(80);
+      }
     }
     WA_LIST = { at: Date.now(), ids: ids, n: n, error: null, fetching: false,
-      truncated: guard >= 200 };
-    console.log("Loop WA list " + WA_LIST_ID + ": " + n + " members");
+      truncated: guard >= 200, source: WA_SOURCE };
+    console.log("Loop WA members from " + WA_SOURCE + ": " + n);
   } catch (e) {
     WA_LIST.fetching = false;
     WA_LIST.error = e.message;
-    console.error("Loop WA list: " + e.message);
+    console.error("Loop WA members: " + e.message);
   }
 }
 // Answers from what we hold and refreshes behind the request. A view that blocks on a
@@ -5047,6 +5084,8 @@ app.get("/api/callnow2/wa", function(req, res){
 
   res.json({
     listId: WA_LIST_ID, listAt: WA_LIST.at || null, listSize: mem.n,
+    // Where the membership came from, so a zero can be told from a broken saved view.
+    listSource: WA_LIST.source || WA_SOURCE,
     scoped: !!allow, role: role, isVP: isVP(req),
     filters: { agent: wantAgent, creator: wantCreator, team: wantTeam },
     stages: stages,

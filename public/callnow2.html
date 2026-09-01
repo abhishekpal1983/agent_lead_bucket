@@ -1054,6 +1054,7 @@ function waView(){
         "' onclick='waSetFilt(\""+o[0]+"\")'>"+esc(o[1])+"</button>"; }).join("")+
     "<span class='z' style='margin-left:auto'>"+
     (W.waSync&&W.waSync.at?"replies synced "+esc(since(W.waSync.at)||""):"reply sync has not run yet")+
+    (W.listSource?" &middot; from "+(W.listSource==="list"?"the HubSpot list":"the WA replied property"):"")+
     "</span></div>";
 
   var any=0;
