@@ -542,14 +542,20 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("the bands rise, so a hotter band is never easier to reach than a cooler one",
       (co.body.stages || []).filter(function(s2){ return s2.cold && s2.bands; })
         .every(function(s2){ return s2.bands[0] <= s2.bands[1] && s2.bands[1] <= s2.bands[2]; }));
-    /* Percentiles needed half a month behind them. The median works from the second day,
-       which is when somebody actually wants to see a spike. */
-    ok("two days of data is enough to say which is the bigger",
+    /* A filtered view, or the first days of a month, leaves one non-zero day per stage.
+       One day is always its own median and can never be 1.3 times itself, so the colour
+       vanished the moment anybody picked a creator. Below three days the floors stand
+       alone as an absolute judgement. */
+    ok("a stage with too few days falls back to absolute thresholds rather than to nothing",
       (function(){
         const src = require("fs").readFileSync(
           require("path").join(__dirname, "..", "server.js"), "utf8");
-        return src.indexOf("if (seen.length < 2) return none;") >= 0;
+        return src.indexOf("const enough = seen.length >= 3;") >= 0 &&
+               src.indexOf("return enough ? Math.max(floor, Math.ceil(med * r)) : floor;") >= 0;
       })());
+    ok("and each row says which basis it used",
+      (co.body.stages || []).filter(function(s2){ return s2.cold; })
+        .every(function(s2){ return typeof s2.heatRelative === "boolean"; }));
     ok("a spike day is marked hot and a quiet day is not",
       (function(){
         const f = (co.body.stages || []).filter(function(s2){ return s2.stage === "__fresh"; })[0];

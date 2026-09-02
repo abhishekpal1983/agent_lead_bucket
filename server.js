@@ -5579,13 +5579,22 @@ const COHORT_HEAT_FLOORS = String(process.env.COHORT_HEAT_FLOORS || "3,5,8")
   .split(",").map(function(x){ return parseInt(x, 10); });
 function cohortHeat(cells){
   const seen = cells.filter(function(n){ return n > 0; }).sort(function(a, b){ return a - b; });
-  const none = { heat: cells.map(function(){ return 0; }), med: 0, bands: [0, 0, 0] };
-  // One day of data compares against nothing. Two is enough to say which is the bigger.
-  if (seen.length < 2) return none;
+  /* A single day, or a filter that leaves one, has nothing to compare against. It used to
+     return no colour at all, which meant the heat vanished the moment anybody picked a
+     creator, and vanished again at the start of every month. The floors are the answer: with
+     no typical day to measure from, they stand alone as a plain judgement that eight leads
+     nobody has spoken to is worth a look whatever else is true. */
   const mid = seen.length >> 1;
-  const med = seen.length % 2 ? seen[mid] : (seen[mid - 1] + seen[mid]) / 2;
+  const med = !seen.length ? 0
+    : (seen.length % 2 ? seen[mid] : (seen[mid - 1] + seen[mid]) / 2);
+  /* Under three days there is no typical day to measure against, and taking the higher of
+     the floor and a ratio of the median is useless there: one day is always its own median
+     and can never be 1.3 times itself, so a filtered view stayed grey however big the
+     number. Below three days the floors stand alone as a plain absolute judgement. */
+  const enough = seen.length >= 3;
   const bands = COHORT_HEAT_RATIOS.map(function(r, i){
-    return Math.max(COHORT_HEAT_FLOORS[i] || 0, Math.ceil(med * r));
+    const floor = COHORT_HEAT_FLOORS[i] || 0;
+    return enough ? Math.max(floor, Math.ceil(med * r)) : floor;
   });
   return {
     heat: cells.map(function(n){
@@ -5595,7 +5604,7 @@ function cohortHeat(cells){
       if (n >= bands[0]) return 1;
       return 0;
     }),
-    med: med, bands: bands
+    med: med, bands: bands, relative: enough
   };
 }
 
@@ -5825,7 +5834,8 @@ app.get("/api/callnow2/cohort", async function(req, res){
       const h = cold ? cohortHeat(cells) : null;
       return { stage: s2.stage, label: s2.label, total: s2.total, cells: cells,
         cold: cold, heat: h ? h.heat : null,
-        typical: h ? h.med : 0, bands: h ? h.bands : null };
+        typical: h ? h.med : 0, bands: h ? h.bands : null,
+        heatRelative: h ? h.relative : false };
     }),
     colTotals: keep.map(function(i){ return colTotal[i]; }),
     grand: grand,

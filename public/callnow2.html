@@ -1124,7 +1124,10 @@ function cohortView(){
   var wkEdge=function(d){
     var day=new Date(d+"T00:00:00Z").getUTCDay();
     return day===1?" wk":"";};        // Monday starts a week
-  h+="<div class='tw scrolly cohortw'><table class='cohort'><thead><tr><th class='stagecol'>Stage</th>"+
+  /* Deliberately not 'scrolly'. That class caps the box at 300px with !important, from a
+     rule that sits below this one with the same specificity, so it wins on source order and
+     four stages disappear behind a scroll. cohortw carries the overflow this table needs. */
+  h+="<div class='tw cohortw'><table class='cohort'><thead><tr><th class='stagecol'>Stage</th>"+
     (C.days||[]).map(function(d){
       return "<th class='n"+wkEdge(d)+"' title='"+esc(d)+"'>"+esc(cday(d))+"</th>"; }).join("")+
     "<th class='n edge'>Total</th></tr></thead><tbody>";
@@ -1133,10 +1136,14 @@ function cohortView(){
     return ["", " warm", " hot", " peak"][st.heat[i]]||"";};
   (C.stages||[]).forEach(function(st){
     var tip=st.cold&&st.bands
-      ? " title='Nobody has spoken to these leads yet. A typical day for this stage is "+
-        st.typical+". Amber from "+st.bands[0]+", red from "+st.bands[1]+", dark red from "+
-        st.bands[2]+" — measured against a normal day for this stage, because a stage that "+
-        "runs from 3 to 1,900 has no meaningful fixed threshold.'" : "";
+      ? " title='Nobody has spoken to these leads yet. Amber from "+st.bands[0]+", red from "+
+        st.bands[1]+", dark red from "+st.bands[2]+". "+
+        (st.heatRelative
+          ? "Measured against a normal day for this stage, which is "+st.typical+", because a "+
+            "stage running from 3 to 1,900 has no meaningful fixed threshold."
+          : "Too few days so far to say what a normal day looks like, so these are plain "+
+            "thresholds. They tighten to this stage once it has three days behind it.")+"'"
+      : "";
     h+="<tr"+(st.cold?" class='cold'":"")+"><td class='stagecol'"+tip+">"+chip(st.stage,st.label)+"</td>"+
       st.cells.map(function(n,i){
         var cls="n"+wkEdge(C.days[i]);

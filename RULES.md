@@ -898,6 +898,13 @@ stayed silent until the month was half over, which is exactly when nobody needs 
 median works from the second day, survives a spike rather than being dragged by one, and
 says something a person can check: this day is twice a normal day for this stage.
 
+Below three non-zero days there is no typical day to measure against, and the floors stand
+alone as a plain absolute judgement. This matters more than it sounds: one day is always its
+own median and can never be 1.3 times itself, so taking the higher of floor and ratio left a
+filtered view completely grey however big its numbers were. Pick a creator, lose the colour.
+The row tooltip says which basis it used and the thresholds tighten to the stage once it has
+three days behind it.
+
 Three bands at 1.3, 2 and 3.5 times the median, with floors of 3, 5 and 8, set by
 `COHORT_HEAT_RATIOS` and `COHORT_HEAT_FLOORS`. Two bands made everything either shouting or
 invisible. The floors stop three leads in a quiet stage being an alarm however the ratio
@@ -917,7 +924,9 @@ Thirty columns of three digit numbers also needs structure rather than colour al
 stage column is pinned, the header sticks, figures are tabular so digits line up, a heavier
 rule falls on each Monday, and an empty day is a dot rather than a zero.
 
-The table is not height capped. The density block caps every `.tw` at 52vh with
-`!important` and has to stay after the shared theme, so the cohort rule wins on specificity
-with `.wrap .tw.cohortw` rather than on source order. A matrix you are meant to read across
-is no use with four of its seventeen rows behind a scroll.
+The table is not height capped, and getting there took two goes. `.wrap .tw` caps every
+table at 52vh with `!important`, which `.wrap .tw.cohortw` outranks on specificity. But
+`.wrap .tw.scrolly` caps at 300px, matches that specificity exactly, and sits below it, so
+it won on source order and four stages stayed behind a scroll. The cohort wrapper therefore
+does not carry `scrolly` at all: `cohortw` provides the overflow it needs. A matrix you are
+meant to read across is no use with rows hidden.

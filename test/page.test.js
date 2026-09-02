@@ -1056,8 +1056,16 @@ ok("and it says what the threshold was measured against",
   html.indexOf("a normal day for that stage") >= 0);
 /* The density block caps every table at 52vh with !important and has to stay after the
    shared theme, so this has to win on specificity rather than on order. */
+/* Two rules cap this box: .wrap .tw at 52vh and .wrap .tw.scrolly at 300px, both with
+   !important. The second matches cohortw's specificity and sits below it, so it wins on
+   source order. The class has to go, not be out-declared. */
 ok("the cohort table is not capped, so every stage is on screen at once",
-  html.indexOf(".wrap .tw.cohortw{max-height:none !important") >= 0);
+  html.indexOf(".wrap .tw.cohortw{max-height:none !important") >= 0 &&
+  html.indexOf("<div class='tw cohortw'>") >= 0 &&
+  html.indexOf("<div class='tw scrolly cohortw'>") < 0);
+ok("and the tooltip says which basis the colour used",
+  html.indexOf("Too few days so far to say what a normal day looks like") >= 0 &&
+  html.indexOf("Measured against a normal day for this stage") >= 0);
 ok("the colouring only applies to cells the server marked cold",
   html.indexOf("if(!st.cold||!st.heat)return \"\";") >= 0);
 ok("the view says whose leads it is showing, so a manager's number is not a mystery",
