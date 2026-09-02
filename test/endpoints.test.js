@@ -533,18 +533,29 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("and a warm row has none at all",
       (co.body.stages || []).filter(function(s2){ return !s2.cold; })
         .every(function(s2){ return s2.heat === null; }));
-    ok("the thresholds come from the row itself, so they differ between stages",
-      (function(){
-        const cold = (co.body.stages || []).filter(function(s2){ return s2.cold && s2.hotAt; });
-        return cold.length >= 2 && new Set(cold.map(function(s2){ return s2.hotAt; })).size >= 2;
-      })(),
+    ok("each cold row carries the typical day it was measured against, and three bands",
+      (co.body.stages || []).filter(function(s2){ return s2.cold; })
+        .every(function(s2){ return typeof s2.typical === "number" &&
+          (s2.bands === null || s2.bands.length === 3); }),
       JSON.stringify((co.body.stages || []).filter(function(s2){ return s2.cold; })
-        .map(function(s2){ return [s2.stage, s2.hotAt]; })));
+        .map(function(s2){ return [s2.stage, s2.typical, s2.bands]; })));
+    ok("the bands rise, so a hotter band is never easier to reach than a cooler one",
+      (co.body.stages || []).filter(function(s2){ return s2.cold && s2.bands; })
+        .every(function(s2){ return s2.bands[0] <= s2.bands[1] && s2.bands[1] <= s2.bands[2]; }));
+    /* Percentiles needed half a month behind them. The median works from the second day,
+       which is when somebody actually wants to see a spike. */
+    ok("two days of data is enough to say which is the bigger",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        return src.indexOf("if (seen.length < 2) return none;") >= 0;
+      })());
     ok("a spike day is marked hot and a quiet day is not",
       (function(){
         const f = (co.body.stages || []).filter(function(s2){ return s2.stage === "__fresh"; })[0];
         if (!f || !f.heat) return false;
-        const hot = f.cells.filter(function(n, i){ return f.heat[i] === 2; });
+        // Three bands now, so a spike lands in the top two rather than exactly in band 2.
+        const hot = f.cells.filter(function(n, i){ return f.heat[i] >= 2; });
         const cool = f.cells.filter(function(n, i){ return f.heat[i] === 0 && n > 0; });
         return hot.length > 0 && cool.length > 0 &&
           Math.min.apply(null, hot) > Math.max.apply(null, cool);

@@ -5559,30 +5559,43 @@ const COHORT_COLD_STAGES = String(process.env.COHORT_COLD_STAGES ||
   "__fresh,dnp_did_not_pick,dnp_other,FU_DNP,rcb_requested_callback")
   .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
 
-/* How hot a cell is, measured against its own row rather than against a fixed number.
+/* How hot a cell is, measured against a typical day for that stage.
 
-   Fresh leads run from 3 to 1,962 in a single month, so any absolute threshold is either
-   silent all month or lit up all month. Comparing a day to the rest of that stage's own
-   days is the only reading that survives a spike: it answers "is this a lot, for this",
-   which is the question somebody scanning the table is actually asking.
+   Percentiles were the first attempt and they need a month behind them: with three days of
+   data every day is simultaneously the 90th percentile and the 10th, so the reading stayed
+   silent until the month was half over, which is exactly when nobody needs it.
 
-   Percentiles of the non-zero days, because half the days in a small stage are zero and
-   including them drags every threshold to nothing. */
+   The median of the stage's own non-zero days is the anchor instead. It works from the
+   second day, it survives a spike rather than being dragged by one, and it says something
+   a person can check: this day is twice a normal day for this stage. Three bands, because
+   two made everything either shouting or invisible, and floors so that three leads in a
+   quiet stage is never an alarm however the ratio falls.
+
+   Fresh leads ran 3 to 1,962 inside one month. No fixed number survives that; a ratio
+   does. */
+const COHORT_HEAT_RATIOS = String(process.env.COHORT_HEAT_RATIOS || "1.3,2,3.5")
+  .split(",").map(parseFloat);
+const COHORT_HEAT_FLOORS = String(process.env.COHORT_HEAT_FLOORS || "3,5,8")
+  .split(",").map(function(x){ return parseInt(x, 10); });
 function cohortHeat(cells){
   const seen = cells.filter(function(n){ return n > 0; }).sort(function(a, b){ return a - b; });
-  if (seen.length < 4) return { heat: cells.map(function(){ return 0; }), warm: 0, hot: 0 };
-  const at = function(p){ return seen[Math.min(seen.length - 1, Math.floor(p * seen.length))]; };
-  const hot = at(0.9), warm = at(0.75);
+  const none = { heat: cells.map(function(){ return 0; }), med: 0, bands: [0, 0, 0] };
+  // One day of data compares against nothing. Two is enough to say which is the bigger.
+  if (seen.length < 2) return none;
+  const mid = seen.length >> 1;
+  const med = seen.length % 2 ? seen[mid] : (seen[mid - 1] + seen[mid]) / 2;
+  const bands = COHORT_HEAT_RATIOS.map(function(r, i){
+    return Math.max(COHORT_HEAT_FLOORS[i] || 0, Math.ceil(med * r));
+  });
   return {
     heat: cells.map(function(n){
       if (!n) return 0;
-      // A day has to clear the threshold and be worth looking at on its own terms. Two
-      // leads at the ninetieth percentile of a quiet stage is not an alarm.
-      if (n >= hot && n >= 5) return 2;
-      if (n >= warm && n >= 3) return 1;
+      if (n >= bands[2]) return 3;
+      if (n >= bands[1]) return 2;
+      if (n >= bands[0]) return 1;
       return 0;
     }),
-    warm: warm, hot: hot
+    med: med, bands: bands
   };
 }
 
@@ -5812,7 +5825,7 @@ app.get("/api/callnow2/cohort", async function(req, res){
       const h = cold ? cohortHeat(cells) : null;
       return { stage: s2.stage, label: s2.label, total: s2.total, cells: cells,
         cold: cold, heat: h ? h.heat : null,
-        warmAt: h ? h.warm : 0, hotAt: h ? h.hot : 0 };
+        typical: h ? h.med : 0, bands: h ? h.bands : null };
     }),
     colTotals: keep.map(function(i){ return colTotal[i]; }),
     grand: grand,

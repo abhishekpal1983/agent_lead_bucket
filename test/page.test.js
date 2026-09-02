@@ -1047,12 +1047,17 @@ ok("a heavier rule falls at each week boundary, so the eye has something to coun
 ok("empty days read as a dot rather than a wall of zeroes",
   html.indexOf(">&middot;</td>") >= 0);
 /* Colour where nobody has spoken to the lead yet, and only there. */
-ok("hot and warm days are coloured, and the key explains what against",
-  html.indexOf("table.cohort td.hot") >= 0 && html.indexOf("table.cohort td.warm") >= 0 &&
-  html.indexOf("a lot for this stage") >= 0);
-ok("and it says the threshold is per stage, not a fixed number",
+ok("three heat bands, each one strong enough to read across a room",
+  html.indexOf("table.cohort td.warm") >= 0 && html.indexOf("table.cohort td.hot") >= 0 &&
+  html.indexOf("table.cohort td.peak") >= 0 &&
+  html.indexOf("a pile building up") >= 0);
+ok("and it says what the threshold was measured against",
   html.indexOf("has no meaningful fixed threshold") >= 0 &&
-  html.indexOf("stage&#39;s own busier days rather than a fixed number") >= 0);
+  html.indexOf("a normal day for that stage") >= 0);
+/* The density block caps every table at 52vh with !important and has to stay after the
+   shared theme, so this has to win on specificity rather than on order. */
+ok("the cohort table is not capped, so every stage is on screen at once",
+  html.indexOf(".wrap .tw.cohortw{max-height:none !important") >= 0);
 ok("the colouring only applies to cells the server marked cold",
   html.indexOf("if(!st.cold||!st.heat)return \"\";") >= 0);
 ok("the view says whose leads it is showing, so a manager's number is not a mystery",

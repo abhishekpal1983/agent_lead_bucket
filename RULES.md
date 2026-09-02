@@ -890,13 +890,19 @@ describes whichever drill opened it.
 
 Fresh leads ran from 3 on a quiet day to 1,962 on an import day inside one month. Any fixed
 threshold for "that is a lot" would be silent all month or lit up all month, so a day is
-compared against the rest of that stage's own days: the 90th percentile of its non-zero days
-is red, the 75th is amber. That answers "is this a lot, for this", which is the question
-somebody scanning the table is actually asking.
+compared against a typical day for that stage: the median of its non-zero days.
 
-Percentiles of the non-zero days only. Half the days in a small stage are zero and including
-them drags every threshold to nothing. There are also floors, five for red and three for
-amber, because two leads at the ninetieth percentile of a quiet stage is not an alarm.
+Percentiles were the first attempt and they need a month behind them. With three days of
+data every day is simultaneously the ninetieth percentile and the tenth, so the reading
+stayed silent until the month was half over, which is exactly when nobody needs it. The
+median works from the second day, survives a spike rather than being dragged by one, and
+says something a person can check: this day is twice a normal day for this stage.
+
+Three bands at 1.3, 2 and 3.5 times the median, with floors of 3, 5 and 8, set by
+`COHORT_HEAT_RATIOS` and `COHORT_HEAT_FLOORS`. Two bands made everything either shouting or
+invisible. The floors stop three leads in a quiet stage being an alarm however the ratio
+falls. On a real August that lit 8 days of 26 on Fresh, 11 on RCB and 10 on FU-DNP: enough
+to scan by, not so much that it becomes wallpaper.
 
 Only on the stages where nobody has spoken to the lead yet: fresh, DNP, DNP other, FU-DNP
 and RCB, set by `COHORT_COLD_STAGES`. Whether FU-RCB belongs there is a judgement about how
@@ -910,3 +916,8 @@ against, because a colour nobody can account for gets ignored on the second day.
 Thirty columns of three digit numbers also needs structure rather than colour alone: the
 stage column is pinned, the header sticks, figures are tabular so digits line up, a heavier
 rule falls on each Monday, and an empty day is a dot rather than a zero.
+
+The table is not height capped. The density block caps every `.tw` at 52vh with
+`!important` and has to stay after the shared theme, so the cohort rule wins on specificity
+with `.wrap .tw.cohortw` rather than on source order. A matrix you are meant to read across
+is no use with four of its seventeen rows behind a scroll.

@@ -113,7 +113,13 @@ td.z{color:#B7C2CD}
 .ac-cohort>h2{border-left:4px solid #534AB7;padding-left:9px}
 /* Thirty columns of three-digit numbers. Without a pinned first column and something to
    count weeks by, the eye loses the row it is on halfway across. */
-.cohortw{overflow:auto;max-height:none}
+/* Every stage on screen at once. The shared theme caps tables at 56vh, which is right for
+   a long lead list and wrong here: this table is seventeen rows and hiding four of them
+   behind a scroll defeats the point of a matrix you are meant to read across. */
+/* Two classes deep on purpose. The density block further down caps every .tw at 52vh with
+   !important, and it has to stay after the shared theme, so winning on source order is not
+   available. .tw.cohortw outranks .tw whatever the order. */
+.wrap .tw.cohortw{max-height:none !important;overflow-x:auto !important;overflow-y:visible !important}
 table.cohort{border-collapse:separate;border-spacing:0}
 table.cohort th,table.cohort td{padding:6px 10px;white-space:nowrap}
 table.cohort th.n,table.cohort td.n{text-align:right;font-variant-numeric:tabular-nums;
@@ -133,14 +139,18 @@ table.cohort tbody tr:nth-child(even) td.edge{background:#F2F4F8}
 table.cohort td.z{color:#C3CBD6}
 table.cohort tr.tot td{border-top:2px solid #C7D0DE;background:#F4F6FA;font-weight:600}
 table.cohort tr.tot .stagecol{background:#F4F6FA}
-/* A day that needs somebody to look at it, on a stage where nobody has spoken to the lead. */
-table.cohort td.warm{background:#FDF3E0 !important;color:#7A4A08;font-weight:600}
-table.cohort td.hot{background:#FBE3DE !important;color:#8C2D12;font-weight:700}
+/* A day that needs somebody to look at it, on a stage where nobody has spoken to the lead.
+   Three bands rather than two, and each one carries its weight: the first two were pale
+   enough to be missed on a screen across a room, which is where this gets read. */
+table.cohort td.warm{background:#FBE3C8 !important;color:#6B3F06;font-weight:600}
+table.cohort td.hot{background:#F0A088 !important;color:#4A1B0C;font-weight:700}
+table.cohort td.peak{background:#A9331A !important;color:#fff;font-weight:700}
 table.cohort tbody tr.cold .stagecol{border-left:3px solid #E9B7A8}
 .heatkey{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#566575}
 .heatkey .sw{width:15px;height:10px;border-radius:2px;display:inline-block}
-.heatkey .sw.hot{background:#FBE3DE;border:1px solid #E0A899}
-.heatkey .sw.warm{background:#FDF3E0;border:1px solid #E8CFA0}
+.heatkey .sw.warm{background:#FBE3C8;border:1px solid #E0BE8A}
+.heatkey .sw.hot{background:#F0A088;border:1px solid #D07A5C}
+.heatkey .sw.peak{background:#A9331A;border:1px solid #8C2D12}
 .heatkey .z{margin-left:4px}
 .csegs{display:flex;flex-wrap:wrap;gap:12px 18px;margin:4px 0 10px}
 .cseg{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
@@ -1120,12 +1130,13 @@ function cohortView(){
     "<th class='n edge'>Total</th></tr></thead><tbody>";
   var cellCls=function(st,i){
     if(!st.cold||!st.heat)return "";
-    return st.heat[i]===2?" hot":(st.heat[i]===1?" warm":"");};
+    return ["", " warm", " hot", " peak"][st.heat[i]]||"";};
   (C.stages||[]).forEach(function(st){
-    var tip=st.cold&&st.hotAt
-      ? " title='Nobody has spoken to these leads yet. Bold red is a day at or above "+
-        st.hotAt+" for this stage, amber at or above "+st.warmAt+", measured against this "+
-        "stage&#39;s own busier days rather than a fixed number.'" : "";
+    var tip=st.cold&&st.bands
+      ? " title='Nobody has spoken to these leads yet. A typical day for this stage is "+
+        st.typical+". Amber from "+st.bands[0]+", red from "+st.bands[1]+", dark red from "+
+        st.bands[2]+" — measured against a normal day for this stage, because a stage that "+
+        "runs from 3 to 1,900 has no meaningful fixed threshold.'" : "";
     h+="<tr"+(st.cold?" class='cold'":"")+"><td class='stagecol'"+tip+">"+chip(st.stage,st.label)+"</td>"+
       st.cells.map(function(n,i){
         var cls="n"+wkEdge(C.days[i]);
@@ -1146,13 +1157,14 @@ function cohortView(){
     "<td class='n cell edge' onclick='pickCohort(\"\",\"\")'><b>"+fmt(C.grand)+"</b></td></tr>";
   h+="</tbody></table></div>";
   if((C.stages||[]).some(function(st){ return st.cold; }))
-    h+="<div class='heatkey'><span class='sw hot'></span> a lot for this stage"+
-      "<span class='sw warm'></span> busier than usual"+
+    h+="<div class='heatkey'><span class='sw warm'></span> busier than usual"+
+      "<span class='sw hot'></span> twice a normal day"+
+      "<span class='sw peak'></span> a pile building up"+
       "<span class='z'>Only on stages where nobody has spoken to the lead yet: "+
       esc((C.coldStages||[]).map(function(k){ return STAGE_LABEL[k]||k; })
         .filter(function(v,i,a){ return a.indexOf(v)===i; }).join(", "))+
-      ". Measured against each stage's own days, because a stage that runs from 3 to 1,900 "+
-      "has no meaningful fixed threshold.</span></div>";
+      ". Measured against a normal day for that stage, so it reads from the second day of "+
+      "the month and sharpens as the month fills.</span></div>";
   h+="<div class='z' style='margin-top:8px'>Click any number to open those leads below, with the same "+
     "detail the queue shows. To add a creator to this list, sync them from Revenue command; "+
     "this view follows the same tracked creator list as the rest of the app.</div>";
