@@ -1032,6 +1032,8 @@ function cohortView(){
     "<b>These totals do not match the rest of the page and are not meant to</b>, because this counts "+
     "what arrived rather than what is worth ringing today, and it is read straight from HubSpot rather "+
     "than from the calling list. Tracked creators only. "+
+    (C.scoped&&!C.isAgent?"Your team's leads, plus everything still waiting to be assigned, which belongs to nobody yet. ":"")+
+    (C.isAgent?"Your own leads only. ":"")+
     "The Manager, Agent, Creator, Source and Number pickers above apply here too.</div>";
 
   h+="<div class='bar ctl' style='margin:9px 0'>"+
@@ -1047,6 +1049,7 @@ function cohortView(){
       fmt(C.grand)+" lead"+(C.grand===1?"":"s")+" across "+fmt((C.stages||[]).length)+" stages"+
       (C.emptyDays?" &middot; "+fmt(C.emptyDays)+" day"+(C.emptyDays===1?"":"s")+" with nothing, hidden":"")+
       " &middot; "+fmt((C.creators||[]).length)+" tracked creators"+
+      (C.unowned?" &middot; <b>"+fmt(C.unowned)+"</b> of them not assigned to anybody yet":"")+
       (C.readAt?" &middot; read from HubSpot "+esc(since(C.readAt)||"")+
         " <a href='#' class='a2' onclick='refreshCohort();return false'>refresh</a>":"")+
       (C.truncated?" &middot; <b>hit the read ceiling, this month is partial</b>":"")+

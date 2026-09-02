@@ -509,6 +509,14 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        for the same day, because the pool drops anything with no owner and files unstaged
        leads under an owner, so a lead with neither is in neither half of it. A census
        cannot be built on a work queue. */
+    /* Scope matches on owner and an unowned lead has no owner to match, so the plain
+       filter removed the whole unassigned inflow from every manager's view: 287 leads of
+       375 on 1 September. A VP saw the month, a manager saw a fraction, and nothing on
+       screen explained the gap. */
+    ok("the unassigned pool is counted apart rather than folded into the team's",
+      typeof co.body.unowned === "number", JSON.stringify(co.body.unowned));
+    ok("and the payload says whether the caller is an agent, who does not get the pool",
+      typeof co.body.isAgent === "boolean");
     ok("the month is read from its own source, and says which",
       co.body.source === "hubspot" || co.body.source === "fixtures", co.body.source);
     ok("and reports how many it read, so an undercount is visible rather than inferred",

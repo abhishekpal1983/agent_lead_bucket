@@ -5667,6 +5667,7 @@ async function cohortWarmDue(force){
    behind it can never disagree about who is in it. */
 function cohortPick(req, mon, fetched){
   const allow = cn2Scope(req);
+  const isAgent = ((req.session && req.session.role) || "manager") === "agent" && !isVP(req);
   const wantAgent = String(req.query.agent || "");
   const wantCreator = String(req.query.creator || "");
   const wantSource = String(req.query.source || "");
@@ -5687,7 +5688,18 @@ function cohortPick(req, mon, fetched){
     if (PFRESH_LIST.indexOf(r.creator || "") < 0) return;
     const created = r.created || 0;
     if (!created || created < mon.start || created >= mon.end) return;
-    if (allow && allow.indexOf(String(r.owner || "")) < 0) return;
+    /* Scope matches on owner, and a lead nobody holds has no owner to match, so the
+       plain filter silently removed the entire unassigned inflow from every manager's
+       view. On 1 September that was 287 leads of 375. A VP saw the month and a manager saw
+       a fraction of it with nothing on screen explaining the difference.
+
+       A manager sees their team's leads and the unassigned pool, which is what they draw
+       from and the thing this view exists to show. It is counted apart so nobody reads it
+       as theirs. An agent sees only their own: the pool is not an agent's to look at, and
+       that is the same line the assignment panel already draws. */
+    const mine = !allow || allow.indexOf(String(r.owner || "")) >= 0;
+    const poolable = !r.owner && !isAgent;
+    if (!mine && !poolable) return;
     if (wantAgent && agentKey(r.owner) !== wantAgent) return;
     if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) return;
     if (wantCreator && r.creator !== wantCreator) return;
@@ -5698,7 +5710,8 @@ function cohortPick(req, mon, fetched){
     if (wantRole && COHORT_DIMS.role.of(r) !== wantRole) return;
     out.push(r);
   });
-  return { rows: out, scoped: !!allow };
+  return { rows: out, scoped: !!allow, isAgent: isAgent,
+    unowned: out.filter(function(r){ return !r.owner; }).length };
 }
 
 app.get("/api/callnow2/cohort", async function(req, res){
@@ -5769,6 +5782,9 @@ app.get("/api/callnow2/cohort", async function(req, res){
     })(),
     filters: { sp: String(req.query.sp || ""), role: String(req.query.role || ""),
       intl: String(req.query.intl || "") },
+    // Counted apart, because an unassigned lead is nobody's and reading it as the team's
+    // would overstate what they have been given.
+    unowned: picked.unowned, isAgent: picked.isAgent,
     emptyDays: mon.days.length - keep.length,
     creators: PFRESH_LIST.slice(),
     scoped: picked.scoped, isVP: isVP(req),

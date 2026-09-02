@@ -1029,6 +1029,11 @@ ok("Behind the numbers is hidden where it does not apply",
 ok("five tabs wrap rather than being cut off in a narrow column",
   html.indexOf(".wrap .viewstrip .seg{flex-wrap:wrap") >= 0 &&
   html.indexOf("flex-wrap:wrap}\n.wrap .viewstrip .vnote") < 0);
+ok("the view says whose leads it is showing, so a manager's number is not a mystery",
+  html.indexOf("Your team's leads, plus everything still waiting to be assigned") >= 0 &&
+  html.indexOf("Your own leads only.") >= 0);
+ok("and names how many are not assigned to anybody yet",
+  html.indexOf("not assigned to anybody yet") >= 0);
 ok("the month says how old its read is and can be refreshed on the spot",
   html.indexOf("function refreshCohort()") >= 0 && html.indexOf("read from HubSpot ") >= 0);
 ok("it warns that its totals do not match the rest of the page",
