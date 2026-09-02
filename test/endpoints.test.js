@@ -513,10 +513,16 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        filter removed the whole unassigned inflow from every manager's view: 287 leads of
        375 on 1 September. A VP saw the month, a manager saw a fraction, and nothing on
        screen explained the gap. */
+    ok("the cohort endpoints refuse agents, not just hide the tab",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        const bits = src.split('app.get("/api/callnow2/cohort');
+        return bits.length === 3 && bits.slice(1).every(function(b){
+          return b.slice(0, 500).indexOf('managers and VP only') >= 0; });
+      })());
     ok("the unassigned pool is counted apart rather than folded into the team's",
       typeof co.body.unowned === "number", JSON.stringify(co.body.unowned));
-    ok("and the payload says whether the caller is an agent, who does not get the pool",
-      typeof co.body.isAgent === "boolean");
     ok("the month is read from its own source, and says which",
       co.body.source === "hubspot" || co.body.source === "fixtures", co.body.source);
     ok("and reports how many it read, so an undercount is visible rather than inferred",

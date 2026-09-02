@@ -809,6 +809,12 @@ ok("and a segment an agent picks is cleared and shared like every other filter",
         stage: "counselled", stageLabel: "Counselled", last: 0, fu: 0, waN: 1,
         waAt: fixture.now - 3600000, waLast: "STOP", uncalled: true,
         callsSinceReply: 0, repliedToday: false }] }] };
+  {
+    const agentTabs = render(ROLES[2][1], { VIEW: "matrix" });
+    const mgrTabs = render(ROLES[1][1], { VIEW: "matrix" });
+    ok("an agent's tab strip has no By month, a manager's does",
+      agentTabs.indexOf("By month") < 0 && mgrTabs.indexOf("By month") >= 0);
+  }
   ROLES.forEach(function(r){
     const tabs = render(r[1], { W: W, VIEW: "matrix" });
     const view = render(r[1], { W: W, VIEW: "wa" });
@@ -1030,8 +1036,13 @@ ok("five tabs wrap rather than being cut off in a narrow column",
   html.indexOf(".wrap .viewstrip .seg{flex-wrap:wrap") >= 0 &&
   html.indexOf("flex-wrap:wrap}\n.wrap .viewstrip .vnote") < 0);
 ok("the view says whose leads it is showing, so a manager's number is not a mystery",
-  html.indexOf("Your team's leads, plus everything still waiting to be assigned") >= 0 &&
-  html.indexOf("Your own leads only.") >= 0);
+  html.indexOf("Your team's leads, plus everything still waiting to be assigned") >= 0);
+/* By month is a manager's view. An agent must not get the tab, must not be stranded on it
+   by a bookmark or a shared link, and must be refused the data even if they ask directly. */
+ok("agents do not get the By month tab",
+  html.indexOf('.filter(function(v){ return v!=="cohort"||!(J.scoped&&J.role==="agent"); })') >= 0);
+ok("and a bookmark or a shared link cannot strand them on it",
+  html.indexOf('if(VIEW==="cohort"&&J.scoped&&J.role==="agent")VIEW="matrix";') >= 0);
 ok("and names how many are not assigned to anybody yet",
   html.indexOf("not assigned to anybody yet") >= 0);
 ok("the month says how old its read is and can be refreshed on the spot",

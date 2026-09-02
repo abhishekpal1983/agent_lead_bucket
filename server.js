@@ -5667,7 +5667,6 @@ async function cohortWarmDue(force){
    behind it can never disagree about who is in it. */
 function cohortPick(req, mon, fetched){
   const allow = cn2Scope(req);
-  const isAgent = ((req.session && req.session.role) || "manager") === "agent" && !isVP(req);
   const wantAgent = String(req.query.agent || "");
   const wantCreator = String(req.query.creator || "");
   const wantSource = String(req.query.source || "");
@@ -5698,7 +5697,8 @@ function cohortPick(req, mon, fetched){
        as theirs. An agent sees only their own: the pool is not an agent's to look at, and
        that is the same line the assignment panel already draws. */
     const mine = !allow || allow.indexOf(String(r.owner || "")) >= 0;
-    const poolable = !r.owner && !isAgent;
+    // Agents cannot reach this endpoint at all, so the pool is always in scope here.
+    const poolable = !r.owner;
     if (!mine && !poolable) return;
     if (wantAgent && agentKey(r.owner) !== wantAgent) return;
     if (teamAgents && teamAgents.indexOf(String(r.owner)) < 0) return;
@@ -5710,11 +5710,17 @@ function cohortPick(req, mon, fetched){
     if (wantRole && COHORT_DIMS.role.of(r) !== wantRole) return;
     out.push(r);
   });
-  return { rows: out, scoped: !!allow, isAgent: isAgent,
+  return { rows: out, scoped: !!allow,
     unowned: out.filter(function(r){ return !r.owner; }).length };
 }
 
 app.get("/api/callnow2/cohort", async function(req, res){
+  /* Managers and VP only. This is an inflow and planning view: it holds every stage
+     including the closed ones, and it shows the unassigned pool, which is a manager's to
+     look at and not an agent's. An agent works the list they are given. */
+  if (!isVP(req) && ((req.session && req.session.role) || "manager") === "agent") {
+    return res.status(403).json({ error: "managers and VP only" });
+  }
   const mon = cohortMonth(req.query.month);
   // The nightly warm covers the normal case; this is for when somebody wants it now.
   if (String(req.query.refresh || "") === "1") delete COHORT_CACHE[mon.key];
@@ -5784,7 +5790,7 @@ app.get("/api/callnow2/cohort", async function(req, res){
       intl: String(req.query.intl || "") },
     // Counted apart, because an unassigned lead is nobody's and reading it as the team's
     // would overstate what they have been given.
-    unowned: picked.unowned, isAgent: picked.isAgent,
+    unowned: picked.unowned,
     emptyDays: mon.days.length - keep.length,
     creators: PFRESH_LIST.slice(),
     scoped: picked.scoped, isVP: isVP(req),
@@ -5812,6 +5818,12 @@ app.get("/api/callnow2/cohort", async function(req, res){
 /* The leads behind one cell, in the same shape the queue drill returns so the page can
    render them with the row and expander it already has. */
 app.get("/api/callnow2/cohort/leads", async function(req, res){
+  /* Managers and VP only. This is an inflow and planning view: it holds every stage
+     including the closed ones, and it shows the unassigned pool, which is a manager's to
+     look at and not an agent's. An agent works the list they are given. */
+  if (!isVP(req) && ((req.session && req.session.role) || "manager") === "agent") {
+    return res.status(403).json({ error: "managers and VP only" });
+  }
   const mon = cohortMonth(req.query.month);
   const got = CN2_FIXTURE_DATA ? null : await cohortFetch(mon);
   const wantStage = String(req.query.stage || "");
