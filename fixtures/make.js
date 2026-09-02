@@ -149,6 +149,17 @@ rows.slice(0, 6).forEach(function(r, i){
             "Consultant", ""][i];
 });
 
+/* Two import spikes, because a real month is not flat. August ran from 3 leads on a quiet
+   day to 1,962 on an import day, and a fixture where every day looks the same never
+   exercises the heat colouring at all. */
+[[3, 40, "__fresh"], [5, 90, "__fresh"], [10, 30, "dnp_did_not_pick"], [17, 25, "FU_DNP"]]
+  .forEach(function(spike){
+    for (var i = 0; i < spike[1]; i++) {
+      rows.push(lead({ stage: spike[2], created: D(2026, 8, spike[0], 11),
+        owner: i % 4 ? AGENTS[i % 4].id : "", fu: 0, last: 0 }));
+    }
+  });
+
 /* A shift's worth of call records for the idle tracker.
 
    Deliberately awkward, because every one of these shapes exists in the portal and each

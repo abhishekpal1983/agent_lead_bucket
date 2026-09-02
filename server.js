@@ -5550,6 +5550,42 @@ const COHORT_DIMS = {
       blue: "Blue collar", unclear: "Role unclear", noanswer: "No role given" }[k] || k; } }
 };
 
+/* The stages where nobody has actually spoken to the lead yet.
+
+   A pile building up in any of these on one day is the thing worth chasing: leads arrived,
+   or were tried and missed, and nothing came of it. Configurable, because whether FU-RCB
+   belongs here is a judgement about how the floor works rather than a fact about the data. */
+const COHORT_COLD_STAGES = String(process.env.COHORT_COLD_STAGES ||
+  "__fresh,dnp_did_not_pick,dnp_other,FU_DNP,rcb_requested_callback")
+  .split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+
+/* How hot a cell is, measured against its own row rather than against a fixed number.
+
+   Fresh leads run from 3 to 1,962 in a single month, so any absolute threshold is either
+   silent all month or lit up all month. Comparing a day to the rest of that stage's own
+   days is the only reading that survives a spike: it answers "is this a lot, for this",
+   which is the question somebody scanning the table is actually asking.
+
+   Percentiles of the non-zero days, because half the days in a small stage are zero and
+   including them drags every threshold to nothing. */
+function cohortHeat(cells){
+  const seen = cells.filter(function(n){ return n > 0; }).sort(function(a, b){ return a - b; });
+  if (seen.length < 4) return { heat: cells.map(function(){ return 0; }), warm: 0, hot: 0 };
+  const at = function(p){ return seen[Math.min(seen.length - 1, Math.floor(p * seen.length))]; };
+  const hot = at(0.9), warm = at(0.75);
+  return {
+    heat: cells.map(function(n){
+      if (!n) return 0;
+      // A day has to clear the threshold and be worth looking at on its own terms. Two
+      // leads at the ninetieth percentile of a quiet stage is not an alarm.
+      if (n >= hot && n >= 5) return 2;
+      if (n >= warm && n >= 3) return 1;
+      return 0;
+    }),
+    warm: warm, hot: hot
+  };
+}
+
 const COHORT_STAGE_ORDER = ["__fresh", "rcb_requested_callback", "discovery",
   "program_pitched", "pricing_pitched", "counselled", "Follow up", "FU_DNP", "FU_RCB",
   "payment_prospect", "IFC", "dnp_did_not_pick", "dnp_other", "ghosted",
@@ -5768,12 +5804,20 @@ app.get("/api/callnow2/cohort", async function(req, res){
   res.json({
     month: mon.key, days: keep.map(function(i){ return mon.days[i]; }),
     stages: stages.map(function(s2){
-      return { stage: s2.stage, label: s2.label, total: s2.total,
-        cells: keep.map(function(i){ return s2.cells[i]; }) };
+      const cells = keep.map(function(i){ return s2.cells[i]; });
+      /* Only when the rows are stages, and only for the stages where nobody has spoken to
+         the lead. Heat on "Counselled" would be praise dressed as a warning, and heat on a
+         row of nationalities means nothing at all. */
+      const cold = dimKey === "stage" && COHORT_COLD_STAGES.indexOf(s2.stage) >= 0;
+      const h = cold ? cohortHeat(cells) : null;
+      return { stage: s2.stage, label: s2.label, total: s2.total, cells: cells,
+        cold: cold, heat: h ? h.heat : null,
+        warmAt: h ? h.warm : 0, hotAt: h ? h.hot : 0 };
     }),
     colTotals: keep.map(function(i){ return colTotal[i]; }),
     grand: grand,
     rowsBy: dimKey,
+    coldStages: COHORT_COLD_STAGES.slice(),
     dims: Object.keys(COHORT_DIMS).map(function(k){
       return { key: k, label: COHORT_DIMS[k].label }; }),
     splits: (function(){

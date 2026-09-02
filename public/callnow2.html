@@ -111,6 +111,37 @@ td.z{color:#B7C2CD}
 .tag.src{background:#fff;color:#566575;border:1px solid #DCE4EC}
 .tag.sp{background:#E6F7F1;color:#0B6E4F;border:1px solid #B9E6D5}
 .ac-cohort>h2{border-left:4px solid #534AB7;padding-left:9px}
+/* Thirty columns of three-digit numbers. Without a pinned first column and something to
+   count weeks by, the eye loses the row it is on halfway across. */
+.cohortw{overflow:auto;max-height:none}
+table.cohort{border-collapse:separate;border-spacing:0}
+table.cohort th,table.cohort td{padding:6px 10px;white-space:nowrap}
+table.cohort th.n,table.cohort td.n{text-align:right;font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum";min-width:52px}
+table.cohort thead th{position:sticky;top:0;z-index:3;background:#F7F8FB;
+  border-bottom:1px solid #D9DEE7;font-size:10.5px;letter-spacing:.02em;color:#5A6B7D}
+table.cohort .stagecol{position:sticky;left:0;z-index:2;background:#fff;
+  border-right:1px solid #D9DEE7;min-width:150px;text-align:left}
+table.cohort thead .stagecol{z-index:4;background:#F7F8FB}
+table.cohort tbody tr:nth-child(even) td{background:#FBFCFE}
+table.cohort tbody tr:nth-child(even) .stagecol{background:#FBFCFE}
+table.cohort tbody tr:hover td{background:#F2F6FC}
+table.cohort tbody tr:hover .stagecol{background:#F2F6FC}
+table.cohort td.wk,table.cohort th.wk{border-left:1px solid #DDE3EC}
+table.cohort td.edge,table.cohort th.edge{border-left:2px solid #C7D0DE;background:#F7F8FB}
+table.cohort tbody tr:nth-child(even) td.edge{background:#F2F4F8}
+table.cohort td.z{color:#C3CBD6}
+table.cohort tr.tot td{border-top:2px solid #C7D0DE;background:#F4F6FA;font-weight:600}
+table.cohort tr.tot .stagecol{background:#F4F6FA}
+/* A day that needs somebody to look at it, on a stage where nobody has spoken to the lead. */
+table.cohort td.warm{background:#FDF3E0 !important;color:#7A4A08;font-weight:600}
+table.cohort td.hot{background:#FBE3DE !important;color:#8C2D12;font-weight:700}
+table.cohort tbody tr.cold .stagecol{border-left:3px solid #E9B7A8}
+.heatkey{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#566575}
+.heatkey .sw{width:15px;height:10px;border-radius:2px;display:inline-block}
+.heatkey .sw.hot{background:#FBE3DE;border:1px solid #E0A899}
+.heatkey .sw.warm{background:#FDF3E0;border:1px solid #E8CFA0}
+.heatkey .z{margin-left:4px}
 .csegs{display:flex;flex-wrap:wrap;gap:12px 18px;margin:4px 0 10px}
 .cseg{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .cseg .clab{font-size:10.5px;color:#7A8CA0;text-transform:uppercase;letter-spacing:.05em}
@@ -1076,26 +1107,52 @@ function cohortView(){
 
   if(!(C.stages||[]).length)return h+"<div class='z' style='padding:10px 2px'>Nothing was created in this month under these filters.</div></div>";
 
-  h+="<div class='tw scrolly'><table><thead><tr><th>Stage</th>"+
-    (C.days||[]).map(function(d){ return "<th class='n' title='"+esc(d)+"'>"+esc(cday(d))+"</th>"; }).join("")+
+  /* Thirty columns of small numbers is unreadable without help. The stage column is
+     pinned so it survives the sideways scroll, the day and month sit on one line so the
+     header is one row deep, and a heavier rule falls at each week boundary so the eye has
+     something to count in. */
+  var wkEdge=function(d){
+    var day=new Date(d+"T00:00:00Z").getUTCDay();
+    return day===1?" wk":"";};        // Monday starts a week
+  h+="<div class='tw scrolly cohortw'><table class='cohort'><thead><tr><th class='stagecol'>Stage</th>"+
+    (C.days||[]).map(function(d){
+      return "<th class='n"+wkEdge(d)+"' title='"+esc(d)+"'>"+esc(cday(d))+"</th>"; }).join("")+
     "<th class='n edge'>Total</th></tr></thead><tbody>";
+  var cellCls=function(st,i){
+    if(!st.cold||!st.heat)return "";
+    return st.heat[i]===2?" hot":(st.heat[i]===1?" warm":"");};
   (C.stages||[]).forEach(function(st){
-    h+="<tr><td>"+chip(st.stage,st.label)+"</td>"+
+    var tip=st.cold&&st.hotAt
+      ? " title='Nobody has spoken to these leads yet. Bold red is a day at or above "+
+        st.hotAt+" for this stage, amber at or above "+st.warmAt+", measured against this "+
+        "stage&#39;s own busier days rather than a fixed number.'" : "";
+    h+="<tr"+(st.cold?" class='cold'":"")+"><td class='stagecol'"+tip+">"+chip(st.stage,st.label)+"</td>"+
       st.cells.map(function(n,i){
-        if(!n)return "<td class='n z'>0</td>";
-        return "<td class='n cell' onclick='pickCohort("+JSON.stringify(st.stage).replace(/"/g,"&quot;")+
+        var cls="n"+wkEdge(C.days[i]);
+        if(!n)return "<td class='"+cls+" z'>&middot;</td>";
+        return "<td class='"+cls+" cell"+cellCls(st,i)+"' onclick='pickCohort("+
+          JSON.stringify(st.stage).replace(/"/g,"&quot;")+
           ","+JSON.stringify(C.days[i]).replace(/"/g,"&quot;")+")'>"+fmt(n)+"</td>";
       }).join("")+
       "<td class='n cell edge' onclick='pickCohort("+JSON.stringify(st.stage).replace(/"/g,"&quot;")+
         ",\"\")'><b>"+fmt(st.total)+"</b></td></tr>";
   });
-  h+="<tr class='tot'><td><b>All stages</b></td>"+
+  h+="<tr class='tot'><td class='stagecol'><b>All stages</b></td>"+
     (C.colTotals||[]).map(function(n,i){
-      if(!n)return "<td class='n z'>0</td>";
-      return "<td class='n cell' onclick='pickCohort(\"\","+JSON.stringify(C.days[i]).replace(/"/g,"&quot;")+
+      var cls="n"+wkEdge(C.days[i]);
+      if(!n)return "<td class='"+cls+" z'>&middot;</td>";
+      return "<td class='"+cls+" cell' onclick='pickCohort(\"\","+JSON.stringify(C.days[i]).replace(/"/g,"&quot;")+
         ")'><b>"+fmt(n)+"</b></td>";}).join("")+
     "<td class='n cell edge' onclick='pickCohort(\"\",\"\")'><b>"+fmt(C.grand)+"</b></td></tr>";
   h+="</tbody></table></div>";
+  if((C.stages||[]).some(function(st){ return st.cold; }))
+    h+="<div class='heatkey'><span class='sw hot'></span> a lot for this stage"+
+      "<span class='sw warm'></span> busier than usual"+
+      "<span class='z'>Only on stages where nobody has spoken to the lead yet: "+
+      esc((C.coldStages||[]).map(function(k){ return STAGE_LABEL[k]||k; })
+        .filter(function(v,i,a){ return a.indexOf(v)===i; }).join(", "))+
+      ". Measured against each stage's own days, because a stage that runs from 3 to 1,900 "+
+      "has no meaningful fixed threshold.</span></div>";
   h+="<div class='z' style='margin-top:8px'>Click any number to open those leads below, with the same "+
     "detail the queue shows. To add a creator to this list, sync them from Revenue command; "+
     "this view follows the same tracked creator list as the rest of the app.</div>";

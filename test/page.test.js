@@ -1035,6 +1035,26 @@ ok("Behind the numbers is hidden where it does not apply",
 ok("five tabs wrap rather than being cut off in a narrow column",
   html.indexOf(".wrap .viewstrip .seg{flex-wrap:wrap") >= 0 &&
   html.indexOf("flex-wrap:wrap}\n.wrap .viewstrip .vnote") < 0);
+/* Thirty columns of three-digit numbers. Without a pinned first column and a week rule,
+   the eye loses the row it is on halfway across. */
+ok("the stage column is pinned and the header sticks",
+  html.indexOf("table.cohort .stagecol{position:sticky;left:0") >= 0 &&
+  html.indexOf("table.cohort thead th{position:sticky;top:0") >= 0);
+ok("numbers line up as figures rather than as text",
+  html.indexOf("font-variant-numeric:tabular-nums") >= 0);
+ok("a heavier rule falls at each week boundary, so the eye has something to count",
+  html.indexOf("var wkEdge=function(d)") >= 0 && html.indexOf("table.cohort td.wk") >= 0);
+ok("empty days read as a dot rather than a wall of zeroes",
+  html.indexOf(">&middot;</td>") >= 0);
+/* Colour where nobody has spoken to the lead yet, and only there. */
+ok("hot and warm days are coloured, and the key explains what against",
+  html.indexOf("table.cohort td.hot") >= 0 && html.indexOf("table.cohort td.warm") >= 0 &&
+  html.indexOf("a lot for this stage") >= 0);
+ok("and it says the threshold is per stage, not a fixed number",
+  html.indexOf("has no meaningful fixed threshold") >= 0 &&
+  html.indexOf("stage&#39;s own busier days rather than a fixed number") >= 0);
+ok("the colouring only applies to cells the server marked cold",
+  html.indexOf("if(!st.cold||!st.heat)return \"\";") >= 0);
 ok("the view says whose leads it is showing, so a manager's number is not a mystery",
   html.indexOf("Your team's leads, plus everything still waiting to be assigned") >= 0);
 /* By month is a manager's view. An agent must not get the tab, must not be stranded on it

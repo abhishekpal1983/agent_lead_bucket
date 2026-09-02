@@ -885,3 +885,28 @@ Clicking a cell opens the ordinary queue, with the same sorting, search, row col
 expander, rather than a second lead table. Two lead tables would be two things to keep in
 step and one of them would fall behind. The loader branches on the pick and the queue header
 describes whichever drill opened it.
+
+## 34. Heat on the cohort is measured per stage, never against a fixed number
+
+Fresh leads ran from 3 on a quiet day to 1,962 on an import day inside one month. Any fixed
+threshold for "that is a lot" would be silent all month or lit up all month, so a day is
+compared against the rest of that stage's own days: the 90th percentile of its non-zero days
+is red, the 75th is amber. That answers "is this a lot, for this", which is the question
+somebody scanning the table is actually asking.
+
+Percentiles of the non-zero days only. Half the days in a small stage are zero and including
+them drags every threshold to nothing. There are also floors, five for red and three for
+amber, because two leads at the ninetieth percentile of a quiet stage is not an alarm.
+
+Only on the stages where nobody has spoken to the lead yet: fresh, DNP, DNP other, FU-DNP
+and RCB, set by `COHORT_COLD_STAGES`. Whether FU-RCB belongs there is a judgement about how
+the floor works rather than a fact about the data, which is why it is configurable. Heat on
+"Counselled" would be praise dressed as a warning, and heat on a row of nationalities means
+nothing, so it switches off entirely when the rows are not stages.
+
+The thresholds are shown on the row's tooltip and the key says what they were measured
+against, because a colour nobody can account for gets ignored on the second day.
+
+Thirty columns of three digit numbers also needs structure rather than colour alone: the
+stage column is pinned, the header sticks, figures are tabular so digits line up, a heavier
+rule falls on each Monday, and an empty day is a dot rather than a zero.

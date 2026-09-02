@@ -521,6 +521,37 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return bits.length === 3 && bits.slice(1).every(function(b){
           return b.slice(0, 500).indexOf('managers and VP only') >= 0; });
       })());
+    /* Fresh leads ran 3 to 1,962 in one month, so a fixed threshold is either silent all
+       month or lit all month. Heat is measured against each stage's own days. */
+    ok("only stages where nobody has spoken to the lead carry heat",
+      (co.body.stages || []).every(function(s2){
+        return s2.cold === (co.body.coldStages.indexOf(s2.stage) >= 0); }),
+      JSON.stringify((co.body.stages || []).map(function(s2){ return [s2.stage, s2.cold]; })));
+    ok("a cold row carries one heat reading per day",
+      (co.body.stages || []).filter(function(s2){ return s2.cold; })
+        .every(function(s2){ return s2.heat && s2.heat.length === s2.cells.length; }));
+    ok("and a warm row has none at all",
+      (co.body.stages || []).filter(function(s2){ return !s2.cold; })
+        .every(function(s2){ return s2.heat === null; }));
+    ok("the thresholds come from the row itself, so they differ between stages",
+      (function(){
+        const cold = (co.body.stages || []).filter(function(s2){ return s2.cold && s2.hotAt; });
+        return cold.length >= 2 && new Set(cold.map(function(s2){ return s2.hotAt; })).size >= 2;
+      })(),
+      JSON.stringify((co.body.stages || []).filter(function(s2){ return s2.cold; })
+        .map(function(s2){ return [s2.stage, s2.hotAt]; })));
+    ok("a spike day is marked hot and a quiet day is not",
+      (function(){
+        const f = (co.body.stages || []).filter(function(s2){ return s2.stage === "__fresh"; })[0];
+        if (!f || !f.heat) return false;
+        const hot = f.cells.filter(function(n, i){ return f.heat[i] === 2; });
+        const cool = f.cells.filter(function(n, i){ return f.heat[i] === 0 && n > 0; });
+        return hot.length > 0 && cool.length > 0 &&
+          Math.min.apply(null, hot) > Math.max.apply(null, cool);
+      })());
+    ok("switching the rows off stage turns the heat off with it",
+      ((await get("/api/callnow2/cohort?month=2026-08&rows=intl")).body.stages || [])
+        .every(function(s2){ return !s2.cold; }));
     ok("the unassigned pool is counted apart rather than folded into the team's",
       typeof co.body.unowned === "number", JSON.stringify(co.body.unowned));
     ok("the month is read from its own source, and says which",
