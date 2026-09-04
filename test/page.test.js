@@ -647,43 +647,12 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
     vphtml.indexOf("auditCell(x.audits, x.auditTarget)") >= 0);
   /* Creator targets week by week: a monthly number nobody can act on until the 25th,
      split into a Monday question. */
-  /* One row per agent for one day: called, counselled, and how much of the list they got
-     through. Three questions that used to need three screens. */
-  ok("agent day is its own view", vphtml.indexOf('["agentday", "Agent day", ""]') >= 0 &&
-    vphtml.indexOf("function renderAgentDay") >= 0);
-  ok("it can be filtered by manager and by agent",
-    vphtml.indexOf("function adRows()") >= 0 && vphtml.indexOf("All managers") >= 0 &&
-    vphtml.indexOf("All agents") >= 0);
-  ok("the agent list follows the manager choice, so the two cannot disagree",
-    vphtml.indexOf("Agents to choose from follow the manager choice") >= 0);
-  ok("the tiles are recomputed from the filtered rows, not left showing the floor",
-    vphtml.indexOf("var t = adTotals(rows);") >= 0);
-  ok("and the export follows what is on screen",
-    vphtml.indexOf("adRows().forEach(function(r){") >= 0);
-  /* Two counselling numbers, side by side, because two tools count it two ways and the
-     page should settle that rather than a meeting. */
-  ok("agent day carries both counselling definitions",
-    vphtml.indexOf('["CounsellingsQAScope", function(r){ return r.counsDeep; }]') >= 0 &&
-    vphtml.indexOf(">QA scope</th>") >= 0);
-  ok("and says plainly that the two answer different questions",
-    vphtml.indexOf("The two answer different questions and will not agree") >= 0);
   ok("the daily review carries both too",
     vphtml.indexOf("reached counselled or beyond") >= 0 &&
     vphtml.indexOf('["CounsellingsQAScope", function(x){ return x.counsDeep; }]') >= 0);
   ok("a day captured before this counter existed shows a dash, not a zero",
     vphtml.indexOf("x.counsDeep == null") >= 0 &&
     vphtml.indexOf("not captured for this day") >= 0);
-  ok("it counts calls from HubSpot, not from our own lead pool",
-    vphtml.indexOf("Calls are counted from HubSpot itself") >= 0);
-  ok("and shows calls on untracked creators rather than dropping them",
-    vphtml.indexOf("Calls on creators the list does not track") >= 0);
-  ok("every list column is worked against total",
-    vphtml.indexOf("function adPc(did, tot)") >= 0 &&
-    vphtml.indexOf("adPc(r.overdueW, r.overdue)") >= 0);
-  ok("its export pairs each name with the value it reads, like the other one",
-    vphtml.indexOf('["OverdueCalled", function(r){ return r.overdueW; }]') >= 0);
-  ok("a date with no snapshot says so instead of showing zeros as fact",
-    vphtml.indexOf("No snapshot exists for that date") >= 0);
   ok("creator weeks is its own view", vphtml.indexOf('["weeks", "Creator weeks", ""]') >= 0 &&
     vphtml.indexOf("function renderWeeks") >= 0);
   ok("it explains that the split follows working days",
@@ -732,53 +701,6 @@ ok("autofocus is gone, because it does not fire on innerHTML",
   html.indexOf("function segFocus()") >= 0);
 ok("and a background redraw puts the caret back where it was",
   html.indexOf("segFocus();}") >= 0 && html.indexOf("if(box)SEGCARET=box.selectionStart;") >= 0);
-
-/* The VP agent summary. The whole risk in a range view is treating a position as if it
-   were an event, so that is what these pin. */
-{
-  const vp = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
-  ok("the view is reachable from the rail and renders somewhere",
-    vp.indexOf('["summary", "Agent summary", ""]') >= 0 &&
-    vp.indexOf('VIEW === "summary"') >= 0 &&
-    vp.indexOf("function renderAgentSummary()") >= 0);
-  ok("it asks for a range, not just a day",
-    vp.indexOf("loadAgentSummary(this.value,AS_TO)") >= 0 &&
-    vp.indexOf("loadAgentSummary(AS_FROM,this.value)") >= 0 &&
-    vp.indexOf("function asPreset(n)") >= 0);
-  ok("a stock is shown as a standing figure with its average, never as a sum",
-    vp.indexOf("r.overdueAvg") >= 0 && vp.indexOf("r.nofuAvg") >= 0 &&
-    vp.indexOf("as it stood on") >= 0);
-  ok("and the page says out loud which columns add up and which do not",
-    vp.indexOf("are a position rather than an event") >= 0);
-  ok("DNP coverage reads as attempts over days, the way it was asked for",
-    vp.indexOf("function asDnp(r)") >= 0 && vp.indexOf("tries in ") >= 0);
-  ok("a short range is warned about rather than quietly measured",
-    vp.indexOf("j.missingDays") >= 0 && vp.indexOf("contribute nothing") >= 0);
-  ok("nothing due does not become a flattering hundred percent",
-    vp.indexOf('r.completion == null) return "<span class=\'mut\'>nothing due</span>') >= 0);
-  ok("every column can be sorted, so worst first works on any of them",
-    vp.indexOf("function asSort(k)") >= 0 && (vp.match(/asHead\(/g) || []).length >= 7);
-  ok("the export pairs each column name with the value it reads",
-    vp.slice(vp.indexOf("function asCsv()")).indexOf('["Agent", function(r){ return r.name; }]') >= 0);
-  /* The segment picker, and the honesty around what it can and cannot narrow. */
-  ok("segments are searchable rather than a select with 271 options",
-    vp.indexOf("function vsegListHtml()") >= 0 && vp.indexOf("vsegsearch") >= 0);
-  ok("a keystroke rebuilds only the list, the same way Call Now's does",
-    vp.indexOf('el.innerHTML = vsegListHtml()') >= 0 &&
-    vp.slice(vp.indexOf("function vsegQ(v)"), vp.indexOf("function vsegPick")).indexOf("setTimeout") < 0);
-  ok("and the caret survives a redraw",
-    vp.indexOf("function vsegFocus()") >= 0 && vp.indexOf("vsegFocus();") >= 0);
-  ok("the chosen segment is sent to the server",
-    vp.indexOf('q.push("segment=" + encodeURIComponent(AS_SEG))') >= 0);
-  ok("a segment still loading is named, not shown as an empty table",
-    vp.indexOf("j.seg && j.seg.loading") >= 0 && vp.indexOf("Check again") >= 0);
-  ok("and the range being switched off is explained rather than just happening",
-    vp.indexOf("j.segmentIsLiveOnly") >= 0 &&
-    vp.indexOf("The date range does not apply to a segment") >= 0 &&
-    vp.indexOf("today only, while a segment is chosen") >= 0);
-  ok("the export names the segment, so the file cannot lie by omission",
-    vp.indexOf("AS.seg ? AS.seg.name.replace") >= 0);
-}
 
 /* Agents get the segment picker now. The thing to guard is that lifting one restriction
    did not lift its neighbour: the assignment pool is about leads nobody holds and must
@@ -907,89 +829,6 @@ ok("and so are members we do not hold at all",
 ok("the confirmation says nothing is removed",
   html.indexOf("Nothing is removed: every lead already on the list stays") >= 0 &&
   html.indexOf("measured from this moment instead of from midnight") < 0);
-
-/* The idle tracker's two views. Live is a state and Day is a record, so they must not be
-   the same screen with a different title. */
-{
-  const vp = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
-  ok("both views are reachable from the rail",
-    vp.indexOf('["idlelive", "Live floor", ""]') >= 0 &&
-    vp.indexOf('["idleday", "Idle day", ""]') >= 0 &&
-    vp.indexOf("function renderIdleLive()") >= 0 &&
-    vp.indexOf("function renderIdleDay()") >= 0);
-  ok("live sorts the worst state to the top rather than sorting by name",
-    vp.indexOf("IL_STATE") >= 0 && vp.indexOf("on air") >= 0);
-  ok("the shift bar marks the breaks, so a gap over lunch reads correctly",
-    vp.indexOf("function shiftBar(sh, now)") >= 0 && vp.indexOf("sh.breaks") >= 0);
-  ok("the day view draws each shift as a rail with its gaps on it",
-    vp.indexOf("r.gaps || []).map") >= 0 && vp.indexOf("#D85A30") >= 0);
-  ok("colour carries the state rather than decorating it",
-    vp.indexOf("#A32D2D") >= 0 && vp.indexOf("#0F6E56") >= 0 && vp.indexOf("#EF9F27") >= 0);
-  /* Two honesty notes that must survive any redesign. */
-  ok("the day view states that follow-up is email only",
-    vp.indexOf("Follow-up counts email only") >= 0 &&
-    vp.indexOf("WhatsApp") >= 0 && vp.indexOf("own phones") >= 0);
-  ok("and both views admit that a gap cannot yet be explained",
-    vp.indexOf("agents cannot yet explain a gap") >= 0 &&
-    vp.indexOf("a real meeting looks the same as an empty hour") >= 0);
-  ok("future-dated calls are reported on screen, not silently dropped",
-    vp.indexOf("future-dated ignored") >= 0);
-
-  /* Actually run them. The first version of these tests only grepped for strings and the
-     Live floor shipped calling since(), which exists in callnow2.html and not here, so the
-     page rendered "since is not defined" for everybody. Checking that a string is present
-     proves nothing about whether the function around it runs. */
-  const vpScript = (vp.match(/<script>([\s\S]*?)<\/script>/g) || [])
-    .map(function(b){ return b.replace(/^<script>/, "").replace(/<\/script>$/, ""); }).join("\n");
-  const runVp = function(name, state){
-    let out = "", err = null;
-    const el = { set innerHTML(v){ out = v; }, get innerHTML(){ return out; } };
-    const ctx = { console: { log(){}, error(){} },
-      document: { getElementById: function(){ return el; },
-        addEventListener(){}, createElement: function(){ return { click(){}, style: {} }; } },
-      fetch: function(){ return new Promise(function(){}); },
-      setInterval(){}, setTimeout(){}, Date, Math, JSON, Object, String, Number, Array,
-      encodeURIComponent, decodeURIComponent, Promise, RegExp, isNaN, parseInt, parseFloat,
-      Intl, confirm(){ return false; }, alert(){}, localStorage: { getItem(){ return null; }, setItem(){} },
-      URL: { createObjectURL: function(){ return ""; } }, Blob: function(){},
-      location: { search: "", pathname: "/vp.html" }, history: { replaceState(){} },
-      URLSearchParams: URLSearchParams, window: {} };
-    vm.createContext(ctx);
-    try { vm.runInContext(vpScript, ctx); Object.assign(ctx, state); ctx[name](); }
-    catch (e) { err = e; }
-    return { out: out, err: err };
-  };
-  const shiftPay = { start: Date.UTC(2026, 7, 29, 7, 0), end: Date.UTC(2026, 7, 29, 16, 30),
-    isWorkDay: true, inShift: true, inBreak: false,
-    breaks: [{ start: Date.UTC(2026, 7, 29, 9, 0), end: Date.UTC(2026, 7, 29, 9, 30) }] };
-  const rowPay = { id: "9", name: "Santanu Ghosh", team: "Team Sid", active: true,
-    state: "idle", idleMs: 84 * 60000, last: Date.UTC(2026, 7, 29, 9, 48), lastEnd: 0,
-    lastDurMs: 0, first: 0, dialled: 31, answered: 9, conversations: 4, talkMs: 0,
-    records: 33, gaps: [{ from: Date.UTC(2026, 7, 29, 9, 48), to: Date.UTC(2026, 7, 29, 11, 12), ms: 84 * 60000 }],
-    gapMs: 84 * 60000, shiftMs: 222 * 60000, dnp: { dnps: 22, emailed: 0 } };
-  const liveRun = runVp("renderIdleLive", { IL: { now: Date.UTC(2026, 7, 29, 11, 12),
-    date: "2026-08-29", shift: shiftPay,
-    thresholds: { quietMs: 900000, idleMs: 2400000, conversationMs: 60000 },
-    counts: { oncall: 1, between: 2, quiet: 1, idle: 1, none: 0, onbreak: 0 },
-    rows: [rowPay], scoped: false, isVP: true, declarationsLive: false,
-    sync: { at: new Date().toISOString(), error: null, records: 1409, unowned: 1, futureDated: 3,
-      everyMinutes: 3, fullAt: null } } });
-  ok("the Live floor actually renders", !liveRun.err, liveRun.err && liveRun.err.message);
-  ok("and shows the agent, the idle clock and the counts",
-    liveRun.out.indexOf("Santanu Ghosh") >= 0 && liveRun.out.indexOf("1:24") >= 0 &&
-    liveRun.out.indexOf("31/9/4") >= 0, liveRun.out.slice(0, 160));
-  const dayRun = runVp("renderIdleDay", { ID: { date: "2026-08-29", now: Date.UTC(2026, 7, 29, 11, 12),
-    shift: shiftPay,
-    totals: { dialled: 31, answered: 9, conversations: 4, records: 33, gapMs: 84 * 60000,
-      agentsWithGaps: 1, dnps: 22, emailed: 0 },
-    thresholds: { conversationMs: 60000, minGapMs: 900000 },
-    rows: [rowPay], scoped: false, isVP: true, followUpIsEmailOnly: true, declarationsLive: false,
-    sync: { at: new Date().toISOString(), error: null, unowned: 1, futureDated: 3 } } });
-  ok("the Idle day actually renders", !dayRun.err, dayRun.err && dayRun.err.message);
-  ok("and draws the gap on the rail with its hours beside it",
-    dayRun.out.indexOf("Santanu Ghosh") >= 0 && dayRun.out.indexOf("1h 24m") >= 0 &&
-    dayRun.out.indexOf("emailed afterwards") >= 0, dayRun.out.slice(0, 160));
-}
 
 /* Tech or not, and blue or white collar, are judgements from free text rather than
    lookups, so the chip carries the words it judged and must tell "they said consultant"

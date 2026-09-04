@@ -83,5 +83,33 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
   chk("zero() covers every key the aggregate writes",
     rev.KEYS.every(function(k){ return rev.zero()[k]===0; }));
 }
+
+/* ---- 6. no route is hiding inside a comment ---------------------------------------
+
+   Removing the agent-day endpoint took the closing marker of the comment above it, which
+   left that comment open. Everything down to the next closing marker was swallowed, and
+   the creator-weeks route silently stopped existing. Nothing complained: the file parsed,
+   the server started, and the only reason it was caught is that creator-weeks happened to
+   have a test. A route with no test would simply have been gone.
+
+   So: every route literal in the file has to be a live registration and not text sitting
+   inside a comment. Comments are stripped and the two lists compared. */
+{
+  const src = fs.readFileSync(path.join("/tmp/repo", "server.js"), "utf8");
+  const live = src
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const paths = function(text){
+    return [...text.matchAll(/app\.(?:get|post|put|delete)\(\s*"([^"]+)"/g)]
+      .map(function(m){ return m[1]; });
+  };
+  const all = paths(src), on = paths(live);
+  const buried = all.filter(function(r){ return on.indexOf(r) < 0; });
+  chk("every route in server.js is registered, not commented out",
+    buried.length === 0, buried.join(", "));
+  chk("and the file still registers a sensible number of them",
+    on.length > 30, String(on.length));
+}
+
 console.log("\n"+(bad?bad+" failed":"all clear"));
 process.exit(bad?1:0);

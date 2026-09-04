@@ -930,3 +930,58 @@ table at 52vh with `!important`, which `.wrap .tw.cohortw` outranks on specifici
 it won on source order and four stages stayed behind a scroll. The cohort wrapper therefore
 does not carry `scrolly` at all: `cohortw` provides the overflow it needs. A matrix you are
 meant to read across is no use with rows hidden.
+
+## 35. Six views were removed from the VP and manager rail
+
+Removed on 5 September 2026 at the user's request: Live floor, Idle day, Agent summary and
+Agent day from the nav, and the Daily activity and Daily counsellings links from Tools.
+Managers saw the same rail, so both roles are covered by the same change.
+
+What went with them, because a view whose endpoint survives is not removed, it is hidden:
+
+- `/api/vp/idle/live`, `/api/vp/idle/day`, `/api/vp/agent-day` and `/api/vp/agent-summary`
+- `agentDayCalls` and its three minute cache, `agentSummaryDays`, `agentDnpCoverage`, the
+  DNP starvation constants, `dnpEmailFollowUp` and its cache, `idleRow`, `idleAgentActive`
+- the whole activity sweep: `callsBetween`, `actStore`, `syncActivity`, the `ACT` store,
+  its two intervals and three staggered warm-ups, and its block in `/api/health`
+- roughly 630 lines of `vp.html`, being every render function for the four views, the
+  segment picker they alone used, and its CSS
+
+Two things deliberately stayed.
+
+`lib/idle.js` keeps `dedupe`. The Loop WA view counts calls per lead through it, and
+without it a call logged by FreJun and then written up by hand counts twice. The shift
+arithmetic went. The module and its tests were renamed to say what they now are, because a
+file called `idle` holding the last piece of a deleted tracker is a trap for the next
+reader.
+
+The two external tools are separate Railway services, `hubspot-dashboard-production-29f4`
+and `topmate-counselled-qa`. Only the links were removed here. Undeploying those is done in
+their own Railway projects and nothing in this repo can do it.
+
+### What the sweep cost
+
+Ungated by shift, so it ran through the night as well. Per incremental run, a call search
+page plus an association batch; per full reconcile, one of each per hundred calls in the
+day. At twenty incremental runs an hour and two reconciles, on a fourteen hundred call day
+that is on the order of a thousand to fifteen hundred HubSpot requests a day, for a view
+nobody was opening. The health counter will show the real drop; treat the estimate as an
+estimate.
+
+## 36. A deleted endpoint can take the next one with it
+
+Removing the agent-day handler took the closing marker of the comment above it. The comment
+stayed open, everything down to the next closing marker was swallowed, and
+`/api/vp/creator-weeks` silently stopped existing. `node --check` passed. The server
+started. Six routes were gone.
+
+It was caught only because creator-weeks happened to have a test. A route without one would
+have shipped dead, and the first anybody would know is a manager reporting a blank page.
+
+`audit2` now strips comments from `server.js` and compares the route literals in the
+stripped source against the raw source. Anything present in one and not the other is a
+route sitting inside a comment, and it is named. Verified by reinstating the exact fault:
+the check fails and lists all six routes.
+
+The general rule: when deleting a block, the comment above it is part of the block. Check
+what follows the cut still exists, not just that the file parses.

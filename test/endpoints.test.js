@@ -648,57 +648,7 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       typeof m.body.assignedIn === "number" && typeof m.body.assignedMoved === "number",
       JSON.stringify({ i: m.body.assignedIn, mv: m.body.assignedMoved }));
 
-    /* The idle tracker. Fixtures carry a shift of call records so this is exercised
-       rather than merely reachable, and the fixture clock can be moved so the live view
-       can be seen at a moment inside the shift. */
-    const noon = Date.UTC(2026, 7, 6, 11, 12);      // 16:42 IST on the fixture's Thursday
-    const lunch = Date.UTC(2026, 7, 6, 9, 15);      // 14:45 IST, inside the lunch break
-    const late = Date.UTC(2026, 7, 6, 17, 0);       // 22:30 IST, after the shift
-    const live = await get("/api/vp/idle/live?now=" + noon);
-    ok("the live floor answers", live.status === 200, "status " + live.status + " " + live.raw);
-    ok("and it has real activity behind it, not an empty floor",
-      (live.body.rows || []).some(function(r){ return r.dialled > 0; }),
-      JSON.stringify((live.body.rows || []).map(function(r){ return r.dialled; })));
-    ok("the shift is 12:30 to 22:00 IST",
-      new Date(live.body.shift.start).toISOString().slice(11, 16) === "07:00" &&
-      new Date(live.body.shift.end).toISOString().slice(11, 16) === "16:30");
-    ok("mid afternoon is inside the shift and not a break",
-      live.body.shift.inShift === true && live.body.shift.inBreak === false);
-    /* Nothing may fire during lunch or after hours, or the alarm is noise by day two. */
-    const atLunch = await get("/api/vp/idle/live?now=" + lunch);
-    ok("during lunch nobody is idle, everyone is on a break",
-      atLunch.body.counts.idle === 0 && atLunch.body.counts.quiet === 0 &&
-      atLunch.body.counts.onbreak > 0, JSON.stringify(atLunch.body.counts));
-    const afterHours = await get("/api/vp/idle/live?now=" + late);
-    ok("after the shift nothing is idle at all",
-      afterHours.body.counts.idle === 0 && afterHours.body.counts.between === 0 &&
-      afterHours.body.shift.inShift === false, JSON.stringify(afterHours.body.counts));
-    ok("a call dated in the future is dropped, not counted as activity",
-      live.body.sync.futureDated > 0, String(live.body.sync.futureDated));
-    ok("deactivated agents are not shown as idle, they have left",
-      (live.body.rows || []).every(function(r){ return r.name !== "Gone Gita"; }));
-    ok("the unowned bucket is a count, never a person",
-      (live.body.rows || []).every(function(r){ return r.id && r.id !== "none"; }));
-    ok("answered can never exceed dialled, nor conversations exceed answered",
-      (live.body.rows || []).every(function(r){
-        return r.answered <= r.dialled && r.conversations <= r.answered; }),
-      JSON.stringify((live.body.rows || [])[0]));
-    ok("the worst state sorts to the top, which is the point of the page",
-      (function(){
-        const order = { idle: 0, quiet: 1, none: 2, between: 3, oncall: 4, break: 5, offshift: 6 };
-        const rows = live.body.rows || [];
-        for (let i = 1; i < rows.length; i++) {
-          if (order[rows[i - 1].state] > order[rows[i].state]) return false;
-        }
-        return true; })());
-    ok("it says out loud that agents cannot yet explain a gap",
-      live.body.declarationsLive === false);
-    /* The merge needs the lead behind each call, fetched by a second request. If that
-       returns nothing the merge rate silently collapses to zero and everything still
-       looks healthy, so the inputs are reported and not just the output. */
-    {
-      const act = ((await get("/api/health")).body.cn2 || {}).activity || null;
-      /* "Is this heavy?" was a question about a number nobody kept, so twenty scheduled
+    /* "Is this heavy?" was a question about a number nobody kept, so twenty scheduled
        readers had to be reasoned about one at a time. It is counted now. */
     {
       const hb = (await get("/api/health")).body.hubspot || null;
@@ -712,28 +662,28 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         hb.busiest.every(function(b){ return !/\/\d{4,}/.test(b.path); }),
         JSON.stringify(hb.busiest.map(function(b){ return b.path; })));
     }
-    ok("health reports how many calls have a lead attached, and their sources",
-        act && "withContact" in act && act.bySource && typeof act.bySource === "object",
-        JSON.stringify(act && { w: act.withContact, s: act.bySource }));
-    }
 
-    const day = await get("/api/vp/idle/day?now=" + noon);
-    ok("the day summary answers", day.status === 200, "status " + day.status);
-    ok("its totals are built from the same rows it shows",
-      day.body.totals.dialled === (day.body.rows || []).reduce(function(n, r){ return n + r.dialled; }, 0));
-    ok("records exceed calls, which is the double logging being removed",
-      day.body.totals.records > day.body.totals.dialled,
-      day.body.totals.records + " records for " + day.body.totals.dialled + " calls");
-    ok("every gap is at least the minimum, or it would not be a gap",
-      (day.body.rows || []).every(function(r){
-        return (r.gaps || []).every(function(g){ return g.ms >= day.body.thresholds.minGapMs; }); }));
-    ok("no agent's gap time exceeds their shift",
-      (day.body.rows || []).every(function(r){ return r.gapMs <= r.shiftMs + 1000; }),
-      JSON.stringify((day.body.rows || []).map(function(r){ return [r.gapMs, r.shiftMs]; })));
-    ok("the email-only limit is in the payload, so the page cannot forget to say it",
-      day.body.followUpIsEmailOnly === true);
-    ok("a past date is refused rather than answered with today's numbers",
-      (await get("/api/vp/idle/day?date=2026-08-01&now=" + noon)).status === 400);
+    /* Removed on request, along with the two external tools they sat beside. Routes are
+       cheap to leave behind and that is the problem: a dead endpoint still answers, still
+       reads HubSpot, and still looks like a supported feature to whoever finds it. These
+       four are gone and this fails if any of them comes back by a merge nobody read. */
+    {
+      const gone = ["/api/vp/idle/live", "/api/vp/idle/day",
+        "/api/vp/agent-day", "/api/vp/agent-summary"];
+      const answered = [];
+      for (const path of gone) {
+        const r = await get(path);
+        if (r.status !== 404) answered.push(path + " -> " + r.status);
+      }
+      ok("the four removed endpoints are actually gone, not merely unlinked",
+        !answered.length, answered.join(", "));
+      /* The sweep behind them read every call record on the floor every three minutes,
+         and a full reconcile every thirty. Nothing else consumed it. */
+      const cn2 = (await get("/api/health")).body.cn2 || {};
+      ok("and the activity sweep that fed them is no longer running",
+        !("activity" in cn2) || cn2.activity === null,
+        JSON.stringify(cn2.activity));
+    }
 
     /* Seven different faults make an agent's dashboard read zero and they all look
        identical from outside. This walks them in order and names the first one that
@@ -884,97 +834,6 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       JSON.stringify(wa.body.portal));
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
-
-    /* One row per agent, over a day or a range. The whole risk in this one is mixing up
-       what adds up with what does not, so that is what the checks are about. */
-    const su = await get("/api/vp/agent-summary");
-    ok("agent summary answers", su.status === 200, "status " + su.status + " " + su.raw);
-    ok("it names the window it actually measured",
-      su.body && su.body.from && su.body.to && typeof su.body.days === "number",
-      JSON.stringify(su.body && { f: su.body.from, t: su.body.to, d: su.body.days }));
-    const wide = await get("/api/vp/agent-summary?from=2020-01-01&to=2020-01-07");
-    ok("days with no snapshot are named, not silently dropped",
-      wide.status === 200 && Array.isArray(wide.body.missingDays) && wide.body.missingDays.length === 7,
-      JSON.stringify(wide.body && wide.body.missingDays));
-    ok("a backwards range is refused rather than answered with nothing",
-      (await get("/api/vp/agent-summary?from=2026-08-10&to=2026-08-01")).status === 400);
-    ok("every row carries the team id the picker filters on",
-      (su.body.rows || []).every(function(r){ return "teamId" in r; }));
-    ok("nothing due reads as nothing due, not as a flattering hundred percent",
-      (su.body.rows || []).every(function(r){ return r.due ? r.completion != null : r.completion === null; }),
-      JSON.stringify((su.body.rows || []).filter(function(r){ return !r.due && r.completion !== null; })[0]));
-    ok("done can never exceed due",
-      (su.body.rows || []).every(function(r){ return r.done <= r.due; }));
-    ok("missed is what fell due and was not called",
-      (su.body.rows || []).every(function(r){ return r.missed >= 0 && r.done + r.missed <= r.due + 1; }),
-      JSON.stringify((su.body.rows || [])[0]));
-    /* A stock summed across days counts one stuck lead once per day it was stuck. The
-       standing figure must therefore stay a position, and it carries the day it is from. */
-    ok("overdue and No FU stay a position, with the day they were read",
-      (su.body.rows || []).every(function(r){
-        return typeof r.overdue === "number" && typeof r.overdueAvg === "number" &&
-               typeof r.nofu === "number" && "standingOn" in r; }),
-      JSON.stringify((su.body.rows || [])[0]));
-    ok("DNP coverage carries attempts, days and the leads behind them",
-      (su.body.rows || []).every(function(r){
-        return r.dnp && ["leads","tries","mine","days","starved","never","triesPer","daysPer","rate"]
-          .every(function(k){ return typeof r.dnp[k] === "number"; }); }),
-      JSON.stringify((su.body.rows || [])[0] && (su.body.rows || [])[0].dnp));
-    ok("attempts by the current holder can never exceed attempts by anyone",
-      (su.body.rows || []).every(function(r){ return r.dnp.mine <= r.dnp.tries; }));
-    ok("a lead with no DNP pile is not divided by zero",
-      (su.body.rows || []).every(function(r){
-        return isFinite(r.dnp.rate) && isFinite(r.dnp.triesPer) && isFinite(r.dnp.daysPer); }));
-    ok("barely tried can never exceed the pile it is drawn from",
-      (su.body.rows || []).every(function(r){ return r.dnp.starved <= r.dnp.leads && r.dnp.never <= r.dnp.leads; }));
-    ok("the floor it judges against is reported rather than hidden in the code",
-      typeof su.body.starvedEvery === "number" && su.body.starvedEvery > 0);
-    // Vacuous checks are worse than no checks: this one is why the fixture carries a
-    // stage-entry date, and it failed silently until it did.
-    ok("and there is actually a DNP pile behind all of that",
-      (su.body.totals || {}).dnp_leads > 0 && (su.body.totals || {}).dnp_days > 0,
-      JSON.stringify(su.body.totals));
-    ok("a lead we cannot date is counted and named, not dropped or called nought days old",
-      (su.body.rows || []).every(function(r){ return r.dnp.undated <= r.dnp.leads; }));
-    /* A segment can only narrow what is keyed by lead. The nightly snapshots are not, so
-       the range has to stop applying rather than half of the row being filtered. */
-    const seg = await get("/api/vp/agent-summary?segment=9999&from=2026-08-01&to=2026-08-19");
-    ok("asking for a segment answers rather than failing", seg.status === 200, "status " + seg.status);
-    ok("a segment that is not held yet says so instead of showing an empty table",
-      seg.body.seg && (seg.body.seg.loading === true || seg.body.segmentIsLiveOnly === true),
-      JSON.stringify(seg.body.seg));
-    ok("and when it is applied the range is switched off, not silently mixed",
-      !seg.body.segmentIsLiveOnly || (seg.body.dates || []).length === 0,
-      JSON.stringify(seg.body.dates));
-    ok("no segment means no segment block, so the normal view cannot inherit one",
-      su.body.seg == null && !su.body.segmentIsLiveOnly);
-
-    /* One row per agent for one day. */
-    const ad = await get("/api/vp/agent-day");
-    ok("agent day answers", ad.status === 200, "status " + ad.status + " " + ad.raw);
-    ok("it offers the pickers a manager needs, built from teams not from rows",
-      Array.isArray(ad.body.teams) && "isVP" in ad.body);
-    ok("and every row carries the team id the picker filters on",
-      (ad.body.rows || []).every(function(r){ return "teamId" in r; }));
-    ok("it says where its list columns came from",
-      ad.body && ["live", "snapshot", "none"].indexOf(ad.body.source) >= 0, JSON.stringify(ad.body && ad.body.source));
-    ok("a past date with no snapshot is reported, not faked",
-      (await get("/api/vp/agent-day?date=2020-01-01")).body.source === "none");
-    ok("HubSpot being unreachable costs the call counts, not the whole report",
-      ad.status === 200 && (!ad.body.callsError || ad.body.rows !== undefined),
-      JSON.stringify(ad.body && ad.body.callsError));
-    ok("every row keeps tracked and untracked calls separable",
-      (ad.body.rows || []).every(function(r){
-        return r.called === r.calledTracked + r.calledOutside; }),
-      JSON.stringify((ad.body.rows || [])[0]));
-    ok("both counselling definitions are reported side by side",
-      (ad.body.rows || []).every(function(r){ return "counsellings" in r && "counsDeep" in r; }) &&
-      "counsDeep" in (ad.body.totals || {}));
-    ok("the narrower count can never exceed the wider one",
-      (ad.body.rows || []).every(function(r){ return r.counsDeep <= r.counsellings; }),
-      JSON.stringify((ad.body.rows || []).filter(function(r){ return r.counsDeep > r.counsellings; })));
-    ok("and no row claims more calls made than it has",
-      (ad.body.rows || []).every(function(r){ return r.done <= r.due && r.worked <= r.queue; }));
 
     /* Creator targets split across the weeks of the month. */
     const cw = await get("/api/vp/creator-weeks");
