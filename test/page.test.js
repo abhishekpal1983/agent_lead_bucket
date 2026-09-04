@@ -931,5 +931,122 @@ ok("the month picker and the page filters both reload it",
   html.indexOf("function setCohortMonth(v)") >= 0 &&
   html.indexOf('if(VIEW==="cohort"){C=null;loadCohort();}') >= 0);
 
+/* The counselling ledger view.
+
+   Rendered rather than grepped. Earlier in this codebase a view shipped with every string
+   test passing and a "since is not defined" on screen, because grepping for text proves
+   the text exists and nothing about whether the page runs. */
+{
+  const vpsrc = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
+  const vpscript = vpsrc.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const lgEls = {};
+  const lgCtx = { console: { log(){}, error(){} },
+    document: { getElementById: function(id){ lgEls[id] = lgEls[id] || { innerHTML: "", style: {}, className: "" }; return lgEls[id]; },
+      createElement: function(){ return { click(){}, set href(v){}, set download(v){} }; },
+      addEventListener(){} },
+    localStorage: { getItem(){ return null; }, setItem(){} },
+    location: { search: "", href: "" }, URLSearchParams,
+    fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
+    Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+    isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
+    URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
+  lgCtx.window = lgCtx; lgCtx.window.addEventListener = function(){};
+  vm.createContext(lgCtx); vm.runInContext(vpscript, lgCtx);
+
+  const ev = function(kind, stage, label, from, at){
+    return { kind: kind, stage: stage, label: label, from: from, fromLabel: from, at: at, day: "2026-08-06" };
+  };
+  const T = Date.parse("2026-08-06T08:00:00Z");
+  const payload = {
+    date: "2026-08-06", isToday: false, readAt: new Date(T).toISOString(),
+    error: null, truncated: false, shortMs: 600000, scoped: false, isVP: true,
+    screenshotsRead: false, followUpIsCurrentValue: true,
+    counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
+    teams: [{ id: "t1", name: "Team Sid" }],
+    totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
+      noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000, noteMs: 2400000 },
+    rows: [
+      { id: "201", name: "Sid Menon", team: "Team Sid", teamId: "t1", active: true,
+        counsellings: 3, progress: 3, repeat: 1, reopened: 1, dropped: 1, flagged: 3,
+        noFollowUp: 1, short: 1, unknown: 0, screenshot: 1,
+        calls: 5, callMs: 3000000, meetMs: 2400000, noteMs: 0, meetings: 1, talkMs: 5400000 },
+      /* The agent the view exists for: a full day of calls and nothing recorded. */
+      { id: "204", name: "Neha Iyer", team: "Team Sid", teamId: "t1", active: true,
+        counsellings: 1, progress: 0, repeat: 0, reopened: 0, dropped: 0, flagged: 0,
+        noFollowUp: 0, short: 0, unknown: 2, screenshot: 2,
+        calls: 4, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0, talkMs: 0 }
+    ],
+    leads: [
+      { id: "L1", name: "Dee Sehgal", owner: "201", creator: "simrankhokha", stage: "counselled",
+        counselling: ev("counselling", "discovery", "Discovery", "", T), progress: [], repeat: [],
+        reopened: [], dropped: [], calls: 2, callMs: 3000000, withDuration: 2, meetMs: 2400000,
+        noteMs: 0, screenshot: false, unknown: false, short: false, noFollowUp: false },
+      { id: "L2", name: "Komal Verma", owner: "201", creator: "ayush_singh13", stage: "discovery",
+        counselling: null, progress: [], repeat: [ev("repeat", "discovery", "Discovery", "program_pitched", T)],
+        reopened: [], dropped: [], calls: 1, callMs: 0, withDuration: 0, meetMs: 0, noteMs: 0,
+        screenshot: false, unknown: true, short: false, noFollowUp: true },
+      { id: "L3", name: "Winston K", owner: "204", creator: "payalineurope", stage: "counselled",
+        counselling: ev("counselling", "counselled", "Counselled", "dnp_did_not_pick", T),
+        progress: [], repeat: [], reopened: [], dropped: [], calls: 2, callMs: 0, withDuration: 0,
+        meetMs: 0, noteMs: 0, screenshot: true, unknown: true, short: false, noFollowUp: false }
+    ]
+  };
+  lgCtx.LG = payload; lgCtx.LG_DATE = payload.date;
+  let lgErr = null;
+  try { lgCtx.renderLedger(); } catch (e) { lgErr = e; }
+  ok("the counselling day actually renders", !lgErr, lgErr && lgErr.message);
+  const o = lgEls.lgwrap.innerHTML;
+
+  ok("it is reachable from the rail and has a title of its own",
+    vpsrc.indexOf('["ledger", "Counselling day", ""]') >= 0 &&
+    vpsrc.indexOf('ledger: "Counselling day"') >= 0);
+  ok("the definition is stated on the page, not left to a meeting",
+    o.indexOf("One lead counts once") >= 0 && o.indexOf("first time a lead reaches") >= 0);
+  ok("both agents and the day are on screen",
+    o.indexOf("Sid Menon") >= 0 && o.indexOf("Neha Iyer") >= 0 && o.indexOf("2026-08-06") >= 0);
+  /* Short and unknown are separate tiles. One tile adding them together is how the
+     distinction gets quietly lost again. */
+  ok("length unknown is its own tile, never folded into short",
+    o.indexOf("Length unknown") >= 0 && o.indexOf("Under 10 min") >= 0);
+  ok("an agent with calls and no recorded duration is warned about in words",
+    o.indexOf("carrying no duration between them") < 0, "not expanded yet");
+  lgCtx.LG_OPEN["204"] = true; lgCtx.renderLedger();
+  const o2 = lgEls.lgwrap.innerHTML;
+  ok("and the warning appears once that agent is opened",
+    o2.indexOf("carrying no duration between them") >= 0 &&
+    o2.indexOf("dials nobody answered") >= 0);
+  ok("a lead with no duration reads as not recorded, never as a zero",
+    o2.indexOf("not recorded") >= 0 && o2.indexOf("no duration") >= 0);
+  lgCtx.LG_OPEN["201"] = true; lgCtx.renderLedger();
+  const o3 = lgEls.lgwrap.innerHTML;
+  ok("every flag kind has a pill and they carry an explanation",
+    o3.indexOf(">repeat</span>") >= 0 && o3.indexOf("already been in") >= 0 &&
+    o3.indexOf(">no follow up</span>") >= 0, o3.indexOf(">repeat</span>") + "/" + o3.indexOf(">no follow up</span>"));
+  ok("a lead that is not a first counselling says so rather than being hidden",
+    o3.indexOf("not a first counselling") >= 0);
+  ok("the page says screenshots are marked and not read",
+    o3.indexOf("marked but not read") >= 0);
+  ok("and that follow up is the value now, not as it stood on the day",
+    o3.indexOf("not as it stood on the day") >= 0);
+  ok("flags are framed as questions rather than conclusions",
+    o3.indexOf("for asking about, not for concluding with") >= 0);
+  /* The daily review's export once drifted from its header and mislabelled every column,
+     so this one is a single paired list. */
+  ok("the export pairs each column name with the value it reads",
+    vpsrc.indexOf('["LengthUnknown", function(r){ return r.unknown; }]') >= 0 &&
+    vpsrc.indexOf('["TotalTalkMinutes"') >= 0);
+  ok("filtering to one team narrows the table rather than the totals lying",
+    (function(){
+      lgCtx.LG_TEAM = "t1"; lgCtx.LG_AGENT = "204"; lgCtx.renderLedger();
+      const f = lgEls.lgwrap.innerHTML;
+      lgCtx.LG_TEAM = ""; lgCtx.LG_AGENT = "";
+      /* Sid Menon still appears in the agent picker's options, which is correct, so
+         this looks at the table body rather than at the whole page. */
+      const body = f.slice(f.indexOf("<tbody>"));
+      return f.indexOf("1 of 2 agents shown") >= 0 && body.indexOf("Sid Menon") < 0 &&
+        body.indexOf("Neha Iyer") >= 0;
+    })());
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

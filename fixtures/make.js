@@ -204,8 +204,151 @@ call("", 7400, 15, 0, 30000);
 calls.push({ id: "CALLBAD", at: D(2026, 10, 15, 11), durMs: 0, disposition: "",
   owner: "201", source: "CRM_UI", contact: "7401" });
 
+
+/* ---------- stage history, for the counselling ledger ------------------------------
+
+   Deliberately one lead of every shape the walker has to tell apart, because a fixture
+   where everybody simply climbs to Counselled would let three separate bugs pass. The
+   ledger day is TODAY, a Thursday.
+
+   Attached to leads that already exist in `rows`, so the ledger's owner, creator and
+   follow-up fields come from the same place the rest of the page reads them. */
+const HTODAY = function(h, m){ return new Date(D(2026, 8, 6, h) + (m || 0) * 60000).toISOString(); };
+const HPAST = function(d, h){ return new Date(D(2026, 8, d, h || 10)).toISOString(); };
+const history = {};
+const ledgerCalls = [];
+let lseq = 0;
+function hcall(owner, contact, h, m, durMs, source, body, attach){
+  lseq++;
+  ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, h) + (m || 0) * 60000,
+    durMs: durMs || 0, disposition: "", owner: owner, source: source || "INTEGRATION",
+    contact: String(contact), body: body || "", attach: !!attach });
+}
+
+/* Pick real leads out of the pool so owner and creator are consistent with everything
+   else on the page. Sorted by id so the choice is stable run to run. */
+const pick = rows.slice().sort(function(a, b){ return a.id < b.id ? -1 : 1; });
+const L = function(i){ return pick[i]; };
+
+/* 1. A clean climb. All four stages in one afternoon: ONE counselling, three progress.
+      This is the case that separates counting people from counting stage changes. */
+history[L(0).id] = [
+  { value: "", timestamp: HPAST(1) },
+  { value: "discovery", timestamp: HTODAY(13) },
+  { value: "program_pitched", timestamp: HTODAY(14) },
+  { value: "pricing_pitched", timestamp: HTODAY(15) },
+  { value: "counselled", timestamp: HTODAY(16) }
+];
+L(0).fu = D(2026, 8, 8, 11);
+hcall(L(0).owner, L(0).id, 13, 5, 1500000);          // 25 minutes, comfortably fine
+
+/* 2. Going round rather than forward: Discovery, pitched, Discovery again. */
+history[L(1).id] = [
+  { value: "discovery", timestamp: HTODAY(11) },
+  { value: "program_pitched", timestamp: HTODAY(12) },
+  { value: "discovery", timestamp: HTODAY(17) }
+];
+L(1).fu = D(2026, 8, 7, 15);
+hcall(L(1).owner, L(1).id, 11, 10, 900000);
+
+/* 3. Counselled in July, re-opened out of Follow up today. Not a counselling today,
+      however much it moves, and the floor total triples if that rule is got wrong. */
+history[L(2).id] = [
+  { value: "discovery", timestamp: HPAST(2, 9) },
+  { value: "counselled", timestamp: HPAST(2, 11) },
+  { value: "Follow up", timestamp: HPAST(3, 10) },
+  { value: "pricing_pitched", timestamp: HTODAY(14, 20) }
+];
+L(2).fu = 0;                                          // and no next call set
+hcall(L(2).owner, L(2).id, 14, 0, 780000);
+
+/* 4. Counselled today, then filed as somebody nobody has spoken to. */
+history[L(3).id] = [
+  { value: "discovery", timestamp: HTODAY(10) },
+  { value: "counselled", timestamp: HTODAY(12) },
+  { value: "dnp_did_not_pick", timestamp: HTODAY(18) }
+];
+L(3).fu = D(2026, 8, 9, 10);
+hcall(L(3).owner, L(3).id, 10, 30, 1200000);
+
+/* 5. A counselling with four minutes of talking behind it. Genuinely short. */
+history[L(4).id] = [{ value: "counselled", timestamp: HTODAY(15, 30) }];
+L(4).fu = D(2026, 8, 7, 12);
+hcall(L(4).owner, L(4).id, 15, 0, 140000);
+hcall(L(4).owner, L(4).id, 15, 20, 100000);
+
+/* 6. A counselling logged over WhatsApp: a screenshot and no duration anywhere. This
+      must read as "we do not know", never as "under ten minutes". 137 real call logs in
+      thirty days look exactly like this and not one carries a duration. */
+history[L(5).id] = [
+  { value: "discovery", timestamp: HTODAY(11, 15) },
+  { value: "counselled", timestamp: HTODAY(13, 40) }
+];
+L(5).fu = D(2026, 8, 10, 16);
+hcall(L(5).owner, L(5).id, 11, 0, 0, "CRM_UI", "", true);
+
+/* 7. The same, except the agent typed the length into the note. Free to read, and it
+      settles the question without anybody paying to look at an image. */
+history[L(6).id] = [{ value: "counselled", timestamp: HTODAY(16, 10) }];
+L(6).fu = D(2026, 8, 8, 9);
+hcall(L(6).owner, L(6).id, 16, 0, 0, "CRM_UI", "<p>40mins call, sending details</p>", true);
+
+/* 8. A lead that moved into DNP having never been counselled. Not a flag: 199 leads did
+      exactly this on one real Thursday and flagging them would drown the view. */
+history[L(7).id] = [
+  { value: "", timestamp: HPAST(4) },
+  { value: "dnp_did_not_pick", timestamp: HTODAY(12, 45) }
+];
+
+/* 9. A workflow rewriting the same value. One entry, no repeat, nobody accused of
+      anything an automation did. */
+history[L(8).id] = [
+  { value: "counselled", timestamp: HTODAY(9, 0) },
+  { value: "counselled", timestamp: HTODAY(9, 0) },
+  { value: "counselled", timestamp: HTODAY(14, 0) }
+];
+L(8).fu = D(2026, 8, 11, 11);
+hcall(L(8).owner, L(8).id, 9, 0, 660000);
+
+/* 10. A counselling by the agent who has left, so scoping and the inactive marker both
+       have something to act on. */
+const gone = rows.filter(function(r){ return r.owner === "205"; })[0];
+if (gone) {
+  history[gone.id] = [{ value: "discovery", timestamp: HTODAY(10, 5) }];
+  gone.fu = 0;
+  hcall("205", gone.id, 10, 0, 300000);
+}
+
+/* 11. The shape that started this whole view: an agent whose whole day carries no
+       duration at all. On 4 September one real agent logged 41 calls totalling five
+       minutes, and the page has to say that it cannot tell a floor of unanswered dials
+       from conversations whose length never reached HubSpot. Without a fixture agent in
+       this state the warning that says so is never rendered by any test. */
+const quiet = rows.filter(function(r){ return r.owner === "204" && !history[r.id]; }).slice(0, 2);
+quiet.forEach(function(r, i){
+  history[r.id] = [{ value: i ? "discovery" : "counselled", timestamp: HTODAY(12 + i, 25) }];
+  r.fu = D(2026, 8, 9, 12);
+  hcall("204", r.id, 12 + i, 0, 0, "CRM_UI", "spoke to cx", true);
+  hcall("204", r.id, 12 + i, 40, 0, "INTEGRATION");
+});
+
+/* A meeting that was actually held, attached to a lead, and one creator session with no
+   lead on it that must stay out of anybody's talktime. */
+const meetings = [
+  { id: "MEET1", at: D(2026, 8, 6, 17), durMs: 2400000, owner: L(0).owner,
+    title: "Counselling call", contact: L(0).id },
+  { id: "MEET2", at: D(2026, 8, 6, 15), durMs: 4900000, owner: L(1).owner,
+    title: "From Beginner to Host: a creator session", contact: "" }
+];
+
+/* A call the day before, so a day boundary bug shows up as a wrong total rather than as
+   nothing at all. */
+ledgerCalls.push({ id: "LCALLPREV", at: D(2026, 8, 5, 15), durMs: 1800000, disposition: "",
+  owner: L(0).owner, source: "INTEGRATION", contact: L(0).id, body: "", attach: false });
+
 module.exports = {
   waIds: waIds, calls: calls, rows: rows, now: TODAY, agents: AGENTS,
+  history: history, ledgerCalls: ledgerCalls, meetings: meetings,
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
             creators: ["ayush_singh13", "ankita_gulati"] },
           { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"],

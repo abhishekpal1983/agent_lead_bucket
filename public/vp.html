@@ -702,8 +702,249 @@ function renderWeeks(){
   el.innerHTML = h;
 }
 
+/* The counselling ledger: what each agent did on one day.
+
+   Two questions on one screen because they answer each other. "Twelve counsellings" reads
+   well until you see the talktime beside it, and "five minutes of talktime" looks like a
+   wasted day until you see that the calls carry no duration at all.
+
+   The flags are not accusations and the page says so. A lead can genuinely be counselled,
+   go quiet and be counselled again. What the flags do is put the shape in front of a
+   manager who can ask. */
+var LG = null, LG_DATE = "", LG_TEAM = "", LG_AGENT = "", LG_CREATOR = "", LG_OPEN = {};
+function lgSet(k, v){
+  if (k === "team") { LG_TEAM = v; LG_AGENT = ""; }
+  else if (k === "creator") LG_CREATOR = v;
+  else LG_AGENT = v;
+  renderLedger();
+}
+function lgToggle(id){ LG_OPEN[id] = !LG_OPEN[id]; renderLedger(); }
+function lgMins(ms){
+  ms = ms || 0;
+  if (!ms) return "0";
+  var m = Math.round(ms / 60000);
+  return m >= 60 ? Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m" : m + "m";
+}
+function lgClock(ms){
+  var d = new Date(ms + 5.5 * 3600000);
+  return d.toISOString().slice(11, 16);
+}
+function lgRows(){
+  return (LG && LG.rows ? LG.rows : []).filter(function(r){
+    if (LG_TEAM && r.teamId !== LG_TEAM) return false;
+    if (LG_AGENT && String(r.id) !== LG_AGENT) return false;
+    if (LG_CREATOR) return lgLeads(r.id).length > 0;
+    return true;
+  });
+}
+function lgLeads(ownerId){
+  return (LG && LG.leads ? LG.leads : []).filter(function(l){
+    if (String(l.owner) !== String(ownerId)) return false;
+    if (LG_CREATOR && l.creator !== LG_CREATOR) return false;
+    return true;
+  });
+}
+function lgCreators(){
+  var seen = {};
+  (LG && LG.leads ? LG.leads : []).forEach(function(l){ if (l.creator) seen[l.creator] = 1; });
+  return Object.keys(seen).sort();
+}
+function loadLedger(d){
+  var el = document.getElementById("lgwrap");
+  if (el) el.innerHTML = "<div class='sec'>Reading the day...</div>";
+  fetch("/api/vp/ledger" + (d ? "?date=" + encodeURIComponent(d) : ""))
+    .then(asJson)
+    .then(function(j){ LG = j; LG_DATE = j.date; renderLedger(); })
+    .catch(function(e){
+      if (el) el.innerHTML = "<div class='sec'><h2>Counselling day</h2>" +
+        "<div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>";
+    });
+}
+/* A counselling with no length behind it is not a short counselling. Kept apart in the
+   summary as well as on the row, because a tile that adds the two together is how the
+   distinction gets quietly lost again. */
+function lgTile(cls, k, v, s){
+  return "<div class='tile " + cls + "'><div class='k'>" + esc(k) + "</div>" +
+    "<div class='v'>" + v + "</div><div class='mut' style='font-size:11px'>" + esc(s) + "</div></div>";
+}
+function lgFlagPills(l){
+  var h = "";
+  if (l.repeat && l.repeat.length) h += "<span class='pill r' title='Entered a stage this lead had already been in'>repeat</span> ";
+  if (l.reopened && l.reopened.length) h += "<span class='pill r' title='Came back into a counselling stage out of a follow-up stage'>reopened</span> ";
+  if (l.dropped && l.dropped.length) h += "<span class='pill r' title='Moved to DNP or RCB after having been counselled'>dropped to " + esc(l.dropped[0].label) + "</span> ";
+  /* Every lead reaching this list moved through a counselling stage today, so a missing
+     next call is worth saying on all of them and not only on first counsellings. The
+     tile above counts first counsellings alone and says so, because that denominator has
+     to stay comparable day to day. */
+  if (l.noFollowUp) h += "<span class='pill a'>no follow up</span> ";
+  if (l.counselling && l.unknown) h += "<span class='pill' style='background:#F2EFE7;color:#6B5B37'>no duration</span> ";
+  else if (l.counselling && l.short) h += "<span class='pill a'>under " + Math.round((LG.shortMs || 600000) / 60000) + " min</span> ";
+  if (l.screenshot) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='The only record of length is an image the agent attached. Not read.'>screenshot</span> ";
+  if (l.noteMs) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='Length taken from what the agent typed in the call note'>note " + lgMins(l.noteMs) + "</span> ";
+  return h || "<span class='mut'>clean</span>";
+}
+function lgLeadRows(ownerId){
+  var rows = lgLeads(ownerId);
+  if (!rows.length) return "<tr><td colspan='8' class='mut'>Nothing on this day.</td></tr>";
+  rows.sort(function(a, b){
+    var at = a.counselling ? a.counselling.at : (a.events && a.events[0] ? a.events[0].at : 0);
+    var bt = b.counselling ? b.counselling.at : (b.events && b.events[0] ? b.events[0].at : 0);
+    return bt - at;
+  });
+  return rows.map(function(l){
+    var ev = l.counselling || (l.repeat[0] || l.reopened[0] || l.dropped[0] || l.progress[0]);
+    var talk = l.unknown ? "<span class='mut' title='No call on this lead carried a duration'>not recorded</span>"
+      : lgMins(l.callMs + l.meetMs + l.noteMs);
+    return "<tr>" +
+      "<td>" + esc(l.name) + (l.counselling ? "" : " <span class='mut' style='font-size:11px'>not a first counselling</span>") + "</td>" +
+      "<td class='mut'>" + esc(l.creator || "") + "</td>" +
+      "<td>" + (ev ? esc(ev.label) : "") + "</td>" +
+      "<td class='mut'>" + (ev ? lgClock(ev.at) : "") + "</td>" +
+      "<td class='mut'>" + (ev ? esc(ev.fromLabel) : "") + "</td>" +
+      "<td class='n'>" + fmt(l.calls) + "</td>" +
+      "<td class='n'>" + talk + "</td>" +
+      "<td>" + lgFlagPills(l) + "</td>" +
+      "</tr>";
+  }).join("");
+}
+function renderLedger(){
+  var el = document.getElementById("lgwrap");
+  if (!el || !LG) return;
+  var j = LG;
+  var rows = lgRows();
+  var t = { couns: 0, flag: 0, nofu: 0, short: 0, unknown: 0, talk: 0, calls: 0, meet: 0 };
+  rows.forEach(function(r){
+    t.couns += r.counsellings; t.flag += r.flagged; t.nofu += r.noFollowUp;
+    t.short += r.short; t.unknown += r.unknown; t.talk += r.talkMs;
+    t.calls += r.calls; t.meet += r.meetMs;
+  });
+  var filtered = LG_TEAM || LG_AGENT || LG_CREATOR;
+
+  var h = "<div class='sec'><h2>Counselling day <span class='mut' style='font-size:12.5px;font-weight:400'>" +
+    esc(j.date) + (j.isToday ? ", still running" : "") + "</span></h2>" +
+    "<div class='sub'>A counselling is the first time a lead reaches Discovery, Program pitched, " +
+    "Pricing pitched or Counselled. One lead counts once, on the day it first got there, however " +
+    "many of the four it climbs afterwards.</div>";
+
+  h += "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0'>" +
+    "<input type='date' value='" + esc(j.date) + "' onchange='loadLedger(this.value)'>" +
+    "<select onchange=\"lgSet('team',this.value)\"><option value=''>All managers</option>" +
+    (j.teams || []).map(function(tm){
+      return "<option value='" + esc(tm.id) + "'" + (LG_TEAM === tm.id ? " selected" : "") + ">" +
+        esc(tm.name) + "</option>"; }).join("") + "</select>" +
+    "<select onchange=\"lgSet('agent',this.value)\"><option value=''>All agents</option>" +
+    (j.rows || []).filter(function(r){ return !LG_TEAM || r.teamId === LG_TEAM; })
+      .slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); })
+      .map(function(r){
+        return "<option value='" + esc(String(r.id)) + "'" + (LG_AGENT === String(r.id) ? " selected" : "") + ">" +
+          esc(r.name) + "</option>"; }).join("") + "</select>" +
+    "<select onchange=\"lgSet('creator',this.value)\"><option value=''>All creators</option>" +
+    lgCreators().map(function(c){
+      return "<option value='" + esc(c) + "'" + (LG_CREATOR === c ? " selected" : "") + ">" +
+        esc(c) + "</option>"; }).join("") + "</select>" +
+    (filtered ? "<button class='btn' onclick=\"LG_TEAM='';LG_AGENT='';LG_CREATOR='';renderLedger()\">Clear</button>" : "") +
+    "<span class='mut' style='margin-left:auto;font-size:12px'>read " + esc(String(j.readAt || "").slice(11, 16)) + " UTC" +
+    (j.counted ? ", " + fmt(j.counted.contacts) + " stage changes walked" : "") + "</span>" +
+    "</div>";
+
+  if (j.error) h += "<div class='warn bad'><b>This day is incomplete.</b> " + esc(j.error) + "</div>";
+  if (j.truncated) h += "<div class='warn'>More leads changed stage than one read holds, so this day is partial.</div>";
+  if (j.scoped) h += "<div class='warn'>Your team only.</div>";
+  if (filtered) h += "<div class='sub'>" + fmt(rows.length) + " of " + fmt((j.rows || []).length) + " agents shown.</div>";
+
+  h += "<div class='tiles' style='margin-top:4px'>" +
+    lgTile("", "Counsellings", fmt(t.couns), "first entries") +
+    lgTile(t.flag ? "bad" : "", "Flagged", fmt(t.flag), "repeat, reopened or dropped") +
+    lgTile(t.nofu ? "warn" : "", "No follow up", fmt(t.nofu), "of " + fmt(t.couns)) +
+    lgTile(t.short ? "warn" : "", "Under " + Math.round((j.shortMs || 600000) / 60000) + " min", fmt(t.short), "measured length") +
+    lgTile(t.unknown ? "warn" : "", "Length unknown", fmt(t.unknown), "no duration held") +
+    lgTile("", "Talktime", lgMins(t.talk), fmt(t.calls) + " calls" + (t.meet ? ", " + lgMins(t.meet) + " in meetings" : "")) +
+    "</div>";
+
+  h += "<div class='tw' style='margin-top:12px'><table class='rt'><thead><tr>" +
+    "<th>Agent</th><th class='n'>Couns</th>" +
+    "<th class='n'>Repeat</th><th class='n'>Reopened</th><th class='n'>Dropped</th>" +
+    "<th class='n'>No FU</th><th class='n'>Short</th><th class='n'>Unknown</th>" +
+    "<th class='n'>Calls</th><th class='n'>Calls talk</th><th class='n'>Meetings</th><th class='n'>Total talk</th>" +
+    "</tr></thead><tbody>";
+
+  if (!rows.length) {
+    h += "<tr><td colspan='12' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
+  }
+  rows.forEach(function(r){
+    var open = !!LG_OPEN[r.id];
+    h += "<tr style='cursor:pointer' onclick=\"lgToggle('" + esc(String(r.id)) + "')\">" +
+      "<td><b>" + esc(r.name) + "</b>" +
+      (r.active === false ? " <span class='pill' style='background:#EEF1F5;color:#42526B'>left</span>" : "") +
+      "<div class='mut' style='font-size:11px'>" + esc(r.team || "no team") + " · " + (open ? "hide" : "show") + " leads</div></td>" +
+      "<td class='n'><b>" + fmt(r.counsellings) + "</b></td>" +
+      "<td class='n " + (r.repeat ? "cr" : "mut") + "'>" + fmt(r.repeat) + "</td>" +
+      "<td class='n " + (r.reopened ? "cr" : "mut") + "'>" + fmt(r.reopened) + "</td>" +
+      "<td class='n " + (r.dropped ? "cr" : "mut") + "'>" + fmt(r.dropped) + "</td>" +
+      "<td class='n " + (r.noFollowUp ? "ca" : "mut") + "'>" + fmt(r.noFollowUp) + "</td>" +
+      "<td class='n " + (r.short ? "ca" : "mut") + "'>" + fmt(r.short) + "</td>" +
+      "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
+      "<td class='n'>" + fmt(r.calls) + "</td>" +
+      "<td class='n'>" + lgMins(r.callMs) + "</td>" +
+      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) + "</td>" +
+      "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
+      "</tr>";
+    if (open) {
+      h += "<tr><td colspan='12' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
+        (r.calls && !r.callMs ? "<div class='warn'><b>" + fmt(r.calls) + " calls carrying no duration between them.</b> " +
+          "Either a day of dials nobody answered or conversations whose length never reached HubSpot. " +
+          "The two look identical from here.</div>" : "") +
+        "<table class='rt'><thead><tr><th>Lead</th><th>Creator</th><th>Reached</th><th>At</th>" +
+        "<th>From</th><th class='n'>Calls</th><th class='n'>Talk</th><th>Flags</th></tr></thead><tbody>" +
+        lgLeadRows(r.id) + "</tbody></table></div></td></tr>";
+    }
+  });
+  h += "</tbody></table></div>";
+
+  h += "<div class='sub' style='margin-top:10px'>" +
+    "Flags are for asking about, not for concluding with. A lead can genuinely be counselled, " +
+    "go quiet and be counselled again. " +
+    (j.screenshotsRead === false ? "Screenshots attached to a call log are marked but not read, so those " +
+      "conversations show a length only where the agent typed one into the note. " : "") +
+    "Follow up is the value on the lead now, not as it stood on the day." +
+    "</div>";
+
+  h += "<div style='margin-top:10px'><button class='btn' onclick='lgCsv()'>Download CSV</button></div>";
+  h += "</div>";
+  el.innerHTML = h;
+}
+/* Header and value are one paired list, so the two cannot drift the way the daily review's
+   export once did and mislabel every column. */
+function lgCsv(){
+  var cols = [
+    ["Agent", function(r){ return r.name; }],
+    ["Team", function(r){ return r.team || ""; }],
+    ["Counsellings", function(r){ return r.counsellings; }],
+    ["Repeat", function(r){ return r.repeat; }],
+    ["Reopened", function(r){ return r.reopened; }],
+    ["DroppedToPreStage", function(r){ return r.dropped; }],
+    ["NoFollowUp", function(r){ return r.noFollowUp; }],
+    ["UnderTenMinutes", function(r){ return r.short; }],
+    ["LengthUnknown", function(r){ return r.unknown; }],
+    ["Calls", function(r){ return r.calls; }],
+    ["CallTalkMinutes", function(r){ return Math.round(r.callMs / 60000); }],
+    ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
+    ["NoteMinutes", function(r){ return Math.round(r.noteMs / 60000); }],
+    ["TotalTalkMinutes", function(r){ return Math.round(r.talkMs / 60000); }]
+  ];
+  var out = [cols.map(function(c){ return c[0]; }).join(",")];
+  lgRows().forEach(function(r){
+    out.push(cols.map(function(c){ return '"' + String(c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
+  });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" }));
+  a.download = "counselling-" + (LG ? LG.date : "day") + ".csv";
+  a.click();
+}
+
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
+    ["ledger", "Counselling day", ""],
     ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
@@ -742,7 +983,7 @@ function draw(){
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
   var title = { overview: "Overview", managers: "Managers", mapping: "Mapping",
-    admin: "Teams and targets" }[VIEW] || "Overview";
+    admin: "Teams and targets", ledger: "Counselling day" }[VIEW] || "Overview";
   if (ONLY) {
     var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
     title += " · " + (only ? (only.name || "team") : "team");
@@ -750,7 +991,8 @@ function draw(){
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
     "<span id='syncbadge' style='margin-left:auto'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
-  if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
+  if (VIEW === "ledger") h += "<div id='lgwrap'>Reading the day...</div>";
+  else if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
   else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
   else if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
@@ -758,6 +1000,7 @@ function draw(){
   else h += drawStrip() + drawCallNow() + drawRecon() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
+  if (VIEW === "ledger") loadLedger(LG_DATE);
   if (VIEW === "daily") loadDaily(DAILY_DATE);
   if (VIEW === "weeks") loadWeeks();
   drawSync();

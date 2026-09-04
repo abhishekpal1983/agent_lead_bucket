@@ -985,3 +985,110 @@ the check fails and lists all six routes.
 
 The general rule: when deleting a block, the comment above it is part of the block. Check
 what follows the cut still exists, not just that the file parses.
+
+## 37. A counselling is a transition, and HubSpot only stores the stage
+
+The view answers "how many people did each agent counsel today", and none of the fields
+that look like they would answer it do.
+
+`previous_engagement_stage` reads as the obvious source and is self-referencing. On all
+702 leads that changed stage on 4 September 2026 it held the same value as the current
+stage: `counselled` following `counselled`, `dnp_did_not_pick` following
+`dnp_did_not_pick`. It cannot tell a first counselling from a lead going round in a
+circle. `callscurrent_stage` is the same kind of trap, reading `0` on leads that plainly
+had a call that day. Everything here therefore comes from walking
+`contact_engagement_stage` history, which is the one honest source.
+
+**One lead counts once.** A counselling is the first time a lead reaches Discovery,
+Program pitched, Pricing pitched or Counselled. A lead that climbs all four in an
+afternoon is one counselling, because one person was counselled once. Counting the four
+separately roughly quadruples the headline and stops it reconciling with the Daily review.
+Later climbs are recorded as progress and never counted again.
+
+**Attribution follows the lead's current owner**, which is what the rest of the app does,
+so this view and the Daily review agree. The cost is real and worth knowing: reassigning a
+lead moves yesterday's counselling from one agent to another, so a past day can change
+under you. Crediting whoever moved the stage would freeze history, and it was considered
+and rejected in favour of agreeing with everything else on the site.
+
+### The flags, and what they are not
+
+Three shapes, all read off the history and all deliberately narrow.
+
+A **repeat** is entering a stage the lead has already been in. Progress is not a repeat:
+Discovery then Program pitched is two stages. Discovery, Program pitched, Discovery again
+is one. Consecutive identical history entries are collapsed first, because a workflow
+rewriting the same value produces two entries and no transition, and flagging that would
+blame an agent for an automation.
+
+**Reopened** is coming back into a counselling stage out of Follow up, FU-DNP or FU-RCB.
+**Dropped** is landing in DNP or RCB after having been counselled, which files somebody
+who had a real conversation as somebody nobody has reached. DNP *before* any counselling
+is not flagged and must never be: 199 leads did exactly that on one Thursday and flagging
+them would drown the view.
+
+None of these is proof. A lead can genuinely be counselled, go quiet, and be counselled
+again. The page says so in as many words, because a flag column with no such sentence next
+to it gets read as an accusation within a week.
+
+## 38. Not knowing how long a call was is not the same as it being short
+
+The under-ten-minutes flag is the one piece of this that could do real harm, because the
+obvious implementation defames the people it measures.
+
+Of 137 call logs carrying a screenshot in the 30 days to 5 September, **not one carries a
+duration**. Those are WhatsApp calls, logged by hand. On 4 September one agent logged 41
+calls totalling five minutes of recorded talktime while logging seven counsellings. A rule
+that reads a missing number as zero marks every one of those conversations as rushed.
+
+So `talkFor` returns `unknown` and `short` as separate states, the view gives them separate
+tiles and separate columns, and an agent whose calls carry no duration at all gets a
+sentence saying the report cannot tell a floor of unanswered dials from conversations whose
+length never reached HubSpot. Those two really are indistinguishable from here, and saying
+so is the honest output.
+
+A meeting length or a length typed into the note settles the question, so neither `unknown`
+nor `short` may stand once one of those is present.
+
+### Screenshots are marked, not read
+
+Reading the images needs the Files API and a vision model, and it was deferred on purpose.
+A screenshot is the least verifiable evidence there is, and this number sits in a report
+agents are measured on. Two cheaper things came first: those calls are marked so nobody is
+judged on a blank, and the note body is parsed, because agents already write it there. One
+2 September log reads "40mins call" in plain text. The payload carries
+`screenshotsRead: false` so the page cannot quietly imply otherwise, and if the images are
+ever read those minutes stay in their own column rather than being folded into verified
+talktime.
+
+## 39. Meeting length comes from the recording, not the booking and not the transcript
+
+`hs_meeting_recording_duration` holds what actually happened and 1,647 meetings carry one.
+Deriving it from a transcript was asked for and is unnecessary; HubSpot already has the
+number.
+
+`hs_meeting_outcome` must not be used as the conducted test. It says `SCHEDULED` on a
+meeting whose recording ran 82 minutes. The presence of a recording duration is the test.
+
+**Only meetings attached to a lead count.** Most recorded meetings in this portal are
+creator sessions, the Airbnb Journey and the engineering sprints, and counting those would
+drop several hours a week of webinar into an agent's talktime.
+
+## 40. The ledger is built once a night, not swept
+
+About seventy requests builds a day: eight pages of changed contacts, fifteen batches of
+history at the API's 50 ceiling, fifteen pages of calls with their associations, and two
+for meetings. Warmed at 00:20 IST, ten minutes before the cohort so the two do not collide.
+Past days never change and are cached; today has a fifteen minute TTL and can be refreshed
+on demand.
+
+Three minutes of sweeping this would cost roughly what the idle tracker cost, and RULES 35
+is the record of deleting that. Duration is also requested here and nowhere else:
+`fetchCallsRange` asks only for disposition, owner and timestamp, and widening it would
+change what the connectivity numbers count.
+
+Fixtures carry stage histories of every shape the walker separates, plus an agent whose
+whole day carries no duration, because the sentence that warns about that agent is
+otherwise never rendered by any test. Four features in this codebase have shipped green
+against fixture data that was not there, so the endpoint suite checks a non-zero total
+before trusting anything below it.

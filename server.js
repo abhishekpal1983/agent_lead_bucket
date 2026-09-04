@@ -1369,6 +1369,18 @@ app.get("/api/health", function(req, res){
           })(),
           /* The create-date months, warmed nightly. A month that quietly stopped
              refreshing looks like a month where nothing happened. */
+          /* The counselling ledger. A day that quietly stopped building looks exactly
+             like a day on which nobody counselled anybody. */
+          ledger: (typeof LEDGER_CACHE === "undefined") ? null : {
+            warmHour: LEDGER_WARM_HM, warmedFor: LEDGER_WARMED || null,
+            days: Object.keys(LEDGER_CACHE).sort().map(function(k){
+              const d = LEDGER_CACHE[k];
+              return { day: k, agents: (d.rows || []).length,
+                counsellings: (d.leads || []).filter(function(l){ return l.counselling; }).length,
+                readAt: new Date(d.at).toISOString(),
+                counted: d.counted || null, truncated: !!d.truncated, error: d.error || null };
+            })
+          },
           cohort: (typeof COHORT_CACHE === "undefined") ? null : {
             warmHour: COHORT_WARM_HM, warmedFor: COHORT_WARMED || null,
             months: Object.keys(COHORT_CACHE).sort().map(function(k){
@@ -3063,6 +3075,7 @@ function ownerCounted(id){
    ========================================================================== */
 const CN2 = require("./lib/cn2");
 const IDLE = require("./lib/idle");
+const COUNSEL_LIB = require("./lib/counsel");
 const ROLE = require("./lib/role");
 const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
@@ -3535,7 +3548,7 @@ const RESP_MAX = 400;
 let RESP_HIT = 0, RESP_MISS = 0;
 const MEMO_MS = parseInt(process.env.MEMO_MS || "15000", 10);
 const MEMO_PATHS = ["/api/callnow2", "/api/callnow2/agents", "/api/callnow2/leads",
-  "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/callnow2/wa",
+  "/api/callnow2/assign", "/api/vp", "/api/vp/creator-weeks", "/api/callnow2/wa", "/api/vp/ledger",
   "/api/callnow2/cohort", "/api/callnow2/cohort/leads",
   "/api/vp/daily", "/api/coaching/progress"];
 
@@ -7235,6 +7248,448 @@ app.post("/api/org/import", express.json({ limit: "4mb" }), function(req, res){
   res.json({ ok: true, teams: ORG.teams.length, creators: (ORG.creators || []).length });
 });
 
+/* ---------- the counselling ledger, one day at a time --------------------------------
+
+   What each agent did on one day: how many people they counselled for the first time,
+   which of those look like the stage being cycled rather than a conversation happening,
+   and how long they were actually on the phone.
+
+   Built from stage HISTORY, not from the current stage. `previous_engagement_stage` reads
+   as though it would answer this and does not: on every one of the 702 leads that changed
+   stage on 4 September 2026 it held the same value as the current stage. `callscurrent_stage`
+   is the same kind of trap, reading 0 on leads that plainly had a call that day.
+
+   Read once a night rather than swept. About seventy requests builds a day: eight pages of
+   changed contacts, fifteen batches of history, fifteen pages of calls and their
+   associations, and two for meetings. A three minute sweep of that would cost what the
+   idle tracker cost, and RULES 35 is about why that was deleted. Today can be refreshed on
+   demand; yesterday and earlier never change, so they are cached and kept. */
+
+const LEDGER_WARM_HM = process.env.LEDGER_WARM_HM || "00:20";
+const LEDGER_TTL_MS = parseInt(process.env.LEDGER_TTL_MS || "900000", 10);   // today only
+const LEDGER_SHORT_MS = parseInt(process.env.LEDGER_SHORT_MS || "600000", 10); // the 10 min line
+const LEDGER_MAX_DAYS = parseInt(process.env.LEDGER_MAX_DAYS || "14", 10);
+let LEDGER_CACHE = {};
+let LEDGER_WARMED = "";
+
+/* An IST day as a pair of epoch millisecond bounds. IST has no daylight saving, so a
+   fixed offset is exact rather than merely convenient. */
+const IST_MS = 5.5 * 3600 * 1000;
+function istDayBounds(dayKey){
+  const start = Date.parse(dayKey + "T00:00:00Z") - IST_MS;
+  return { start: start, end: start + 86400000 };
+}
+function istDayKey(ms){ return new Date(ms + IST_MS).toISOString().slice(0, 10); }
+
+/* Contacts whose engagement stage moved inside the day. This is the only cheap way to
+   narrow the history read: 702 on a Thursday against 40,000 owned leads. */
+async function ledgerChanged(b){
+  const rows = [];
+  let lastId = "0", guard = 0;
+  while (guard < 60) {
+    guard++;
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "engagement_stage_last_changed_at", operator: "GTE", value: String(b.start) },
+        { propertyName: "engagement_stage_last_changed_at", operator: "LT", value: String(b.end) },
+        { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
+      ]}],
+      properties: ["contact_engagement_stage", "hubspot_owner_id", "topmate_username",
+        "follow_up_date_and_time", "last_call_date_and_time", "firstname", "lastname",
+        "email", "phone", "engagement_stage_last_changed_at"],
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100 })});
+    const page = (j && j.results) || [];
+    if (!page.length) break;
+    page.forEach(function(r){ rows.push(Object.assign({ id: String(r.id) }, r.properties)); });
+    lastId = page[page.length - 1].id;
+    if (page.length < 100) break;
+    await sleep(90);
+  }
+  return { rows: rows, truncated: guard >= 60 };
+}
+
+/* Stage history for the leads that moved, fifty at a time, which is the API's ceiling. */
+async function ledgerHistory(ids){
+  const out = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const inputs = ids.slice(i, i + 50).map(function(id){ return { id: id }; });
+    try {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ propertiesWithHistory: ["contact_engagement_stage"],
+          properties: ["contact_engagement_stage"], inputs: inputs }) });
+      (j.results || []).forEach(function(r){
+        out[String(r.id)] = (r.propertiesWithHistory &&
+          r.propertiesWithHistory.contact_engagement_stage) || [];
+      });
+    } catch (e) { console.error("ledger history @" + i + ": " + e.message); }
+    if (i + 50 < ids.length) await sleep(130);
+  }
+  return out;
+}
+
+/* Calls in the day, with the lead each one belongs to.
+
+   The search will not return associations, so the calls are fetched first and their
+   contacts read in a second batch. Duration is requested here and nowhere else in the
+   app: `fetchCallsRange` asks only for disposition, owner and timestamp, and widening it
+   would change what the connectivity numbers count. */
+async function ledgerCalls(b){
+  const rows = [];
+  let after, pages = 0;
+  do {
+    const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "hs_timestamp", operator: "GTE", value: String(b.start) },
+        { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) }
+      ]}],
+      properties: ["hs_timestamp", "hs_call_duration", "hubspot_owner_id",
+        "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids", "hs_call_body"],
+      sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after: after })});
+    ((j && j.results) || []).forEach(function(r){
+      rows.push({ id: String(r.id), at: ts(r.properties.hs_timestamp),
+        durMs: num(r.properties.hs_call_duration),
+        owner: String(r.properties.hubspot_owner_id || ""),
+        source: String(r.properties.hs_object_source_label || "UNKNOWN"),
+        attach: !!r.properties.hs_attachment_ids,
+        body: String(r.properties.hs_call_body || ""),
+        contact: "" });
+    });
+    after = j && j.paging && j.paging.next && j.paging.next.after;
+    pages++;
+    if (after) await sleep(110);
+  } while (after && pages < 60);
+
+  const byId = {};
+  rows.forEach(function(r){ byId[r.id] = r; });
+  const ids = rows.map(function(r){ return r.id; });
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const a = await hs("/crm/v4/associations/calls/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ inputs: ids.slice(i, i + 100).map(function(id){ return { id: id }; }) }) });
+      ((a && a.results) || []).forEach(function(x){
+        const cid = x.to && x.to[0] && String(x.to[0].toObjectId || x.to[0].id || "");
+        if (cid && byId[String(x.from.id)]) byId[String(x.from.id)].contact = cid;
+      });
+    } catch (e) { console.error("ledger call assoc @" + i + ": " + e.message); }
+    if (i + 100 < ids.length) await sleep(90);
+  }
+  return rows;
+}
+
+/* Meetings in the day that were actually held, attached to a lead.
+
+   Two things are deliberately not used. `hs_meeting_outcome` says SCHEDULED on a meeting
+   whose recording ran 82 minutes, so it cannot answer "was this conducted". And the
+   start and end times are the slot somebody booked, not the conversation. The recording
+   duration is the only field that reflects what happened, and 1,647 meetings carry one.
+
+   Only meetings tied to a lead count. Most recorded meetings in this portal are creator
+   sessions, the Airbnb Journey and the engineering sprints, which are not counselling and
+   would otherwise land in an agent's talktime as several hours a week. */
+async function ledgerMeetings(b){
+  const rows = [];
+  let after, pages = 0;
+  do {
+    const j = await hs("/crm/v3/objects/meetings/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [
+        { propertyName: "hs_timestamp", operator: "GTE", value: String(b.start) },
+        { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) },
+        { propertyName: "hs_meeting_recording_duration", operator: "HAS_PROPERTY" }
+      ]}],
+      properties: ["hs_timestamp", "hs_meeting_recording_duration", "hubspot_owner_id",
+        "hs_meeting_title", "hs_meeting_outcome"],
+      sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after: after })});
+    ((j && j.results) || []).forEach(function(r){
+      rows.push({ id: String(r.id), at: ts(r.properties.hs_timestamp),
+        durMs: num(r.properties.hs_meeting_recording_duration),
+        owner: String(r.properties.hubspot_owner_id || ""),
+        title: String(r.properties.hs_meeting_title || ""), contact: "" });
+    });
+    after = j && j.paging && j.paging.next && j.paging.next.after;
+    pages++;
+    if (after) await sleep(110);
+  } while (after && pages < 20);
+
+  const byId = {};
+  rows.forEach(function(r){ byId[r.id] = r; });
+  const ids = rows.map(function(r){ return r.id; });
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const a = await hs("/crm/v4/associations/meetings/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ inputs: ids.slice(i, i + 100).map(function(id){ return { id: id }; }) }) });
+      ((a && a.results) || []).forEach(function(x){
+        const cid = x.to && x.to[0] && String(x.to[0].toObjectId || x.to[0].id || "");
+        if (cid && byId[String(x.from.id)]) byId[String(x.from.id)].contact = cid;
+      });
+    } catch (e) { console.error("ledger meeting assoc @" + i + ": " + e.message); }
+    if (i + 100 < ids.length) await sleep(90);
+  }
+  // No lead on it means it is not lead work, whatever it was.
+  return rows.filter(function(r){ return !!r.contact; });
+}
+
+/* Some agents write the length into the note when the call has no duration of its own.
+   "40mins call" is a real body from 2 September. This is free and it is not OCR, so it
+   runs before anybody pays for reading a screenshot. It is only ever consulted for calls
+   that carry no duration, so it can never overwrite a measured number. */
+const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/i;
+function ledgerNoteMs(body){
+  const txt = String(body || "").replace(/<[^>]*>/g, " ");
+  const m = txt.match(LEDGER_NOTE_RE);
+  if (!m) return 0;
+  const mins = parseInt(m[1], 10);
+  // Over three hours on one call is a typo or a date, not a conversation.
+  if (!mins || mins > 180) return 0;
+  return mins * 60000;
+}
+
+/* Fixtures keep their own agent list, so this cannot just read CACHE.owners or every
+   local run shows "Owner 201" where a name belongs. */
+function ledgerOwner(id){
+  if (CN2_FIXTURE_DATA) {
+    return (CN2_FIXTURE_DATA.agents || []).filter(function(a){ return String(a.id) === String(id); })[0] || {};
+  }
+  return CACHE.owners[id] || {};
+}
+
+/* The same build, driven from the fixture pool instead of HubSpot.
+
+   Without this the ledger is empty locally, every number renders as 0, and every test
+   written about it passes while proving nothing. That has happened four times in this
+   codebase already, which is why RULES 20 exists and why this shim is written before the
+   view rather than after somebody notices. */
+function ledgerFixture(dayKey){
+  const F = CN2_FIXTURE_DATA;
+  const hist = F.history || {};
+  const b = istDayBounds(dayKey);
+  const contacts = (F.rows || []).filter(function(r){ return hist[r.id]; }).map(function(r){
+    return { id: r.id, firstname: r.name, lastname: "",
+      hubspot_owner_id: r.owner, topmate_username: r.creator,
+      contact_engagement_stage: r.stage === "__fresh" ? "" : r.stage,
+      follow_up_date_and_time: r.fu ? new Date(r.fu).toISOString() : "",
+      phone: r.phone || "" };
+  });
+  const calls = (F.ledgerCalls || []).filter(function(c){ return c.at >= b.start && c.at < b.end; });
+  const meets = (F.meetings || []).filter(function(m){
+    return m.at >= b.start && m.at < b.end && !!m.contact; });
+  const built = ledgerBuild(dayKey, contacts, hist, calls, meets);
+  built.at = cn2Now();
+  return built;
+}
+
+async function ledgerFetch(dayKey){
+  const hit = LEDGER_CACHE[dayKey];
+  const today = istParts(new Date(cn2Now())).date;
+  if (hit && !hit.error) {
+    if (dayKey < today) return hit;                       // a past day cannot change
+    if (Date.now() - hit.at < LEDGER_TTL_MS) return hit;
+  }
+  if (CN2_FIXTURE_DATA) return ledgerFixture(dayKey);
+  if (!TOKEN) return { at: Date.now(), day: dayKey, rows: [], leads: [], error: "no token" };
+
+  const b = istDayBounds(dayKey);
+  let changed, hist, calls, meets, error = null;
+  try {
+    changed = await ledgerChanged(b);
+    hist = await ledgerHistory(changed.rows.map(function(r){ return r.id; }));
+    calls = await ledgerCalls(b);
+    meets = await ledgerMeetings(b);
+  } catch (e) {
+    return { at: Date.now(), day: dayKey, rows: [], leads: [], error: e.message };
+  }
+
+  const built = ledgerBuild(dayKey, changed.rows, hist, calls, meets);
+  built.truncated = changed.truncated;
+  built.error = error;
+  LEDGER_CACHE[dayKey] = built;
+  const keys = Object.keys(LEDGER_CACHE).sort();
+  while (keys.length > LEDGER_MAX_DAYS) delete LEDGER_CACHE[keys.shift()];
+  return built;
+}
+
+/* Everything above is I/O. This is the part with judgement in it, kept separate so the
+   tests can drive it without a token. */
+function ledgerBuild(dayKey, contacts, hist, calls, meets){
+  const dayOf = function(ms){ return istDayKey(ms); };
+
+  /* One call, however many records HubSpot holds for it. FreJun writes the dial and the
+     agent writes the same call up again, and counting records reads about 6% high. */
+  const merged = IDLE.dedupe(calls.filter(function(c){ return c.at > 0; }), IDLE_CFG);
+  const callsByLead = {}, callsByOwner = {};
+  merged.forEach(function(c){
+    /* dedupe keeps ids and sources but not the fields it does not know about, so the
+       note text and the attachment flag are recovered from the records it merged. */
+    const src = c.ids.map(function(id){ return calls.filter(function(x){ return x.id === id; })[0]; })
+      .filter(Boolean);
+    c.attach = src.some(function(x){ return x.attach; });
+    c.noteMs = 0;
+    if (!(c.durMs > 0)) {
+      src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
+    }
+    if (c.contact) (callsByLead[c.contact] = callsByLead[c.contact] || []).push(c);
+    if (c.owner && c.owner !== "none") (callsByOwner[c.owner] = callsByOwner[c.owner] || []).push(c);
+  });
+  const meetsByOwner = {}, meetsByLead = {};
+  meets.forEach(function(m){
+    if (m.owner) (meetsByOwner[m.owner] = meetsByOwner[m.owner] || []).push(m);
+    if (m.contact) (meetsByLead[m.contact] = meetsByLead[m.contact] || []).push(m);
+  });
+
+  const leads = [];
+  contacts.forEach(function(c){
+    const d = COUNSEL_LIB.dayFor(hist[c.id] || [], dayKey, { dayKey: dayOf });
+    if (!d.events.length) return;                 // moved, but not through anything we count
+    const mine = callsByLead[c.id] || [];
+    const talk = COUNSEL_LIB.talkFor(mine, { shortMs: LEDGER_SHORT_MS });
+    const mtg = (meetsByLead[c.id] || []).reduce(function(n, m){ return n + m.durMs; }, 0);
+    const noteMs = mine.reduce(function(n, x){ return n + (x.noteMs || 0); }, 0);
+    leads.push({
+      id: c.id,
+      name: ((c.firstname || "") + " " + (c.lastname || "")).trim() ||
+        c.email || c.phone || ("Lead " + c.id),
+      owner: String(c.hubspot_owner_id || ""),
+      creator: String(c.topmate_username || ""),
+      stage: String(c.contact_engagement_stage || ""),
+      followUp: ts(c.follow_up_date_and_time),
+      counselling: d.counselling, progress: d.progress, repeat: d.repeat,
+      reopened: d.reopened, dropped: d.dropped,
+      calls: talk.calls, callMs: talk.ms, withDuration: talk.withDuration,
+      meetMs: mtg, noteMs: noteMs,
+      screenshot: mine.some(function(x){ return x.attach; }),
+      /* A meeting or a note length answers "how long was this" just as well as a call
+         duration, so neither unknown nor short may stand once one is present. */
+      unknown: talk.unknown && !mtg && !noteMs,
+      short: (talk.ms + mtg + noteMs) > 0 &&
+        (talk.ms + mtg + noteMs) < LEDGER_SHORT_MS,
+      noFollowUp: !ts(c.follow_up_date_and_time)
+    });
+  });
+
+  const agents = {};
+  const agent = function(id){
+    if (!agents[id]) agents[id] = { id: id,
+      name: ledgerOwner(id).name || ("Owner " + id),
+      active: ledgerOwner(id).active !== false,
+      counsellings: 0, progress: 0, repeat: 0, reopened: 0, dropped: 0,
+      noFollowUp: 0, short: 0, unknown: 0, screenshot: 0,
+      calls: 0, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0 };
+    return agents[id];
+  };
+  leads.forEach(function(l){
+    const a = agent(l.owner || "none");
+    if (l.counselling) {
+      a.counsellings++;
+      /* These three only ever qualify a counselling that happened today. A repeat on a
+         lead first counselled in July is still worth seeing, and it is counted below,
+         but the follow-up and length checks are about the counselling itself. */
+      if (l.noFollowUp) a.noFollowUp++;
+      if (l.short) a.short++;
+      if (l.unknown) a.unknown++;
+      if (l.screenshot) a.screenshot++;
+    }
+    a.progress += l.progress.length;
+    a.repeat += l.repeat.length;
+    a.reopened += l.reopened.length;
+    a.dropped += l.dropped.length;
+  });
+  Object.keys(callsByOwner).forEach(function(oid){
+    const a = agent(oid);
+    a.calls = callsByOwner[oid].length;
+    a.callMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.durMs || 0); }, 0);
+    a.noteMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.noteMs || 0); }, 0);
+  });
+  Object.keys(meetsByOwner).forEach(function(oid){
+    const a = agent(oid);
+    a.meetings = meetsByOwner[oid].length;
+    a.meetMs = meetsByOwner[oid].reduce(function(n, m){ return n + m.durMs; }, 0);
+  });
+
+  const rows = Object.keys(agents).map(function(k){
+    const a = agents[k];
+    a.talkMs = a.callMs + a.meetMs + a.noteMs;
+    a.flagged = a.repeat + a.reopened + a.dropped;
+    return a;
+  });
+
+  return { at: Date.now(), day: dayKey, rows: rows, leads: leads, error: null,
+    shortMs: LEDGER_SHORT_MS,
+    counted: { contacts: contacts.length, withHistory: Object.keys(hist).length,
+      calls: calls.length, mergedCalls: merged.length, meetings: meets.length } };
+}
+
+/* Warmed at 00:20 IST, ten minutes before the cohort so the two do not collide, and after
+   the list freeze. Yesterday, because that is the day somebody opens in the morning. */
+async function ledgerWarmDue(force){
+  if (!TOKEN || CN2_FIXTURE_DATA) return;
+  const p = istParts(new Date(cn2Now()));
+  if (!force) {
+    if (LEDGER_WARMED === p.date) return;
+    if (p.hm < LEDGER_WARM_HM) return;
+  }
+  LEDGER_WARMED = p.date;
+  const y = istDayKey(Date.parse(p.date + "T00:00:00Z") - IST_MS - 3600000);
+  try {
+    delete LEDGER_CACHE[y];
+    const got = await ledgerFetch(y);
+    console.log("Ledger warmed " + y + ": " + (got.rows || []).length + " agents, " +
+      (got.leads || []).filter(function(l){ return l.counselling; }).length + " counsellings" +
+      (got.error ? " (" + got.error + ")" : ""));
+  } catch (e) {
+    console.error("Ledger warm " + y + " failed: " + e.message);
+  }
+}
+
+app.get("/api/vp/ledger", async function(req, res){
+  const today = istParts(new Date(cn2Now())).date;
+  const day = String(req.query.date || today);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
+  if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
+  /* Agents do not get this view. It is a management report about them, and RULES 33 made
+     the same call for the cohort. */
+  const s = req.session || {};
+  if (!isVP(req) && s.role === "agent") return res.status(403).json({ error: "not for agents" });
+  try {
+    const got = await ledgerFetch(day);
+    const allow = cn2Scope(req);
+    const inScope = function(id){ return !allow || allow.indexOf(String(id)) >= 0; };
+    const teamOf = {}, teamName = {};
+    (ORG.teams || []).forEach(function(t){
+      teamName[t.id] = t.name || "(unnamed)";
+      (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+    });
+    const rows = (got.rows || []).filter(function(r){
+      return r.id !== "none" && inScope(r.id) && (r.counsellings || r.calls || r.flagged);
+    }).map(function(r){
+      return Object.assign({}, r, { teamId: teamOf[r.id] || "",
+        team: teamName[teamOf[r.id]] || "" });
+    });
+    rows.sort(function(a, b){ return (b.counsellings - a.counsellings) || (b.talkMs - a.talkMs); });
+    const ids = {};
+    rows.forEach(function(r){ ids[r.id] = 1; });
+    const leads = (got.leads || []).filter(function(l){ return ids[l.owner]; });
+    const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+    res.json({
+      date: day, isToday: day === today, readAt: new Date(got.at).toISOString(),
+      error: got.error || null, truncated: !!got.truncated, counted: got.counted || null,
+      shortMs: got.shortMs || LEDGER_SHORT_MS,
+      scoped: !!allow, isVP: isVP(req),
+      teams: (ORG.teams || []).map(function(t){ return { id: t.id, name: t.name }; }),
+      totals: { agents: rows.length, counsellings: sum("counsellings"),
+        flagged: sum("flagged"), repeat: sum("repeat"), reopened: sum("reopened"),
+        dropped: sum("dropped"), noFollowUp: sum("noFollowUp"), short: sum("short"),
+        unknown: sum("unknown"), calls: sum("calls"), talkMs: sum("talkMs"),
+        meetMs: sum("meetMs"), noteMs: sum("noteMs") },
+      rows: rows, leads: leads,
+      /* Said in the payload so the page cannot forget to say it. */
+      screenshotsRead: false,
+      followUpIsCurrentValue: true
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 /* ---------- creator targets, week by week ----------
 
    A monthly target is a number nobody can act on until the 25th. Split into weeks it
@@ -8385,6 +8840,7 @@ SERVER = app.listen(PORT, () => {
   /* The create-date months, warmed overnight. Checked every fifteen minutes rather than
      scheduled once, so a restart at 00:20 does not lose the window. */
   setInterval(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 15 * 60 * 1000);
+  setInterval(guard("ledgerWarm", function(){ return ledgerWarmDue(false); }), 15 * 60 * 1000);
   setTimeout(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 6 * 60 * 1000);
   // Compare ourselves to HubSpot on a timer rather than on request.
   setTimeout(guard("cn2Drift", cn2DriftCheck), 6 * 60 * 1000);

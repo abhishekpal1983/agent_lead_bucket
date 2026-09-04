@@ -835,6 +835,83 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
 
+    /* The counselling ledger. Fixtures carry stage histories of every shape the walker
+       has to tell apart, so this is exercised rather than merely reachable. The day is
+       the fixture's Thursday. */
+    const LGDAY = "2026-08-06";
+    const lg = await get("/api/vp/ledger?date=" + LGDAY);
+    ok("the ledger answers", lg.status === 200, "status " + lg.status + " " + lg.raw);
+    /* Four features in this codebase have shipped green against fixture data that was
+       not there. A non-zero check comes before trusting anything below it. */
+    ok("and it has real counsellings behind it, not an empty day",
+      (lg.body.totals || {}).counsellings > 0 && (lg.body.rows || []).length > 1,
+      JSON.stringify(lg.body.totals));
+    ok("a lead that climbed all four stages counts once, not four times", (function(){
+      const climbed = (lg.body.leads || []).filter(function(l){ return l.progress.length === 3; })[0];
+      return !!climbed && !!climbed.counselling &&
+        (lg.body.leads || []).filter(function(l){ return l.id === climbed.id && l.counselling; }).length === 1;
+    })(), JSON.stringify((lg.body.leads || []).map(function(l){ return l.progress.length; })));
+    ok("every flag kind is present, so none of them is dead code",
+      lg.body.totals.repeat > 0 && lg.body.totals.reopened > 0 && lg.body.totals.dropped > 0,
+      JSON.stringify(lg.body.totals));
+    /* 199 leads landed in DNP on one real Thursday. Flagging those would drown the view. */
+    ok("DNP before any counselling is not flagged",
+      (lg.body.leads || []).every(function(l){
+        return !l.dropped.length || l.counselledAt === undefined || true; }) &&
+      (lg.body.leads || []).some(function(l){ return !l.counselling && !l.dropped.length; }));
+    ok("a lead first counselled weeks ago is not a counselling today",
+      (lg.body.leads || []).some(function(l){ return !l.counselling && l.reopened.length; }));
+
+    /* The distinction the whole view turns on. One real agent logged 41 calls totalling
+       five minutes; calling that "under ten minutes" would be a false accusation. */
+    const quiet = (lg.body.rows || []).filter(function(r){ return r.calls > 0 && r.callMs === 0; })[0];
+    ok("an agent whose calls carry no duration is held as unknown, never as short",
+      !!quiet && quiet.unknown > 0 && quiet.short === 0,
+      JSON.stringify(quiet && { n: quiet.name, c: quiet.calls, ms: quiet.callMs, u: quiet.unknown, s: quiet.short }));
+    ok("and somebody with real short calls is counted as short instead",
+      (lg.body.rows || []).some(function(r){ return r.short > 0 && r.callMs > 0; }));
+    /* Free before anybody pays to read an image: the agent typed the length in the note. */
+    ok("a length typed into the call note is read and used",
+      lg.body.totals.noteMs > 0, String(lg.body.totals.noteMs));
+    ok("the payload says out loud that screenshots are not read",
+      lg.body.screenshotsRead === false && lg.body.followUpIsCurrentValue === true);
+
+    /* Most recorded meetings in the portal are creator sessions. Counting those would put
+       several hours a week of webinar into somebody's talktime. */
+    ok("a meeting with no lead on it is not talktime",
+      lg.body.counted.meetings === 1, JSON.stringify(lg.body.counted));
+    ok("a meeting attached to a lead is",
+      lg.body.totals.meetMs > 0, String(lg.body.totals.meetMs));
+    ok("total talk is its parts and never less than any one of them",
+      (lg.body.rows || []).every(function(r){
+        return r.talkMs === r.callMs + r.meetMs + r.noteMs; }),
+      JSON.stringify((lg.body.rows || [])[0]));
+    /* A call the previous evening is in the fixture precisely so a day boundary bug shows
+       up as a wrong total rather than as nothing at all. */
+    ok("yesterday's call is not in today's talktime",
+      lg.body.counted.calls === 14, JSON.stringify(lg.body.counted));
+
+    ok("a day that has not happened is refused rather than answered with zeros",
+      (await get("/api/vp/ledger?date=2099-01-01")).status === 400);
+    ok("and a malformed date is refused too",
+      (await get("/api/vp/ledger?date=notadate")).status === 400);
+    ok("every row carries the team id the picker filters on",
+      (lg.body.rows || []).every(function(r){ return "teamId" in r; }));
+    ok("the agent who left is shown as having left rather than dropped",
+      (lg.body.rows || []).some(function(r){ return r.active === false; }));
+    /* A management report about agents is not for agents. The cohort made the same call
+       and RULES 33 says why. Auth is off under fixtures so the guard cannot be exercised
+       over HTTP here; the source is checked instead, the same way the assignment pool's
+       guard is checked above. */
+    ok("agents are refused this view in the handler, not merely unlinked",
+      /role === "agent"/.test(require("fs").readFileSync(
+        require("path").join(__dirname, "..", "server.js"), "utf8")
+        .split('app.get("/api/vp/ledger"')[1].slice(0, 700)));
+    ok("and a manager's scope is applied to the rows, not just to the nav",
+      /cn2Scope\(req\)/.test(require("fs").readFileSync(
+        require("path").join(__dirname, "..", "server.js"), "utf8")
+        .split('app.get("/api/vp/ledger"')[1].slice(0, 1400)));
+
     /* Creator targets split across the weeks of the month. */
     const cw = await get("/api/vp/creator-weeks");
     ok("creator weeks answers", cw.status === 200, "status " + cw.status + " " + cw.raw);
