@@ -884,6 +884,44 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     ok("meetings arrive named, because a title is how a 1:1 is told from a group session",
       (lg.body.leads || []).some(function(l){
         return (l.meetings || []).some(function(m){ return m.title; }); }));
+    /* The agent-declared length. 16,832 calls were logged by hand in 30 days and not one
+       carried a duration, so this field is worth roughly a hundred times what reading the
+       screenshots would have been. */
+    ok("a declared length is read and counted",
+      lg.body.totals.declaredMs > 0, String(lg.body.totals.declaredMs));
+    ok("and a measured duration beats a declared one outright, never sums with it",
+      (lg.body.leads || []).every(function(l){ return !(l.callMs > 0 && l.declaredMs > 0); }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.callMs > 0 && l.declaredMs > 0; })
+        .map(function(l){ return [l.name, l.callMs, l.declaredMs]; })));
+    /* One conversation, logged twice, with the box filled in on the manual copy. Adding
+       the two would count it twice and reward filling the box in. */
+    ok("declared minutes on a call FreJun already timed are ignored",
+      (function(){
+        const m = (lg.body.rows || []).filter(function(r){ return r.name === "Vikram Rao"; })[0];
+        return m && m.measuredMs > 0 && m.declaredTotalMs === 22 * 60000;
+      })(), JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.measuredMs, r.declaredTotalMs]; })));
+    ok("measured and declared are reported apart as well as together",
+      (lg.body.rows || []).every(function(r){
+        return r.talkMs === r.measuredMs + r.declaredTotalMs; }),
+      JSON.stringify((lg.body.rows || [])[0]));
+    ok("a declared length stops a lead reading as unknown",
+      (lg.body.leads || []).every(function(l){ return !(l.declaredMs > 0 && l.unknown); }));
+    /* A number a human typed. Humans type 600 when they mean 60. */
+    ok("an absurd declared figure is discarded rather than believed",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        return src.indexOf("if (n > MANUAL_MIN_MAX) return 0;") >= 0;
+      })());
+    /* Naming a property the portal does not have fails the whole search, so this has to
+       be deployable before anybody creates it. */
+    ok("the field is discovered, not assumed, so this deploys before the property exists",
+      lg.body.declaredField && lg.body.declaredField.name === "manual_call_minutes" &&
+      "ready" in lg.body.declaredField, JSON.stringify(lg.body.declaredField));
+    ok("and the fill rate says how much talking has no length at all",
+      lg.body.totals.lengthMissing > 0 &&
+      (lg.body.rows || []).some(function(r){ return r.logged === 0; }),
+      JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.logged]; })));
     ok("the payload says out loud that screenshots are not read",
       lg.body.screenshotsRead === false && lg.body.followUpIsCurrentValue === true);
 
@@ -895,12 +933,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       lg.body.totals.meetMs > 0, String(lg.body.totals.meetMs));
     ok("total talk is its parts and never less than any one of them",
       (lg.body.rows || []).every(function(r){
-        return r.talkMs === r.callMs + r.meetMs + r.noteMs; }),
-      JSON.stringify((lg.body.rows || [])[0]));
+        return r.talkMs === r.callMs + r.meetMs + r.noteMs + r.declaredMs &&
+               r.measuredMs === r.callMs + r.meetMs &&
+               r.declaredTotalMs === r.declaredMs + r.noteMs; }),
+      JSON.stringify((lg.body.rows || []).filter(function(r){
+        return r.talkMs !== r.callMs + r.meetMs + r.noteMs + r.declaredMs; })));
     /* A call the previous evening is in the fixture precisely so a day boundary bug shows
        up as a wrong total rather than as nothing at all. */
     ok("yesterday's call is not in today's talktime",
-      lg.body.counted.calls === 14, JSON.stringify(lg.body.counted));
+      lg.body.counted.calls === 16, JSON.stringify(lg.body.counted));
 
     ok("a day that has not happened is refused rather than answered with zeros",
       (await get("/api/vp/ledger?date=2099-01-01")).status === 400);

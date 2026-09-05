@@ -790,6 +790,7 @@ function lgFlagPills(l){
         "/calls/" + esc(String(pid.portalId)) + "/review/" + esc(String(cid)) + "'>screenshot &nearr;</a> "
       : "<span class='pill' style='background:#EEF1F5;color:#42526B' title='" + tip + "'>screenshot</span> ";
   }
+  if (l.declaredMs) h += "<span class='pill' style='background:#E7EFEA;color:#1F5B42' title='Length the agent entered on the call record. Not verified.'>declared " + lgMins(l.declaredMs) + "</span> ";
   if (l.noteMs) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='Length taken from what the agent typed in the call note'>note " + lgMins(l.noteMs) + "</span> ";
   return h || "<span class='mut'>clean</span>";
 }
@@ -827,11 +828,13 @@ function renderLedger(){
   if (!el || !LG) return;
   var j = LG;
   var rows = lgRows();
-  var t = { couns: 0, flag: 0, nofu: 0, short: 0, unknown: 0, talk: 0, calls: 0, meet: 0 };
+  var t = { couns: 0, flag: 0, nofu: 0, short: 0, unknown: 0, talk: 0, calls: 0, meet: 0,
+    measured: 0, declared: 0, missing: 0 };
   rows.forEach(function(r){
     t.couns += r.counsellings; t.flag += r.flagged; t.nofu += r.noFollowUp;
     t.short += r.short; t.unknown += r.unknown; t.talk += r.talkMs;
     t.calls += r.calls; t.meet += r.meetMs;
+    t.measured += r.measuredMs; t.declared += r.declaredTotalMs; t.missing += r.lengthMissing;
   });
   var filtered = LG_TEAM || LG_AGENT || LG_CREATOR;
 
@@ -863,6 +866,16 @@ function renderLedger(){
     "</div>";
 
   if (j.error) h += "<div class='warn bad'><b>This day is incomplete.</b> " + esc(j.error) + "</div>";
+  /* The declared column reads zero either because nobody filled it in or because the
+     property does not exist. Those are completely different problems and the page has to
+     say which. */
+  if (j.declaredField && !j.declaredField.ready) {
+    h += "<div class='warn'><b>The declared length field is not set up yet.</b> " +
+      "Create a Number property on the Call object named <b>" + esc(j.declaredField.name) + "</b>, " +
+      "labelled \"Call length (minutes)\", and add it to the call logging form. Until then the " +
+      "Declared column can only pick up a length an agent happened to type into the call note. " +
+      fmt(j.totals.lengthMissing) + " calls on this day carry no length at all.</div>";
+  }
   if (j.truncated) h += "<div class='warn'>More leads changed stage than one read holds, so this day is partial.</div>";
   if (j.scoped) h += "<div class='warn'>Your team only.</div>";
   if (filtered) h += "<div class='sub'>" + fmt(rows.length) + " of " + fmt((j.rows || []).length) + " agents shown.</div>";
@@ -873,7 +886,10 @@ function renderLedger(){
     lgTile(t.nofu ? "warn" : "", "No follow up", fmt(t.nofu), "of " + fmt(t.couns)) +
     lgTile(t.short ? "warn" : "", "Under " + Math.round((j.shortMs || 600000) / 60000) + " min", fmt(t.short), "measured length") +
     lgTile(t.unknown ? "warn" : "", "Length unknown", fmt(t.unknown), "no duration held") +
-    lgTile("", "Talktime", lgMins(t.talk), fmt(t.calls) + " calls" + (t.meet ? ", " + lgMins(t.meet) + " in meetings" : "")) +
+    lgTile("", "Talktime", lgMins(t.talk),
+      lgMins(t.measured) + " measured, " + lgMins(t.declared) + " declared") +
+    lgTile(t.missing ? "warn" : "", "Length not logged", fmt(t.missing),
+      "calls of " + fmt(t.calls) + " with no length at all") +
     "</div>";
 
   h += "<div class='tw' style='margin-top:12px'><table class='rt'><thead><tr>" +
@@ -882,13 +898,16 @@ function renderLedger(){
     "<th class='n'>No FU</th><th class='n'>Short</th><th class='n'>Unknown</th>" +
     "<th class='n' title='Counsellings logged with a screenshot instead of a dialled call. " +
     "These carry no duration in HubSpot. Open the agent to click through to the image.'>WhatsApp</th>" +
-    "<th class='n'>Calls</th><th class='n'>Calls talk</th>" +
-    "<th class='n' title='Meetings held on a lead, measured by the recording, not by the slot booked'>Meetings</th>" +
+    "<th class='n'>Calls</th>" +
+    "<th class='n' title='Share of this agent&#39;s calls that carry a length from any source: " +
+    "dialled, declared or written in the note'>Logged</th>" +
+    "<th class='n' title='Timed by FreJun or by a meeting recording'>Measured</th>" +
+    "<th class='n' title='Typed in by the agent. Not verified, and shown apart for that reason.'>Declared</th>" +
     "<th class='n'>Total talk</th>" +
     "</tr></thead><tbody>";
 
   if (!rows.length) {
-    h += "<tr><td colspan='13' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
+    h += "<tr><td colspan='14' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
   }
   rows.forEach(function(r){
     var open = !!LG_OPEN[r.id];
@@ -905,14 +924,18 @@ function renderLedger(){
       "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
       "<td class='n " + (r.screenshot ? "" : "mut") + "'>" + fmt(r.screenshot) + "</td>" +
       "<td class='n'>" + fmt(r.calls) + "</td>" +
-      "<td class='n'>" + lgMins(r.callMs) + "</td>" +
-      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) +
+      "<td class='n " + (r.logged == null ? "mut" : r.logged < 50 ? "cr" : r.logged < 90 ? "ca" : "cg") + "'>" +
+        (r.logged == null ? "&ndash;" : r.logged + "%") +
+        (r.lengthMissing ? "<div class='mut' style='font-size:11px'>" + fmt(r.lengthMissing) + " blank</div>" : "") +
+      "</td>" +
+      "<td class='n'>" + lgMins(r.measuredMs) +
         (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) +
-          (r.meetings === 1 ? " meeting" : " meetings") + "</div>" : "") + "</td>" +
+          (r.meetings === 1 ? " meeting" : " meetings") + ", " + lgMins(r.meetMs) + "</div>" : "") + "</td>" +
+      "<td class='n " + (r.declaredTotalMs ? "" : "mut") + "'>" + lgMins(r.declaredTotalMs) + "</td>" +
       "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
       "</tr>";
     if (open) {
-      h += "<tr><td colspan='13' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
+      h += "<tr><td colspan='14' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
         (r.calls && !r.callMs ? "<div class='warn'><b>" + fmt(r.calls) + " calls carrying no duration between them.</b> " +
           "Either a day of dials nobody answered or conversations whose length never reached HubSpot. " +
           "The two look identical from here.</div>" : "") +
@@ -928,6 +951,9 @@ function renderLedger(){
     "go quiet and be counselled again. " +
     (j.screenshotsRead === false ? "Screenshots attached to a call log are marked but not read, so those " +
       "conversations show a length only where the agent typed one into the note. " : "") +
+    "Measured time was timed by FreJun or by a meeting recording. Declared time was typed in " +
+    "by the agent and is not verified, which is why the two are never added into one column " +
+    "without being shown apart. " +
     "Follow up is the value on the lead now, not as it stood on the day." +
     "</div>";
 
@@ -951,6 +977,10 @@ function lgCsv(){
     ["LoggedWithScreenshot", function(r){ return r.screenshot; }],
     ["Calls", function(r){ return r.calls; }],
     ["CallTalkMinutes", function(r){ return Math.round(r.callMs / 60000); }],
+    ["LengthNotLogged", function(r){ return r.lengthMissing; }],
+    ["LoggedPercent", function(r){ return r.logged == null ? "" : r.logged; }],
+    ["MeasuredMinutes", function(r){ return Math.round(r.measuredMs / 60000); }],
+    ["DeclaredMinutes", function(r){ return Math.round(r.declaredTotalMs / 60000); }],
     ["Meetings", function(r){ return r.meetings; }],
     ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
     ["NoteMinutes", function(r){ return Math.round(r.noteMs / 60000); }],

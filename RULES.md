@@ -1061,6 +1061,45 @@ link to that call in HubSpot, where the image itself is. The app does not read t
 it takes you to it in one click. On 4 September that column would read 9 for Nithin Thomas
 and 2 for Riya Sharma, and zero for everybody else.
 
+### The declared length field
+
+The right fix, and it came from Abhishek rather than from me. In the 30 days to 5 September
+**16,832 calls were logged by hand and not one carried a duration**, because FreJun did not
+dial them: WhatsApp, personal mobiles, landlines. The 137 with a screenshot are a rounding
+error inside that. A number an agent types closes about a hundred times more of the gap
+than reading the images ever could, and it is a number rather than a guess from a picture.
+
+**Do not reuse `hs_call_duration` for this.** It is writable, and it stores milliseconds.
+An agent typing `12` records twelve thousandths of a second, which renders as a zero minute
+call and reads as somebody rushing a counselling. The failure is silent and it lands on the
+agent, not on us. The property is `manual_call_minutes`, a Number on the Call object, in
+whole minutes, overridable by `MANUAL_MIN_PROP`.
+
+**It is discovered, not assumed.** A search naming a property the portal does not have
+fails the entire request, so `discoverManualMinutes()` checks for it on boot and the field
+is only requested when it exists. That means this shipped before the property was created:
+until it exists the ledger runs without it and the view says, in words, that the field is
+not set up yet. A zero in the Declared column otherwise means either nobody filled it in or
+the property does not exist, and those are completely different problems.
+
+**Precedence, and never a sum.** Measured wins outright: if FreJun timed the call there is
+nothing for a human to add. A manual log duplicating a FreJun record has already merged
+into the same call through `IDLE.dedupe`, so adding a declared number on top would count
+one conversation twice and reward filling the box in. Only when nothing measured it does
+the declared number count, and only when that is absent too is the note read. Anything over
+`MANUAL_MIN_MAX` minutes, 180 by default, is discarded: people type 600 when they mean 60,
+and believing it puts an afternoon of talktime on one row.
+
+**Measured and declared are added into one total and shown apart.** A manager needs a
+usable number, which is why they are added. They are kept in separate columns because a
+self reported hour and a measured hour are not the same evidence, and the moment talktime
+is a target that difference is the first thing worth seeing. This is not distrust of the
+floor, it is the same rule applied to screenshots: say what is known and how it is known.
+
+The **Logged** column is the fill rate, the share of an agent's calls carrying a length from
+any source. It is how adoption gets chased without HubSpot blocking anybody's workflow, and
+an agent reading 0% there has a day nobody can evaluate.
+
 ### Screenshots are marked, not read
 
 Reading the images needs the Files API and a vision model, and it was deferred on purpose.

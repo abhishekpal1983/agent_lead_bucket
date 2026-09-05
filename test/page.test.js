@@ -963,19 +963,26 @@ ok("the month picker and the page filters both reload it",
     screenshotsRead: false, followUpIsCurrentValue: true,
     counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
     portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
+    declaredField: { name: "manual_call_minutes", ready: false, maxMinutes: 180 },
     teams: [{ id: "t1", name: "Team Sid" }],
     totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
-      noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000, noteMs: 2400000 },
+      noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000,
+      noteMs: 2400000, declaredMs: 1320000, measuredMs: 5400000, declaredTotalMs: 3720000,
+      lengthMissing: 4 },
     rows: [
       { id: "201", name: "Sid Menon", team: "Team Sid", teamId: "t1", active: true,
         counsellings: 3, progress: 3, repeat: 1, reopened: 1, dropped: 1, flagged: 3,
         noFollowUp: 1, short: 1, unknown: 0, screenshot: 1,
-        calls: 5, callMs: 3000000, meetMs: 2400000, noteMs: 0, meetings: 1, talkMs: 5400000 },
+        calls: 5, callMs: 3000000, meetMs: 2400000, noteMs: 0, meetings: 1,
+        declaredMs: 0, lengthMissing: 0, measuredMs: 5400000, declaredTotalMs: 0,
+        logged: 100, talkMs: 5400000 },
       /* The agent the view exists for: a full day of calls and nothing recorded. */
       { id: "204", name: "Neha Iyer", team: "Team Sid", teamId: "t1", active: true,
         counsellings: 1, progress: 0, repeat: 0, reopened: 0, dropped: 0, flagged: 0,
         noFollowUp: 0, short: 0, unknown: 2, screenshot: 2,
-        calls: 4, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0, talkMs: 0 }
+        calls: 4, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0,
+        declaredMs: 0, lengthMissing: 4, measuredMs: 0, declaredTotalMs: 0,
+        logged: 0, talkMs: 0 }
     ],
     leads: [
       { id: "L1", name: "Dee Sehgal", owner: "201", creator: "simrankhokha", stage: "counselled",
@@ -991,7 +998,7 @@ ok("the month picker and the page filters both reload it",
         counselling: ev("counselling", "counselled", "Counselled", "dnp_did_not_pick", T),
         progress: [], repeat: [], reopened: [], dropped: [], calls: 2, callMs: 0, withDuration: 0,
         meetMs: 0, noteMs: 0, screenshot: true, unknown: true, short: false, noFollowUp: false,
-        shotIds: ["C9001"], meetings: [] }
+        shotIds: ["C9001"], meetings: [], declaredMs: 1320000, lengthMissing: 0 }
     ]
   };
   lgCtx.LG = payload; lgCtx.LG_DATE = payload.date;
@@ -1035,11 +1042,21 @@ ok("the month picker and the page filters both reload it",
     o3.indexOf("/calls/244132076/review/C9") >= 0 && o3.indexOf("screenshot &nearr;") >= 0,
     o3.indexOf("review/"));
   ok("meetings show how many as well as how long",
-    o3.indexOf("1 meeting</div>") >= 0);
+    o3.indexOf("1 meeting, 40m</div>") >= 0);
   /* The lead-level rule cannot tell a counselling from a group session that happens to
      have one lead attached. The title can, so it is on screen. */
   ok("and each meeting is named, since the title is how you tell a 1:1 from a group call",
     o3.indexOf("meeting 40m: Counselling call") >= 0);
+  ok("measured and declared time are separate columns, never one number",
+    o3.indexOf(">Measured</th>") >= 0 && o3.indexOf(">Declared</th>") >= 0 &&
+    o3.indexOf("not verified") >= 0);
+  ok("and the fill rate shows how much talking carries no length at all",
+    o3.indexOf(">Logged</th>") >= 0 && o3.indexOf("Length not logged") >= 0);
+  /* Zero in the declared column means either nobody filled it in or the property does not
+     exist, and those are completely different problems. */
+  ok("a missing property is named as a setup step rather than showing as a silent zero",
+    o3.indexOf("declared length field is not set up yet") >= 0 &&
+    o3.indexOf("manual_call_minutes") >= 0);
   ok("the page says screenshots are marked and not read",
     o3.indexOf("marked but not read") >= 0);
   ok("and that follow up is the value now, not as it stood on the day",

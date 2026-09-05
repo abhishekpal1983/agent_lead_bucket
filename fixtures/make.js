@@ -218,11 +218,12 @@ const HPAST = function(d, h){ return new Date(D(2026, 8, d, h || 10)).toISOStrin
 const history = {};
 const ledgerCalls = [];
 let lseq = 0;
-function hcall(owner, contact, h, m, durMs, source, body, attach){
+function hcall(owner, contact, h, m, durMs, source, body, attach, declaredMs){
   lseq++;
   ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, h) + (m || 0) * 60000,
     durMs: durMs || 0, disposition: "", owner: owner, source: source || "INTEGRATION",
-    contact: String(contact), body: body || "", attach: !!attach });
+    contact: String(contact), body: body || "", attach: !!attach,
+    declaredMs: declaredMs || 0 });
 }
 
 /* Pick real leads out of the pool so owner and creator are consistent with everything
@@ -317,6 +318,27 @@ if (gone) {
   history[gone.id] = [{ value: "discovery", timestamp: HTODAY(10, 5) }];
   gone.fu = 0;
   hcall("205", gone.id, 10, 0, 300000);
+}
+
+/* 12. The agent filled the length in by hand: a WhatsApp counselling with a screenshot,
+       no duration, and 22 minutes declared. This is the case the new property exists for
+       and it must read as 22 minutes of declared talk, never as unknown and never as
+       short. */
+const declared = rows.filter(function(r){ return r.owner === "203" && !history[r.id]; })[0];
+if (declared) {
+  history[declared.id] = [{ value: "counselled", timestamp: HTODAY(14, 5) }];
+  declared.fu = D(2026, 8, 10, 10);
+  hcall("203", declared.id, 14, 0, 0, "CRM_UI", "spoke on WA", true, 22 * 60000);
+}
+
+/* 13. A measured call that ALSO carries a declared number, because an agent filled the
+       field in on a FreJun call too. The measured figure must win outright: adding them
+       would count one conversation twice and reward filling the box in. */
+const both = rows.filter(function(r){ return r.owner === "203" && !history[r.id]; })[0];
+if (both) {
+  history[both.id] = [{ value: "discovery", timestamp: HTODAY(16, 40) }];
+  both.fu = D(2026, 8, 11, 10);
+  hcall("203", both.id, 16, 0, 900000, "INTEGRATION", "", false, 45 * 60000);
 }
 
 /* 11. The shape that started this whole view: an agent whose whole day carries no

@@ -7265,6 +7265,40 @@ app.post("/api/org/import", express.json({ limit: "4mb" }), function(req, res){
    idle tracker cost, and RULES 35 is about why that was deleted. Today can be refreshed on
    demand; yesterday and earlier never change, so they are cached and kept. */
 
+/* The agent-declared call length.
+
+   16,832 calls were logged by hand in the 30 days to 5 September and not one carried a
+   duration, because FreJun did not dial them: WhatsApp, personal mobiles, landlines. The
+   screenshots were 137 of those, so a number an agent types fixes about a hundred times
+   more of the gap than reading the images ever could.
+
+   Deliberately NOT `hs_call_duration`. That field is writable but stores milliseconds, so
+   an agent typing 12 records twelve thousandths of a second, which renders as a zero
+   minute call and reads as somebody rushing a counselling. The failure is silent and it
+   lands on the agent. This one is whole minutes.
+
+   Discovered rather than assumed, because a search that names a property the portal does
+   not have fails the whole request, and this has to be deployable before anybody creates
+   it. Until it exists the ledger simply runs without it and the view says the field is
+   not set up yet. */
+const MANUAL_MIN_PROP = process.env.MANUAL_MIN_PROP || "manual_call_minutes";
+let MANUAL_MIN_OK = false;
+async function discoverManualMinutes(){
+  if (!TOKEN) return false;
+  try {
+    const j = await hs("/crm/v3/properties/calls");
+    MANUAL_MIN_OK = ((j && j.results) || []).some(function(p){
+      return String(p.name) === MANUAL_MIN_PROP; });
+    console.log("Declared call length: " + (MANUAL_MIN_OK
+      ? MANUAL_MIN_PROP + " found"
+      : MANUAL_MIN_PROP + " not created yet, declared minutes will read as absent"));
+  } catch (e) {
+    MANUAL_MIN_OK = false;
+    console.error("Declared call length lookup failed: " + e.message);
+  }
+  return MANUAL_MIN_OK;
+}
+
 const LEDGER_WARM_HM = process.env.LEDGER_WARM_HM || "00:20";
 const LEDGER_TTL_MS = parseInt(process.env.LEDGER_TTL_MS || "900000", 10);   // today only
 const LEDGER_SHORT_MS = parseInt(process.env.LEDGER_SHORT_MS || "600000", 10); // the 10 min line
@@ -7343,7 +7377,8 @@ async function ledgerCalls(b){
         { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) }
       ]}],
       properties: ["hs_timestamp", "hs_call_duration", "hubspot_owner_id",
-        "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids", "hs_call_body"],
+        "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids", "hs_call_body"]
+        .concat(MANUAL_MIN_OK ? [MANUAL_MIN_PROP] : []),
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after: after })});
     ((j && j.results) || []).forEach(function(r){
       rows.push({ id: String(r.id), at: ts(r.properties.hs_timestamp),
@@ -7352,6 +7387,7 @@ async function ledgerCalls(b){
         source: String(r.properties.hs_object_source_label || "UNKNOWN"),
         attach: !!r.properties.hs_attachment_ids,
         body: String(r.properties.hs_call_body || ""),
+        declaredMs: ledgerDeclaredMs(r.properties[MANUAL_MIN_PROP]),
         contact: "" });
     });
     after = j && j.paging && j.paging.next && j.paging.next.after;
@@ -7432,6 +7468,17 @@ async function ledgerMeetings(b){
    "40mins call" is a real body from 2 September. This is free and it is not OCR, so it
    runs before anybody pays for reading a screenshot. It is only ever consulted for calls
    that carry no duration, so it can never overwrite a measured number. */
+/* Whole minutes, from the field an agent fills in. Guarded rather than trusted: the point
+   of a manual number is that a human typed it, and humans type 600 when they mean 60.
+   Over three hours on one call is a mistake, not a conversation, and silently believing it
+   would put an afternoon of talktime on one row. */
+const MANUAL_MIN_MAX = parseInt(process.env.MANUAL_MIN_MAX || "180", 10);
+function ledgerDeclaredMs(v){
+  const n = parseFloat(v);
+  if (isNaN(n) || n <= 0) return 0;
+  if (n > MANUAL_MIN_MAX) return 0;
+  return Math.round(n * 60000);
+}
 const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/i;
 function ledgerNoteMs(body){
   const txt = String(body || "").replace(/<[^>]*>/g, " ");
@@ -7469,6 +7516,8 @@ function ledgerFixture(dayKey){
       follow_up_date_and_time: r.fu ? new Date(r.fu).toISOString() : "",
       phone: r.phone || "" };
   });
+  /* The fixture calls already carry declaredMs in the shape the reader produces, so the
+     precedence chain is exercised locally rather than only in production. */
   const calls = (F.ledgerCalls || []).filter(function(c){ return c.at >= b.start && c.at < b.end; });
   const meets = (F.meetings || []).filter(function(m){
     return m.at >= b.start && m.at < b.end && !!m.contact; });
@@ -7522,10 +7571,22 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     const src = c.ids.map(function(id){ return calls.filter(function(x){ return x.id === id; })[0]; })
       .filter(Boolean);
     c.attach = src.some(function(x){ return x.attach; });
-    c.noteMs = 0;
+    /* Strict precedence, and never a sum. A measured duration wins outright: if FreJun
+       timed the call there is nothing for a human to add, and a manual log that duplicates
+       a FreJun record has already merged into this same call, so adding a declared number
+       on top would count one conversation twice and reward filling the box in. Only when
+       nothing measured it does the agent's own number count, and only when that is absent
+       too is the note read. */
+    c.declaredMs = 0; c.noteMs = 0;
     if (!(c.durMs > 0)) {
-      src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
+      src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.declaredMs || 0); });
+      if (!c.declaredMs) {
+        src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
+      }
     }
+    /* No duration, nothing declared, nothing in the note. This is what the fill rate
+       column counts: how much of the floor's talking is simply unrecorded. */
+    c.lengthMissing = !(c.durMs > 0) && !c.declaredMs && !c.noteMs;
     if (c.contact) (callsByLead[c.contact] = callsByLead[c.contact] || []).push(c);
     if (c.owner && c.owner !== "none") (callsByOwner[c.owner] = callsByOwner[c.owner] || []).push(c);
   });
@@ -7543,6 +7604,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     const talk = COUNSEL_LIB.talkFor(mine, { shortMs: LEDGER_SHORT_MS });
     const mtg = (meetsByLead[c.id] || []).reduce(function(n, m){ return n + m.durMs; }, 0);
     const noteMs = mine.reduce(function(n, x){ return n + (x.noteMs || 0); }, 0);
+    const declaredMs = mine.reduce(function(n, x){ return n + (x.declaredMs || 0); }, 0);
+    const missing = mine.filter(function(x){ return x.lengthMissing; }).length;
     leads.push({
       id: c.id,
       name: ((c.firstname || "") + " " + (c.lastname || "")).trim() ||
@@ -7554,7 +7617,7 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       counselling: d.counselling, progress: d.progress, repeat: d.repeat,
       reopened: d.reopened, dropped: d.dropped,
       calls: talk.calls, callMs: talk.ms, withDuration: talk.withDuration,
-      meetMs: mtg, noteMs: noteMs,
+      meetMs: mtg, noteMs: noteMs, declaredMs: declaredMs, lengthMissing: missing,
       screenshot: mine.some(function(x){ return x.attach; }),
       /* The call records carrying the image, so the page can link to them. Reading the
          image is deferred; being one click from looking at it yourself is not. */
@@ -7564,9 +7627,9 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
         return { id: m.id, title: m.title, durMs: m.durMs }; }),
       /* A meeting or a note length answers "how long was this" just as well as a call
          duration, so neither unknown nor short may stand once one is present. */
-      unknown: talk.unknown && !mtg && !noteMs,
-      short: (talk.ms + mtg + noteMs) > 0 &&
-        (talk.ms + mtg + noteMs) < LEDGER_SHORT_MS,
+      unknown: talk.unknown && !mtg && !noteMs && !declaredMs,
+      short: (talk.ms + mtg + noteMs + declaredMs) > 0 &&
+        (talk.ms + mtg + noteMs + declaredMs) < LEDGER_SHORT_MS,
       noFollowUp: !ts(c.follow_up_date_and_time)
     });
   });
@@ -7578,7 +7641,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       active: ledgerOwner(id).active !== false,
       counsellings: 0, progress: 0, repeat: 0, reopened: 0, dropped: 0,
       noFollowUp: 0, short: 0, unknown: 0, screenshot: 0,
-      calls: 0, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0 };
+      calls: 0, callMs: 0, meetMs: 0, noteMs: 0, declaredMs: 0,
+      lengthMissing: 0, meetings: 0 };
     return agents[id];
   };
   leads.forEach(function(l){
@@ -7603,6 +7667,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     a.calls = callsByOwner[oid].length;
     a.callMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.durMs || 0); }, 0);
     a.noteMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.noteMs || 0); }, 0);
+    a.declaredMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.declaredMs || 0); }, 0);
+    a.lengthMissing = callsByOwner[oid].filter(function(c){ return c.lengthMissing; }).length;
   });
   Object.keys(meetsByOwner).forEach(function(oid){
     const a = agent(oid);
@@ -7612,7 +7678,14 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
 
   const rows = Object.keys(agents).map(function(k){
     const a = agents[k];
-    a.talkMs = a.callMs + a.meetMs + a.noteMs;
+    /* Measured is what a machine timed. Declared is what a person said. They are added
+       into one total because a manager needs a usable number, and kept apart because a
+       self reported hour and a measured hour are not the same evidence, and the moment
+       talktime is a target that difference is the first thing worth seeing. */
+    a.measuredMs = a.callMs + a.meetMs;
+    a.declaredTotalMs = a.declaredMs + a.noteMs;
+    a.talkMs = a.measuredMs + a.declaredTotalMs;
+    a.logged = a.calls ? Math.round(100 * (a.calls - a.lengthMissing) / a.calls) : null;
     a.flagged = a.repeat + a.reopened + a.dropped;
     return a;
   });
@@ -7684,11 +7757,14 @@ app.get("/api/vp/ledger", async function(req, res){
         flagged: sum("flagged"), repeat: sum("repeat"), reopened: sum("reopened"),
         dropped: sum("dropped"), noFollowUp: sum("noFollowUp"), short: sum("short"),
         unknown: sum("unknown"), calls: sum("calls"), talkMs: sum("talkMs"),
-        meetMs: sum("meetMs"), noteMs: sum("noteMs") },
+        meetMs: sum("meetMs"), noteMs: sum("noteMs"), declaredMs: sum("declaredMs"),
+        measuredMs: sum("measuredMs"), declaredTotalMs: sum("declaredTotalMs"),
+        lengthMissing: sum("lengthMissing") },
       rows: rows, leads: leads,
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot forget to say it. */
       screenshotsRead: false,
+      declaredField: { name: MANUAL_MIN_PROP, ready: MANUAL_MIN_OK, maxMinutes: MANUAL_MIN_MAX },
       followUpIsCurrentValue: true
     });
   } catch (e) {
@@ -8870,6 +8946,7 @@ SERVER = app.listen(PORT, () => {
      no answers on them for a long time, looking exactly like data we do not have. */
   // Before anything fetches contacts, so the property list is right the first time.
   guard("infoProp", discoverInfoProperty)();
+  guard("declaredMinutes", discoverManualMinutes)();
   setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);
   setTimeout(runChain, 150 * 1000);
   setInterval(runChain, COHORT_MINUTES * 60 * 1000);
