@@ -869,12 +869,21 @@ function renderLedger(){
   /* The declared column reads zero either because nobody filled it in or because the
      property does not exist. Those are completely different problems and the page has to
      say which. */
-  if (j.declaredField && !j.declaredField.ready) {
-    h += "<div class='warn'><b>The declared length field is not set up yet.</b> " +
-      "Create a Number property on the Call object named <b>" + esc(j.declaredField.name) + "</b>, " +
-      "labelled \"Call length (minutes)\", and add it to the call logging form. Until then the " +
-      "Declared column can only pick up a length an agent happened to type into the call note. " +
-      fmt(j.totals.lengthMissing) + " calls on this day carry no length at all.</div>";
+  var df = j.declaredField || {};
+  if (!df.ready && !df.bandedTypes) {
+    /* HubSpot does not allow a custom property on the Log call widget, so the banner
+       must not tell anybody to put one there. It names the two routes that do work. */
+    h += "<div class='warn'><b>No way to record a length has been set up yet, so the Declared " +
+      "column can only pick up what an agent happens to type into the call note.</b> " +
+      fmt(j.totals.lengthMissing) + " calls on this day carry no length at all. " +
+      "HubSpot does not allow a custom property on the Log call form, so there are two routes: " +
+      "add duration bands as <b>Call types</b>, which sit inside the form and are one click " +
+      "(" + esc((df.bands || []).join(", ")) + "), " +
+      "or create a Number property <b>" + esc(df.name) + "</b> on the Call object, which is exact " +
+      "but has to be filled in after logging. Either one is read automatically once it exists.</div>";
+  } else if (!df.ready && df.bandedTypes) {
+    h += "<div class='sub'>Declared lengths are coming from Call type bands. Exact minutes would " +
+      "need the <b>" + esc(df.name) + "</b> property, which is read automatically if it is created.</div>";
   }
   if (j.truncated) h += "<div class='warn'>More leads changed stage than one read holds, so this day is partial.</div>";
   if (j.scoped) h += "<div class='warn'>Your team only.</div>";

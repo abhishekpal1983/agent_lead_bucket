@@ -7299,6 +7299,59 @@ async function discoverManualMinutes(){
   return MANUAL_MIN_OK;
 }
 
+/* The other way in, and the only one that lives inside the Log call widget.
+
+   HubSpot's own documentation, updated 7 August 2026, says it plainly: "When manually
+   logging a call, call duration is not editable in the Log call widget. To add a duration,
+   enter it in the call note or create a custom call property." A custom property cannot be
+   added to that widget either; it is a standing feature request. So the widget offers a
+   fixed set of fields, and of those, Call type is the only one this portal is not already
+   using: `hs_activity_type` has no options configured at all.
+
+   Duration bands as call types are therefore one click, inside the form, with no extra
+   step. Banded rather than exact, which is a real loss, but a band an agent actually
+   picks beats a precise field nobody opens. Midpoints are used, so the error is bounded
+   and does not lean in either direction.
+
+   Labels are matched case-insensitively and are configurable, because they have to match
+   whatever gets created in HubSpot rather than what was guessed here. */
+const CALL_TYPE_MINUTES = (function(){
+  const raw = process.env.CALL_TYPE_MINUTES ||
+    "under 5 min:3,5 to 15 min:10,15 to 30 min:22,30 to 60 min:45,over 60 min:75";
+  const map = {};
+  raw.split(",").forEach(function(pair){
+    const i = pair.lastIndexOf(":");
+    if (i < 0) return;
+    const label = pair.slice(0, i).trim().toLowerCase();
+    const mins = parseFloat(pair.slice(i + 1));
+    if (label && !isNaN(mins) && mins > 0) map[label] = Math.round(mins * 60000);
+  });
+  return map;
+})();
+let CALL_TYPE_LABELS = {};
+async function discoverCallTypes(){
+  if (!TOKEN) return {};
+  try {
+    const j = await hs("/crm/v3/properties/calls/hs_activity_type");
+    const opts = (j && j.options) || [];
+    CALL_TYPE_LABELS = {};
+    opts.forEach(function(o){
+      CALL_TYPE_LABELS[String(o.value)] = String(o.label || o.value);
+    });
+    const known = opts.filter(function(o){
+      return CALL_TYPE_MINUTES[String(o.label || "").trim().toLowerCase()] != null; }).length;
+    console.log("Call types: " + opts.length + " configured, " + known + " carry a duration band");
+  } catch (e) {
+    console.error("Call type lookup failed: " + e.message);
+  }
+  return CALL_TYPE_LABELS;
+}
+function ledgerTypeMs(v){
+  if (!v) return 0;
+  const label = CALL_TYPE_LABELS[String(v)] || String(v);
+  return CALL_TYPE_MINUTES[label.trim().toLowerCase()] || 0;
+}
+
 const LEDGER_WARM_HM = process.env.LEDGER_WARM_HM || "00:20";
 const LEDGER_TTL_MS = parseInt(process.env.LEDGER_TTL_MS || "900000", 10);   // today only
 const LEDGER_SHORT_MS = parseInt(process.env.LEDGER_SHORT_MS || "600000", 10); // the 10 min line
@@ -7377,7 +7430,8 @@ async function ledgerCalls(b){
         { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) }
       ]}],
       properties: ["hs_timestamp", "hs_call_duration", "hubspot_owner_id",
-        "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids", "hs_call_body"]
+        "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids",
+        "hs_call_body", "hs_activity_type"]
         .concat(MANUAL_MIN_OK ? [MANUAL_MIN_PROP] : []),
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after: after })});
     ((j && j.results) || []).forEach(function(r){
@@ -7388,6 +7442,7 @@ async function ledgerCalls(b){
         attach: !!r.properties.hs_attachment_ids,
         body: String(r.properties.hs_call_body || ""),
         declaredMs: ledgerDeclaredMs(r.properties[MANUAL_MIN_PROP]),
+        typeMs: ledgerTypeMs(r.properties.hs_activity_type),
         contact: "" });
     });
     after = j && j.paging && j.paging.next && j.paging.next.after;
@@ -7579,7 +7634,14 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
        too is the note read. */
     c.declaredMs = 0; c.noteMs = 0;
     if (!(c.durMs > 0)) {
+      /* Exact before approximate: the typed field, then the band an agent picked, then
+         whatever they wrote in prose. All three are the agent's own account of the call,
+         so they share one Declared column; they differ only in how precise they are. */
       src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.declaredMs || 0); });
+      if (!c.declaredMs) {
+        src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.typeMs || 0); });
+        c.banded = c.declaredMs > 0;
+      }
       if (!c.declaredMs) {
         src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
       }
@@ -7764,7 +7826,13 @@ app.get("/api/vp/ledger", async function(req, res){
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot forget to say it. */
       screenshotsRead: false,
-      declaredField: { name: MANUAL_MIN_PROP, ready: MANUAL_MIN_OK, maxMinutes: MANUAL_MIN_MAX },
+      declaredField: { name: MANUAL_MIN_PROP, ready: MANUAL_MIN_OK, maxMinutes: MANUAL_MIN_MAX,
+        /* Neither route is set up until somebody configures it in HubSpot, and the page
+           has to be able to say which, rather than showing an ambiguous zero. */
+        callTypes: Object.keys(CALL_TYPE_LABELS).length,
+        bandedTypes: Object.keys(CALL_TYPE_LABELS).filter(function(k){
+          return CALL_TYPE_MINUTES[CALL_TYPE_LABELS[k].trim().toLowerCase()] != null; }).length,
+        bands: Object.keys(CALL_TYPE_MINUTES) },
       followUpIsCurrentValue: true
     });
   } catch (e) {
@@ -8947,6 +9015,7 @@ SERVER = app.listen(PORT, () => {
   // Before anything fetches contacts, so the property list is right the first time.
   guard("infoProp", discoverInfoProperty)();
   guard("declaredMinutes", discoverManualMinutes)();
+  guard("callTypes", discoverCallTypes)();
   setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);
   setTimeout(runChain, 150 * 1000);
   setInterval(runChain, COHORT_MINUTES * 60 * 1000);

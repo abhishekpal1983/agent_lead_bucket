@@ -1069,11 +1069,36 @@ dial them: WhatsApp, personal mobiles, landlines. The 137 with a screenshot are 
 error inside that. A number an agent types closes about a hundred times more of the gap
 than reading the images ever could, and it is a number rather than a guess from a picture.
 
-**Do not reuse `hs_call_duration` for this.** It is writable, and it stores milliseconds.
-An agent typing `12` records twelve thousandths of a second, which renders as a zero minute
-call and reads as somebody rushing a counselling. The failure is silent and it lands on the
-agent, not on us. The property is `manual_call_minutes`, a Number on the Call object, in
-whole minutes, overridable by `MANUAL_MIN_PROP`.
+**Do not reuse `hs_call_duration` for this.** It is writable over the API, and it stores
+milliseconds. An agent typing `12` records twelve thousandths of a second, which renders as
+a zero minute call and reads as somebody rushing a counselling. The failure is silent and it
+lands on the agent, not on us. It is also moot in the UI: HubSpot's own documentation, last
+updated 7 August 2026, says "when manually logging a call, call duration is not editable in
+the Log call widget". That is exactly why all 16,832 manual logs read zero.
+
+### There is no way to put a custom property on the Log call form
+
+This was assumed and it is wrong, so it is written down. The Log call widget offers a fixed
+set of fields: date, time, note body, associations, call outcome, call direction, call type,
+contacts called, and a follow-up task. A custom property cannot be added to it. That has
+been an open HubSpot feature request for years and telling the floor to "add it to the call
+logging form" is an instruction nobody can follow.
+
+So there are two real routes and the app reads both, plus the note as a fallback.
+
+**Call type bands, inside the form.** `hs_activity_type` is the one field in that widget
+this portal is not using: it has no options configured at all. Duration bands as call types
+are one click, in the form, with no extra step. Read as midpoints via `CALL_TYPE_MINUTES`,
+default "under 5 min:3, 5 to 15 min:10, 15 to 30 min:22, 30 to 60 min:45, over 60 min:75",
+matched on the label case-insensitively. Banded rather than exact is a real loss, and a band
+an agent actually picks beats a precise field nobody opens. Custom call types need Sales or
+Service Hub Professional or Enterprise; this portal already has a custom call outcome,
+"Meeting booked", which is not a HubSpot default, so the tier is there.
+
+**The `manual_call_minutes` property, after logging.** A Number on the Call object in whole
+minutes, overridable by `MANUAL_MIN_PROP`. Exact, but it can only be filled by opening the
+logged call and choosing "View all properties", which is four extra clicks on roughly 560
+manual logs a day. Precise and probably unadopted, which is why it is not the primary route.
 
 **It is discovered, not assumed.** A search naming a property the portal does not have
 fails the entire request, so `discoverManualMinutes()` checks for it on boot and the field
@@ -1082,7 +1107,9 @@ until it exists the ledger runs without it and the view says, in words, that the
 not set up yet. A zero in the Declared column otherwise means either nobody filled it in or
 the property does not exist, and those are completely different problems.
 
-**Precedence, and never a sum.** Measured wins outright: if FreJun timed the call there is
+**Precedence, and never a sum.** Measured, then the exact typed field, then the band, then
+the note. All three of the latter are the agent's own account and share one Declared column;
+they differ only in precision. Measured wins outright: if FreJun timed the call there is
 nothing for a human to add. A manual log duplicating a FreJun record has already merged
 into the same call through `IDLE.dedupe`, so adding a declared number on top would count
 one conversation twice and reward filling the box in. Only when nothing measured it does

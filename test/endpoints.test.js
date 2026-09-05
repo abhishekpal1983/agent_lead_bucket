@@ -915,6 +915,16 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       })());
     /* Naming a property the portal does not have fails the whole search, so this has to
        be deployable before anybody creates it. */
+    /* The only route that lives inside HubSpot's Log call widget, since a custom property
+       cannot be added to it and the duration field is not editable there. */
+    ok("a duration band picked from the Call type dropdown is read as its midpoint",
+      (lg.body.rows || []).some(function(r){ return r.name === "Rhea Kapoor" &&
+        r.declaredTotalMs === (40 + 22) * 60000; }),
+      JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.declaredTotalMs]; })));
+    ok("and the payload reports whether either route is configured at all",
+      lg.body.declaredField && typeof lg.body.declaredField.bandedTypes === "number" &&
+      Array.isArray(lg.body.declaredField.bands) && lg.body.declaredField.bands.length > 0,
+      JSON.stringify(lg.body.declaredField));
     ok("the field is discovered, not assumed, so this deploys before the property exists",
       lg.body.declaredField && lg.body.declaredField.name === "manual_call_minutes" &&
       "ready" in lg.body.declaredField, JSON.stringify(lg.body.declaredField));
@@ -940,8 +950,19 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return r.talkMs !== r.callMs + r.meetMs + r.noteMs + r.declaredMs; })));
     /* A call the previous evening is in the fixture precisely so a day boundary bug shows
        up as a wrong total rather than as nothing at all. */
-    ok("yesterday's call is not in today's talktime",
-      lg.body.counted.calls === 16, JSON.stringify(lg.body.counted));
+    /* The fixture deliberately holds a call the previous evening so a day boundary bug
+       shows up as a wrong total rather than as nothing at all. Counted against the fixture
+       rather than a literal, because a literal breaks every time a case is added and
+       teaches whoever fixes it to just bump the number. */
+    ok("yesterday's call is not in today's talktime", (function(){
+      const F = require("../fixtures/make.js");
+      const IST = 5.5 * 3600000;
+      const start = Date.parse(LGDAY + "T00:00:00Z") - IST;
+      const inDay = (F.ledgerCalls || []).filter(function(c){
+        return c.at >= start && c.at < start + 86400000; }).length;
+      const outside = (F.ledgerCalls || []).length - inDay;
+      return outside > 0 && lg.body.counted.calls === inDay;
+    })(), JSON.stringify(lg.body.counted));
 
     ok("a day that has not happened is refused rather than answered with zeros",
       (await get("/api/vp/ledger?date=2099-01-01")).status === 400);

@@ -341,6 +341,19 @@ if (both) {
   hcall("203", both.id, 16, 0, 900000, "INTEGRATION", "", false, 45 * 60000);
 }
 
+/* 14. The length picked from the Call type dropdown, which is the only route that lives
+       inside HubSpot's Log call widget. Banded, so it reads as the midpoint. */
+const banded = rows.filter(function(r){ return r.owner === "202" && !history[r.id]; })[0];
+if (banded) {
+  history[banded.id] = [{ value: "counselled", timestamp: HTODAY(17, 20) }];
+  banded.fu = D(2026, 8, 12, 11);
+  lseq++;
+  ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, 17),
+    durMs: 0, disposition: "", owner: "202", source: "CRM_UI",
+    contact: String(banded.id), body: "", attach: false, declaredMs: 0,
+    typeMs: 22 * 60000 });
+}
+
 /* 11. The shape that started this whole view: an agent whose whole day carries no
        duration at all. On 4 September one real agent logged 41 calls totalling five
        minutes, and the page has to say that it cannot tell a floor of unanswered dials

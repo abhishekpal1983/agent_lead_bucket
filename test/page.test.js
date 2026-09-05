@@ -963,7 +963,8 @@ ok("the month picker and the page filters both reload it",
     screenshotsRead: false, followUpIsCurrentValue: true,
     counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
     portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
-    declaredField: { name: "manual_call_minutes", ready: false, maxMinutes: 180 },
+    declaredField: { name: "manual_call_minutes", ready: false, maxMinutes: 180,
+      callTypes: 0, bandedTypes: 0, bands: ["under 5 min", "15 to 30 min"] },
     teams: [{ id: "t1", name: "Team Sid" }],
     totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
       noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000,
@@ -1054,9 +1055,14 @@ ok("the month picker and the page filters both reload it",
     o3.indexOf(">Logged</th>") >= 0 && o3.indexOf("Length not logged") >= 0);
   /* Zero in the declared column means either nobody filled it in or the property does not
      exist, and those are completely different problems. */
-  ok("a missing property is named as a setup step rather than showing as a silent zero",
-    o3.indexOf("declared length field is not set up yet") >= 0 &&
-    o3.indexOf("manual_call_minutes") >= 0);
+  /* HubSpot does not permit a custom property on the Log call widget, so the banner must
+     not tell anybody to put one there. Its own documentation says the duration field is
+     not editable in that form either. */
+  ok("a missing setup is named, and names only routes HubSpot actually allows",
+    o3.indexOf("No way to record a length has been set up yet") >= 0 &&
+    o3.indexOf("manual_call_minutes") >= 0 && o3.indexOf("Call types") >= 0 &&
+    o3.indexOf("does not allow a custom property on the Log call form") >= 0 &&
+    o3.indexOf("add it to the call logging form") < 0);
   ok("the page says screenshots are marked and not read",
     o3.indexOf("marked but not read") >= 0);
   ok("and that follow up is the value now, not as it stood on the day",
