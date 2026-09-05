@@ -779,7 +779,17 @@ function lgFlagPills(l){
   if (l.noFollowUp) h += "<span class='pill a'>no follow up</span> ";
   if (l.counselling && l.unknown) h += "<span class='pill' style='background:#F2EFE7;color:#6B5B37'>no duration</span> ";
   else if (l.counselling && l.short) h += "<span class='pill a'>under " + Math.round((LG.shortMs || 600000) / 60000) + " min</span> ";
-  if (l.screenshot) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='The only record of length is an image the agent attached. Not read.'>screenshot</span> ";
+  if (l.screenshot) {
+    /* The image itself is not read, so the least this can do is take you to it. */
+    var pid = LG.portal || {};
+    var cid = (l.shotIds || [])[0];
+    var tip = "The only record of length is an image the agent attached. Not read by the app.";
+    h += cid && pid.uiDomain
+      ? "<a class='pill' style='background:#EEF1F5;color:#42526B;text-decoration:none' target='_blank' rel='noopener' " +
+        "title='" + tip + " Opens the call in HubSpot.' href='https://" + esc(pid.uiDomain) +
+        "/calls/" + esc(String(pid.portalId)) + "/review/" + esc(String(cid)) + "'>screenshot &nearr;</a> "
+      : "<span class='pill' style='background:#EEF1F5;color:#42526B' title='" + tip + "'>screenshot</span> ";
+  }
   if (l.noteMs) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='Length taken from what the agent typed in the call note'>note " + lgMins(l.noteMs) + "</span> ";
   return h || "<span class='mut'>clean</span>";
 }
@@ -795,6 +805,11 @@ function lgLeadRows(ownerId){
     var ev = l.counselling || (l.repeat[0] || l.reopened[0] || l.dropped[0] || l.progress[0]);
     var talk = l.unknown ? "<span class='mut' title='No call on this lead carried a duration'>not recorded</span>"
       : lgMins(l.callMs + l.meetMs + l.noteMs);
+    /* Named, because the lead-level rule cannot tell a counselling from a group session
+       that happens to have one lead attached. The title usually can. */
+    var mt = (l.meetings || []).map(function(m){
+      return "<div class='mut' style='font-size:11px'>meeting " + lgMins(m.durMs) + ": " +
+        esc(m.title || "untitled") + "</div>"; }).join("");
     return "<tr>" +
       "<td>" + esc(l.name) + (l.counselling ? "" : " <span class='mut' style='font-size:11px'>not a first counselling</span>") + "</td>" +
       "<td class='mut'>" + esc(l.creator || "") + "</td>" +
@@ -803,7 +818,7 @@ function lgLeadRows(ownerId){
       "<td class='mut'>" + (ev ? esc(ev.fromLabel) : "") + "</td>" +
       "<td class='n'>" + fmt(l.calls) + "</td>" +
       "<td class='n'>" + talk + "</td>" +
-      "<td>" + lgFlagPills(l) + "</td>" +
+      "<td>" + lgFlagPills(l) + mt + "</td>" +
       "</tr>";
   }).join("");
 }
@@ -865,11 +880,15 @@ function renderLedger(){
     "<th>Agent</th><th class='n'>Couns</th>" +
     "<th class='n'>Repeat</th><th class='n'>Reopened</th><th class='n'>Dropped</th>" +
     "<th class='n'>No FU</th><th class='n'>Short</th><th class='n'>Unknown</th>" +
-    "<th class='n'>Calls</th><th class='n'>Calls talk</th><th class='n'>Meetings</th><th class='n'>Total talk</th>" +
+    "<th class='n' title='Counsellings logged with a screenshot instead of a dialled call. " +
+    "These carry no duration in HubSpot. Open the agent to click through to the image.'>WhatsApp</th>" +
+    "<th class='n'>Calls</th><th class='n'>Calls talk</th>" +
+    "<th class='n' title='Meetings held on a lead, measured by the recording, not by the slot booked'>Meetings</th>" +
+    "<th class='n'>Total talk</th>" +
     "</tr></thead><tbody>";
 
   if (!rows.length) {
-    h += "<tr><td colspan='12' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
+    h += "<tr><td colspan='13' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
   }
   rows.forEach(function(r){
     var open = !!LG_OPEN[r.id];
@@ -884,13 +903,16 @@ function renderLedger(){
       "<td class='n " + (r.noFollowUp ? "ca" : "mut") + "'>" + fmt(r.noFollowUp) + "</td>" +
       "<td class='n " + (r.short ? "ca" : "mut") + "'>" + fmt(r.short) + "</td>" +
       "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
+      "<td class='n " + (r.screenshot ? "" : "mut") + "'>" + fmt(r.screenshot) + "</td>" +
       "<td class='n'>" + fmt(r.calls) + "</td>" +
       "<td class='n'>" + lgMins(r.callMs) + "</td>" +
-      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) + "</td>" +
+      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) +
+        (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) +
+          (r.meetings === 1 ? " meeting" : " meetings") + "</div>" : "") + "</td>" +
       "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
       "</tr>";
     if (open) {
-      h += "<tr><td colspan='12' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
+      h += "<tr><td colspan='13' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
         (r.calls && !r.callMs ? "<div class='warn'><b>" + fmt(r.calls) + " calls carrying no duration between them.</b> " +
           "Either a day of dials nobody answered or conversations whose length never reached HubSpot. " +
           "The two look identical from here.</div>" : "") +
@@ -926,8 +948,10 @@ function lgCsv(){
     ["NoFollowUp", function(r){ return r.noFollowUp; }],
     ["UnderTenMinutes", function(r){ return r.short; }],
     ["LengthUnknown", function(r){ return r.unknown; }],
+    ["LoggedWithScreenshot", function(r){ return r.screenshot; }],
     ["Calls", function(r){ return r.calls; }],
     ["CallTalkMinutes", function(r){ return Math.round(r.callMs / 60000); }],
+    ["Meetings", function(r){ return r.meetings; }],
     ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
     ["NoteMinutes", function(r){ return Math.round(r.noteMs / 60000); }],
     ["TotalTalkMinutes", function(r){ return Math.round(r.talkMs / 60000); }]

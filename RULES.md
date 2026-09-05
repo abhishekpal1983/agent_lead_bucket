@@ -1050,6 +1050,17 @@ so is the honest output.
 A meeting length or a length typed into the note settles the question, so neither `unknown`
 nor `short` may stand once one of those is present.
 
+### Where WhatsApp shows up
+
+Both of these were computed on the server and rendered nowhere in the first cut, which is
+the quiet way to lose a column: the number is correct, in a payload nobody opens.
+
+There is now a **WhatsApp** column on the agent row counting counsellings logged with a
+screenshot instead of a dialled call, and the screenshot pill in the lead expander is a
+link to that call in HubSpot, where the image itself is. The app does not read the picture;
+it takes you to it in one click. On 4 September that column would read 9 for Nithin Thomas
+and 2 for Riya Sharma, and zero for everybody else.
+
 ### Screenshots are marked, not read
 
 Reading the images needs the Files API and a vision model, and it was deferred on purpose.
@@ -1070,9 +1081,24 @@ number.
 `hs_meeting_outcome` must not be used as the conducted test. It says `SCHEDULED` on a
 meeting whose recording ran 82 minutes. The presence of a recording duration is the test.
 
-**Only meetings attached to a lead count.** Most recorded meetings in this portal are
-creator sessions, the Airbnb Journey and the engineering sprints, and counting those would
-drop several hours a week of webinar into an agent's talktime.
+**Only meetings attached to a lead count**, and that rule is weaker than it first looks.
+It does exclude meetings with no contact on them. It does not separate a counselling from a
+group session that happens to have one lead attached, and the first real example checked
+proves it: the only meeting with a recording on 4 September was "From Beginner to Host:
+Ritu's Airbnb Journey", 82 minutes, owned by Abhay Kumar Gupta, and it *is* attached to a
+lead, Ritu Singh, who had reached deal won. That is legitimate lead work by a counselling
+agent, so counting it is right. A roundtable with twenty attendees and one contact attached
+would also be counted, and would be wrong.
+
+So the meeting title is printed next to every meeting in the lead expander, because the
+title is the only thing that reliably separates the two and a human reading the row can do
+it in a second. Do not add a title-matching rule for this: the naming is not consistent
+enough to carry a number.
+
+Volume is low and that matters for expectations. Across the whole portal only 165 meetings
+in 30 days carry a recording duration, and on 4 September there was exactly one. This
+column will read zero for most agents on most days. That is the truth about the data, not a
+bug in the view.
 
 ## 40. The ledger is built once a night, not swept
 

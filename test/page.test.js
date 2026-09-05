@@ -962,6 +962,7 @@ ok("the month picker and the page filters both reload it",
     error: null, truncated: false, shortMs: 600000, scoped: false, isVP: true,
     screenshotsRead: false, followUpIsCurrentValue: true,
     counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
+    portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
     teams: [{ id: "t1", name: "Team Sid" }],
     totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
       noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000, noteMs: 2400000 },
@@ -980,7 +981,8 @@ ok("the month picker and the page filters both reload it",
       { id: "L1", name: "Dee Sehgal", owner: "201", creator: "simrankhokha", stage: "counselled",
         counselling: ev("counselling", "discovery", "Discovery", "", T), progress: [], repeat: [],
         reopened: [], dropped: [], calls: 2, callMs: 3000000, withDuration: 2, meetMs: 2400000,
-        noteMs: 0, screenshot: false, unknown: false, short: false, noFollowUp: false },
+        noteMs: 0, screenshot: false, unknown: false, short: false, noFollowUp: false,
+        shotIds: [], meetings: [{ id: "M1", title: "Counselling call", durMs: 2400000 }] },
       { id: "L2", name: "Komal Verma", owner: "201", creator: "ayush_singh13", stage: "discovery",
         counselling: null, progress: [], repeat: [ev("repeat", "discovery", "Discovery", "program_pitched", T)],
         reopened: [], dropped: [], calls: 1, callMs: 0, withDuration: 0, meetMs: 0, noteMs: 0,
@@ -988,7 +990,8 @@ ok("the month picker and the page filters both reload it",
       { id: "L3", name: "Winston K", owner: "204", creator: "payalineurope", stage: "counselled",
         counselling: ev("counselling", "counselled", "Counselled", "dnp_did_not_pick", T),
         progress: [], repeat: [], reopened: [], dropped: [], calls: 2, callMs: 0, withDuration: 0,
-        meetMs: 0, noteMs: 0, screenshot: true, unknown: true, short: false, noFollowUp: false }
+        meetMs: 0, noteMs: 0, screenshot: true, unknown: true, short: false, noFollowUp: false,
+        shotIds: ["C9001"], meetings: [] }
     ]
   };
   lgCtx.LG = payload; lgCtx.LG_DATE = payload.date;
@@ -1024,6 +1027,19 @@ ok("the month picker and the page filters both reload it",
     o3.indexOf(">no follow up</span>") >= 0, o3.indexOf(">repeat</span>") + "/" + o3.indexOf(">no follow up</span>"));
   ok("a lead that is not a first counselling says so rather than being hidden",
     o3.indexOf("not a first counselling") >= 0);
+  /* Both of these were computed on the server and rendered nowhere, which is a silent
+     way to lose a column: the number is right, in a payload nobody reads. */
+  ok("WhatsApp logged counsellings have a column of their own",
+    o3.indexOf(">WhatsApp</th>") >= 0 && o3.indexOf("carry no duration in HubSpot") >= 0);
+  ok("and the screenshot pill links through to the call in HubSpot",
+    o3.indexOf("/calls/244132076/review/C9") >= 0 && o3.indexOf("screenshot &nearr;") >= 0,
+    o3.indexOf("review/"));
+  ok("meetings show how many as well as how long",
+    o3.indexOf("1 meeting</div>") >= 0);
+  /* The lead-level rule cannot tell a counselling from a group session that happens to
+     have one lead attached. The title can, so it is on screen. */
+  ok("and each meeting is named, since the title is how you tell a 1:1 from a group call",
+    o3.indexOf("meeting 40m: Counselling call") >= 0);
   ok("the page says screenshots are marked and not read",
     o3.indexOf("marked but not read") >= 0);
   ok("and that follow up is the value now, not as it stood on the day",

@@ -7556,6 +7556,12 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       calls: talk.calls, callMs: talk.ms, withDuration: talk.withDuration,
       meetMs: mtg, noteMs: noteMs,
       screenshot: mine.some(function(x){ return x.attach; }),
+      /* The call records carrying the image, so the page can link to them. Reading the
+         image is deferred; being one click from looking at it yourself is not. */
+      shotIds: mine.filter(function(x){ return x.attach; })
+        .reduce(function(a, x){ return a.concat(x.ids || [x.id]); }, []).slice(0, 4),
+      meetings: (meetsByLead[c.id] || []).map(function(m){
+        return { id: m.id, title: m.title, durMs: m.durMs }; }),
       /* A meeting or a note length answers "how long was this" just as well as a call
          duration, so neither unknown nor short may stand once one is present. */
       unknown: talk.unknown && !mtg && !noteMs,
@@ -7680,6 +7686,7 @@ app.get("/api/vp/ledger", async function(req, res){
         unknown: sum("unknown"), calls: sum("calls"), talkMs: sum("talkMs"),
         meetMs: sum("meetMs"), noteMs: sum("noteMs") },
       rows: rows, leads: leads,
+      portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot forget to say it. */
       screenshotsRead: false,
       followUpIsCurrentValue: true

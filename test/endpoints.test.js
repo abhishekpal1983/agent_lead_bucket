@@ -873,6 +873,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     /* Free before anybody pays to read an image: the agent typed the length in the note. */
     ok("a length typed into the call note is read and used",
       lg.body.totals.noteMs > 0, String(lg.body.totals.noteMs));
+    ok("a screenshot call carries its id, so the image is one click away",
+      (lg.body.leads || []).some(function(l){ return l.screenshot && (l.shotIds || []).length; }) &&
+      lg.body.portal && lg.body.portal.portalId,
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.screenshot; })
+        .map(function(l){ return l.shotIds; })));
+    ok("and the agent row counts them, rather than leaving it to the expander",
+      (lg.body.rows || []).some(function(r){ return r.screenshot > 0; }),
+      JSON.stringify((lg.body.rows || []).map(function(r){ return r.screenshot; })));
+    ok("meetings arrive named, because a title is how a 1:1 is told from a group session",
+      (lg.body.leads || []).some(function(l){
+        return (l.meetings || []).some(function(m){ return m.title; }); }));
     ok("the payload says out loud that screenshots are not read",
       lg.body.screenshotsRead === false && lg.body.followUpIsCurrentValue === true);
 
