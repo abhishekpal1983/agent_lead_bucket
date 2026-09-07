@@ -212,12 +212,15 @@ function draw(){
     (one ? "" : "<th>Agent</th><th>Team</th>") +
     "<th class='n'>FreJun</th><th class='n'>Calls</th><th class='n'>Meetings</th>" +
     "<th class='n'>WhatsApp</th><th class='n'>Total</th><th style='width:100px'>Split</th>" +
-    "<th class='n'>Logged</th>" + (one ? "" : "<th></th>") +
+    "<th class='n' title='Of the calls nothing measured, how many the agent gave a length for'>Logged</th>" + (one ? "" : "<th></th>") +
     "</tr></thead><tbody>";
   if (!rows.length)
     h += "<tr><td colspan='10' class='mut' style='padding:14px'>Nothing on the phone this day.</td></tr>";
   rows.forEach(function(r){
-    var can = (r.waCalls || r.meetings);
+    /* Whether there is anything behind the row, not whether the agent used the call type.
+       An agent who writes "duration: 26" without setting the type has real calls to show,
+       and gating on waCalls left their time in the total with no way to check it. */
+    var can = (r.declaredCalls || r.waCalls || r.meetings);
     h += "<tr class='" + (amended[r.id] ? "amend" : "") + (can ? " clik" : "") + "'" +
       (can ? " onclick=\"toggle('" + esc(String(r.id)) + "')\"" : "") + ">" +
       (one ? "" : "<td><b>" + esc(r.name) + "</b>" +
@@ -228,11 +231,15 @@ function draw(){
       "<td class='n " + (r.meetMs ? "" : "zero") + "'>" + mins(r.meetMs) +
         (r.meetings ? "<div class='mut'>" + fmt(r.meetings) + "</div>" : "") + "</td>" +
       "<td class='n " + (r.declaredMs ? "" : "zero") + "'>" + mins(r.declaredMs) +
-        (r.waCalls ? "<div class='mut'>" + fmt(r.waCalls) + " calls</div>" : "") + "</td>" +
+        (r.declaredCalls ? "<div class='mut'>" + fmt(r.declaredCalls) +
+          (r.declaredCalls === 1 ? " call" : " calls") +
+          /* Worth seeing: time supplied without the call type set is the adoption gap. */
+          (r.waCalls < r.declaredCalls ? ", " + fmt(r.declaredCalls - r.waCalls) + " untyped" : "") +
+          "</div>" : "") + "</td>" +
       "<td class='n'><b>" + mins(r.talkMs) + "</b></td>" +
       "<td>" + bar(r.callMs, r.meetMs, r.declaredMs, max) + "</td>" +
-      "<td class='n " + (r.waMissing ? "hot" : "mut") + "'>" +
-        (r.waCalls ? (r.waCalls - r.waMissing) + " of " + r.waCalls : "&ndash;") + "</td>" +
+      "<td class='n " + (r.needLength > r.declaredCalls ? "hot" : "mut") + "'>" +
+        (r.needLength ? r.declaredCalls + " of " + r.needLength : "&ndash;") + "</td>" +
       (one ? "<td>" + (can ? "<span class='mut'>" + (OPEN[r.id] ? "hide" : "show") +
         " calls</span>" : "") + "</td>" : "<td>" + (amended[r.id]
         ? "<span class='pill p-red'>amended after lock</span>" : "") + "</td>") +

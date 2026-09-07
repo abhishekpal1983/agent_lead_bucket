@@ -1157,7 +1157,8 @@ ok("the month picker and the page filters both reload it",
   const row = function(id, name, team, call, meet, decl){
     return { id: id, name: name, team: team, teamId: "t1", callMs: call, meetMs: meet,
       declaredMs: decl, talkMs: call + meet + decl, calls: 40, waCalls: decl ? 2 : 0,
-      waMissing: 0, meetings: meet ? 1 : 0 };
+      waMissing: 0, declaredCalls: decl ? 2 : 0, needLength: decl ? 2 : 0,
+      meetings: meet ? 1 : 0 };
   };
   const base = function(o){
     return Object.assign({
@@ -1239,6 +1240,28 @@ ok("the month picker and the page filters both reload it",
     const shut = run(withDetail);
     ok("the calls behind a total are hidden until the row is opened",
       shut.html.indexOf("Dee Sehgal") < 0 && shut.html.indexOf("show the WhatsApp calls") >= 0);
+    /* The bug this replaced: the gate asked for typed WhatsApp calls, so an agent who
+       wrote a duration in the note without setting the type showed time with no way to
+       check it. */
+    ok("a row opens on declared time even when the call type was never set",
+      (function(){
+        const untyped = run(base({
+          detail: { wa: [{ owner: "9", callId: "c9", contact: "L9", name: "Someone",
+            ms: 1560000, at: Date.parse("2026-09-04T09:00:00Z"), typed: false, missing: false }],
+            meetings: [] },
+          portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
+          rows: [Object.assign({}, row("9", "Bibin Christopher", "Prashant", 5640000, 0, 1560000),
+            { waCalls: 0, declaredCalls: 1, needLength: 1 })] }));
+        return untyped.html.indexOf("show the WhatsApp calls") >= 0 &&
+          untyped.html.indexOf("1 call, 1 untyped") >= 0;
+      })());
+    ok("and the fill rate reads against calls nothing measured, not calls that were typed",
+      (function(){
+        const partial = run(base({
+          rows: [Object.assign({}, row("9", "Sid Menon", "Anand", 5640000, 0, 1080000),
+            { waCalls: 0, declaredCalls: 1, needLength: 2 })] }));
+        return partial.html.indexOf("1 of 2") >= 0;
+      })());
     const els2 = {};
     const ctx2 = { console: { log(){}, error(){} },
       document: { getElementById: function(id){ els2[id] = els2[id] || { innerHTML: "" }; return els2[id]; },

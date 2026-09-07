@@ -911,9 +911,9 @@ function renderLedger(){
     "screenshot. None of these carry a duration from HubSpot, so a length has to come from " +
     "the agent.'>WhatsApp</th>" +
     "<th class='n'>Calls</th>" +
-    "<th class='n' title='Share of the calls that were meant to carry a length and do. " +
-    "Measured against WhatsApp typed calls where the agent has typed them, and against all " +
-    "calls otherwise, so a floor of unanswered dials cannot flatter it.'>Logged</th>" +
+    "<th class='n' title='Of the calls nothing measured, how many the agent supplied a " +
+    "length for. Calls FreJun timed are excluded, so a floor of unanswered dials cannot " +
+    "flatter it.'>Logged</th>" +
     "<th class='n' title='Timed by FreJun or by a meeting recording'>Measured</th>" +
     "<th class='n' title='Typed in by the agent. Not verified, and shown apart for that reason.'>Declared</th>" +
     "<th class='n'>Total talk</th>" +
@@ -935,15 +935,15 @@ function renderLedger(){
       "<td class='n " + (r.noFollowUp ? "ca" : "mut") + "'>" + fmt(r.noFollowUp) + "</td>" +
       "<td class='n " + (r.short ? "ca" : "mut") + "'>" + fmt(r.short) + "</td>" +
       "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
-      "<td class='n " + (r.waCalls || r.screenshot ? "" : "mut") + "'>" +
-        fmt(r.waCalls || r.screenshot) +
+      "<td class='n " + (r.declaredCalls || r.waCalls || r.screenshot ? "" : "mut") + "'>" +
+        fmt(r.declaredCalls || r.waCalls || r.screenshot) +
         (r.waMissing ? "<div class='cr' style='font-size:11px'>" + fmt(r.waMissing) + " with no length</div>" : "") +
       "</td>" +
       "<td class='n'>" + fmt(r.calls) + "</td>" +
       "<td class='n " + (r.logged == null ? "mut" : r.logged < 50 ? "cr" : r.logged < 90 ? "ca" : "cg") + "'>" +
         (r.logged == null ? "&ndash;" : r.logged + "%") +
-        (r.loggedOf === "wa" ? "<div class='mut' style='font-size:11px'>of WA calls</div>"
-          : r.lengthMissing ? "<div class='mut' style='font-size:11px'>" + fmt(r.lengthMissing) + " blank</div>" : "") +
+        (r.needLength ? "<div class='mut' style='font-size:11px'>of " + fmt(r.needLength) +
+          " unmeasured</div>" : "") +
       "</td>" +
       "<td class='n'>" + lgMins(r.measuredMs) +
         (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) +

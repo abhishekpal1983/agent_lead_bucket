@@ -1356,9 +1356,20 @@ call number on the site. Reading FreJun directly would be a second integration t
 and the two would not tie out exactly, because FreJun counts ring time and calls that never
 sync. If a cross-check is ever wanted, that is the reason to do it, not accuracy.
 
-The **Logged** column is the fill rate on WhatsApp calls specifically, because those are the
-only ones where a length has to come from a person. An agent showing 3 of 8 there has five
-conversations nobody can evaluate.
+The **Logged** column is the fill rate on the calls that needed a person to supply a length:
+the ones nothing measured. An agent showing 3 of 8 there has five conversations nobody can
+evaluate.
+
+It counted only calls typed as WhatsApp at first, and that was wrong. Bibin Christopher
+appeared on the live report with 26 minutes of WhatsApp time, no call count beside it, a
+dash under Logged, and a row that would not open. He writes the duration into the note and
+never sets the call type, which is perfectly reasonable and which the parser handles, but
+every count was gated on the typed flag. **Time sitting in a total that nobody can open is
+worse than no time at all**, so `declaredCalls` counts every call whose length came from the
+agent, typed or not, and the row opens on that.
+
+The untyped ones are shown as such on the row, "3 calls, 2 untyped", because the gap between
+those two numbers is the call type's adoption rate and is worth watching on its own.
 
 ## 46. The locked talktime report, and what a lock can honestly mean
 

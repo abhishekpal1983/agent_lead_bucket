@@ -963,13 +963,18 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
     /* FreJun writes a duration of 0 on a dial that rang out. That is a measurement, and
        reading it as missing marked most of the floor as unrecorded, because most dials go
        unanswered. Only an absent duration property is ignorance. */
-    ok("a dial timed at nought counts as measured, not as a missing length",
-      (function(){
-        const zeroOnly = (lg.body.rows || []).filter(function(r){
-          return r.calls > 0 && r.measuredMs === 0 && r.declaredTotalMs === 0; })[0];
-        return zeroOnly && zeroOnly.lengthMissing === 0 && zeroOnly.logged === 100;
-      })(), JSON.stringify((lg.body.rows || []).map(function(r){
-        return [r.name, r.calls, r.measuredMs, r.lengthMissing, r.logged]; })));
+    ok("a dial timed at nought counts as measured, not as a missing length", (function(){
+      /* Located through the fixture: the call FreJun timed and got nothing back. Naming an
+         agent here breaks the moment a case is added to their day. */
+      const F = require("../fixtures/make.js");
+      const rang = (F.ledgerCalls || []).filter(function(c){
+        return c.hasDur && !c.durMs && !c.declaredMs && !c.isWa; })[0];
+      if (!rang) return false;
+      const lead = (lg.body.leads || []).filter(function(l){
+        return String(l.id) === String(rang.contact); })[0];
+      // Timed at nothing is knowledge. It is not a length we are missing.
+      return lead && lead.lengthMissing === 0 && lead.unknown === false;
+    })(), "the fixture holds a dial timed at nought seconds");
     /* The real practice: FreJun logs the call, the agent writes it up by hand so the
        notes live somewhere. One conversation, two records, measured on the floor at 1, 8,
        16 and 70 minutes apart, so a two minute window catches almost none of them. */
@@ -995,11 +1000,19 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         return l.waCalls > 0 && l.callMs > 0 && l.calls > 1; }),
       JSON.stringify((lg.body.leads || []).filter(function(l){ return l.waCalls; })
         .map(function(l){ return [l.name, l.calls, l.callMs, l.noteMs]; })));
-    ok("the fill rate is measured against WhatsApp calls once the agent types them",
-      (lg.body.rows || []).some(function(x){ return x.loggedOf === "wa"; }) &&
+    /* The denominator is calls nothing measured, whether or not the agent set the type.
+       Counting only typed ones made an agent who writes durations without the type read as
+       a dash, with their time still in the total. */
+    ok("the fill rate is measured against every call that needed a person",
       (lg.body.rows || []).every(function(x){
-        return x.loggedOf !== "wa" || x.waMissing <= x.waCalls; }),
-      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.waCalls, x.logged, x.loggedOf]; })));
+        return x.needLength === x.declaredCalls + x.lengthMissing; }) &&
+      (lg.body.rows || []).some(function(x){ return x.loggedOf === "manual"; }),
+      JSON.stringify((lg.body.rows || []).map(function(x){
+        return [x.name, x.declaredCalls, x.lengthMissing, x.needLength, x.logged]; })));
+    ok("and an agent with nothing manual is given no rate rather than a flattering zero",
+      (lg.body.rows || []).every(function(x){
+        return x.needLength > 0 ? x.logged !== null : x.logged === null; }),
+      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.needLength, x.logged]; })));
     /* Declaring a length is the agent saying this was its own call, so it must survive
        the write-up merge even on a lead that also had a FreJun call that day. */
     ok("a declared WhatsApp call on the same lead is not absorbed into the FreJun one",
@@ -1172,6 +1185,41 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ok("and the meeting lines add up to the meeting column",
         (tt.body.detail.meetings || []).reduce(function(n, x){ return n + x.ms; }, 0) ===
           tt.body.totals.meetMs);
+      /* Straight off the live report: an agent wrote a duration in the note and never set
+         the call type. The row showed 26 minutes with no call count, no expander and a dash
+         under Logged, because everything was gated on the typed count. Time in a total
+         nobody can open is worse than no time at all. */
+      ok("declared time is counted per call whether or not the type was set",
+        (tt.body.rows || []).some(function(r){ return r.declaredCalls > r.waCalls; }),
+        JSON.stringify((tt.body.rows || []).map(function(r){
+          return [r.name, r.declaredCalls, r.waCalls]; })));
+      ok("and every agent holding declared time has lines behind it",
+        (tt.body.rows || []).filter(function(r){ return r.declaredMs > 0; })
+          .every(function(r){
+            return (tt.body.detail.wa || []).filter(function(x){
+              return String(x.owner) === String(r.id); }).length > 0; }),
+        JSON.stringify((tt.body.rows || []).filter(function(r){ return r.declaredMs > 0; })
+          .map(function(r){ return [r.name, r.declaredCalls]; })));
+      ok("the line count matches the call count on the row, so neither can drift",
+        (tt.body.rows || []).every(function(r){
+          return (tt.body.detail.wa || []).filter(function(x){
+            return String(x.owner) === String(r.id); }).length === r.declaredCalls; }),
+        JSON.stringify((tt.body.rows || []).map(function(r){
+          return [r.name, r.declaredCalls,
+            (tt.body.detail.wa || []).filter(function(x){
+              return String(x.owner) === String(r.id); }).length]; })));
+      /* The denominator is calls nothing measured, not calls the agent typed. A floor of
+         unanswered FreJun dials must not dilute it either way. */
+      ok("the fill rate counts what needed a person, not what was typed",
+        (tt.body.rows || []).every(function(r){
+          return r.needLength === r.declaredCalls + r.lengthMissing ||
+                 r.lengthMissing === undefined; }) &&
+        (tt.body.rows || []).some(function(r){ return r.needLength > r.declaredCalls; }),
+        JSON.stringify((tt.body.rows || []).map(function(r){
+          return [r.name, r.declaredCalls, r.needLength]; })));
+      ok("and an agent with nothing manual at all gets no fill rate rather than a zero",
+        (tt.body.rows || []).every(function(r){
+          return r.needLength > 0 || !r.declaredMs; }));
       ok("a call typed as WhatsApp is told apart from one read out of a note",
         (tt.body.detail.wa || []).some(function(x){ return x.typed; }) &&
         (tt.body.detail.wa || []).some(function(x){ return !x.typed; }));

@@ -382,6 +382,22 @@ quiet.forEach(function(r, i){
   hcall("204", r.id, 12 + i, 40, 0, "INTEGRATION");
 });
 
+/* 20. Bibin's shape, straight off the live report: the agent writes a duration in the call
+       note but never sets the call type. The time is real and lands in the total, and the
+       first version counted only typed calls, so the row showed 26 minutes with no call
+       count, no expander and a dash under Logged. Time in a total that cannot be opened is
+       worse than no time at all. */
+const untyped = rows.filter(function(r){ return r.owner === "204" && !history[r.id]; })[0];
+if (untyped) {
+  history[untyped.id] = [{ value: "counselled", timestamp: HTODAY(16, 45) }];
+  untyped.fu = D(2026, 8, 15, 11);
+  lseq++;
+  ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, 16) + 30 * 60000,
+    durMs: 0, disposition: "", owner: "204", source: "CRM_UI", contact: String(untyped.id),
+    body: "<div><p>WA call duration: 26</p><p>Call notes: spoke about the cohort</p></div>",
+    attach: false, declaredMs: 0, hasDur: false, isWa: false });
+}
+
 /* 19. What the live snippet on the Log call form actually produces: a labelled duration on
        one line and the notes on the next, with other numbers in them. The label is the
        strongest signal there is, because the agent answered a question rather than

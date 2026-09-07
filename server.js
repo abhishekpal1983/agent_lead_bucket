@@ -7899,7 +7899,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
       counsellings: 0, progress: 0, repeat: 0, reopened: 0, dropped: 0,
       noFollowUp: 0, short: 0, unknown: 0, screenshot: 0,
       calls: 0, callMs: 0, meetMs: 0, noteMs: 0, declaredMs: 0,
-      lengthMissing: 0, waCalls: 0, waMissing: 0, meetings: 0 };
+      lengthMissing: 0, waCalls: 0, waMissing: 0, declaredCalls: 0, needLength: 0,
+      meetings: 0 };
     return agents[id];
   };
   leads.forEach(function(l){
@@ -7930,6 +7931,12 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
        supposed to carry a length and starts knowing. */
     a.waCalls = callsByOwner[oid].filter(function(c){ return c.isWa; }).length;
     a.waMissing = callsByOwner[oid].filter(function(c){ return c.isWa && c.lengthMissing; }).length;
+    /* Every call whose length came from the agent, typed as WhatsApp or not. An agent can
+       write "duration: 26" on a call they never set the type on, and the first version
+       counted only the typed ones, so their time appeared in the total with nothing behind
+       it and the row would not open. */
+    a.declaredCalls = callsByOwner[oid].filter(function(c){
+      return (c.declaredMs || 0) + (c.noteMs || 0) > 0; }).length;
   });
   Object.keys(meetsByOwner).forEach(function(oid){
     const a = agent(oid);
@@ -7946,13 +7953,13 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
     a.measuredMs = a.callMs + a.meetMs;
     a.declaredTotalMs = a.declaredMs + a.noteMs;
     a.talkMs = a.measuredMs + a.declaredTotalMs;
-    /* Measured against the calls that were meant to carry a length, when the agent has
-       said which those are, and against everything otherwise. A floor of unanswered FreJun
-       dials should not dilute the number that is supposed to chase WhatsApp calls. */
-    a.logged = a.waCalls
-      ? Math.round(100 * (a.waCalls - a.waMissing) / a.waCalls)
-      : (a.calls ? Math.round(100 * (a.calls - a.lengthMissing) / a.calls) : null);
-    a.loggedOf = a.waCalls ? "wa" : "all";
+    /* The honest denominator is "calls that needed a person to supply a length", which is
+       the ones nothing measured: those that got one, plus those still blank. Counting only
+       typed WhatsApp calls made an agent who writes durations without setting the type
+       read as a dash, and a floor of unanswered FreJun dials must not dilute it either. */
+    a.needLength = a.declaredCalls + a.lengthMissing;
+    a.logged = a.needLength ? Math.round(100 * a.declaredCalls / a.needLength) : null;
+    a.loggedOf = a.needLength ? "manual" : "none";
     a.flagged = a.repeat + a.reopened + a.dropped;
     return a;
   });
@@ -8280,7 +8287,9 @@ app.get("/api/talktime", async function(req, res){
       rows = (built.rows || []).map(function(r){
         return { id: String(r.id), name: r.name, callMs: r.callMs || 0, meetMs: r.meetMs || 0,
           declaredMs: r.declaredTotalMs || 0, talkMs: r.talkMs || 0, calls: r.calls || 0,
-          waCalls: r.waCalls || 0, waMissing: r.waMissing || 0, meetings: r.meetings || 0 };
+          waCalls: r.waCalls || 0, waMissing: r.waMissing || 0,
+          declaredCalls: r.declaredCalls || 0, needLength: r.needLength || 0,
+          meetings: r.meetings || 0 };
       });
       detail = built.talkDetail || detail;
     }
@@ -8310,8 +8319,9 @@ app.get("/api/talktime", async function(req, res){
       locked: locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
       totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
         declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
-        waCalls: sum("waCalls"), waMissing: sum("waMissing"), meetings: sum("meetings"),
-        amended: log.length },
+        waCalls: sum("waCalls"), waMissing: sum("waMissing"),
+        declaredCalls: sum("declaredCalls"), needLength: sum("needLength"),
+        meetings: sum("meetings"), amended: log.length },
       rows: rows, log: log, detail: detail,
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot quietly imply otherwise. */
