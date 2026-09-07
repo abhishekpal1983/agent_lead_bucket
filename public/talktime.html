@@ -59,6 +59,8 @@ tr.exp td{background:#F7F9FB;padding:0}
 .dtab{background:transparent;font-size:12.5px}
 .dtab td{padding:5px 7px;border-bottom:1px solid #E9EEF3}
 .dtab tr:last-child td{border-bottom:0}
+.signout{margin-left:8px;font-size:12px;color:#6B7A8A;text-decoration:none}
+.signout:hover{color:#0A2540;text-decoration:underline}
 .foot{color:#8794A3;font-size:11.5px;line-height:1.6;margin-top:12px}
 a{color:#0A5A8C}
 </style>
@@ -170,8 +172,12 @@ function draw(){
   var max = rows.reduce(function(n,r){ return Math.max(n, r.talkMs); }, 0);
   var one = j.you.role === "agent";
 
+  /* Signing out has to be reachable from the page somebody is actually on. Without it the
+     only way to change account is to clear a cookie, which nobody outside engineering is
+     going to do, and HR arriving on the wrong session had no way back. */
   document.getElementById("who").innerHTML =
-    "<span class='ctl who'>" + esc(j.you.email) + " &middot; " + esc(j.you.scope) + "</span>";
+    "<span class='ctl who'>" + esc(j.you.email) + " &middot; " + esc(j.you.scope) + "</span>" +
+    "<a class='signout' href='/auth/logout'>Sign out</a>";
 
   var h = "<div class='sec'>";
   h += "<div class='bar'>" +

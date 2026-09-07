@@ -1427,6 +1427,21 @@ percent-encoded are all refused. The destination travels inside the **signed** s
 than as a query parameter on the callback, so it cannot be swapped in flight after Google
 hands the browser back.
 
+### There was no way to sign out
+
+Worth recording because it went unnoticed for months. `/auth/logout` existed the whole time,
+but the only page linking to it was `callnow.html`, the retired v1. The live Call Now,
+Revenue command and the talktime report had none, so the only way to change account was to
+clear a cookie, which nobody outside engineering will do.
+
+It surfaced when HR landed on the wrong page and could not get off it, but agents were the
+ones most affected: they are the likeliest to be on a shared machine. The link is now on all
+three, and on the calling floor it deliberately sits outside the VP-only nav, which is where
+it would naturally have been put and where it would have helped nobody.
+
+The identity bar fetches `/api/me` and swallows its own failures. Page chrome must never be
+the reason a page fails to render.
+
 ### Three scopes, defaulting to nothing
 
 HR from `HR_EMAILS` and VPs see everyone, a team manager sees their team, an agent sees

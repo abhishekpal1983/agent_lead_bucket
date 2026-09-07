@@ -1190,7 +1190,8 @@ function drawNav(){
     return "<a href='" + t[0] + "'" + (t[2] ? " target='_blank' rel='noopener'" : "") + ">" + t[1] + " &nearr;</a>";
   }).join("");
   document.getElementById("who").innerHTML = (J.me ? esc(J.me) + "<br>" : "") +
-    (J.isVP ? "VP access" : "Manager, your team only");
+    (J.isVP ? "VP access" : "Manager, your team only") +
+    (J.me ? "<br><a href='/auth/logout' style='color:inherit;opacity:.75;font-size:11px'>Sign out</a>" : "");
 }
 function draw(){
   var h = "";

@@ -696,12 +696,33 @@ tr.done td a{color:#4A5A6A}
     <a class="ico" href="/vp.html">Revenue command &nearr;</a>
     <a class="ico" href="/coaching.html">Call coaching &nearr;</a>
   </span>
+  <!-- Everybody signed in needs a way out, not just a VP. This page had none at all, so
+       the only way to change account was to clear a cookie. -->
+  <span id="mebar" style="display:none;align-items:center;gap:9px;font-size:11.5px;color:#697386"></span>
 </div>
 <div class="wrap">
   <div id="loading"><div class="spin"></div>Loading</div>
   <div id="app" style="display:none"></div>
 </div>
 <script>
+/* Who is signed in, and the way out. Asked for once and cached on the element, because
+   this is chrome and must never be a reason the page fails to render. */
+var ME=null;
+function drawMe(){
+  var el=document.getElementById("mebar");
+  if(!el)return;
+  if(ME===null){
+    ME=false;
+    fetch("/api/me").then(function(r){return r.ok?r.json():null;})
+      .then(function(j){ ME=j||false; drawMe(); }).catch(function(){});
+    return;
+  }
+  if(!ME||!ME.authOn||!ME.email){el.style.display="none";return;}
+  el.style.display="flex";
+  el.innerHTML="<span>"+esc(ME.name||ME.email)+"</span>"+
+    "<a href='/auth/logout' style='color:#697386;text-decoration:none'>Sign out</a>";
+}
+
 
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var W=null,WFILT="uncalled",WOPEN={},WTHREAD={};
@@ -2403,6 +2424,7 @@ function draw(){
   if(sub&&J.scoped)sub.textContent="Your calling list, locked at midnight. It does not change during the day, so what you work against is fixed.";
   var nav=document.getElementById("vpnav");
   if(nav)nav.style.display=J.isVP?"flex":"none";
+  drawMe();
   // Four full width bars stacked on top of each other pushed the tables below the fold.
   // Two columns instead: controls on the left, the state of today's list on the right.
   // A VP gets the machinery: what the list is, what is held aside, how it compares to v1,

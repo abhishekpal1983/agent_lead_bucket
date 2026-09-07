@@ -1317,5 +1317,29 @@ ok("the month picker and the page filters both reload it",
     none.html.indexOf("owner email in HubSpot") >= 0);
 }
 
+/* Signing out.
+
+   Only the retired v1 page had a way out, so nobody on the floor could change account
+   without clearing a cookie, and HR arriving on somebody else's session were stuck. */
+{
+  const pages = [
+    ["callnow2.html", "the calling floor"],
+    ["talktime.html", "the talktime report"],
+    ["vp.html", "Revenue command"]
+  ];
+  pages.forEach(function(pg){
+    const src = fs.readFileSync(path.join(__dirname, "..", "public", pg[0]), "utf8");
+    ok(pg[1] + " offers a way to sign out", src.indexOf("/auth/logout") >= 0, pg[0]);
+  });
+  /* A VP-only nav is the wrong place for it: an agent needs it more, since an agent is
+     the one most likely to be on a shared machine. */
+  const cn = fs.readFileSync(path.join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  ok("and on the calling floor it is not hidden behind the VP nav",
+    cn.indexOf('id="mebar"') >= 0 &&
+    cn.slice(cn.indexOf('id="mebar"')).indexOf("isVP") > cn.slice(cn.indexOf('id="mebar"')).indexOf("/auth/logout"));
+  ok("the identity bar cannot stop the page rendering if it fails",
+    cn.indexOf('.catch(function(){});') >= 0 && cn.indexOf('r.ok?r.json():null') >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
