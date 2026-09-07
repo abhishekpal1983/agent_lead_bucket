@@ -1386,7 +1386,15 @@ their own row. Anything unrecognised sees nothing, because the failure that matt
 showing one agent another agent's numbers.
 
 HR needs the explicit list: they own no leads and lead no team, so the existing role rule
-would file them as an agent with no owner id and hand them an empty page. An agent whose
+would file them as an agent with no owner id and hand them an empty page. `HR_EMAILS`
+defaults to `ayushree@topmate.io`, `anushree@topmate.io` and `hr@topmate.io`, in code rather
+than only in Railway, the same way `MANAGER_EMAILS` carries a default, so the report is not
+one missed environment variable away from locking HR out.
+
+The volume was confirmed before any of this was called live: `/api/health` reports
+`orgPersistent: true` against `dataDir: /data`, so locks survive a deploy. That endpoint now
+also reports the talktime lock state, deliberately without requiring a sign in, because
+somebody has to be able to check the lock is real before telling a floor that it is. An agent whose
 address is not a HubSpot owner is told exactly that rather than shown a blank table.
 
 Agents see the log entries about their own day. Nobody is marked against without being able

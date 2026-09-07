@@ -1369,6 +1369,21 @@ app.get("/api/health", function(req, res){
           })(),
           /* The create-date months, warmed nightly. A month that quietly stopped
              refreshing looks like a month where nothing happened. */
+          /* The talktime lock. Readable without signing in, on purpose: somebody has to
+             be able to confirm the lock is real before telling a floor it is. A lock
+             people trust and that is not there is worse than no lock at all. */
+          talktime: (typeof TALK === "undefined") ? null : {
+            persistent: !!TALK.persistent, lockAt: TALK_LOCK_HM, recheckAt: TALK_RECHECK_HM,
+            since: TALK.since || null, hrCount: HR_EMAILS.length,
+            lockedDays: Object.keys(TALK.days || {}).length,
+            logEntries: (TALK.log || []).length,
+            recent: Object.keys(TALK.days || {}).sort().slice(-5).map(function(k){
+              const d = TALK.days[k];
+              return { day: k, lockedAt: d.lockedAt, late: !!d.late,
+                agents: Object.keys(d.rows || {}).length,
+                rechecked: d.rechecked || null, amended: d.amended || 0 };
+            })
+          },
           /* The counselling ledger. A day that quietly stopped building looks exactly
              like a day on which nobody counselled anybody. */
           ledger: (typeof LEDGER_CACHE === "undefined") ? null : {
@@ -7991,7 +8006,8 @@ const TALK_KEEP_DAYS = parseInt(process.env.TALK_KEEP_DAYS || "120", 10);
 const TALK_LOG_MAX = parseInt(process.env.TALK_LOG_MAX || "4000", 10);
 /* HR are not lead owners and lead no team, so without an explicit list the role rule
    below would file them as agents with no owner id and show them an empty page. */
-const HR_EMAILS = (process.env.HR_EMAILS || "").split(",")
+const HR_EMAILS = (process.env.HR_EMAILS ||
+  "ayushree@topmate.io,anushree@topmate.io,hr@topmate.io").split(",")
   .map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
 
 let TALK = { days: {}, log: [], since: "", persistent: false };

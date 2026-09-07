@@ -1114,6 +1114,30 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ok("and the store says whether any of this survives a deploy",
         typeof tt.body.persistent === "boolean");
     }
+    /* Who gets what. The failure that matters here is showing one agent another agent's
+       numbers, so the scope rule is checked in the source rather than only through a
+       fixture session, which runs with auth off. */
+    {
+      const src = require("fs").readFileSync(
+        require("path").join(__dirname, "..", "server.js"), "utf8");
+      const scope = src.split("function talkScope(req)")[1].slice(0, 1200);
+      ok("HR is an explicit list, since they own no leads and lead no team",
+        /HR_EMAILS\.indexOf\(em\) >= 0/.test(scope) && src.indexOf("hr@topmate.io") >= 0);
+      ok("and the three HR addresses are configured",
+        ["ayushree@topmate.io", "anushree@topmate.io", "hr@topmate.io"]
+          .every(function(e){ return src.indexOf(e) >= 0; }));
+      ok("a manager is scoped to the teams they actually lead",
+        /managerEmail/.test(scope) && /role: "manager"/.test(scope));
+      ok("an agent is scoped to their own owner id",
+        /ownerIdForEmail\(em\)/.test(scope) && /role: "agent"/.test(scope));
+      /* An unrecognised address must see nothing, never everything. Defaulting the other
+         way is the one mistake here that cannot be walked back. */
+      ok("and anything unrecognised is given nothing rather than everything",
+        /role: "none", email: em, ids: \[\]/.test(scope));
+      ok("health reports whether the lock survives a deploy, without signing in",
+        src.indexOf("persistent: !!TALK.persistent, lockAt: TALK_LOCK_HM") >= 0);
+    }
+
 
     /* Creator targets split across the weeks of the month. */
     const cw = await get("/api/vp/creator-weeks");
