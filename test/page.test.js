@@ -1173,6 +1173,13 @@ ok("the month picker and the page filters both reload it",
     }, o || {});
   };
 
+  const detail = {
+    wa: [{ owner: "2", callId: "396778580729", contact: "544479878869", name: "Dee Sehgal",
+      ms: 1320000, at: Date.parse("2026-09-04T10:13:00Z"), typed: true, missing: false }],
+    meetings: [{ owner: "1", meetingId: "397003688666", contact: "543659356863",
+      name: "Ritu Singh", title: "Counselling call", ms: 2400000,
+      at: Date.parse("2026-09-04T11:45:00Z") }]
+  };
   const hr = run(base());
   ok("the talktime page renders", !hr.err, hr.err && hr.err.message);
   ok("a locked day shows the time it was closed",
@@ -1207,6 +1214,54 @@ ok("the month picker and the page filters both reload it",
     amended.html.indexOf("cannot change the figure") >= 0);
   ok("the amended row is marked, not just listed underneath",
     amended.html.indexOf("amended after lock</span>") >= 0);
+
+  /* A total cannot answer "which calls", so the expander does. */
+  {
+    /* The meeting belongs to the first agent, so that row has to carry a meeting or it
+       never becomes expandable and the meeting half of this tests nothing. */
+    const withDetail = base({ detail: detail,
+      portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
+      rows: [Object.assign({}, row("1", "Bibin Christopher", "Prashant", 11035098, 2400000, 0),
+               { meetings: 1 }),
+             row("2", "Nithin Thomas", "Anand", 306479, 0, 1320000)] });
+    const shut = run(withDetail);
+    ok("the calls behind a total are hidden until the row is opened",
+      shut.html.indexOf("Dee Sehgal") < 0 && shut.html.indexOf("show the WhatsApp calls") >= 0);
+    const els2 = {};
+    const ctx2 = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ els2[id] = els2[id] || { innerHTML: "" }; return els2[id]; },
+        createElement: function(){ return { click(){} }; } },
+      location: { href: "" }, fetch: function(){ return new Promise(function(){}); },
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, URL: { createObjectURL(){ return ""; } },
+      Blob: function(){}, setTimeout(){}, setInterval(){} };
+    ctx2.window = ctx2; vm.createContext(ctx2); vm.runInContext(tscript, ctx2);
+    ctx2.T = withDetail; ctx2.OPEN = { "1": true, "2": true };
+    let e2 = null; try { ctx2.draw(); } catch (e) { e2 = e; }
+    ok("the expander renders", !e2, e2 && e2.message);
+    const o = els2.app.innerHTML;
+    ok("a WhatsApp call names the lead and links to it in HubSpot",
+      o.indexOf("Dee Sehgal") >= 0 &&
+      o.indexOf("/contacts/244132076/record/0-1/544479878869") >= 0);
+    ok("and links to the call itself, where the note and any screenshot are",
+      o.indexOf("/calls/244132076/review/396778580729") >= 0);
+    ok("a meeting names its lead and what the meeting was",
+      o.indexOf("Ritu Singh") >= 0 && o.indexOf("Counselling call") >= 0 &&
+      o.indexOf("/contacts/244132076/record/0-1/543659356863") >= 0);
+    ok("the two sources are labelled, since one is measured and one is not",
+      o.indexOf("length entered by the agent") >= 0 &&
+      o.indexOf("measured by the recording") >= 0);
+    /* A row can be expandable and still have nothing behind it, when the WhatsApp calls
+       were counted but their detail did not survive. Saying so beats an empty box. */
+    ok("an expandable row with nothing behind it says so rather than opening blank",
+      (function(){
+        ctx2.T = base({ detail: { wa: [], meetings: [] },
+          portal: { uiDomain: "x", portalId: "1" },
+          rows: [row("2", "Nithin Thomas", "Anand", 306479, 0, 1320000)] });
+        ctx2.OPEN = { "2": true }; ctx2.draw();
+        return els2.app.innerHTML.indexOf("needs no checking") >= 0;
+      })());
+  }
 
   /* A lock nobody can trust is worse than no lock, so this is shouted. */
   const novol = run(base({ persistent: false }));

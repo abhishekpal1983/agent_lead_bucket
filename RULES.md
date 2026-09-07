@@ -1405,3 +1405,28 @@ to read the mark.
 The endpoint suite locks the fixture day, edits a WhatsApp call through to HubSpot, proves
 the edit really landed, proves the report did not move, and proves the recheck named it. A
 lock that is never actually attacked in a test is not a tested lock.
+
+## 47. The expander behind the two columns nobody can verify
+
+FreJun time is measured by a dialler and needs no checking. The WhatsApp and meeting columns
+do, because one is a number a person typed and the other is a duration attached to a meeting
+that may or may not have been lead work. A total cannot answer "which calls", so opening an
+agent's row lists them: time, lead, length, and where the length came from.
+
+Every line links to the lead in HubSpot, and a WhatsApp call also links to the call itself,
+which is where the agent's note and any screenshot are. Names are resolved from the day's
+own contacts first, then the cache, and only then by a batch read, so this normally costs
+nothing and never more than one request for the dozen or so a day.
+
+**The detail is frozen with the totals.** A locked day serves its expander from the store,
+not from HubSpot. Read live it would list calls that disagree with the very numbers it is
+meant to explain, which is the one thing an audit trail cannot do. The endpoint suite checks
+that the lines sum exactly to the column, before and after an edit lands in HubSpot.
+
+### One builder, or the test lies
+
+The locked record is assembled only by `talkRecordOf`. The fixture-only lock hook used to
+build it by hand and quietly omitted the detail, so the suite locked days whose expander was
+empty while production's was not, and every test about the expander passed against a shape
+that did not exist. A second place that builds the same structure is a second place to
+forget a field.

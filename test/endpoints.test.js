@@ -1096,6 +1096,9 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       ok("but the locked report does not move",
         tt.body.totals.declaredMs === openWa && tt.body.totals.talkMs === openTotal,
         JSON.stringify({ locked: openWa, showing: tt.body.totals.declaredMs }));
+      ok("and the expander stays frozen with it, still adding to the locked column",
+        (tt.body.detail.wa || []).reduce(function(n, x){ return n + x.ms; }, 0) === openWa,
+        JSON.stringify({ lines: (tt.body.detail.wa || []).length, column: openWa }));
 
       await get("/api/_test/recheck?date=" + TD);
       tt = await get("/api/talktime?date=" + TD);
@@ -1113,6 +1116,44 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         (await get("/api/talktime?date=2099-01-01")).status === 400);
       ok("and the store says whether any of this survives a deploy",
         typeof tt.body.persistent === "boolean");
+
+      /* A declared figure invites the question "which calls", and a total cannot answer
+         it. The expander is the answer, and it has to be frozen with the totals: read
+         live it would list calls that disagree with the numbers it explains. */
+      ok("every WhatsApp call and meeting behind the totals is listed",
+        (tt.body.detail.wa || []).length > 0 && (tt.body.detail.meetings || []).length > 0,
+        JSON.stringify({ wa: (tt.body.detail.wa || []).length,
+          mt: (tt.body.detail.meetings || []).length }));
+      ok("each one carries the lead, so it can be opened in HubSpot",
+        (tt.body.detail.wa || []).every(function(x){ return x.contact && x.callId; }) &&
+        (tt.body.detail.meetings || []).every(function(x){ return x.contact; }),
+        JSON.stringify((tt.body.detail.wa || [])[0]));
+      ok("and a name, since a lead id in a link helps nobody checking a number",
+        (tt.body.detail.wa || []).every(function(x){ return !!x.name; }),
+        JSON.stringify((tt.body.detail.wa || []).map(function(x){ return x.name; })));
+      ok("the portal is sent, or none of those links can be built",
+        tt.body.portal && tt.body.portal.uiDomain && tt.body.portal.portalId);
+      ok("the WhatsApp lines add up to the WhatsApp column exactly",
+        (tt.body.detail.wa || []).reduce(function(n, x){ return n + x.ms; }, 0) ===
+          tt.body.totals.declaredMs,
+        JSON.stringify({ lines: (tt.body.detail.wa || []).reduce(function(n, x){ return n + x.ms; }, 0),
+          column: tt.body.totals.declaredMs }));
+      ok("and the meeting lines add up to the meeting column",
+        (tt.body.detail.meetings || []).reduce(function(n, x){ return n + x.ms; }, 0) ===
+          tt.body.totals.meetMs);
+      ok("a call typed as WhatsApp is told apart from one read out of a note",
+        (tt.body.detail.wa || []).some(function(x){ return x.typed; }) &&
+        (tt.body.detail.wa || []).some(function(x){ return !x.typed; }));
+      /* The test hook used to build the locked record by hand and left the detail out, so
+         the suite locked a day whose expander was empty while production's was not. Both
+         paths now go through talkRecordOf. */
+      ok("the locked detail is built by the same function production uses",
+        (function(){
+          const src = require("fs").readFileSync(
+            require("path").join(__dirname, "..", "server.js"), "utf8");
+          return (src.match(/talkRecordOf\(/g) || []).length >= 3 &&
+                 src.indexOf("detail: got.snap.detail") >= 0;
+        })());
     }
     /* Who gets what. The failure that matters here is showing one agent another agent's
        numbers, so the scope rule is checked in the source rather than only through a

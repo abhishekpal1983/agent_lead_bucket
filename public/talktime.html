@@ -50,6 +50,15 @@ tr:last-child td{border-bottom:0}
 code{background:#EEF1F5;padding:0 4px;border-radius:3px;font-size:11.5px}
 .btn{border:1px solid #D6DEE7;background:#fff;border-radius:8px;padding:6px 11px;
   font-size:13px;cursor:pointer;font-family:inherit}
+tr.clik{cursor:pointer}
+tr.clik:hover{background:#F7F9FB}
+tr.exp td{background:#F7F9FB;padding:0}
+.expin{padding:10px 12px 12px}
+.dhead{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;
+  color:#42526B;margin:6px 0 4px}
+.dtab{background:transparent;font-size:12.5px}
+.dtab td{padding:5px 7px;border-bottom:1px solid #E9EEF3}
+.dtab tr:last-child td{border-bottom:0}
 .foot{color:#8794A3;font-size:11.5px;line-height:1.6;margin-top:12px}
 a{color:#0A5A8C}
 </style>
@@ -61,7 +70,7 @@ a{color:#0A5A8C}
   <div id="app"><div class="sec">Loading...</div></div>
 </div>
 <script>
-var T = null, DATE = "";
+var T = null, DATE = "", OPEN = {};
 function esc(s){ return String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
@@ -72,6 +81,61 @@ function mins(ms){
   return m >= 60 ? Math.floor(m/60) + "h " + String(m%60).padStart(2,"0") + "m" : m + "m";
 }
 function hhmm(iso){ return String(iso || "").slice(11,16); }
+function clock(ms){ return new Date((ms||0) + 5.5*3600000).toISOString().slice(11,16); }
+function toggle(id){ OPEN[id] = !OPEN[id]; draw(); }
+/* A declared figure invites the question "which calls", and a total cannot answer it. Each
+   line links to the lead in HubSpot, and a WhatsApp call also links to the call itself,
+   where the agent's own note and any screenshot are. */
+function leadLink(contact, name){
+  var p = T.portal || {};
+  var label = esc(name || ("Lead " + contact));
+  if (!contact || !p.uiDomain) return label;
+  return "<a href='https://" + esc(p.uiDomain) + "/contacts/" + esc(String(p.portalId)) +
+    "/record/0-1/" + esc(contact) + "' target='_blank' rel='noopener'>" + label + " &nearr;</a>";
+}
+function callLink(callId){
+  var p = T.portal || {};
+  if (!callId || !p.uiDomain) return "";
+  return " <a class='mut' href='https://" + esc(p.uiDomain) + "/calls/" +
+    esc(String(p.portalId)) + "/review/" + esc(String(callId)) +
+    "' target='_blank' rel='noopener'>call &nearr;</a>";
+}
+function detailFor(id){
+  var d = T.detail || { wa: [], meetings: [] };
+  var wa = (d.wa || []).filter(function(x){ return String(x.owner) === String(id); });
+  var mt = (d.meetings || []).filter(function(x){ return String(x.owner) === String(id); });
+  if (!wa.length && !mt.length)
+    return "<div class='mut' style='padding:9px 2px'>No WhatsApp calls or meetings on this day. " +
+      "The FreJun time above is measured by the dialler and needs no checking.</div>";
+  var h = "";
+  if (wa.length) {
+    h += "<div class='dhead'>WhatsApp calls <span class='mut'>length entered by the agent</span></div>" +
+      "<table class='dtab'><tbody>";
+    wa.forEach(function(x){
+      h += "<tr><td style='width:58px' class='mut'>" + clock(x.at) + "</td>" +
+        "<td>" + leadLink(x.contact, x.name) + callLink(x.callId) + "</td>" +
+        "<td class='n' style='width:90px'>" +
+          (x.ms ? mins(x.ms) : "<span class='hot'>no length</span>") + "</td>" +
+        "<td style='width:96px'>" + (x.typed
+          ? "<span class='pill p-gry'>typed WA</span>" : "<span class='mut'>from the note</span>") +
+        "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  if (mt.length) {
+    h += "<div class='dhead'>Meetings <span class='mut'>measured by the recording</span></div>" +
+      "<table class='dtab'><tbody>";
+    mt.forEach(function(x){
+      h += "<tr><td style='width:58px' class='mut'>" + clock(x.at) + "</td>" +
+        "<td>" + leadLink(x.contact, x.name) +
+          (x.title ? "<div class='mut'>" + esc(x.title) + "</div>" : "") + "</td>" +
+        "<td class='n' style='width:90px'>" + mins(x.ms) + "</td>" +
+        "<td style='width:96px' class='mut'>recorded</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  return h;
+}
 function load(d){
   document.getElementById("app").innerHTML = "<div class='sec'>Reading the day...</div>";
   fetch("/api/talktime" + (d ? "?date=" + encodeURIComponent(d) : ""))
@@ -145,8 +209,12 @@ function draw(){
   if (!rows.length)
     h += "<tr><td colspan='10' class='mut' style='padding:14px'>Nothing on the phone this day.</td></tr>";
   rows.forEach(function(r){
-    h += "<tr class='" + (amended[r.id] ? "amend" : "") + "'>" +
-      (one ? "" : "<td><b>" + esc(r.name) + "</b></td><td class='mut'>" + esc(r.team || "no team") + "</td>") +
+    var can = (r.waCalls || r.meetings);
+    h += "<tr class='" + (amended[r.id] ? "amend" : "") + (can ? " clik" : "") + "'" +
+      (can ? " onclick=\"toggle('" + esc(String(r.id)) + "')\"" : "") + ">" +
+      (one ? "" : "<td><b>" + esc(r.name) + "</b>" +
+        (can ? "<div class='mut'>" + (OPEN[r.id] ? "hide" : "show") + " the WhatsApp calls and meetings</div>" : "") +
+        "</td><td class='mut'>" + esc(r.team || "no team") + "</td>") +
       "<td class='n'>" + mins(r.callMs) + "</td>" +
       "<td class='n mut'>" + fmt(r.calls) + "</td>" +
       "<td class='n " + (r.meetMs ? "" : "zero") + "'>" + mins(r.meetMs) +
@@ -157,9 +225,14 @@ function draw(){
       "<td>" + bar(r.callMs, r.meetMs, r.declaredMs, max) + "</td>" +
       "<td class='n " + (r.waMissing ? "hot" : "mut") + "'>" +
         (r.waCalls ? (r.waCalls - r.waMissing) + " of " + r.waCalls : "&ndash;") + "</td>" +
-      (one ? "" : "<td>" + (amended[r.id]
+      (one ? "<td>" + (can ? "<span class='mut'>" + (OPEN[r.id] ? "hide" : "show") +
+        " calls</span>" : "") + "</td>" : "<td>" + (amended[r.id]
         ? "<span class='pill p-red'>amended after lock</span>" : "") + "</td>") +
       "</tr>";
+    if (can && OPEN[r.id]) {
+      h += "<tr class='exp'><td colspan='" + (one ? 7 : 10) + "'>" +
+        "<div class='expin'>" + detailFor(r.id) + "</div></td></tr>";
+    }
   });
   h += "</tbody></table></div>";
 

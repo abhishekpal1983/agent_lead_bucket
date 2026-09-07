@@ -7691,8 +7691,46 @@ function ledgerFixture(dayKey){
   const meets = (F.meetings || []).filter(function(m){
     return m.at >= b.start && m.at < b.end && !!m.contact; });
   const built = ledgerBuild(dayKey, contacts, hist, calls, meets);
+  const byId = {};
+  (F.rows || []).forEach(function(r){ byId[String(r.id)] = r.name; });
+  (built.talkDetail ? built.talkDetail.wa.concat(built.talkDetail.meetings) : [])
+    .forEach(function(x){ if (!x.name && byId[x.contact]) x.name = byId[x.contact]; });
   built.at = cn2Now();
   return built;
+}
+
+/* A lead id in a link is useless to a human checking a number. There are about a dozen of
+   these a day across the whole floor, and most are already in the contact cache, so this
+   usually costs nothing and never more than one request. */
+async function ledgerNameDetail(built){
+  const d = built.talkDetail;
+  if (!d) return;
+  const all = d.wa.concat(d.meetings);
+  const want = {};
+  all.forEach(function(x){ if (x.contact && !x.name) want[x.contact] = 1; });
+  const ids = Object.keys(want);
+  if (!ids.length) return;
+  const found = {};
+  (CACHE.contacts || []).forEach(function(c){
+    if (c && want[String(c.id)]) {
+      found[String(c.id)] = ((c.firstname || "") + " " + (c.lastname || "")).trim() ||
+        c.email || c.phone || "";
+    }
+  });
+  const miss = ids.filter(function(id){ return !found[id]; }).slice(0, 200);
+  if (miss.length && TOKEN) {
+    for (let i = 0; i < miss.length; i += 100) {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST",
+        body: JSON.stringify({ properties: ["firstname", "lastname", "email", "phone"],
+          inputs: miss.slice(i, i + 100).map(function(id){ return { id: id }; }) }) });
+      ((j && j.results) || []).forEach(function(r){
+        const q = r.properties || {};
+        found[String(r.id)] = ((q.firstname || "") + " " + (q.lastname || "")).trim() ||
+          q.email || q.phone || "";
+      });
+    }
+  }
+  all.forEach(function(x){ if (!x.name && found[x.contact]) x.name = found[x.contact]; });
 }
 
 async function ledgerFetch(dayKey){
@@ -7717,6 +7755,8 @@ async function ledgerFetch(dayKey){
   }
 
   const built = ledgerBuild(dayKey, changed.rows, hist, calls, meets);
+  try { await ledgerNameDetail(built); }
+  catch (e) { console.error("ledger detail names: " + e.message); }
   built.truncated = changed.truncated;
   built.error = error;
   LEDGER_CACHE[dayKey] = built;
@@ -7888,7 +7928,34 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     return a;
   });
 
+  /* The individual WhatsApp calls and meetings behind the two columns nobody can verify
+     from a total. A declared figure invites the question "which calls", and a total cannot
+     answer it. Carries the lead so the page can link straight into HubSpot. */
+  const talkDetail = { wa: [], meetings: [] };
+  merged.forEach(function(c){
+    const ms = (c.declaredMs || 0) + (c.noteMs || 0);
+    if (!c.isWa && !ms) return;
+    talkDetail.wa.push({ owner: String(c.owner || ""), callId: (c.ids || [])[0] || c.id,
+      contact: String(c.contact || ""), ms: ms, at: c.at || 0,
+      typed: !!c.isWa, missing: !!c.lengthMissing });
+  });
+  meets.forEach(function(m){
+    talkDetail.meetings.push({ owner: String(m.owner || ""), meetingId: m.id,
+      contact: String(m.contact || ""), title: m.title || "", ms: m.durMs || 0, at: m.at || 0 });
+  });
+  /* Names for free where the day already fetched them. The rest are looked up by the
+     caller, which is the only part of this that costs a request. */
+  const nameOf = {};
+  contacts.forEach(function(c){
+    nameOf[String(c.id)] = ((c.firstname || "") + " " + (c.lastname || "")).trim() ||
+      c.email || c.phone || "";
+  });
+  talkDetail.wa.concat(talkDetail.meetings).forEach(function(d){
+    if (nameOf[d.contact]) d.name = nameOf[d.contact];
+  });
+
   return { at: Date.now(), day: dayKey, rows: rows, leads: leads, error: null,
+    talkDetail: talkDetail,
     /* The merged calls, so the lock can snapshot exactly what an agent typed. Not sent
        to any page: it is a working set, not a payload. */
     declaredCalls: merged.map(function(c){
@@ -8053,6 +8120,7 @@ async function talkCapture(day, phase){
   if (built.error && !(built.rows || []).length) return null;
   const calls = built.declaredCalls || [];
   const snap = TALKLOCK.snapshotOf(built, { calls: calls });
+  snap.detail = built.talkDetail || { wa: [], meetings: [] };
   const rec = TALK.days[day];
   const prev = rec ? { rows: rec.rows, declared: rec.declared } : null;
   const at = new Date(cn2Now()).toISOString();
@@ -8070,6 +8138,19 @@ async function talkCapture(day, phase){
   return { snap: snap, changes: changes, at: at };
 }
 
+/* The locked record, built in exactly one place.
+
+   The test hook used to assemble this itself and quietly left the detail out, so the
+   suite locked a day whose expander was empty while production's was not. A second place
+   that builds the same structure is a second place to forget a field. */
+function talkRecordOf(day, got, late){
+  return { day: day, lockedAt: got.at, late: !!late, lockHm: TALK_LOCK_HM,
+    rows: got.snap.rows, declared: got.snap.declared,
+    /* Frozen with the totals. Read live, an expander lists calls that disagree with the
+       very numbers it is meant to explain. */
+    detail: got.snap.detail, rechecked: null };
+}
+
 /* Close the day. After this the stored rows are what everybody reads, whatever HubSpot
    says later. */
 async function talkLockDue(force){
@@ -8081,9 +8162,7 @@ async function talkLockDue(force){
   try {
     const got = await talkCapture(due.day, "open");
     if (!got) { console.error("Talktime lock " + due.day + ": nothing to lock"); return; }
-    TALK.days[due.day] = { day: due.day, lockedAt: got.at, late: !!due.late,
-      lockHm: TALK_LOCK_HM, rows: got.snap.rows, declared: got.snap.declared,
-      rechecked: null };
+    TALK.days[due.day] = talkRecordOf(due.day, got, due.late);
     talkSave();
     console.log("Talktime locked " + due.day + " at " + got.at +
       (due.late ? " (LATE, the window was missed)" : "") + ": " +
@@ -8151,13 +8230,16 @@ app.get("/api/talktime", async function(req, res){
   if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
   try {
     const rec = TALK.days[day];
-    let rows, locked = null;
+    let rows, locked = null, detail = { wa: [], meetings: [] };
     if (rec) {
-      /* Locked. Served from the store and never re-read, which is the entire point. */
+      /* Locked. Served from the store and never re-read, which is the entire point. The
+         detail is frozen with it: an expander read live would list calls that disagree
+         with the totals it is meant to explain. */
       locked = { at: rec.lockedAt, late: !!rec.late, hm: rec.lockHm,
         rechecked: rec.rechecked || null, amended: rec.amended || 0 };
       rows = Object.keys(rec.rows).map(function(id){
         return Object.assign({ id: id }, rec.rows[id]); });
+      detail = rec.detail || detail;
     } else {
       const built = await ledgerFetch(day);
       rows = (built.rows || []).map(function(r){
@@ -8165,6 +8247,7 @@ app.get("/api/talktime", async function(req, res){
           declaredMs: r.declaredTotalMs || 0, talkMs: r.talkMs || 0, calls: r.calls || 0,
           waCalls: r.waCalls || 0, waMissing: r.waMissing || 0, meetings: r.meetings || 0 };
       });
+      detail = built.talkDetail || detail;
     }
     const teamOf = {}, teamName = {};
     (ORG.teams || []).forEach(function(t){
@@ -8181,6 +8264,10 @@ app.get("/api/talktime", async function(req, res){
        marked against without being able to read the mark. */
     const log = (TALK.log || []).filter(function(e){
       return e.day === day && e.phase === "locked" && inScope(e.owner); });
+    const scoped = function(list){
+      return (list || []).filter(function(x){ return inScope(x.owner); })
+        .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
+    detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
     const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
     res.json({
       date: day, today: today, isToday: day === today,
@@ -8190,7 +8277,8 @@ app.get("/api/talktime", async function(req, res){
         declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
         waCalls: sum("waCalls"), waMissing: sum("waMissing"), meetings: sum("meetings"),
         amended: log.length },
-      rows: rows, log: log,
+      rows: rows, log: log, detail: detail,
+      portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot quietly imply otherwise. */
       canBlockEdits: false
     });
@@ -8205,8 +8293,8 @@ if (CN2_FIXTURE_DATA) {
   app.get("/api/_test/lock", async function(req, res){
     const d = String(req.query.date || "");
     const got = await talkCapture(d, "open");
-    TALK.days[d] = { day: d, lockedAt: new Date(cn2Now()).toISOString(), late: false,
-      lockHm: TALK_LOCK_HM, rows: got.snap.rows, declared: got.snap.declared, rechecked: null };
+    // The same builder production uses, or this locks a different shape than the real one.
+    TALK.days[d] = talkRecordOf(d, got, false);
     res.json({ ok: true });
   });
   app.get("/api/_test/tamper", function(req, res){
