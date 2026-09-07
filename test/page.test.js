@@ -1297,6 +1297,19 @@ ok("the month picker and the page filters both reload it",
       o.indexOf("counted only where a transcript") >= 0);
     /* A notetaker in an empty room records about fifteen minutes of nothing, so the
        recording alone cannot carry a meeting into talktime. */
+    /* A day locked before the transcript rule has entries with no flag on them. Calling
+       those "transcript" asserts something nobody ever checked. */
+    ok("a meeting frozen before the rule existed says so rather than claiming a transcript",
+      (function(){
+        ctx2.T = Object.assign({}, withDetail, { detail: { wa: [], meetings: [
+          { owner: "1", meetingId: "m0", contact: "c0", name: "Ankith Singh Malik",
+            title: "Ankith <> Kushal", ms: 913426,
+            at: Date.parse("2026-09-04T04:30:00Z") }] } });
+        ctx2.OPEN = { "1": true }; ctx2.draw();
+        const f = els2.app.innerHTML;
+        return f.indexOf("counted before the transcript rule") >= 0 &&
+          f.indexOf(">transcript</td>") < 0;
+      })());
     ok("a meeting with no transcript is shown struck through and named as not counted",
       (function(){
         ctx2.T = Object.assign({}, withDetail, { detail: { wa: [], meetings: [

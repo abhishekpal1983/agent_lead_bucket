@@ -5,6 +5,7 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 
 const PORT = 3997;
 let pass = 0, fail = 0;
@@ -37,9 +38,12 @@ function getHead(p){
     req.on("error", reject);
   });
 }
-function post(p){
+function post(p, body){
   return new Promise(function(resolve, reject){
-    const req = http.request({ host: "127.0.0.1", port: PORT, path: p, method: "POST", timeout: 20000 },
+    const data = body == null ? null : JSON.stringify(body);
+    const req = http.request({ host: "127.0.0.1", port: PORT, path: p, method: "POST", timeout: 20000,
+      headers: data ? { "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(data) } : {} },
       function(res){
         let d = "";
         res.on("data", function(c){ d += c; });
@@ -51,6 +55,7 @@ function post(p){
       });
     req.on("timeout", function(){ req.destroy(new Error("timed out")); });
     req.on("error", reject);
+    if (data) req.write(data);
     req.end();
   });
 }
@@ -66,6 +71,13 @@ function getText(p){
   });
 }
 const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+/* The talktime store persists to DATA_DIR by design, which makes this suite remember its
+   last run: a day locked once stays locked, and the change log keeps growing, so the tests
+   about an open day and about a single recorded change both fail on the second run and
+   pass on the first. A suite whose result depends on whether it has been run before is not
+   a suite. */
+try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
 
 (async function(){
   const child = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
@@ -1157,16 +1169,58 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
 
       await get("/api/_test/recheck?date=" + TD);
       tt = await get("/api/talktime?date=" + TD);
+      /* The edited call itself, plus the agent totals it moved. Both matter: the call
+         says what was changed, the totals say what it did to the published figure. */
       ok("the recheck names the change: who, which call, from what to what",
-        (tt.body.log || []).length === 1 &&
-        tt.body.log[0].phase === "locked" && tt.body.log[0].callId &&
-        tt.body.log[0].name && tt.body.log[0].to > tt.body.log[0].from,
+        (tt.body.log || []).some(function(e){
+          return e.phase === "locked" && e.kind === "changed" && e.callId &&
+            e.name && e.to > e.from; }),
         JSON.stringify(tt.body.log));
+      ok("and reports what it did to that agent's published totals",
+        (tt.body.log || []).some(function(e){
+          return e.kind === "total" && e.field === "talkMs" && e.label; }),
+        JSON.stringify((tt.body.log || []).map(function(e){ return [e.kind, e.field]; })));
       ok("and the figure is still the locked one afterwards",
         tt.body.totals.declaredMs === openWa);
       /* Detection is the honest version of prevention here, and the payload says so. */
       ok("the payload admits it cannot block the edit",
         tt.body.canBlockEdits === false);
+
+      /* A lock protects the data from being edited. It must not protect a bug in the
+         arithmetic, or a day stays permanently wrong and "it is locked" becomes the excuse
+         for a number nobody believes. 7 September was closed before the transcript rule
+         landed and froze meeting time a notetaker made in an empty room. */
+      {
+        /* The day already locked above, whose stored figures now differ from a rebuild.
+           That is the same shape as 7 September: locked with one calculation, and the
+           calculation has since changed. */
+        const RD = TD;
+        const noReason = await post("/api/talktime/relock", { date: RD, reason: "x" });
+        ok("a relock without a reason is refused", noReason.status === 400,
+          JSON.stringify(noReason.body));
+        const gone = await post("/api/talktime/relock", { date: "2026-01-01", reason: "a good reason here" });
+        ok("and a day that was never locked cannot be relocked", gone.status === 404);
+        const done = await post("/api/talktime/relock",
+          { date: RD, reason: "Meeting time counted from recordings with no transcript." });
+        ok("a relock with a reason succeeds", done.status === 200 && done.body.ok,
+          JSON.stringify(done.body));
+        ok("and it actually moved something, or this proves nothing",
+          done.body.moved > 0, JSON.stringify(done.body));
+        const after = await get("/api/talktime?date=" + RD);
+        ok("the day is marked as re-locked, with the reason kept",
+          after.body.locked.relocked && after.body.locked.relockReason,
+          JSON.stringify(after.body.locked));
+        /* Once, not twice. talkCapture logs its own diff and the handler logs one with the
+           reason attached, so without suppressing the first every correction was written
+           down twice: once bare, once explained. */
+        ok("every figure that moved is in the log, once, with the reason on it",
+          (after.body.log || []).filter(function(e){ return e.phase === "relock"; }).length ===
+            done.body.moved &&
+          (after.body.log || []).filter(function(e){ return e.phase === "relock"; })
+            .every(function(e){ return e.reason && e.by !== undefined; }),
+          JSON.stringify((after.body.log || []).map(function(e){
+            return [e.phase, e.field || e.callId, e.reason ? "has reason" : "NO REASON"]; })));
+      }
       ok("a future day is refused",
         (await get("/api/talktime?date=2099-01-01")).status === 400);
       ok("and the store says whether any of this survives a deploy",

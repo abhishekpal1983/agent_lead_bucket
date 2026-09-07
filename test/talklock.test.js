@@ -92,6 +92,32 @@ ok("changes roll up per agent with the direction of travel",
     return r["201"] && r["201"].n === 2 && r["201"].deltaMs === 43 * M; })(),
   JSON.stringify(T.byOwner(d)));
 
+console.log("\nA correction has to leave a mark of its own");
+/* Per-call diffing covers what an agent typed and misses everything else. Meeting time
+   changing, or the arithmetic being fixed, moves an agent's totals without touching a
+   single declared call, and the first relock reported "0 figures moved" while visibly
+   changing the numbers. A change log that misses a change is worse than none. */
+{
+  const rowsA = { rows: { "201": { name: "Sid", talkMs: 185 * M, meetMs: 55 * M,
+    callMs: 100 * M, declaredMs: 30 * M } }, declared: {} };
+  const rowsB = { rows: { "201": { name: "Sid", talkMs: 170 * M, meetMs: 40 * M,
+    callMs: 100 * M, declaredMs: 30 * M } }, declared: {} };
+  ok("a total that moved with no call touched is still reported",
+    (function(){ const d = T.diff(rowsA, rowsB, { rows: true });
+      return d.length === 2 &&
+        d.some(function(e){ return e.field === "meetMs" && e.from === 55 * M && e.to === 40 * M; }) &&
+        d.some(function(e){ return e.field === "talkMs"; }); })(),
+    JSON.stringify(T.diff(rowsA, rowsB, { rows: true })));
+  ok("and it says which figure moved, in words a person reads",
+    T.diff(rowsA, rowsB, { rows: true }).some(function(e){ return e.label === "meeting time"; }));
+  ok("an unchanged figure is not reported",
+    T.diff(rowsA, rowsB, { rows: true }).every(function(e){ return e.field !== "callMs"; }));
+  /* Off while the day is open, or every call landing writes four entries and buries the
+     ones worth reading. */
+  ok("row totals are left alone unless asked for",
+    T.diff(rowsA, rowsB, {}).length === 0);
+}
+
 console.log("");
 console.log(pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

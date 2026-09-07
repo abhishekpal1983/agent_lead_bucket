@@ -7889,8 +7889,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
   meets = meets.filter(function(m){ return !meetingExcluded(m.owner); });
   /* Kept in the detail so the expander can show them as not counted and say why, rather
      than a meeting disappearing and somebody having to ask where it went. */
-  const meetsSilent = meets.filter(function(m){ return !m.transcript; });
-  meets = meets.filter(function(m){ return !!m.transcript; });
+  const meetsSilent = TALK_TEST_KEEP_SILENT ? [] : meets.filter(function(m){ return !m.transcript; });
+  if (!TALK_TEST_KEEP_SILENT) meets = meets.filter(function(m){ return !!m.transcript; });
 
   const meetsByOwner = {}, meetsByLead = {};
   meets.forEach(function(m){
@@ -8162,6 +8162,8 @@ const TALK_KEEP_DAYS = parseInt(process.env.TALK_KEEP_DAYS || "120", 10);
    always land a few minutes over; flagging that as an incident makes the one signal that
    should mean something mean nothing. */
 const TALK_GRACE_MIN = parseInt(process.env.TALK_GRACE_MIN || "30", 10);
+// Fixture-only, so a test can reproduce a day locked before the transcript rule landed.
+let TALK_TEST_KEEP_SILENT = false;
 const TALK_LOG_MAX = parseInt(process.env.TALK_LOG_MAX || "4000", 10);
 /* HR are not lead owners and lead no team, so without an explicit list the role rule
    below would file them as agents with no owner id and show them an empty page. */
@@ -8207,7 +8209,10 @@ function talkSave(){
 }
 
 /* A day, captured. Used while it is open to keep a trail, and once at 23:59 to close it. */
-async function talkCapture(day, phase){
+/* `quiet` lets a caller take the changes and log them itself. The relock handler does,
+   because it has to attach the reason and the person to each entry, and without this the
+   same correction is written twice: once bare, once explained. */
+async function talkCapture(day, phase, quiet){
   const built = await ledgerFetch(day);
   if (built.error && !(built.rows || []).length) return null;
   const calls = built.declaredCalls || [];
@@ -8217,8 +8222,11 @@ async function talkCapture(day, phase){
   const prev = rec ? { rows: rec.rows, declared: rec.declared } : null;
   const at = new Date(cn2Now()).toISOString();
   /* The first capture of a day is not a change, it is the day appearing. */
-  const changes = prev ? TALKLOCK.diff(prev, snap, { day: day, phase: phase, at: at }) : [];
-  if (changes.length) {
+  /* Row totals are compared once the day is closed, where any movement is worth reading,
+     and not while it is open, where they move on every call. */
+  const changes = prev ? TALKLOCK.diff(prev, snap,
+    { day: day, phase: phase, at: at, rows: phase !== "open" }) : [];
+  if (changes.length && !quiet) {
     TALK.log = (TALK.log || []).concat(changes);
     changes.forEach(function(c){
       if (c.phase === "locked") {
@@ -8335,10 +8343,10 @@ app.post("/api/talktime/relock", express.json(), async function(req, res){
   try {
     delete LEDGER_CACHE[day];
     const before = { rows: rec.rows, declared: rec.declared };
-    const got = await talkCapture(day, "relock");
+    const got = await talkCapture(day, "relock", true);
     if (!got) return res.status(500).json({ error: "could not rebuild that day" });
     const changes = TALKLOCK.diff(before, got.snap,
-      { day: day, phase: "relock", at: new Date(cn2Now()).toISOString() });
+      { day: day, phase: "relock", at: new Date(cn2Now()).toISOString(), rows: true });
     TALK.days[day] = talkRecordOf(day, got, rec.late, rec.lateMin);
     TALK.days[day].relocked = new Date(cn2Now()).toISOString();
     TALK.days[day].relockReason = why;
@@ -8403,8 +8411,12 @@ app.get("/api/talktime", async function(req, res){
 
     /* An agent sees the entries about their own day and nobody else's, so nobody is
        marked against without being able to read the mark. */
+    /* Edits made after the lock, and corrections we made ourselves. Both belong in the
+       same place: somebody reading a figure that moved should not have to know which kind
+       of movement to go looking for. */
     const log = (TALK.log || []).filter(function(e){
-      return e.day === day && e.phase === "locked" && inScope(e.owner); });
+      return e.day === day && (e.phase === "locked" || e.phase === "relock") &&
+        inScope(e.owner); });
     const scoped = function(list){
       return (list || []).filter(function(x){ return inScope(x.owner); })
         .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
@@ -8434,7 +8446,11 @@ app.get("/api/talktime", async function(req, res){
 if (CN2_FIXTURE_DATA) {
   app.get("/api/_test/lock", async function(req, res){
     const d = String(req.query.date || "");
+    /* Lets the test lock a day the way 7 September was locked: before the transcript rule
+       existed, so a notetaker's recording still counted. */
+    if (req.query.keepSilent) TALK_TEST_KEEP_SILENT = true;
     const got = await talkCapture(d, "open");
+    TALK_TEST_KEEP_SILENT = false;
     // The same builder production uses, or this locks a different shape than the real one.
     TALK.days[d] = talkRecordOf(d, got, false, 0);
     res.json({ ok: true });

@@ -1438,6 +1438,11 @@ is IST; this one now says so on its face.
 notetaker generated in an empty room. Without a way back, that day would be permanently
 wrong, and "the number is frozen" would have become an excuse for a number nobody believes.
 
+A locked day serves its expander from the frozen snapshot too, so a day closed before a
+rule existed carries entries with no flag for it. Those must not be labelled as though the
+check had passed: the page shows a third state, "counted before the transcript rule,
+re-lock to recheck". Unknown says unknown.
+
 `POST /api/talktime/relock` rebuilds a locked day. VP only, a written reason required, and
 the figures that moved are written into the change log beside the reason and the person, so
 a correction is part of the record rather than a quiet overwrite. The page shows a re-locked
@@ -1446,6 +1451,16 @@ day as such.
 The distinction worth holding: a lock exists to stop **the data** being edited after the
 fact. It cannot and should not stop us fixing **the calculation**, so long as the fix is
 visible.
+
+### The suite must not remember its last run
+
+The talktime store persists to `DATA_DIR` by design, which quietly made the endpoint suite
+stateful: a day locked once stayed locked, and the change log grew on every run, so the
+tests about an open day and about a single recorded change passed the first time and failed
+afterwards. Both suites now delete `talktime.json` before spawning, and the suite is run
+twice to prove the result is the same.
+
+A suite whose result depends on whether it has been run before is not a suite.
 
 ### The lock has to survive a restart
 

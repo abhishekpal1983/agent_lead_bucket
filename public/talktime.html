@@ -142,15 +142,21 @@ function detailFor(id){
       /* A recording duration on its own is not evidence of a conversation: a notetaker
          that joins an empty room still records about fifteen minutes of nothing. Shown
          anyway, struck through, so a meeting never simply disappears. */
+      /* Three states, not two. A day locked before the transcript rule existed has entries
+         with no flag at all, and calling those "transcript" asserts something we never
+         checked. Unknown says unknown. */
       var out = x.counted === false;
+      var unknown = x.counted === undefined;
       h += "<tr" + (out ? " style='opacity:.55'" : "") + ">" +
         "<td style='width:58px' class='mut'>" + clock(x.at) + "</td>" +
         "<td>" + leadLink(x.contact, x.name) +
           (x.title ? "<div class='mut'>" + esc(x.title) + "</div>" : "") + "</td>" +
         "<td class='n' style='width:90px'>" +
           (out ? "<s>" + mins(x.ms) + "</s>" : mins(x.ms)) + "</td>" +
-        "<td style='width:130px' class='mut'>" +
-          (out ? "no transcript, not counted" : "transcript") + "</td></tr>";
+        "<td style='width:190px' class='mut'>" +
+          (out ? "no transcript, not counted"
+               : unknown ? "counted before the transcript rule, re-lock to recheck"
+               : "transcript") + "</td></tr>";
     });
     h += "</tbody></table>";
   }
@@ -281,10 +287,15 @@ function draw(){
   if ((j.log || []).length) {
     h += "<div class='log'><h3>Changed after the day was locked</h3>";
     j.log.forEach(function(e){
-      h += "<div class='logrow'><b>" + esc(e.name) + "</b> &middot; call <code>" +
-        esc(e.callId) + "</code> " + esc(e.kind) + " " +
+      h += "<div class='logrow'><b>" + esc(e.name) + "</b> &middot; " +
+        (e.kind === "total"
+          ? esc(e.label || e.field)
+          : "call <code>" + esc(e.callId) + "</code> " + esc(e.kind)) + " " +
         mins(e.from) + " to " + mins(e.to) +
-        " &middot; seen " + esc(String(e.at).slice(0,10)) + " " + esc(hhmm(e.at)) + "</div>";
+        " &middot; " + esc(String(e.at).slice(0,10)) + " " + esc(hhmm(e.at)) + " IST" +
+        (e.phase === "relock"
+          ? "<div class='mut'>corrected by " + esc(e.by || "?") + ": " + esc(e.reason || "") + "</div>"
+          : "") + "</div>";
     });
     h += "<div class='logrow' style='color:#6B7A8A'>The locked figure stands. " +
       "The table above shows the day as it was at " + esc(j.lockAt) + ".</div></div>";
@@ -296,13 +307,42 @@ function draw(){
     "A locked day is served exactly as it was closed and is not read from HubSpot again. " +
     "Editing a record afterwards cannot change the figure, and is recorded above." +
     "</div>";
-  h += "<div style='margin-top:12px'><button class='btn' onclick='csv()'>Download CSV</button></div>";
+  h += "<div style='margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
+    "<button class='btn' onclick='csv()'>Download CSV</button>" +
+    /* A lock stops the data being edited after the fact. It must not stop a bug in the
+       arithmetic being corrected, so long as the correction is on the record. */
+    (j.locked && j.you.role === "vp"
+      ? "<button class='btn' onclick='relock()'>Re-lock this day</button>" +
+        "<span class='mut'>rebuilds the day and records what moved, and why</span>"
+      : "") +
+    "</div>";
   h += "</div>";
   document.getElementById("app").innerHTML = h;
 }
 function tile(cls, k, v, s){
   return "<div class='tile " + cls + "'><div class='k'>" + esc(k) + "</div>" +
     "<div class='v'>" + v + "</div><div class='s'>" + esc(s) + "</div></div>";
+}
+function relock(){
+  var why = prompt("Why is this day being re-locked?\n\nThis is written into the change " +
+    "log beside your name and the figures that move.",
+    "Meeting time was counted from recordings with no transcript, which a notetaker " +
+    "produces in an empty room. Rebuilt with the transcript rule.");
+  if (why === null) return;
+  why = String(why).trim();
+  if (why.length < 8) { alert("Say why, in a sentence."); return; }
+  fetch("/api/talktime/relock", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date: T.date, reason: why }) })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j.error) { alert("Could not re-lock: " + j.error); return; }
+      alert("Re-locked " + j.day + ". " + j.moved +
+        (j.moved === 1 ? " figure moved." : " figures moved.") +
+        "\nThe change log below now shows what and why.");
+      load(T.date);
+    })
+    .catch(function(e){ alert("Could not re-lock: " + e.message); });
 }
 function csv(){
   var cols = [
