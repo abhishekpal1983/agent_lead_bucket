@@ -1423,6 +1423,15 @@ not from HubSpot. Read live it would list calls that disagree with the very numb
 meant to explain, which is the one thing an audit trail cannot do. The endpoint suite checks
 that the lines sum exactly to the column, before and after an edit lands in HubSpot.
 
+### Today by default, on every load
+
+`/api/talktime` with no date answers for today, and a reload returns to today rather than
+remembering a picked date. Yesterday is the audited day and the one a manager checks after
+the fact, but the person opening this in the afternoon wants to know where the floor is now,
+and making them change the date every time is the friction that stops people opening a
+report at all. Both days are one click, and an open day says in words that its numbers are
+still moving and will be fixed at 23:59.
+
 ### One builder, or the test lies
 
 The locked record is assembled only by `talkRecordOf`. The fixture-only lock hook used to

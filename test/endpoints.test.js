@@ -1072,6 +1072,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         JSON.stringify(tt.body.totals));
       ok("an open day says so rather than pretending to be closed",
         tt.body.locked === null && tt.body.lockAt === "23:59");
+      /* Whoever opens this at three in the afternoon wants to know where the floor is now.
+         Making them change the date every time is the friction that stops people opening a
+         report at all, and yesterday is one click away. */
+      const dflt = await get("/api/talktime");
+      ok("the default day is today", dflt.body.date === dflt.body.today &&
+        dflt.body.isToday === true,
+        JSON.stringify({ got: dflt.body.date, today: dflt.body.today }));
+      ok("and yesterday is named in the payload, so the page can offer it as one click",
+        dflt.body.yesterday && dflt.body.yesterday < dflt.body.today);
       ok("the three sources stay separate all the way into this payload",
         (tt.body.rows || []).every(function(r){
           return r.talkMs === r.callMs + r.meetMs + r.declaredMs; }),

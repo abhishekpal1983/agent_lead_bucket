@@ -8225,7 +8225,12 @@ app.get("/api/talktime", async function(req, res){
   const scope = talkScope(req);
   if (!scope) return res.status(401).json({ error: "not signed in" });
   const today = istParts(new Date(cn2Now())).date;
-  const day = String(req.query.date || TALKLOCK.prevDay(today));
+  /* Today by default, and on every reload. Yesterday is the audited day and the one a
+     manager checks after the fact, but the person opening this at three in the afternoon
+     wants to know where the floor is now, and having to change the date every time to see
+     that is the sort of friction that stops people opening a report at all. Yesterday is
+     one click away. */
+  const day = String(req.query.date || today);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
   if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
   try {
@@ -8270,7 +8275,7 @@ app.get("/api/talktime", async function(req, res){
     detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
     const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
     res.json({
-      date: day, today: today, isToday: day === today,
+      date: day, today: today, yesterday: TALKLOCK.prevDay(today), isToday: day === today,
       you: { email: scope.email, role: scope.role, scope: scope.label },
       locked: locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
       totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),

@@ -1161,7 +1161,7 @@ ok("the month picker and the page filters both reload it",
   };
   const base = function(o){
     return Object.assign({
-      date: "2026-09-04", today: "2026-09-05", isToday: false,
+      date: "2026-09-04", today: "2026-09-05", yesterday: "2026-09-04", isToday: false,
       you: { email: "hr@topmate.io", role: "hr", scope: "everyone" },
       locked: { at: "2026-09-04T18:29:00Z", late: false, hm: "23:59", rechecked: null, amended: 0 },
       lockAt: "23:59", persistent: true, canBlockEdits: false,
@@ -1182,6 +1182,18 @@ ok("the month picker and the page filters both reload it",
   };
   const hr = run(base());
   ok("the talktime page renders", !hr.err, hr.err && hr.err.message);
+  /* Today is the default, so the two days anybody wants are one click each. */
+  ok("a past day offers a way back to today",
+    hr.html.indexOf(">Today</button>") >= 0);
+  ok("and today says plainly that its numbers are still moving",
+    (function(){
+      const t2 = run(base({ isToday: true, locked: null, date: "2026-09-05",
+        yesterday: "2026-09-04" }));
+      return t2.html.indexOf("Today is still open") >= 0 &&
+        t2.html.indexOf("until 23:59, when the day is closed") >= 0 &&
+        t2.html.indexOf(">Today</button>") < 0 &&
+        t2.html.indexOf(">Yesterday</button>") >= 0;
+    })());
   ok("a locked day shows the time it was closed",
     hr.html.indexOf("LOCKED 18:29") >= 0 && hr.html.indexOf("OPEN until") < 0);
   ok("and names who is looking and how much they get",

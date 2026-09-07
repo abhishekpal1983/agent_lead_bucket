@@ -171,6 +171,11 @@ function draw(){
   var h = "<div class='sec'>";
   h += "<div class='bar'>" +
     "<input type='date' value='" + esc(j.date) + "' max='" + esc(j.today) + "' onchange='load(this.value)'>" +
+    /* The two days anybody actually wants, without going through the picker. Yesterday is
+       the locked one, so it is the day to check; today is the one to watch. */
+    (j.isToday ? "" : "<button class='btn' onclick=\"load('" + esc(j.today) + "')\">Today</button>") +
+    (j.date === j.yesterday ? "" : "<button class='btn' onclick=\"load('" + esc(j.yesterday) +
+      "')\">Yesterday</button>") +
     (j.locked
       ? "<span class='ctl lock'>LOCKED " + esc(hhmm(j.locked.at)) + "</span>"
       : "<span class='ctl open'>OPEN until " + esc(j.lockAt) + "</span>") +
@@ -186,7 +191,10 @@ function draw(){
     h += "<div class='warn'>You are signed in, but no calls are recorded against this address " +
       "in HubSpot, so there is nothing to show. If that is wrong, the owner email in HubSpot " +
       "is the thing to check.</div>";
-  if (!j.locked && !j.isToday)
+  if (j.isToday)
+    h += "<div class='warn'>Today is still open. These numbers are live and will keep moving " +
+      "until " + esc(j.lockAt) + ", when the day is closed and fixed.</div>";
+  else if (!j.locked)
     h += "<div class='warn'>This day was never locked, so these numbers are being read live " +
       "and can still move.</div>";
 
