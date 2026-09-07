@@ -1291,3 +1291,52 @@ formalising a habit rather than introducing one.
 Anything that injects into HubSpot's own UI, whether a Chrome extension or a card, is more
 fragile than both by construction, and the fragility is silent: the column simply goes flat
 and nobody notices for a week.
+
+## 44. The snippet writes a label, so the parser anchors on the label
+
+The live setup is a `Whatsapp Call` call type plus a snippet on the Log call form that
+produces this in `hs_call_body`:
+
+```
+WA call duration: 25
+Call notes: cx has 7yrs exp, 35lpa, wants europe
+```
+
+That is the strongest signal of the three, because the agent answered a question rather
+than happening to write a number near some text. `ledgerLabelMs` anchors on the word
+`duration`, so the numbers in the notes underneath can never be mistaken for the answer,
+and it runs first in the precedence chain.
+
+**The bug worth remembering.** The first version used `\s*` between the number and its
+unit. `\s` crosses a newline, so `duration: 25` followed by `Call notes:` read "Call" as the
+unit, rejected it as not a minutes word, and returned nothing. Every single line test
+passed. Every real record would have failed. Spaces and tabs only, never `\s`, when the
+thing after a value is on the next line.
+
+`ledgerText` now turns block level markup into newlines before any of this runs, for the
+same reason: collapse the body to one line and the label rule reaches across into the notes.
+
+Full precedence on a call with no measured duration: the `manual_call_minutes` property,
+then the labelled note, then `N min` anywhere with the future-promise guard, then a bare
+leading number but only on a call typed as WhatsApp.
+
+## 45. The daily talktime report
+
+Its own view, and deliberately rendered from `/api/vp/ledger`, the same read the counselling
+day uses. Two reports about one day that disagree are worse than one report, and sharing the
+payload makes disagreement impossible rather than unlikely.
+
+Three sources, three columns, never one figure. FreJun timed the call. A meeting recording
+timed itself. The WhatsApp minutes are the agent's own word. They are added into a total
+because a manager needs a usable number, and shown apart because a self reported hour and a
+measured hour are not the same evidence.
+
+**FreJun time comes through HubSpot, not from FreJun's API.** The calls FreJun logs carry
+`hs_call_duration` already, so this needs no new credentials and agrees with every other
+call number on the site. Reading FreJun directly would be a second integration to maintain
+and the two would not tie out exactly, because FreJun counts ring time and calls that never
+sync. If a cross-check is ever wanted, that is the reason to do it, not accuracy.
+
+The **Logged** column is the fill rate on WhatsApp calls specifically, because those are the
+only ones where a length has to come from a person. An agent showing 3 of 8 there has five
+conversations nobody can evaluate.

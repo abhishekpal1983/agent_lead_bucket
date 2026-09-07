@@ -7571,10 +7571,46 @@ function ledgerDeclaredMs(v){
    expi", "current lpa 35lpa", "3 years of experience". A leading number is believed only
    when what follows it is a minutes marker, a separator, or nothing. Anything that looks
    like another unit disqualifies it. */
-const LEDGER_LEAD_RE = /^\s*(?:wa|whatsapp|whatp|wp)?\s*(?:call)?\s*[:\-|,]*\s*(\d{1,3})\s*([a-z]*)/i;
+/* The labelled form, which is what the snippet on the Log call form actually produces:
+
+     WA call duration: 25
+     Call notes: cx has 7yrs exp, wants europe
+
+   This is the strongest signal of the lot, because the agent did not just write a number
+   near some text, they answered a question. Anchored on the word "duration" so the numbers
+   in the notes underneath it cannot be mistaken for the answer. */
+/* Spaces and tabs, never `\s`, between the number and its unit. `\s` crosses the newline
+   and reads the first word of the next line as the unit, so "duration: 25" followed by
+   "Call notes:" was rejected because "Call" is not a minutes word. That is exactly the
+   shape the snippet produces, so the bug would have hit every real record and none of the
+   single line tests. */
+const LEDGER_LABEL_RE = /\bduration\b[^0-9\n]{0,14}(\d{1,3})[ \t]*([a-z]*)/i;
+const LEDGER_LEAD_RE = /^[ \t]*(?:wa|whatsapp|whatp|wp)?[ \t]*(?:call)?[ \t]*[:\-|,]*[ \t]*(\d{1,3})[ \t]*([a-z]*)/i;
 const LEDGER_MIN_WORD = /^m(?:in(?:ute)?s?)?$/i;
+/* Block level markup becomes a newline rather than a space, or "duration:" on one line and
+   the notes on the next collapse into one run of text and the label rule reaches across
+   into the notes for its number. */
+function ledgerText(body){
+  return String(body || "")
+    .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<br[^>]*>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+function ledgerLabelMs(body){
+  const txt = ledgerText(body);
+  const m = txt.match(LEDGER_LABEL_RE);
+  if (!m) return 0;
+  const unit = String(m[2] || "");
+  if (unit && !LEDGER_MIN_WORD.test(unit)) return 0;
+  const mins = parseInt(m[1], 10);
+  if (!mins || mins > MANUAL_MIN_MAX) return 0;
+  return mins * 60000;
+}
 function ledgerLeadMs(body){
-  const txt = String(body || "").replace(/<[^>]*>/g, " ").trim();
+  const txt = ledgerText(body);
   const m = txt.match(LEDGER_LEAD_RE);
   if (!m) return 0;
   const unit = String(m[2] || "");
@@ -7593,7 +7629,7 @@ function ledgerLeadMs(body){
 const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/ig;
 const LEDGER_NOTE_FUTURE = /\b(in|after|within|back|later|tmr|tomorrow|call|reschedul\w*)\s*$/i;
 function ledgerNoteMs(body){
-  const txt = String(body || "").replace(/<[^>]*>/g, " ");
+  const txt = ledgerText(body);
   LEDGER_NOTE_RE.lastIndex = 0;
   let m;
   while ((m = LEDGER_NOTE_RE.exec(txt)) !== null) {
@@ -7696,9 +7732,11 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       if (!c.declaredMs) src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.typeMs || 0); });
       if (!c.declaredMs) {
         src.forEach(function(x){
-          /* Anywhere in the note it has to say minutes. At the front of a note on a call
-             already marked WhatsApp, a bare number is enough. */
-          c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body));
+          /* An answered label first, since that is somebody responding to a prompt rather
+             than mentioning a number. Then "N min" anywhere. Then, only on a call already
+             marked WhatsApp, a bare number at the very front. */
+          c.noteMs = Math.max(c.noteMs, ledgerLabelMs(x.body));
+          if (!c.noteMs) c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body));
           if (!c.noteMs && c.isWa) c.noteMs = Math.max(c.noteMs, ledgerLeadMs(x.body));
         });
       }

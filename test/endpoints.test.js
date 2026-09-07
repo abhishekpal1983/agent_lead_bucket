@@ -935,10 +935,21 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        be deployable before anybody creates it. */
     /* The only route that lives inside HubSpot's Log call widget, since a custom property
        cannot be added to it and the duration field is not editable there. */
-    ok("a duration band picked from the Call type dropdown is read as its midpoint",
-      (lg.body.rows || []).some(function(r){ return r.name === "Rhea Kapoor" &&
-        r.declaredTotalMs === (40 + 22) * 60000; }),
-      JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.declaredTotalMs]; })));
+    /* Located through the fixture, not by name, so adding a case cannot turn this into a
+       test of a total somebody bumped until it passed. */
+    ok("a duration band picked from the Call type dropdown is read as its midpoint", (function(){
+      const F = require("../fixtures/make.js");
+      const banded = (F.ledgerCalls || []).filter(function(c){ return c.typeMs > 0; })[0];
+      if (!banded) return false;
+      const lead = (lg.body.leads || []).filter(function(l){
+        return String(l.id) === String(banded.contact); })[0];
+      return lead && lead.declaredMs === banded.typeMs;
+    })(), "the fixture holds a call carrying only a call type band");
+    /* End to end through the real handler, in the shape the live snippet writes. */
+    ok("the snippet's labelled duration is read end to end",
+      (lg.body.leads || []).some(function(l){ return l.noteMs === 32 * 60000; }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.noteMs; })
+        .map(function(l){ return [l.name, l.noteMs]; })));
     ok("and the payload reports whether either route is configured at all",
       lg.body.declaredField && typeof lg.body.declaredField.bandedTypes === "number" &&
       Array.isArray(lg.body.declaredField.bands) && lg.body.declaredField.bands.length > 0,

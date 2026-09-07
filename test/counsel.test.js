@@ -149,13 +149,46 @@ console.log("\nA length read out of prose, and the promises that look like one")
   const src = require("fs").readFileSync(
     require("path").join(__dirname, "..", "server.js"), "utf8");
   const parts = [
+    "var MANUAL_MIN_MAX=180;",
     src.match(/const LEDGER_NOTE_RE = [^\n]*/)[0],
     src.match(/const LEDGER_NOTE_FUTURE = [^\n]*/)[0],
+    src.match(/function ledgerText\(body\)\{[\s\S]*?\n\}/)[0],
     src.match(/function ledgerNoteMs\(body\)\{[\s\S]*?\n\}/)[0],
     "return ledgerNoteMs;"
   ].join("\n");
   const ledgerNoteMs = new Function(parts)();
   const mins = function(s){ return Math.round(ledgerNoteMs(s) / 60000); };
+
+  /* The format the snippet on the Log call form actually produces. The label sits on one
+     line and the notes on the next, and the notes are full of other numbers. */
+  const label = new Function([
+    "var MANUAL_MIN_MAX=180;",
+    src.match(/const LEDGER_LABEL_RE = [^\n]*/)[0],
+    src.match(/const LEDGER_MIN_WORD = [^\n]*/)[0],
+    src.match(/function ledgerText\(body\)\{[\s\S]*?\n\}/)[0],
+    src.match(/function ledgerLabelMs\(body\)\{[\s\S]*?\n\}/)[0],
+    "return ledgerLabelMs;"
+  ].join("\n"))();
+  const lmins = function(b){ return Math.round(label(b) / 60000); };
+  const snip = function(n, notes){
+    return "<div><p>WA call duration: " + n + "</p><p>Call notes: " +
+      (notes || "cx has 7yrs exp, 35lpa, wants europe") + "</p></div>"; };
+  ok("the snippet's labelled duration is read",
+    lmins(snip(25)) === 25 && lmins(snip(8)) === 8 && lmins(snip(120)) === 120);
+  /* The bug that would have hit every real record and no single line test: \s crosses the
+     newline, so "duration: 25" followed by "Call notes:" read "Call" as the unit and was
+     rejected. Spaces and tabs only. */
+  ok("and it survives the notes being on the next line",
+    lmins("<p>WA call duration: 32</p><p>Call notes: anything at all</p>") === 32);
+  ok("the number in the notes underneath is never mistaken for the answer",
+    lmins(snip(25, "call back in 10 mins, 3 years exp, 35lpa")) === 25);
+  ok("a blank duration reads as blank, whatever numbers the notes hold",
+    lmins(snip("", "15yrs expi, lpa 35, needs 2 days")) === 0);
+  ok("a unit is accepted but only a minutes one",
+    lmins("<p>WA call duration: 30 mins</p>") === 30 &&
+    lmins("<p>duration - 22</p>") === 22);
+  ok("and an implausible answer is still discarded",
+    lmins("<p>Call duration: 600</p>") === 0);
 
   ok("it reads a real one, written the way this floor writes it",
     mins("40mins call") === 40 && mins("whatp calll-45 min") === 45 &&

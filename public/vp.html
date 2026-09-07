@@ -1023,9 +1023,146 @@ function lgCsv(){
   a.click();
 }
 
+/* The daily talktime report.
+
+   Same read as the counselling day, rendered to answer a different question. Sharing the
+   endpoint is deliberate: two reports about the same day that disagree are worse than one
+   report, and this way they cannot.
+
+   Three sources, kept apart on the row. FreJun timed the call. A meeting recording timed
+   itself. The WhatsApp minutes are what the agent typed. Adding them gives a manager a
+   usable number and separating them says how much of it is anybody's word. */
+function ttRows(){ return lgRows(); }
+function loadTalktime(d){
+  var el = document.getElementById("ttwrap");
+  if (el) el.innerHTML = "<div class='sec'>Reading the day...</div>";
+  fetch("/api/vp/ledger" + (d ? "?date=" + encodeURIComponent(d) : ""))
+    .then(asJson)
+    .then(function(j){ LG = j; LG_DATE = j.date; renderTalktime(); })
+    .catch(function(e){
+      if (el) el.innerHTML = "<div class='sec'><h2>Daily talktime</h2>" +
+        "<div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>";
+    });
+}
+function ttBar(measured, declared, meet, max){
+  if (!max) return "";
+  var w = function(v){ return Math.round(100 * v / max); };
+  return "<div style='display:flex;height:7px;border-radius:4px;overflow:hidden;background:#EDF1F5;min-width:90px'>" +
+    "<div title='FreJun' style='width:" + w(measured) + "%;background:#0A2540'></div>" +
+    "<div title='Meetings' style='width:" + w(meet) + "%;background:#4C7A8C'></div>" +
+    "<div title='WhatsApp, declared' style='width:" + w(declared) + "%;background:#B9C6D2'></div>" +
+    "</div>";
+}
+function renderTalktime(){
+  var el = document.getElementById("ttwrap");
+  if (!el || !LG) return;
+  var j = LG, rows = ttRows().slice();
+  rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
+  var t = { call: 0, meet: 0, decl: 0, total: 0, calls: 0, wa: 0, waMiss: 0, mtg: 0 };
+  rows.forEach(function(r){
+    t.call += r.callMs; t.meet += r.meetMs; t.decl += r.declaredTotalMs;
+    t.total += r.talkMs; t.calls += r.calls; t.wa += r.waCalls || 0;
+    t.waMiss += r.waMissing || 0; t.mtg += r.meetings || 0;
+  });
+  var max = rows.reduce(function(n, r){ return Math.max(n, r.talkMs); }, 0);
+  var filtered = LG_TEAM || LG_AGENT || LG_CREATOR;
+
+  var h = "<div class='sec'><h2>Daily talktime <span class='mut' style='font-size:12.5px;font-weight:400'>" +
+    esc(j.date) + (j.isToday ? ", still running" : "") + "</span></h2>" +
+    "<div class='sub'>Time on the phone, from the three places it is recorded: calls FreJun " +
+    "timed, meetings measured by their recording, and WhatsApp calls where the length is " +
+    "whatever the agent typed.</div>";
+
+  h += "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0'>" +
+    "<input type='date' value='" + esc(j.date) + "' onchange='loadTalktime(this.value)'>" +
+    "<select onchange=\"LG_TEAM=this.value;LG_AGENT='';renderTalktime()\"><option value=''>All managers</option>" +
+    (j.teams || []).map(function(tm){
+      return "<option value='" + esc(tm.id) + "'" + (LG_TEAM === tm.id ? " selected" : "") + ">" +
+        esc(tm.name) + "</option>"; }).join("") + "</select>" +
+    (filtered ? "<button class='btn' onclick=\"LG_TEAM='';LG_AGENT='';LG_CREATOR='';renderTalktime()\">Clear</button>" : "") +
+    "<span class='mut' style='margin-left:auto;font-size:12px'>read " +
+    esc(String(j.readAt || "").slice(11, 16)) + " UTC</span></div>";
+
+  if (j.error) h += "<div class='warn bad'><b>This day is incomplete.</b> " + esc(j.error) + "</div>";
+  if (j.scoped) h += "<div class='warn'>Your team only.</div>";
+  var df = j.declaredField || {};
+  if (!df.waTypeSet && !df.ready)
+    h += "<div class='warn'>WhatsApp time will read zero until a <b>" +
+      esc((df.waTypes || ["Whatsapp Call"])[0]) + "</b> call type is in use and agents fill the " +
+      "duration in the note. " + fmt(j.totals.lengthMissing) + " calls on this day carry no length.</div>";
+
+  h += "<div class='tiles' style='margin-top:4px'>" +
+    lgTile("", "Total talktime", lgMins(t.total), fmt(rows.length) + " agents") +
+    lgTile("", "FreJun", lgMins(t.call), fmt(t.calls) + " calls") +
+    lgTile("", "Meetings", lgMins(t.meet), fmt(t.mtg) + (t.mtg === 1 ? " held" : " held")) +
+    lgTile(t.decl ? "" : "warn", "WhatsApp", lgMins(t.decl), fmt(t.wa) + " calls, declared") +
+    lgTile(t.waMiss ? "bad" : "", "No length given", fmt(t.waMiss), "WhatsApp calls") +
+    lgTile("", "Average", rows.length ? lgMins(Math.round(t.total / rows.length)) : "0", "per agent") +
+    "</div>";
+
+  h += "<div class='tw' style='margin-top:12px'><table class='rt'><thead><tr>" +
+    "<th>Agent</th><th>Team</th>" +
+    "<th class='n' title='Calls FreJun dialled and timed'>FreJun</th><th class='n'>Calls</th>" +
+    "<th class='n' title='Measured by the meeting recording, not the slot booked'>Meetings</th>" +
+    "<th class='n' title='Length as the agent typed it. Not verified.'>WhatsApp</th>" +
+    "<th class='n'>Total</th><th style='width:130px'>Split</th>" +
+    "<th class='n' title='Share of WhatsApp calls carrying a length'>Logged</th>" +
+    "</tr></thead><tbody>";
+  if (!rows.length) h += "<tr><td colspan='9' class='mut'>Nobody was on the phone on this day.</td></tr>";
+  rows.forEach(function(r){
+    h += "<tr>" +
+      "<td><b>" + esc(r.name) + "</b>" +
+      (r.active === false ? " <span class='pill' style='background:#EEF1F5;color:#42526B'>left</span>" : "") + "</td>" +
+      "<td class='mut'>" + esc(r.team || "no team") + "</td>" +
+      "<td class='n'>" + lgMins(r.callMs) + "</td>" +
+      "<td class='n mut'>" + fmt(r.calls) + "</td>" +
+      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) +
+        (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) + "</div>" : "") + "</td>" +
+      "<td class='n " + (r.declaredTotalMs ? "" : "mut") + "'>" + lgMins(r.declaredTotalMs) +
+        (r.waCalls ? "<div class='mut' style='font-size:11px'>" + fmt(r.waCalls) + " calls</div>" : "") + "</td>" +
+      "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
+      "<td>" + ttBar(r.callMs, r.declaredTotalMs, r.meetMs, max) + "</td>" +
+      "<td class='n " + (r.waMissing ? "cr" : "mut") + "'>" +
+        (r.waCalls ? (r.waCalls - r.waMissing) + " of " + r.waCalls : "&ndash;") + "</td>" +
+      "</tr>";
+  });
+  h += "</tbody></table></div>";
+  h += "<div class='sub' style='margin-top:10px'>" +
+    "FreJun time is read from the call records it writes into HubSpot rather than from FreJun " +
+    "directly, so it matches every other call number on this site. Meetings count only when " +
+    "they are attached to a lead and carry a recording. WhatsApp time is the agent's own " +
+    "figure and is never mixed into the measured columns." +
+    "</div>";
+  h += "<div style='margin-top:10px'><button class='btn' onclick='ttCsv()'>Download CSV</button></div>";
+  h += "</div>";
+  el.innerHTML = h;
+}
+function ttCsv(){
+  var cols = [
+    ["Agent", function(r){ return r.name; }],
+    ["Team", function(r){ return r.team || ""; }],
+    ["FreJunMinutes", function(r){ return Math.round(r.callMs / 60000); }],
+    ["Calls", function(r){ return r.calls; }],
+    ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
+    ["Meetings", function(r){ return r.meetings; }],
+    ["WhatsAppMinutesDeclared", function(r){ return Math.round(r.declaredTotalMs / 60000); }],
+    ["WhatsAppCalls", function(r){ return r.waCalls || 0; }],
+    ["WhatsAppCallsWithNoLength", function(r){ return r.waMissing || 0; }],
+    ["TotalTalkMinutes", function(r){ return Math.round(r.talkMs / 60000); }]
+  ];
+  var out = [cols.map(function(c){ return c[0]; }).join(",")];
+  ttRows().forEach(function(r){
+    out.push(cols.map(function(c){ return '"' + String(c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
+  });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" }));
+  a.download = "talktime-" + (LG ? LG.date : "day") + ".csv";
+  a.click();
+}
+
 function drawNav(){
   var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
-    ["ledger", "Counselling day", ""],
+    ["ledger", "Counselling day", ""], ["talktime", "Daily talktime", ""],
     ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
@@ -1064,7 +1201,8 @@ function draw(){
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
   var title = { overview: "Overview", managers: "Managers", mapping: "Mapping",
-    admin: "Teams and targets", ledger: "Counselling day" }[VIEW] || "Overview";
+    admin: "Teams and targets", ledger: "Counselling day",
+    talktime: "Daily talktime" }[VIEW] || "Overview";
   if (ONLY) {
     var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
     title += " · " + (only ? (only.name || "team") : "team");
@@ -1073,6 +1211,7 @@ function draw(){
     "<span id='syncbadge' style='margin-left:auto'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
   if (VIEW === "ledger") h += "<div id='lgwrap'>Reading the day...</div>";
+  else if (VIEW === "talktime") h += "<div id='ttwrap'>Reading the day...</div>";
   else if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
   else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
   else if (VIEW === "managers") h += drawTeams();
@@ -1082,6 +1221,7 @@ function draw(){
   document.getElementById("app").innerHTML = h;
   drawNav();
   if (VIEW === "ledger") loadLedger(LG_DATE);
+  if (VIEW === "talktime") loadTalktime(LG_DATE);
   if (VIEW === "daily") loadDaily(DAILY_DATE);
   if (VIEW === "weeks") loadWeeks();
   drawSync();

@@ -373,6 +373,22 @@ quiet.forEach(function(r, i){
   hcall("204", r.id, 12 + i, 40, 0, "INTEGRATION");
 });
 
+/* 19. What the live snippet on the Log call form actually produces: a labelled duration on
+       one line and the notes on the next, with other numbers in them. The label is the
+       strongest signal there is, because the agent answered a question rather than
+       happening to write a number. */
+const snippet = rows.filter(function(r){ return r.owner === "202" && !history[r.id]; })[0];
+if (snippet) {
+  history[snippet.id] = [{ value: "counselled", timestamp: HTODAY(19, 5) }];
+  snippet.fu = D(2026, 8, 14, 11);
+  lseq++;
+  ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, 19),
+    durMs: 0, disposition: "", owner: "202", source: "CRM_UI", contact: String(snippet.id),
+    body: "<div><p>WA call duration: 32</p><p>Call notes: cx has 7yrs exp, 35lpa, " +
+          "call back in 10 mins to confirm</p></div>",
+    attach: false, declaredMs: 0, hasDur: false, isWa: true });
+}
+
 /* 18. The shape Abhishek proposed: the call is typed as a WhatsApp call and the length is
        the first thing in the note, sitting beside notes full of other numbers. The type is
        what makes a bare number safe to read, and it must also stop the call being absorbed

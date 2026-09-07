@@ -1092,6 +1092,28 @@ ok("the month picker and the page filters both reload it",
     o3.indexOf("for asking about, not for concluding with") >= 0);
   /* The daily review's export once drifted from its header and mislabelled every column,
      so this one is a single paired list. */
+  /* The talktime report reads the same payload as the counselling day on purpose: two
+     reports about one day that disagree are worse than one report. */
+  {
+    lgCtx.LG_TEAM = ""; lgCtx.LG_AGENT = ""; lgCtx.LG_CREATOR = "";
+    let ttErr = null;
+    try { lgCtx.renderTalktime(); } catch (e) { ttErr = e; }
+    ok("the daily talktime report actually renders", !ttErr, ttErr && ttErr.message);
+    const tt = lgEls.ttwrap.innerHTML;
+    ok("it is its own view in the rail",
+      vpsrc.indexOf('["talktime", "Daily talktime", ""]') >= 0 &&
+      vpsrc.indexOf('talktime: "Daily talktime"') >= 0);
+    ok("the three sources are separate columns, never one figure",
+      tt.indexOf(">FreJun</th>") >= 0 && tt.indexOf(">Meetings</th>") >= 0 &&
+      tt.indexOf(">WhatsApp</th>") >= 0 && tt.indexOf(">Total</th>") >= 0);
+    ok("and it says which of them is the agent's own word",
+      tt.indexOf("never mixed into the measured columns") >= 0 &&
+      tt.indexOf("Not verified") >= 0);
+    ok("it says FreJun time comes through HubSpot rather than from FreJun itself",
+      tt.indexOf("read from the call records it writes into HubSpot") >= 0);
+    ok("a meeting counts only when it is on a lead and was recorded",
+      tt.indexOf("attached to a lead and carry a recording") >= 0);
+  }
   ok("the export pairs each column name with the value it reads",
     vpsrc.indexOf('["LengthUnknown", function(r){ return r.unknown; }]') >= 0 &&
     vpsrc.indexOf('["TotalTalkMinutes"') >= 0);
