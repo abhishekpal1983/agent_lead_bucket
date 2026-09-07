@@ -1243,9 +1243,23 @@ rest. That makes the cheapest routes good enough, and the cheapest routes are th
 cannot break, because they are native HubSpot fields rather than software of ours sitting
 on top of HubSpot's markup.
 
-**The note.** Agents are already writing a note on exactly these calls, which is why they
-log them by hand. "20m" costs nothing to add, needs no configuration, no subscription tier,
-works in the mobile app, and is already parsed.
+**The note**, which is salvage rather than a system. The text lives in `hs_call_body`, the
+box inside the Log call dialog, so it is a field on the call record and needs no mapping to
+anything. It only misses if an agent clicks the separate Note icon instead, which creates a
+different object attached to the lead rather than to the call.
+
+It is not as safe as it first looks, and the first version of the parser was wrong. Against
+fifty real call bodies it correctly read "40mins call" and "whatp calll-45 min", and it also
+read **"call back in 10 mins" as a ten minute conversation**. That phrasing is everywhere on
+this floor: "Call Back Busy At The Moment", "Call back tmr at 7pm", "need to call after 2
+days". A promise about the next call is not the length of this one, and turning one into the
+other invents talktime out of nothing.
+
+A number is now only believed when the words immediately before it do not point at a future
+call. What nothing can fix is that "spoke 20 mins" and "give me 20 minutes", said by the
+lead, are indistinguishable in prose. That is the honest ceiling on reading free text, and
+it is why the Call type band is the route worth setting up rather than this one. Of fifty
+real screenshot calls, forty carry a typed note and only two of those note a duration.
 
 **Call type bands.** One click, a native field inside the log form, and this portal is not
 using `hs_activity_type` for anything else.

@@ -7537,15 +7537,35 @@ function ledgerDeclaredMs(v){
   if (n > MANUAL_MIN_MAX) return 0;
   return Math.round(n * 60000);
 }
-const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/i;
+/* A length read out of what the agent typed. Salvage, not a system: it recovers what is
+   already being written, and it is not the route to rely on.
+
+   Checked against fifty real call bodies from the portal. It correctly reads "40mins call"
+   and "whatp calll-45 min". It also, before this guard, read "call back in 10 mins" as a
+   ten minute conversation, and that phrasing is everywhere on this floor: "Call Back Busy
+   At The Moment", "Call back tmr at 7pm", "need to call after 2 days". A promise about the
+   next call is not the length of this one, and turning one into the other would inflate
+   talktime with pure fiction.
+
+   So a number is only believed when nothing in the words just before it points at a future
+   call. Nothing here can distinguish "spoke 20 mins" from "give me 20 minutes" said by the
+   lead, which is the honest limit of reading prose and the reason the Call type band is
+   the route worth setting up. */
+const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/ig;
+const LEDGER_NOTE_FUTURE = /\b(in|after|within|back|later|tmr|tomorrow|call|reschedul\w*)\s*$/i;
 function ledgerNoteMs(body){
   const txt = String(body || "").replace(/<[^>]*>/g, " ");
-  const m = txt.match(LEDGER_NOTE_RE);
-  if (!m) return 0;
-  const mins = parseInt(m[1], 10);
-  // Over three hours on one call is a typo or a date, not a conversation.
-  if (!mins || mins > 180) return 0;
-  return mins * 60000;
+  LEDGER_NOTE_RE.lastIndex = 0;
+  let m;
+  while ((m = LEDGER_NOTE_RE.exec(txt)) !== null) {
+    const before = txt.slice(Math.max(0, m.index - 18), m.index);
+    if (LEDGER_NOTE_FUTURE.test(before)) continue;      // a promise, not a duration
+    const mins = parseInt(m[1], 10);
+    // Over three hours on one call is a typo or a date, not a conversation.
+    if (!mins || mins > 180) continue;
+    return mins * 60000;
+  }
+  return 0;
 }
 
 /* Fixtures keep their own agent list, so this cannot just read CACHE.owners or every

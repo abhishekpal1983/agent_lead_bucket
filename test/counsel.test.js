@@ -137,6 +137,45 @@ ok("no calls at all is its own state, neither short nor unknown",
 ok("the ten minute line is configurable, since it is a judgement not a fact",
   C.talkFor([{ durMs: 400000 }], { shortMs: 300000 }).short === false);
 
+console.log("\nA length read out of prose, and the promises that look like one");
+/* Every string here is a real call body from the portal, or the phrasing that surrounds
+   them. The parser read "call back in 10 mins" as a ten minute conversation until this
+   existed, and that phrasing is everywhere on this floor. A promise about the next call
+   is not the length of this one. */
+{
+  /* Lifted out of server.js rather than copied, so the test cannot drift away from the
+     parser it is meant to be pinning. Built with `new Function` because `eval` under
+     "use strict" keeps its declarations to itself. */
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "server.js"), "utf8");
+  const parts = [
+    src.match(/const LEDGER_NOTE_RE = [^\n]*/)[0],
+    src.match(/const LEDGER_NOTE_FUTURE = [^\n]*/)[0],
+    src.match(/function ledgerNoteMs\(body\)\{[\s\S]*?\n\}/)[0],
+    "return ledgerNoteMs;"
+  ].join("\n");
+  const ledgerNoteMs = new Function(parts)();
+  const mins = function(s){ return Math.round(ledgerNoteMs(s) / 60000); };
+
+  ok("it reads a real one, written the way this floor writes it",
+    mins("40mins call") === 40 && mins("whatp calll-45 min") === 45 &&
+    mins("spoke 20 mins about the program") === 20);
+  ok("a promise about the next call is never read as this call's length",
+    mins("call back in 10 mins") === 0 && mins("will call in 5 min") === 0 &&
+    mins("callback after 30 mins") === 0);
+  /* The real bodies that carry a number meaning something else entirely. */
+  ok("years of experience and a callback time are not durations",
+    mins("15yrs expi data architech current lpa 35lpa") === 0 &&
+    mins("MONDAY CALL BACK AT 6PM") === 0 &&
+    mins("Cx has 3 years of experience: 1 year in a support role") === 0);
+  ok("a note holding both a length and a promise takes the length",
+    mins("talked 22 mins, call back in 10 mins") === 22);
+  ok("markup is stripped, since HubSpot stores the body as html",
+    mins("<div><p style='margin:0;'>40mins call </p></div>") === 40);
+  ok("and an implausible number is discarded rather than believed",
+    mins("600 mins") === 0);
+}
+
 console.log("");
 console.log(pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
