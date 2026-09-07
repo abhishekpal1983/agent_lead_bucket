@@ -1225,6 +1225,22 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
         (await get("/api/talktime?date=2099-01-01")).status === 400);
       ok("and the store says whether any of this survives a deploy",
         typeof tt.body.persistent === "boolean");
+      /* A lock is only real if it is on disk. `persistent` says the directory is writable,
+         which is not the same claim: an unmounted container path is writable right up until
+         the container goes away. */
+      ok("locking a day actually writes it to disk",
+        (function(){
+          const f = require("path").join("/tmp/cn2test", "talktime.json");
+          if (!require("fs").existsSync(f)) return false;
+          const j = JSON.parse(require("fs").readFileSync(f, "utf8"));
+          return !!(j.days && j.days[TD]);
+        })(), "the store file should hold the locked day");
+      const hh = await get("/api/health");
+      ok("and health says whether the store came off disk or started empty",
+        hh.body.cn2 && hh.body.cn2.talktime &&
+        typeof hh.body.cn2.talktime.loadedFromDisk === "boolean" &&
+        hh.body.cn2.talktime.file,
+        JSON.stringify(hh.body.cn2 && hh.body.cn2.talktime));
 
       /* A declared figure invites the question "which calls", and a total cannot answer
          it. The expander is the answer, and it has to be frozen with the totals: read
@@ -1328,7 +1344,7 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
       ok("and anything unrecognised is given nothing rather than everything",
         /role: "none", email: em, ids: \[\]/.test(scope));
       ok("health reports whether the lock survives a deploy, without signing in",
-        src.indexOf("persistent: !!TALK.persistent, lockAt: TALK_LOCK_HM") >= 0);
+        src.indexOf("persistent: !!TALK.persistent, loadedFromDisk: !!TALK.loadedFromDisk") >= 0);
     }
 
 

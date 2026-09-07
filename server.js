@@ -1373,7 +1373,8 @@ app.get("/api/health", function(req, res){
              be able to confirm the lock is real before telling a floor it is. A lock
              people trust and that is not there is worse than no lock at all. */
           talktime: (typeof TALK === "undefined") ? null : {
-            persistent: !!TALK.persistent, lockAt: TALK_LOCK_HM, recheckAt: TALK_RECHECK_HM,
+            persistent: !!TALK.persistent, loadedFromDisk: !!TALK.loadedFromDisk,
+            file: TALK_FILE, lockAt: TALK_LOCK_HM, recheckAt: TALK_RECHECK_HM,
             since: TALK.since || null, hrCount: HR_EMAILS.length,
             lockedDays: Object.keys(TALK.days || {}).length,
             logEntries: (TALK.log || []).length,
@@ -8176,15 +8177,23 @@ let TALK = { days: {}, log: [], since: "", persistent: false };
 function talkLoad(){
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    /* Whether the store came off disk or started empty is the difference between a lock
+       that survives a deploy and one that only looks like it does. `persistent` says the
+       directory is writable, which is NOT the same thing: an unmounted container path is
+       writable right up until the container goes away. This says which happened. */
+    TALK.loadedFromDisk = false;
     if (fs.existsSync(TALK_FILE)) {
       const j = JSON.parse(fs.readFileSync(TALK_FILE, "utf8"));
       TALK = Object.assign({ days: {}, log: [], since: "" }, j);
+      TALK.loadedFromDisk = true;
     }
     if (!TALK.since) TALK.since = istParts(new Date(cn2Now())).date;
     TALK.persistent = true;
     fs.writeFileSync(TALK_FILE + ".probe", "1"); fs.unlinkSync(TALK_FILE + ".probe");
-    console.log("Talktime store ready at " + TALK_FILE + " (" +
-      Object.keys(TALK.days).length + " locked days, " + (TALK.log || []).length + " log entries)");
+    console.log("Talktime store " + (TALK.loadedFromDisk ? "loaded from" : "STARTED EMPTY at") +
+      " " + TALK_FILE + " (" + Object.keys(TALK.days).length + " locked days, " +
+      (TALK.log || []).length + " log entries)" +
+      (TALK.loadedFromDisk ? "" : " <- if a day was locked before this deploy, it did not survive"));
   } catch (e) {
     TALK.persistent = false;
     if (!TALK.since) TALK.since = istParts(new Date(cn2Now())).date;
@@ -8451,9 +8460,11 @@ if (CN2_FIXTURE_DATA) {
     if (req.query.keepSilent) TALK_TEST_KEEP_SILENT = true;
     const got = await talkCapture(d, "open");
     TALK_TEST_KEEP_SILENT = false;
-    // The same builder production uses, or this locks a different shape than the real one.
+    // The same builder AND the same save production uses. This hook has now twice tested a
+    // path production does not take, once by omitting the detail and once by not saving.
     TALK.days[d] = talkRecordOf(d, got, false, 0);
-    res.json({ ok: true });
+    const saved = talkSave();
+    res.json({ ok: true, saved: saved });
   });
   app.get("/api/_test/tamper", function(req, res){
     const F = CN2_FIXTURE_DATA;

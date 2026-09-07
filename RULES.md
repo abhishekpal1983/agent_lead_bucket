@@ -1479,6 +1479,17 @@ The change log tracks the agent-entered minutes per call. FreJun durations and m
 recordings are machine-written and cannot be argued with, so logging all 1,430 of a day's
 calls landing would bury the two entries that matter.
 
+### `persistent` is not the same claim as `loadedFromDisk`
+
+`persistent` means the directory took a write. That is not the same as the data being there
+next time: an unmounted container path is writable right up until the container goes away,
+so a lock can look saved every single night and be gone after every deploy.
+
+Health now reports `loadedFromDisk`, which says whether the store came off disk or started
+empty, and the boot log says "STARTED EMPTY" in as many words when it did. If a day was
+locked before a deploy and `loadedFromDisk` is false afterwards, the lock did not survive
+and nothing else on this page can be trusted.
+
 ### Without a volume this is theatre
 
 Everything persists to `DATA_DIR`. With no Railway volume mounted, a lock lasts until the
@@ -1572,6 +1583,16 @@ report at all. Both days are one click, and an open day says in words that its n
 still moving and will be fixed at 23:59.
 
 ### One builder, or the test lies
+
+Twice now the fixture-only lock hook has tested a path production does not take. First it
+assembled the locked record by hand and omitted the detail, so the suite locked days whose
+expander was empty. Then it never called `talkSave`, so a persistence test reported that
+locks do not survive a restart when in fact the hook simply never wrote one.
+
+The second one is the more instructive: the test was right that nothing reached disk, and
+wrong about why, and a wrong diagnosis of a real symptom is the most expensive kind. A test
+hook must call the same functions the real path calls, or it is testing itself.
+
 
 The locked record is assembled only by `talkRecordOf`. The fixture-only lock hook used to
 build it by hand and quietly omitted the detail, so the suite locked days whose expander was
