@@ -1409,6 +1409,24 @@ Everything persists to `DATA_DIR`. With no Railway volume mounted, a lock lasts 
 next deploy. The payload carries `persistent` and the page shouts it in red, because a lock
 people trust and that is not there is worse than no lock at all.
 
+### Signing in has to put you back where you were going
+
+The callback redirected everyone to `/callnow.html`. So HR opened `/talktime.html`, were
+bounced to sign in, and landed on Call Now looking at an empty call list, which reads as
+broken rather than as "you are not a lead owner". They own no leads and never will.
+
+Two fixes, both needed. A page that hits a 401 now sends `/auth/login?to=<its own path>`,
+and the callback returns there. And when nobody asked for anywhere, `homeFor` sends HR to
+the report and everyone else to Call Now, so the default is right even from a bare
+`/auth/login`.
+
+`safeReturnTo` guards the destination, and the guard is stricter than it first looks. A
+leading-slash check alone is an open redirect, because `//evil.example` is a valid URL that
+a browser follows off-site. Absolute URLs, backslashes, and newlines both literal and
+percent-encoded are all refused. The destination travels inside the **signed** state rather
+than as a query parameter on the callback, so it cannot be swapped in flight after Google
+hands the browser back.
+
 ### Three scopes, defaulting to nothing
 
 HR from `HR_EMAILS` and VPs see everyone, a team manager sees their team, an agent sees

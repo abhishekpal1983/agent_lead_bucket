@@ -6196,9 +6196,37 @@ function sessionOf(req){
   return { email: p.email, name: p.name || p.email, role: role, ownerId: role === "agent" ? ownerIdForEmail(p.email) : "" };
 }
 
+/* Where to send somebody after they sign in.
+
+   Only a path on this site, and never a protocol-relative one: "//evil.example" is a valid
+   URL that a browser follows off-site, so a bare leading-slash check is not enough. Carried
+   inside the SIGNED state rather than as a query parameter on the callback, so it cannot be
+   swapped for another destination in flight. */
+function safeReturnTo(v){
+  const p = String(v || "");
+  if (!p || p[0] !== "/" || p[1] === "/" || p[1] === "\\") return "";
+  /* Encoded newlines too, not just literal ones. Express escapes the Location header, so
+     this is belt and braces, but a validator that is only safe because of what something
+     downstream happens to do is one refactor away from not being safe. */
+  if (p.indexOf("://") >= 0 || /[\r\n]/.test(p) || /%0[ad]/i.test(p)) return "";
+  return p.slice(0, 200);
+}
+
+/* Where a signed-in person belongs when they did not ask for anywhere in particular.
+
+   HR own no leads, so sending them to Call Now shows them an empty call list and looks
+   broken. They are here for the talktime report and nothing else. */
+function homeFor(email){
+  const em = String(email || "").toLowerCase();
+  if (HR_EMAILS.indexOf(em) >= 0) return "/talktime.html";
+  return "/callnow.html";
+}
+
 app.get("/auth/login", function(req, res){
   if (!AUTH_ON) return res.redirect("/");
-  const state = sign({ n: crypto.randomBytes(8).toString("hex"), exp: Date.now() + 10 * 60 * 1000 });
+  const to = safeReturnTo(req.query.to);
+  const state = sign({ n: crypto.randomBytes(8).toString("hex"),
+    to: to, exp: Date.now() + 10 * 60 * 1000 });
   const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   u.searchParams.set("client_id", GOOGLE_CLIENT_ID);
   u.searchParams.set("redirect_uri", baseUrl(req) + "/auth/callback");
@@ -6212,7 +6240,8 @@ app.get("/auth/login", function(req, res){
 
 app.get("/auth/callback", async function(req, res){
   if (!AUTH_ON) return res.redirect("/");
-  if (!verify(String(req.query.state || ""))) return res.status(400).send("Sign-in expired. <a href='/auth/login'>Try again</a>");
+  const st = verify(String(req.query.state || ""));
+  if (!st) return res.status(400).send("Sign-in expired. <a href='/auth/login'>Try again</a>");
   try {
     const body = new URLSearchParams({
       code: String(req.query.code || ""),
@@ -6236,7 +6265,9 @@ app.get("/auth/callback", async function(req, res){
     const token = sign({ email: email, name: claims.name || email, exp: Date.now() + SESSION_HOURS * 3600000 });
     res.setHeader("Set-Cookie", "cn_session=" + encodeURIComponent(token) +
       "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + (SESSION_HOURS * 3600));
-    res.redirect("/callnow.html");
+    /* Back where they were headed, if they asked for somewhere and it survived signing.
+       Otherwise wherever this person actually belongs. */
+    res.redirect(safeReturnTo(st.to) || homeFor(email));
   } catch (e) {
     res.status(500).send("Sign-in error: " + e.message);
   }

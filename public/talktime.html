@@ -140,7 +140,12 @@ function load(d){
   document.getElementById("app").innerHTML = "<div class='sec'>Reading the day...</div>";
   fetch("/api/talktime" + (d ? "?date=" + encodeURIComponent(d) : ""))
     .then(function(r){
-      if (r.status === 401) { location.href = "/login.html"; throw new Error("signing in"); }
+      if (r.status === 401) {
+        /* Carry where we are, or signing in lands them on Call Now with an empty call
+           list, which is what HR saw and reasonably read as broken. */
+        location.href = "/auth/login?to=" + encodeURIComponent(location.pathname + location.search);
+        throw new Error("signing in");
+      }
       return r.text().then(function(t){
         try { return JSON.parse(t); }
         catch(e){ throw new Error("Server returned " + r.status); } });

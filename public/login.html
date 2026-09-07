@@ -20,7 +20,7 @@ a.g:hover{background:#123152}
   <h1>Call Now</h1>
   <p>Sign in with your work Google account to see your call list.</p>
   <div id="err"></div>
-  <a class="g" href="/auth/login">Sign in with Google</a>
+  <a class="g" id="go" href="/auth/login">Sign in with Google</a>
   <div class="note" id="note">Only <b id="dom">topmate.io</b> accounts are allowed. Agents see their own leads only.</div>
 </div>
 <script>
@@ -32,6 +32,17 @@ if (location.search.indexOf("denied") >= 0) {
   document.getElementById("err").className = "err";
   document.getElementById("err").textContent = "That account is not a HubSpot lead owner, so there is no call list to show. Ask your manager to check the owner email in HubSpot.";
 }
+</script>
+<script>
+/* Someone sent here from a page they were trying to open keeps their destination, so
+   signing in returns them there rather than to whatever the default happens to be. */
+(function(){
+  var to = new URLSearchParams(location.search).get("to") || "";
+  if (to && to[0] === "/" && to[1] !== "/") {
+    var a = document.getElementById("go");
+    if (a) a.href = "/auth/login?to=" + encodeURIComponent(to);
+  }
+})();
 </script>
 </body>
 </html>
