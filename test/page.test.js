@@ -1168,7 +1168,8 @@ ok("the month picker and the page filters both reload it",
     return Object.assign({
       date: "2026-09-04", today: "2026-09-05", yesterday: "2026-09-04", isToday: false,
       you: { email: "hr@topmate.io", role: "hr", scope: "everyone" },
-      locked: { at: "2026-09-04T18:29:00Z", late: false, hm: "23:59", rechecked: null, amended: 0 },
+      locked: { at: "2026-09-04T18:29:00Z", late: false, lateMin: 0, hm: "23:59",
+        rechecked: null, amended: 0, relocked: null },
       lockAt: "23:59", persistent: true, canBlockEdits: false,
       totals: { agents: 2, callMs: 11035098, meetMs: 0, declaredMs: 1320000,
         talkMs: 12355098, calls: 142, waCalls: 2, waMissing: 0, meetings: 0, amended: 0 },
@@ -1199,8 +1200,12 @@ ok("the month picker and the page filters both reload it",
         t2.html.indexOf(">Today</button>") < 0 &&
         t2.html.indexOf(">Yesterday</button>") >= 0;
     })());
-  ok("a locked day shows the time it was closed",
-    hr.html.indexOf("LOCKED 18:29") >= 0 && hr.html.indexOf("OPEN until") < 0);
+  /* IST, and stated as such. The stamp was printed in UTC, so a day closed at 00:03 IST
+     displayed as 18:33 and looked like somebody had locked it in the evening. */
+  ok("a locked day shows the time it was closed, in IST",
+    hr.html.indexOf("CLOSED 23:59 IST") >= 0 && hr.html.indexOf("OPEN until") < 0,
+    hr.html.slice(hr.html.indexOf("ctl lock"), hr.html.indexOf("ctl lock") + 120));
+
   ok("and names who is looking and how much they get",
     hr.who.indexOf("hr@topmate.io") >= 0 && hr.who.indexOf("everyone") >= 0);
   ok("HR sees the agent and team columns",
@@ -1319,9 +1324,21 @@ ok("the month picker and the page filters both reload it",
   ok("a missing volume is shouted, because a lock that vanishes is worse than none",
     novol.html.indexOf("Nothing is being saved") >= 0 &&
     novol.html.indexOf("locks vanish on the next deploy") >= 0);
-  const late = run(base({ locked: { at: "2026-09-05T19:10:00Z", late: true, hm: "23:59" } }));
-  ok("a late lock says so, so 00:40 cannot pass itself off as 23:59",
-    late.html.indexOf("locked late, the window was missed") >= 0);
+  /* Late has to mean an incident. Four minutes past midnight is the poll landing, and
+     flagging that every night made the signal worthless. */
+  const late = run(base({ locked: { at: "2026-09-05T13:03:00Z", late: true, lateMin: 1114, hm: "23:59" } }));
+  ok("a genuinely late close says how late, in plain words",
+    late.html.indexOf("19 hours after the day ended") >= 0,
+    late.html.slice(late.html.indexOf("after the day ended") - 40, late.html.indexOf("after the day ended") + 20));
+  const onTime = run(base({ locked: { at: "2026-09-04T18:33:00Z", late: false, lateMin: 4, hm: "23:59" } }));
+  ok("and four minutes past midnight is not called late at all",
+    onTime.html.indexOf("after the day ended") < 0 &&
+    onTime.html.indexOf("CLOSED 00:03 IST") >= 0);
+  ok("the split bar is gone",
+    hr.html.indexOf(">Split</th>") < 0 && hr.html.indexOf("bar2") < 0);
+  ok("and the fill rate column says what it counts",
+    hr.html.indexOf(">Length given</th>") >= 0 &&
+    hr.html.indexOf("eleven such calls and eight with a length") >= 0);
   const never = run(base({ locked: null, isToday: false }));
   ok("a day that was never locked warns that its numbers can still move",
     never.html.indexOf("never locked") >= 0 && never.html.indexOf("can still move") >= 0);

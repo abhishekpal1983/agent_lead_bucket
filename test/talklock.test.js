@@ -21,9 +21,25 @@ ok("locking twice does not happen",
   T.pendingLock("2026-09-05", "23:59", { "2026-09-04": 1, "2026-09-05": 1 }) === null);
 /* The night the server is redeploying at 23:58. Firing on the clock alone loses the day
    silently, and nobody finds out for a week. */
-ok("a day missed by a restart is still locked, and marked late",
-  (function(){ const p = T.pendingLock("2026-09-05", "00:40", {});
-    return p && p.day === "2026-09-04" && p.late === true; })());
+/* The check polls every couple of minutes against a moment, so it always lands a few
+   minutes past it. The first version called that "late, the window was missed" and printed
+   it every single night, which made the one signal that should mean something mean nothing.
+   Late now means substantially late. */
+ok("closing the day a few minutes after midnight is on time, not an incident",
+  (function(){ const p = T.pendingLock("2026-09-05", "00:03", {}, { since: "2026-09-01" });
+    return p && p.day === "2026-09-04" && p.lateMin === 4 && p.late === false; })(),
+  JSON.stringify(T.pendingLock("2026-09-05", "00:03", {}, { since: "2026-09-01" })));
+ok("and so is anything inside the grace",
+  T.pendingLock("2026-09-05", "00:29", {}, { since: "2026-09-01" }).late === false);
+ok("but eighteen hours past is late, which is what the flag is for",
+  (function(){ const p = T.pendingLock("2026-09-05", "18:33", {}, { since: "2026-09-01" });
+    return p && p.lateMin === 1114 && p.late === true; })());
+ok("a whole day missed is late too",
+  T.pendingLock("2026-09-06", "10:00", {}, { since: "2026-09-01" }).late === true);
+ok("the grace is configurable, being a judgement and not a fact",
+  T.pendingLock("2026-09-05", "00:03", {}, { since: "2026-09-01", graceMin: 1 }).late === true);
+ok("lateness is measured from that day's own 23:59, not from now",
+  T.pendingLock("2026-09-05", "00:00", {}, { since: "2026-09-01" }).lateMin === 1);
 ok("the older owed day is taken first, since it is the one about to be edited",
   (function(){ const p = T.pendingLock("2026-09-05", "23:59", {});
     return p && p.day === "2026-09-04"; })());

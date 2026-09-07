@@ -8158,6 +8158,10 @@ const TALK_FILE = path.join(DATA_DIR, "talktime.json");
 const TALK_LOCK_HM = process.env.TALK_LOCK_HM || "23:59";
 const TALK_RECHECK_HM = process.env.TALK_RECHECK_HM || "12:00";
 const TALK_KEEP_DAYS = parseInt(process.env.TALK_KEEP_DAYS || "120", 10);
+/* How far past 23:59 still counts as closing the day on time. The check polls, so it will
+   always land a few minutes over; flagging that as an incident makes the one signal that
+   should mean something mean nothing. */
+const TALK_GRACE_MIN = parseInt(process.env.TALK_GRACE_MIN || "30", 10);
 const TALK_LOG_MAX = parseInt(process.env.TALK_LOG_MAX || "4000", 10);
 /* HR are not lead owners and lead no team, so without an explicit list the role rule
    below would file them as agents with no owner id and show them an empty page. */
@@ -8231,8 +8235,9 @@ async function talkCapture(day, phase){
    The test hook used to assemble this itself and quietly left the detail out, so the
    suite locked a day whose expander was empty while production's was not. A second place
    that builds the same structure is a second place to forget a field. */
-function talkRecordOf(day, got, late){
-  return { day: day, lockedAt: got.at, late: !!late, lockHm: TALK_LOCK_HM,
+function talkRecordOf(day, got, late, lateMin){
+  return { day: day, lockedAt: got.at, late: !!late, lateMin: lateMin || 0,
+    lockHm: TALK_LOCK_HM,
     rows: got.snap.rows, declared: got.snap.declared,
     /* Frozen with the totals. Read live, an expander lists calls that disagree with the
        very numbers it is meant to explain. */
@@ -8245,12 +8250,12 @@ async function talkLockDue(force){
   if (CN2_FIXTURE_DATA && !force) return;
   const p = istParts(new Date(cn2Now()));
   const due = TALKLOCK.pendingLock(p.date, p.hm, TALK.days,
-    { lockHm: TALK_LOCK_HM, since: TALK.since });
+    { lockHm: TALK_LOCK_HM, since: TALK.since, graceMin: TALK_GRACE_MIN });
   if (!due) return;
   try {
     const got = await talkCapture(due.day, "open");
     if (!got) { console.error("Talktime lock " + due.day + ": nothing to lock"); return; }
-    TALK.days[due.day] = talkRecordOf(due.day, got, due.late);
+    TALK.days[due.day] = talkRecordOf(due.day, got, due.late, due.lateMin);
     talkSave();
     console.log("Talktime locked " + due.day + " at " + got.at +
       (due.late ? " (LATE, the window was missed)" : "") + ": " +
@@ -8309,6 +8314,46 @@ function talkScope(req){
   return { role: "none", email: em, ids: [], label: "no calls are recorded against this address" };
 }
 
+/* Re-lock a day.
+
+   A lock protects the numbers from being edited afterwards. It cannot, and should not,
+   protect them from us finding a bug in how they were worked out. 7 September was locked
+   before the transcript rule landed, so it froze meeting time that a notetaker generated in
+   an empty room, and without this there would be no way to ever correct it.
+
+   VP only, the reason is required, and the old figures are written into the change log
+   beside the new ones, so a correction is itself part of the record rather than a quiet
+   overwrite. */
+app.post("/api/talktime/relock", express.json(), async function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "not allowed" });
+  const day = String((req.body || {}).date || "");
+  const why = String((req.body || {}).reason || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
+  if (why.length < 8) return res.status(400).json({ error: "say why, in a sentence" });
+  const rec = TALK.days[day];
+  if (!rec) return res.status(404).json({ error: "that day is not locked" });
+  try {
+    delete LEDGER_CACHE[day];
+    const before = { rows: rec.rows, declared: rec.declared };
+    const got = await talkCapture(day, "relock");
+    if (!got) return res.status(500).json({ error: "could not rebuild that day" });
+    const changes = TALKLOCK.diff(before, got.snap,
+      { day: day, phase: "relock", at: new Date(cn2Now()).toISOString() });
+    TALK.days[day] = talkRecordOf(day, got, rec.late, rec.lateMin);
+    TALK.days[day].relocked = new Date(cn2Now()).toISOString();
+    TALK.days[day].relockReason = why;
+    TALK.days[day].relockedBy = whoami(req) || "";
+    TALK.log = (TALK.log || []).concat(changes.map(function(c){
+      return Object.assign({}, c, { reason: why, by: whoami(req) || "" }); }));
+    talkSave();
+    console.log("Talktime RE-LOCKED " + day + " by " + (whoami(req) || "?") + ": " + why +
+      " (" + changes.length + " figures moved)");
+    res.json({ ok: true, day: day, moved: changes.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/talktime", async function(req, res){
   const scope = talkScope(req);
   if (!scope) return res.status(401).json({ error: "not signed in" });
@@ -8328,7 +8373,8 @@ app.get("/api/talktime", async function(req, res){
       /* Locked. Served from the store and never re-read, which is the entire point. The
          detail is frozen with it: an expander read live would list calls that disagree
          with the totals it is meant to explain. */
-      locked = { at: rec.lockedAt, late: !!rec.late, hm: rec.lockHm,
+      locked = { at: rec.lockedAt, late: !!rec.late, lateMin: rec.lateMin || 0,
+        hm: rec.lockHm, relocked: rec.relocked || null, relockReason: rec.relockReason || null,
         rechecked: rec.rechecked || null, amended: rec.amended || 0 };
       rows = Object.keys(rec.rows).map(function(id){
         return Object.assign({ id: id }, rec.rows[id]); });
@@ -8390,7 +8436,7 @@ if (CN2_FIXTURE_DATA) {
     const d = String(req.query.date || "");
     const got = await talkCapture(d, "open");
     // The same builder production uses, or this locks a different shape than the real one.
-    TALK.days[d] = talkRecordOf(d, got, false);
+    TALK.days[d] = talkRecordOf(d, got, false, 0);
     res.json({ ok: true });
   });
   app.get("/api/_test/tamper", function(req, res){
@@ -9569,7 +9615,7 @@ SERVER = app.listen(PORT, () => {
   setInterval(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 15 * 60 * 1000);
   setInterval(guard("ledgerWarm", function(){ return ledgerWarmDue(false); }), 15 * 60 * 1000);
   talkLoad();
-  setInterval(guard("talkLock", function(){ return talkLockDue(false); }), 5 * 60 * 1000);
+  setInterval(guard("talkLock", function(){ return talkLockDue(false); }), 2 * 60 * 1000);
   setInterval(guard("talkRecheck", function(){ return talkRecheckDue(false); }), 30 * 60 * 1000);
   setTimeout(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 6 * 60 * 1000);
   // Compare ourselves to HubSpot on a timer rather than on request.

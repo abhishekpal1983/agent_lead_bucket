@@ -82,7 +82,18 @@ function mins(ms){
   var m = Math.round(ms / 60000);
   return m >= 60 ? Math.floor(m/60) + "h " + String(m%60).padStart(2,"0") + "m" : m + "m";
 }
-function hhmm(iso){ return String(iso || "").slice(11,16); }
+/* IST, because every other time on this site is IST and a lock stamped 18:33 for a day
+   that closed at 00:03 is worse than no stamp at all. */
+function hhmm(iso){
+  var t = Date.parse(iso);
+  return isNaN(t) ? "" : new Date(t + 5.5 * 3600000).toISOString().slice(11, 16);
+}
+function hoursLate(m){
+  m = Math.round(m || 0);
+  if (m < 90) return m + " minutes";
+  var h = Math.round(m / 60);
+  return h < 36 ? h + " hours" : Math.round(h / 24) + " days";
+}
 function clock(ms){ return new Date((ms||0) + 5.5*3600000).toISOString().slice(11,16); }
 function toggle(id){ OPEN[id] = !OPEN[id]; draw(); }
 /* A declared figure invites the question "which calls", and a total cannot answer it. Each
@@ -165,18 +176,9 @@ function load(d){
       document.getElementById("app").innerHTML =
         "<div class='sec'><div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>"; });
 }
-function bar(call, meet, decl, max){
-  if (!max) return "";
-  var w = function(v){ return Math.round(100 * v / max); };
-  return "<div class='bar2'>" +
-    "<div title='FreJun' style='width:" + w(call) + "%;background:#0A2540'></div>" +
-    "<div title='Meetings' style='width:" + w(meet) + "%;background:#4C7A8C'></div>" +
-    "<div title='WhatsApp, declared' style='width:" + w(decl) + "%;background:#B9C6D2'></div></div>";
-}
 function draw(){
   var j = T, rows = j.rows || [], amended = {};
   (j.log || []).forEach(function(e){ amended[e.owner] = (amended[e.owner] || 0) + 1; });
-  var max = rows.reduce(function(n,r){ return Math.max(n, r.talkMs); }, 0);
   var one = j.you.role === "agent";
 
   /* Signing out has to be reachable from the page somebody is actually on. Without it the
@@ -195,10 +197,18 @@ function draw(){
     (j.date === j.yesterday ? "" : "<button class='btn' onclick=\"load('" + esc(j.yesterday) +
       "')\">Yesterday</button>") +
     (j.locked
-      ? "<span class='ctl lock'>LOCKED " + esc(hhmm(j.locked.at)) + "</span>"
+      ? "<span class='ctl lock' title='Closed at " + esc(hhmm(j.locked.at)) + " IST, " +
+        esc(String(j.locked.lateMin || 0)) + " minutes after this day ended'>CLOSED " +
+        esc(hhmm(j.locked.at)) + " IST</span>"
       : "<span class='ctl open'>OPEN until " + esc(j.lockAt) + "</span>") +
+    /* Only when genuinely late. The check polls, so it always lands a few minutes over,
+       and shouting about four of them makes the signal worthless. */
     (j.locked && j.locked.late
-      ? "<span class='ctl' style='color:#8C2126'>locked late, the window was missed</span>" : "") +
+      ? "<span class='ctl' style='color:#8C2126'>closed " + esc(hoursLate(j.locked.lateMin)) +
+        " after the day ended</span>" : "") +
+    (j.locked && j.locked.relocked
+      ? "<span class='ctl' style='color:#8C2126' title='" + esc(j.locked.relockReason || "") +
+        "'>re-locked, see the log</span>" : "") +
     "<span class='mut' style='margin-left:auto'>" + fmt(rows.length) +
       (rows.length === 1 ? " agent" : " agents") + "</span></div>";
 
@@ -229,11 +239,11 @@ function draw(){
   h += "<div class='tw'><table><thead><tr>" +
     (one ? "" : "<th>Agent</th><th>Team</th>") +
     "<th class='n'>FreJun</th><th class='n'>Calls</th><th class='n'>Meetings</th>" +
-    "<th class='n'>WhatsApp</th><th class='n'>Total</th><th style='width:100px'>Split</th>" +
-    "<th class='n' title='Of the calls nothing measured, how many the agent gave a length for'>Logged</th>" + (one ? "" : "<th></th>") +
+    "<th class='n'>WhatsApp</th><th class='n'>Total</th>" +
+    "<th class='n' title='Calls nothing measured, so the length had to come from the agent. 8 of 11 means eleven such calls and eight with a length on them.'>Length given</th>" + (one ? "" : "<th></th>") +
     "</tr></thead><tbody>";
   if (!rows.length)
-    h += "<tr><td colspan='10' class='mut' style='padding:14px'>Nothing on the phone this day.</td></tr>";
+    h += "<tr><td colspan='9' class='mut' style='padding:14px'>Nothing on the phone this day.</td></tr>";
   rows.forEach(function(r){
     /* Whether there is anything behind the row, not whether the agent used the call type.
        An agent who writes "duration: 26" without setting the type has real calls to show,
@@ -255,7 +265,6 @@ function draw(){
           (r.waCalls < r.declaredCalls ? ", " + fmt(r.declaredCalls - r.waCalls) + " untyped" : "") +
           "</div>" : "") + "</td>" +
       "<td class='n'><b>" + mins(r.talkMs) + "</b></td>" +
-      "<td>" + bar(r.callMs, r.meetMs, r.declaredMs, max) + "</td>" +
       "<td class='n " + (r.needLength > r.declaredCalls ? "hot" : "mut") + "'>" +
         (r.needLength ? r.declaredCalls + " of " + r.needLength : "&ndash;") + "</td>" +
       (one ? "<td>" + (can ? "<span class='mut'>" + (OPEN[r.id] ? "hide" : "show") +
@@ -263,7 +272,7 @@ function draw(){
         ? "<span class='pill p-red'>amended after lock</span>" : "") + "</td>") +
       "</tr>";
     if (can && OPEN[r.id]) {
-      h += "<tr class='exp'><td colspan='" + (one ? 7 : 10) + "'>" +
+      h += "<tr class='exp'><td colspan='" + (one ? 6 : 9) + "'>" +
         "<div class='expin'>" + detailFor(r.id) + "</div></td></tr>";
     }
   });

@@ -1381,7 +1381,8 @@ call number on the site. Reading FreJun directly would be a second integration t
 and the two would not tie out exactly, because FreJun counts ring time and calls that never
 sync. If a cross-check is ever wanted, that is the reason to do it, not accuracy.
 
-The **Logged** column is the fill rate on the calls that needed a person to supply a length:
+The **Length given** column, called Logged at first, is the fill rate on the calls that
+needed a person to supply a length:
 the ones nothing measured. An agent showing 3 of 8 there has five conversations nobody can
 evaluate.
 
@@ -1410,6 +1411,41 @@ payload carries `canBlockEdits: false` so no page can quietly imply otherwise.
 
 Detection is the honest version of prevention here. A block that does not exist deters
 nobody; a line reading "Nithin Thomas changed call 396778580729 from 20 minutes to 48" does.
+
+### A poll cannot hit a moment, and "late" must mean something
+
+The first version asked "is it 23:59 now". That is a one minute target checked every five
+minutes, so it missed roughly four nights in five. Every miss fell through to the catch-up
+branch a few minutes after midnight and was stamped **"locked late, the window was
+missed"**, which appeared every single night and was alarming and wrong: the day closed four
+minutes after it ended and nothing was lost.
+
+The damage is that it makes the one signal that should mean something mean nothing. Nobody
+reads a warning that is always on.
+
+So `pendingLock` asks which day is **owed** a lock and reports `lateMin`, the minutes past
+that day's own 23:59. `late` is true only beyond `TALK_GRACE_MIN`, 30 by default. Four
+minutes is on time. Nineteen hours is an incident and says so in words. The check now polls
+every two minutes as well, so it lands closer.
+
+**And the stamp was printed in UTC.** A day closed at 00:03 IST displayed as 18:33, which
+reads as somebody locking it in the middle of the afternoon. Every other time on this site
+is IST; this one now says so on its face.
+
+### A lock protects data, not arithmetic
+
+7 September was locked before the transcript rule landed, so it froze meeting time a
+notetaker generated in an empty room. Without a way back, that day would be permanently
+wrong, and "the number is frozen" would have become an excuse for a number nobody believes.
+
+`POST /api/talktime/relock` rebuilds a locked day. VP only, a written reason required, and
+the figures that moved are written into the change log beside the reason and the person, so
+a correction is part of the record rather than a quiet overwrite. The page shows a re-locked
+day as such.
+
+The distinction worth holding: a lock exists to stop **the data** being edited after the
+fact. It cannot and should not stop us fixing **the calculation**, so long as the fix is
+visible.
 
 ### The lock has to survive a restart
 
