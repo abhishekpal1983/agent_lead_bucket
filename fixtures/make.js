@@ -218,12 +218,18 @@ const HPAST = function(d, h){ return new Date(D(2026, 8, d, h || 10)).toISOStrin
 const history = {};
 const ledgerCalls = [];
 let lseq = 0;
-function hcall(owner, contact, h, m, durMs, source, body, attach, declaredMs){
+/* `hasDur` is the duration PROPERTY being present, which is not the same as it being
+   above zero: FreJun records a 0 on a dial that rang out, and that is a measurement. A
+   manual log carries no duration property at all. Defaulted from the source, since that
+   is exactly how the portal behaves. */
+function hcall(owner, contact, h, m, durMs, source, body, attach, declaredMs, hasDur){
   lseq++;
+  const src = source || "INTEGRATION";
   ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, h) + (m || 0) * 60000,
-    durMs: durMs || 0, disposition: "", owner: owner, source: source || "INTEGRATION",
+    durMs: durMs || 0, disposition: "", owner: owner, source: src,
     contact: String(contact), body: body || "", attach: !!attach,
-    declaredMs: declaredMs || 0 });
+    declaredMs: declaredMs || 0,
+    hasDur: hasDur === undefined ? src === "INTEGRATION" : !!hasDur });
 }
 
 /* Pick real leads out of the pool so owner and creator are consistent with everything
@@ -351,7 +357,7 @@ if (banded) {
   ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, 17),
     durMs: 0, disposition: "", owner: "202", source: "CRM_UI",
     contact: String(banded.id), body: "", attach: false, declaredMs: 0,
-    typeMs: 22 * 60000 });
+    hasDur: false, typeMs: 22 * 60000 });
 }
 
 /* 11. The shape that started this whole view: an agent whose whole day carries no
@@ -367,6 +373,37 @@ quiet.forEach(function(r, i){
   hcall("204", r.id, 12 + i, 40, 0, "INTEGRATION");
 });
 
+/* 15. The practice that creates a duplicate: FreJun dials and logs the call, then the
+       agent writes it up by hand so the notes live somewhere. One conversation, two
+       records, seventeen minutes apart, which is far outside the two minute window the
+       plain de-duplication uses. Measured on the real floor at 1, 8, 16 and 70 minutes.
+       This must count as ONE call, with the FreJun duration, and must not appear as a
+       call with no length. */
+const pairLead = rows.filter(function(r){ return r.owner === "201" && !history[r.id]; })[0];
+if (pairLead) {
+  history[pairLead.id] = [{ value: "counselled", timestamp: HTODAY(15, 10) }];
+  pairLead.fu = D(2026, 8, 13, 10);
+  hcall("201", pairLead.id, 15, 0, 1500000, "INTEGRATION");
+  hcall("201", pairLead.id, 15, 17, 0, "CRM_UI", "wrote up the call, wants a callback", true);
+}
+
+/* 16. The same agent, same lead, a genuinely separate WhatsApp call later that day with a
+       declared length. Declaring a length is the agent saying this was its own call, so
+       it must NOT be absorbed into the FreJun one above. */
+if (pairLead) {
+  hcall("201", pairLead.id, 20, 30, 0, "CRM_UI", "WA call in the evening", true, 18 * 60000);
+}
+
+/* 17. A FreJun dial that rang out. Duration is present and zero, which is a measurement,
+       so this is not a call whose length is missing. Most of the floor's calls look like
+       this and reading them as unrecorded made the fill rate meaningless. */
+const rangOut = rows.filter(function(r){ return r.owner === "202" && !history[r.id]; })[0];
+if (rangOut) {
+  history[rangOut.id] = [{ value: "discovery", timestamp: HTODAY(13, 5) }];
+  rangOut.fu = D(2026, 8, 9, 15);
+  hcall("202", rangOut.id, 13, 0, 0, "INTEGRATION");
+}
+
 /* A meeting that was actually held, attached to a lead, and one creator session with no
    lead on it that must stay out of anybody's talktime. */
 const meetings = [
@@ -379,7 +416,8 @@ const meetings = [
 /* A call the day before, so a day boundary bug shows up as a wrong total rather than as
    nothing at all. */
 ledgerCalls.push({ id: "LCALLPREV", at: D(2026, 8, 5, 15), durMs: 1800000, disposition: "",
-  owner: L(0).owner, source: "INTEGRATION", contact: L(0).id, body: "", attach: false });
+  owner: L(0).owner, source: "INTEGRATION", contact: L(0).id, body: "", attach: false,
+  hasDur: true });
 
 module.exports = {
   waIds: waIds, calls: calls, rows: rows, now: TODAY, agents: AGENTS,

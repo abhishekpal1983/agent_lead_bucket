@@ -1184,3 +1184,72 @@ whole day carries no duration, because the sentence that warns about that agent 
 otherwise never rendered by any test. Four features in this codebase have shipped green
 against fixture data that was not there, so the endpoint suite checks a non-zero total
 before trusting anything below it.
+
+## 41. A dial timed at nought is measured. A blank is not.
+
+`hs_call_duration` is **absent** on a manually logged call and **present and zero** on a
+FreJun dial that rang out. Those are opposite statements: one is ignorance, the other is a
+measurement whose answer happens to be nothing.
+
+The first version tested `durMs > 0` and so read both as missing. Since most dials go
+unanswered, that marked most of the floor's calls as unrecorded and made the fill rate
+meaningless. `hasDur` is now the property's presence, and it is what `talkFor` and the
+`lengthMissing` count are built on.
+
+The same mistake had a second face. A counselling whose only call was timed at nought
+seconds was neither `short` (because the total was not above zero) nor `unknown` (because a
+duration existed), so the single most suspicious row on the page rendered silently. `short`
+now tests whether anything is **known**, not whether the total is positive.
+
+The view carries two different warnings for the two cases, and they must not be recombined:
+"N calls carry no length at all", which understates that agent's talktime, and "N dials,
+none of them answered", which does not.
+
+## 42. The write-up is not a second conversation
+
+A real practice on this floor: FreJun dials and logs the call, then the agent logs a manual
+call as well so the notes live somewhere. One conversation, two records.
+
+`IDLE.dedupe` only catches this when the two land within `dedupeMs`, two minutes. Measured
+against one agent's day in the portal, they mostly do not:
+
+```
+11:02:48 -> 11:03:55    67 seconds   caught
+08:52:31 -> 09:00:40     8 minutes   missed
+08:32:38 -> 08:49:07    16 minutes   missed
+14:33:36 -> 15:46:05    70 minutes   missed
+```
+
+Widening the window to seventy minutes is not the fix, because a genuine second attempt an
+hour later would then disappear. **The day is a better key than the clock.** `IDLE.writeUps`
+absorbs a manual record carrying no duration into a measured call on the same lead by the
+same agent on the same day, attaching it to the nearest one.
+
+Three guards keep it honest. A manual record with a **declared length is never merged**,
+because declaring a length is the agent saying "this was its own call", so the rule gets
+stricter as adoption improves rather than looser. A record whose duration is present and
+zero is measured and stands alone. And nothing is ever merged into another manual record:
+two write-ups with no measurement between them are two calls, because nothing says they are
+not.
+
+Also worth knowing: the `hs_timestamp` on a manual log is chosen from a dropdown and is
+often wrong. One real record carries a timestamp of 09:30:00 and a create date of 09:00:40.
+Do not build tight timing logic on it.
+
+## 43. What to ask agents to do, given the form cannot be changed
+
+Only WhatsApp and other manually dialled calls need a length at all; FreJun measures the
+rest. That makes the cheapest routes good enough, and the cheapest routes are the ones that
+cannot break, because they are native HubSpot fields rather than software of ours sitting
+on top of HubSpot's markup.
+
+**The note.** Agents are already writing a note on exactly these calls, which is why they
+log them by hand. "20m" costs nothing to add, needs no configuration, no subscription tier,
+works in the mobile app, and is already parsed.
+
+**Call type bands.** One click, a native field inside the log form, and this portal is not
+using `hs_activity_type` for anything else.
+
+Anything that injects into HubSpot's own UI, whether a Chrome extension or a card, is more
+fragile than both by construction, and the fragility is silent: the column simply goes flat
+and nobody notices for a week.

@@ -1019,13 +1019,27 @@ ok("the month picker and the page filters both reload it",
      distinction gets quietly lost again. */
   ok("length unknown is its own tile, never folded into short",
     o.indexOf("Length unknown") >= 0 && o.indexOf("Under 10 min") >= 0);
-  ok("an agent with calls and no recorded duration is warned about in words",
-    o.indexOf("carrying no duration between them") < 0, "not expanded yet");
+  /* Matched on the warning's own words. "no length at all" also appears in the summary
+     tile, so testing for that phrase alone passes whether or not the warning rendered. */
+  ok("the warning about unmeasured calls belongs to the expander, not the summary",
+    o.indexOf("understated by however long") < 0, "should not be there before expanding");
   lgCtx.LG_OPEN["204"] = true; lgCtx.renderLedger();
   const o2 = lgEls.lgwrap.innerHTML;
-  ok("and the warning appears once that agent is opened",
-    o2.indexOf("carrying no duration between them") >= 0 &&
-    o2.indexOf("dials nobody answered") >= 0);
+  /* Two warnings, because they are two different problems. A dial FreJun timed at nought
+     rang out. A manual log carrying no duration property is a conversation nobody
+     measured, and only that one understates the agent's talktime. */
+  ok("a genuinely unmeasured call is named as understating the agent's talktime",
+    o2.indexOf("no length at all") >= 0 && o2.indexOf("understated by however long") >= 0);
+  ok("while a day of unanswered dials is not confused with missing data",
+    (function(){
+      lgCtx.LG.rows[1] = Object.assign({}, lgCtx.LG.rows[1], { lengthMissing: 0 });
+      lgCtx.renderLedger();
+      const f = lgEls.lgwrap.innerHTML;
+      lgCtx.LG.rows[1] = Object.assign({}, lgCtx.LG.rows[1], { lengthMissing: 4 });
+      lgCtx.renderLedger();
+      return f.indexOf("dials, none of them answered") >= 0 &&
+        f.indexOf("rather than a day of missing data") >= 0;
+    })());
   ok("a lead with no duration reads as not recorded, never as a zero",
     o2.indexOf("not recorded") >= 0 && o2.indexOf("no duration") >= 0);
   lgCtx.LG_OPEN["201"] = true; lgCtx.renderLedger();

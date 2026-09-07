@@ -945,9 +945,17 @@ function renderLedger(){
       "</tr>";
     if (open) {
       h += "<tr><td colspan='14' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
-        (r.calls && !r.callMs ? "<div class='warn'><b>" + fmt(r.calls) + " calls carrying no duration between them.</b> " +
-          "Either a day of dials nobody answered or conversations whose length never reached HubSpot. " +
-          "The two look identical from here.</div>" : "") +
+        /* These were one warning until the two cases could be told apart. A dial FreJun
+           timed at nought rang out; a manual log with no duration property is a
+           conversation nobody measured. Reading the second as the first was marking most
+           of the floor as unrecorded, since most dials go unanswered. */
+        (r.lengthMissing ? "<div class='warn'><b>" + fmt(r.lengthMissing) +
+          (r.lengthMissing === 1 ? " call carries" : " calls carry") + " no length at all.</b> " +
+          "Logged by hand with nothing to say how long it lasted, so this agent's talktime is " +
+          "understated by however long those ran.</div>" : "") +
+        (r.calls && !r.callMs && !r.lengthMissing ? "<div class='warn'><b>" + fmt(r.calls) +
+          " dials, none of them answered.</b> Every call was timed and every one came back at " +
+          "nought, so this is a day of nobody picking up rather than a day of missing data.</div>" : "") +
         "<table class='rt'><thead><tr><th>Lead</th><th>Creator</th><th>Reached</th><th>At</th>" +
         "<th>From</th><th class='n'>Calls</th><th class='n'>Talk</th><th>Flags</th></tr></thead><tbody>" +
         lgLeadRows(r.id) + "</tbody></table></div></td></tr>";

@@ -7437,6 +7437,9 @@ async function ledgerCalls(b){
     ((j && j.results) || []).forEach(function(r){
       rows.push({ id: String(r.id), at: ts(r.properties.hs_timestamp),
         durMs: num(r.properties.hs_call_duration),
+        /* Present and zero is a measurement, absent is ignorance. See lib/counsel talkFor. */
+        hasDur: r.properties.hs_call_duration != null &&
+          String(r.properties.hs_call_duration) !== "",
         owner: String(r.properties.hubspot_owner_id || ""),
         source: String(r.properties.hs_object_source_label || "UNKNOWN"),
         attach: !!r.properties.hs_attachment_ids,
@@ -7618,37 +7621,34 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
 
   /* One call, however many records HubSpot holds for it. FreJun writes the dial and the
      agent writes the same call up again, and counting records reads about 6% high. */
-  const merged = IDLE.dedupe(calls.filter(function(c){ return c.at > 0; }), IDLE_CFG);
+  const deduped = IDLE.dedupe(calls.filter(function(c){ return c.at > 0; }), IDLE_CFG);
+  /* dedupe keeps only what it knows about, so the fields the write-up merge needs are
+     restored onto each merged call before it runs. */
+  const srcOf = {};
+  calls.forEach(function(c){ srcOf[c.id] = c; });
+  deduped.forEach(function(c){
+    const src = (c.ids || []).map(function(id){ return srcOf[id]; }).filter(Boolean);
+    c.hasDur = src.some(function(x){ return x.hasDur; });
+    c.attach = src.some(function(x){ return x.attach; });
+    c.declaredMs = 0; c.noteMs = 0;
+    if (!c.hasDur) {
+      src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.declaredMs || 0); });
+      if (!c.declaredMs) src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.typeMs || 0); });
+      if (!c.declaredMs) src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
+    }
+    c.body = src.map(function(x){ return x.body; }).filter(Boolean)[0] || "";
+  });
+  /* The write-up an agent logs after a FreJun call, so the notes live somewhere. One
+     conversation, two records, and usually far too far apart in time for the plain
+     de-duplication above to catch. */
+  const wu = IDLE.writeUps(deduped, Object.assign({}, IDLE_CFG, { dayKey: dayOf }));
+  const merged = wu.calls;
   const callsByLead = {}, callsByOwner = {};
   merged.forEach(function(c){
-    /* dedupe keeps ids and sources but not the fields it does not know about, so the
-       note text and the attachment flag are recovered from the records it merged. */
-    const src = c.ids.map(function(id){ return calls.filter(function(x){ return x.id === id; })[0]; })
-      .filter(Boolean);
-    c.attach = src.some(function(x){ return x.attach; });
-    /* Strict precedence, and never a sum. A measured duration wins outright: if FreJun
-       timed the call there is nothing for a human to add, and a manual log that duplicates
-       a FreJun record has already merged into this same call, so adding a declared number
-       on top would count one conversation twice and reward filling the box in. Only when
-       nothing measured it does the agent's own number count, and only when that is absent
-       too is the note read. */
-    c.declaredMs = 0; c.noteMs = 0;
-    if (!(c.durMs > 0)) {
-      /* Exact before approximate: the typed field, then the band an agent picked, then
-         whatever they wrote in prose. All three are the agent's own account of the call,
-         so they share one Declared column; they differ only in how precise they are. */
-      src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.declaredMs || 0); });
-      if (!c.declaredMs) {
-        src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.typeMs || 0); });
-        c.banded = c.declaredMs > 0;
-      }
-      if (!c.declaredMs) {
-        src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
-      }
-    }
-    /* No duration, nothing declared, nothing in the note. This is what the fill rate
-       column counts: how much of the floor's talking is simply unrecorded. */
-    c.lengthMissing = !(c.durMs > 0) && !c.declaredMs && !c.noteMs;
+    /* Nothing measured it, nobody declared it, nothing in the note. This is what the
+       fill rate counts: talking the report simply has no length for. A FreJun dial that
+       rang out is NOT this. It was timed, and the answer was nought. */
+    c.lengthMissing = !c.hasDur && !c.declaredMs && !c.noteMs;
     if (c.contact) (callsByLead[c.contact] = callsByLead[c.contact] || []).push(c);
     if (c.owner && c.owner !== "none") (callsByOwner[c.owner] = callsByOwner[c.owner] || []).push(c);
   });
@@ -7689,8 +7689,11 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
         return { id: m.id, title: m.title, durMs: m.durMs }; }),
       /* A meeting or a note length answers "how long was this" just as well as a call
          duration, so neither unknown nor short may stand once one is present. */
-      unknown: talk.unknown && !mtg && !noteMs && !declaredMs,
-      short: (talk.ms + mtg + noteMs + declaredMs) > 0 &&
+      /* Known, rather than non-zero. A counselling whose only call FreJun timed at nought
+         seconds is the most suspicious row on the page, and testing the total against zero
+         made it show as neither short nor unknown: it fell silently between the two. */
+      unknown: talk.calls > 0 && !talk.known && !mtg && !noteMs && !declaredMs,
+      short: (talk.known > 0 || mtg > 0 || noteMs > 0 || declaredMs > 0) &&
         (talk.ms + mtg + noteMs + declaredMs) < LEDGER_SHORT_MS,
       noFollowUp: !ts(c.follow_up_date_and_time)
     });
@@ -7755,7 +7758,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
   return { at: Date.now(), day: dayKey, rows: rows, leads: leads, error: null,
     shortMs: LEDGER_SHORT_MS,
     counted: { contacts: contacts.length, withHistory: Object.keys(hist).length,
-      calls: calls.length, mergedCalls: merged.length, meetings: meets.length } };
+      calls: calls.length, dedupedCalls: deduped.length, mergedCalls: merged.length,
+      writeUps: wu.absorbed.length, meetings: meets.length } };
 }
 
 /* Warmed at 00:20 IST, ten minutes before the cohort so the two do not collide, and after

@@ -864,10 +864,18 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
 
     /* The distinction the whole view turns on. One real agent logged 41 calls totalling
        five minutes; calling that "under ten minutes" would be a false accusation. */
-    const quiet = (lg.body.rows || []).filter(function(r){ return r.calls > 0 && r.callMs === 0; })[0];
-    ok("an agent whose calls carry no duration is held as unknown, never as short",
-      !!quiet && quiet.unknown > 0 && quiet.short === 0,
-      JSON.stringify(quiet && { n: quiet.name, c: quiet.calls, ms: quiet.callMs, u: quiet.unknown, s: quiet.short }));
+    const quiet = (lg.body.rows || []).filter(function(r){ return r.lengthMissing > 0; })[0];
+    ok("an agent whose calls carry no duration at all is held as unknown, never as short",
+      !!quiet && quiet.unknown > 0,
+      JSON.stringify(quiet && { n: quiet.name, c: quiet.calls, miss: quiet.lengthMissing,
+        u: quiet.unknown, s: quiet.short }));
+    /* A counselling whose only call was timed at nought seconds is the most suspicious
+       row there is, and it used to fall between short and unknown and show as neither. */
+    ok("a counselling measured at nought seconds reads as short, not as silence",
+      (lg.body.leads || []).some(function(l){
+        return l.counselling && l.short && l.callMs === 0 && l.calls > 0; }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.counselling && !l.callMs; })
+        .map(function(l){ return [l.name, l.calls, l.short, l.unknown]; })));
     ok("and somebody with real short calls is counted as short instead",
       (lg.body.rows || []).some(function(r){ return r.short > 0 && r.callMs > 0; }));
     /* Free before anybody pays to read an image: the agent typed the length in the note. */
@@ -889,10 +897,15 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        screenshots would have been. */
     ok("a declared length is read and counted",
       lg.body.totals.declaredMs > 0, String(lg.body.totals.declaredMs));
-    ok("and a measured duration beats a declared one outright, never sums with it",
-      (lg.body.leads || []).every(function(l){ return !(l.callMs > 0 && l.declaredMs > 0); }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.callMs > 0 && l.declaredMs > 0; })
-        .map(function(l){ return [l.name, l.callMs, l.declaredMs]; })));
+    /* Per call, a measured duration wins outright. A lead can legitimately hold both,
+       from two different calls: a FreJun call in the morning and a declared WhatsApp call
+       that evening. What must never happen is one call contributing to both. */
+    ok("a lead holding both measured and declared time has more than one call behind it",
+      (lg.body.leads || []).every(function(l){
+        return !(l.callMs > 0 && l.declaredMs > 0) || l.calls > 1; }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){
+        return l.callMs > 0 && l.declaredMs > 0 && l.calls <= 1; })
+        .map(function(l){ return [l.name, l.calls, l.callMs, l.declaredMs]; })));
     /* One conversation, logged twice, with the box filled in on the manual copy. Adding
        the two would count it twice and reward filling the box in. */
     ok("declared minutes on a call FreJun already timed are ignored",
@@ -929,9 +942,30 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       lg.body.declaredField && lg.body.declaredField.name === "manual_call_minutes" &&
       "ready" in lg.body.declaredField, JSON.stringify(lg.body.declaredField));
     ok("and the fill rate says how much talking has no length at all",
-      lg.body.totals.lengthMissing > 0 &&
-      (lg.body.rows || []).some(function(r){ return r.logged === 0; }),
+      lg.body.totals.lengthMissing > 0,
       JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.logged]; })));
+    /* FreJun writes a duration of 0 on a dial that rang out. That is a measurement, and
+       reading it as missing marked most of the floor as unrecorded, because most dials go
+       unanswered. Only an absent duration property is ignorance. */
+    ok("a dial timed at nought counts as measured, not as a missing length",
+      (function(){
+        const zeroOnly = (lg.body.rows || []).filter(function(r){
+          return r.calls > 0 && r.measuredMs === 0 && r.declaredTotalMs === 0; })[0];
+        return zeroOnly && zeroOnly.lengthMissing === 0 && zeroOnly.logged === 100;
+      })(), JSON.stringify((lg.body.rows || []).map(function(r){
+        return [r.name, r.calls, r.measuredMs, r.lengthMissing, r.logged]; })));
+    /* The real practice: FreJun logs the call, the agent writes it up by hand so the
+       notes live somewhere. One conversation, two records, measured on the floor at 1, 8,
+       16 and 70 minutes apart, so a two minute window catches almost none of them. */
+    ok("a note written up after a FreJun call is merged into it, not counted again",
+      lg.body.counted.writeUps > 0 &&
+      lg.body.counted.mergedCalls < lg.body.counted.dedupedCalls,
+      JSON.stringify(lg.body.counted));
+    /* Declaring a length is the agent saying this was its own call, so it must survive
+       the write-up merge even on a lead that also had a FreJun call that day. */
+    ok("a declared WhatsApp call on the same lead is not absorbed into the FreJun one",
+      (lg.body.rows || []).some(function(x){ return x.declaredTotalMs > 0 && x.measuredMs > 0; }),
+      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.measuredMs, x.declaredTotalMs]; })));
     ok("the payload says out loud that screenshots are not read",
       lg.body.screenshotsRead === false && lg.body.followUpIsCurrentValue === true);
 
