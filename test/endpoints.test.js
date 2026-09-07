@@ -908,11 +908,16 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         .map(function(l){ return [l.name, l.calls, l.callMs, l.declaredMs]; })));
     /* One conversation, logged twice, with the box filled in on the manual copy. Adding
        the two would count it twice and reward filling the box in. */
-    ok("declared minutes on a call FreJun already timed are ignored",
-      (function(){
-        const m = (lg.body.rows || []).filter(function(r){ return r.name === "Vikram Rao"; })[0];
-        return m && m.measuredMs > 0 && m.declaredTotalMs === 22 * 60000;
-      })(), JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.measuredMs, r.declaredTotalMs]; })));
+    /* Found from the fixture rather than named, so adding a case does not silently turn
+       this into a test of a number somebody bumped until it went green. */
+    ok("declared minutes on a call FreJun already timed are ignored", (function(){
+      const F = require("../fixtures/make.js");
+      const both = (F.ledgerCalls || []).filter(function(c){ return c.hasDur && c.declaredMs > 0; })[0];
+      if (!both) return false;
+      const lead = (lg.body.leads || []).filter(function(l){ return String(l.id) === String(both.contact); })[0];
+      // The measured duration survives and the number typed beside it does not.
+      return lead && lead.callMs >= both.durMs && lead.declaredMs === 0;
+    })(), "the fixture holds a FreJun call carrying a declared number too");
     ok("measured and declared are reported apart as well as together",
       (lg.body.rows || []).every(function(r){
         return r.talkMs === r.measuredMs + r.declaredTotalMs; }),
@@ -961,6 +966,29 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       lg.body.counted.writeUps > 0 &&
       lg.body.counted.mergedCalls < lg.body.counted.dedupedCalls,
       JSON.stringify(lg.body.counted));
+    /* Typing the call as a WhatsApp call is the agent saying three things at once: it was
+       a real conversation, FreJun did not dial it, and a length is expected. It is what
+       makes a bare number at the front of a note safe to read. */
+    ok("a call typed as WhatsApp is counted as one, and its length read from the note",
+      lg.body.totals.waCalls > 0 &&
+      (lg.body.leads || []).some(function(l){ return l.waCalls > 0 && l.noteMs === 28 * 60000; }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.waCalls; })
+        .map(function(l){ return [l.name, l.waCalls, l.noteMs]; })));
+    ok("and a bare number is read past the other numbers in the same note",
+      (lg.body.leads || []).some(function(l){ return l.noteMs === 28 * 60000; }),
+      "the fixture note reads '28 | cx has 7yrs exp, 35lpa'");
+    /* The same agent called the same lead through FreJun earlier that day, so without the
+       type this would be absorbed as the write-up of that call and vanish. */
+    ok("a WhatsApp typed call is never absorbed into a FreJun call on the same lead",
+      (lg.body.leads || []).some(function(l){
+        return l.waCalls > 0 && l.callMs > 0 && l.calls > 1; }),
+      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.waCalls; })
+        .map(function(l){ return [l.name, l.calls, l.callMs, l.noteMs]; })));
+    ok("the fill rate is measured against WhatsApp calls once the agent types them",
+      (lg.body.rows || []).some(function(x){ return x.loggedOf === "wa"; }) &&
+      (lg.body.rows || []).every(function(x){
+        return x.loggedOf !== "wa" || x.waMissing <= x.waCalls; }),
+      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.waCalls, x.logged, x.loggedOf]; })));
     /* Declaring a length is the agent saying this was its own call, so it must survive
        the write-up merge even on a lead that also had a FreJun call that day. */
     ok("a declared WhatsApp call on the same lead is not absorbed into the FreJun one",

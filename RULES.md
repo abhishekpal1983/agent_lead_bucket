@@ -1261,8 +1261,32 @@ lead, are indistinguishable in prose. That is the honest ceiling on reading free
 it is why the Call type band is the route worth setting up rather than this one. Of fifty
 real screenshot calls, forty carry a typed note and only two of those note a duration.
 
-**Call type bands.** One click, a native field inside the log form, and this portal is not
-using `hs_activity_type` for anything else.
+**A `WA call` call type, plus the minutes at the front of the note.** This is the design
+that was settled on, and it is better than either half alone because the type does three
+jobs rather than one.
+
+It says **which** calls were supposed to carry a length, so the fill rate stops inferring it
+from "manual and no duration" and starts knowing. It **protects** the call from
+`IDLE.writeUps`, because typing it as a WhatsApp call is the agent stating this was its own
+conversation and not the write-up of a FreJun call to the same lead. And it **scopes the
+parsing**, which is what makes the whole thing work: a bare number is unreadable in open
+prose and perfectly safe once the call is already known to be a manually dialled one.
+
+So `ledgerLeadMs` reads a number at the front of the note, but only on a call typed as
+WhatsApp. It is still guarded, because the numbers this floor writes are mostly not
+durations. `25 | cx has 7yrs exp, 35lpa` reads 25. `15yrs expi data architech current lpa
+35lpa` reads nothing. A leading number is believed only when what follows is a minutes
+marker, a separator, or nothing, and never when it is another unit: days, weeks, hours,
+years, lpa, lakh, k.
+
+The type names are configurable through `WA_CALL_TYPES`, default "wa call, whatsapp call,
+whatsapp, wa", because they have to match whatever gets created rather than what was guessed
+here. Duration bands and the exact `manual_call_minutes` property are still read as well, so
+none of the three routes excludes the others.
+
+Worth knowing that the floor already half does this: real call bodies include "WHATP CALL",
+"WHATP CALL- DNP", "whatp calll-45 min" and "Completed a whatsapp call". The convention is
+formalising a habit rather than introducing one.
 
 Anything that injects into HubSpot's own UI, whether a Chrome extension or a card, is more
 fragile than both by construction, and the fragility is silent: the column simply goes flat

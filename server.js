@@ -7328,7 +7328,17 @@ const CALL_TYPE_MINUTES = (function(){
   });
   return map;
 })();
+/* The call types that mean "a manually dialled conversation", as opposed to a duration
+   band. Marking a call this way is the agent saying three things at once: this was a real
+   conversation, it was not FreJun, and a length is expected on it. */
+const WA_CALL_TYPES = String(process.env.WA_CALL_TYPES || "wa call,whatsapp call,whatsapp,wa")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
 let CALL_TYPE_LABELS = {};
+function ledgerIsWa(v){
+  if (!v) return false;
+  const label = CALL_TYPE_LABELS[String(v)] || String(v);
+  return WA_CALL_TYPES.indexOf(label.trim().toLowerCase()) >= 0;
+}
 async function discoverCallTypes(){
   if (!TOKEN) return {};
   try {
@@ -7446,6 +7456,7 @@ async function ledgerCalls(b){
         body: String(r.properties.hs_call_body || ""),
         declaredMs: ledgerDeclaredMs(r.properties[MANUAL_MIN_PROP]),
         typeMs: ledgerTypeMs(r.properties.hs_activity_type),
+        isWa: ledgerIsWa(r.properties.hs_activity_type),
         contact: "" });
     });
     after = j && j.paging && j.paging.next && j.paging.next.after;
@@ -7551,6 +7562,34 @@ function ledgerDeclaredMs(v){
    call. Nothing here can distinguish "spoke 20 mins" from "give me 20 minutes" said by the
    lead, which is the honest limit of reading prose and the reason the Call type band is
    the route worth setting up. */
+/* Once a call is marked as a WhatsApp call the reading gets easier, because the question
+   changes. In open prose a bare number could be anything. On a call the agent has already
+   flagged as a manually dialled conversation, a number sitting at the front of the note is
+   almost certainly how long it ran.
+
+   Still guarded, because the numbers this floor writes are mostly not durations: "15yrs
+   expi", "current lpa 35lpa", "3 years of experience". A leading number is believed only
+   when what follows it is a minutes marker, a separator, or nothing. Anything that looks
+   like another unit disqualifies it. */
+const LEDGER_LEAD_RE = /^\s*(?:wa|whatsapp|whatp|wp)?\s*(?:call)?\s*[:\-|,]*\s*(\d{1,3})\s*([a-z]*)/i;
+const LEDGER_MIN_WORD = /^m(?:in(?:ute)?s?)?$/i;
+function ledgerLeadMs(body){
+  const txt = String(body || "").replace(/<[^>]*>/g, " ").trim();
+  const m = txt.match(LEDGER_LEAD_RE);
+  if (!m) return 0;
+  const unit = String(m[2] || "");
+  // Empty means the number stood alone: "25 | cx wants...". Otherwise it must say minutes.
+  if (unit && !LEDGER_MIN_WORD.test(unit)) return 0;
+  if (!unit) {
+    /* No unit attached, so the next word decides. "2 days" and "3 years" are not lengths. */
+    const rest = txt.slice(m.index + m[0].length).trim();
+    if (/^(day|days|week|weeks|hour|hours|hr|hrs|month|months|year|years|yr|yrs|lpa|lakh|k)\b/i.test(rest)) return 0;
+  }
+  const mins = parseInt(m[1], 10);
+  if (!mins || mins > MANUAL_MIN_MAX) return 0;
+  return mins * 60000;
+}
+
 const LEDGER_NOTE_RE = /(\d{1,3})\s*(?:\+\s*)?(?:min(?:ute)?s?|mins?\b|m\b)/ig;
 const LEDGER_NOTE_FUTURE = /\b(in|after|within|back|later|tmr|tomorrow|call|reschedul\w*)\s*$/i;
 function ledgerNoteMs(body){
@@ -7650,11 +7689,19 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     const src = (c.ids || []).map(function(id){ return srcOf[id]; }).filter(Boolean);
     c.hasDur = src.some(function(x){ return x.hasDur; });
     c.attach = src.some(function(x){ return x.attach; });
+    c.isWa = src.some(function(x){ return x.isWa; });
     c.declaredMs = 0; c.noteMs = 0;
     if (!c.hasDur) {
       src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.declaredMs || 0); });
       if (!c.declaredMs) src.forEach(function(x){ c.declaredMs = Math.max(c.declaredMs, x.typeMs || 0); });
-      if (!c.declaredMs) src.forEach(function(x){ c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body)); });
+      if (!c.declaredMs) {
+        src.forEach(function(x){
+          /* Anywhere in the note it has to say minutes. At the front of a note on a call
+             already marked WhatsApp, a bare number is enough. */
+          c.noteMs = Math.max(c.noteMs, ledgerNoteMs(x.body));
+          if (!c.noteMs && c.isWa) c.noteMs = Math.max(c.noteMs, ledgerLeadMs(x.body));
+        });
+      }
     }
     c.body = src.map(function(x){ return x.body; }).filter(Boolean)[0] || "";
   });
@@ -7688,6 +7735,7 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     const noteMs = mine.reduce(function(n, x){ return n + (x.noteMs || 0); }, 0);
     const declaredMs = mine.reduce(function(n, x){ return n + (x.declaredMs || 0); }, 0);
     const missing = mine.filter(function(x){ return x.lengthMissing; }).length;
+    const waCalls = mine.filter(function(x){ return x.isWa; }).length;
     leads.push({
       id: c.id,
       name: ((c.firstname || "") + " " + (c.lastname || "")).trim() ||
@@ -7700,6 +7748,7 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       reopened: d.reopened, dropped: d.dropped,
       calls: talk.calls, callMs: talk.ms, withDuration: talk.withDuration,
       meetMs: mtg, noteMs: noteMs, declaredMs: declaredMs, lengthMissing: missing,
+      waCalls: waCalls,
       screenshot: mine.some(function(x){ return x.attach; }),
       /* The call records carrying the image, so the page can link to them. Reading the
          image is deferred; being one click from looking at it yourself is not. */
@@ -7727,7 +7776,7 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
       counsellings: 0, progress: 0, repeat: 0, reopened: 0, dropped: 0,
       noFollowUp: 0, short: 0, unknown: 0, screenshot: 0,
       calls: 0, callMs: 0, meetMs: 0, noteMs: 0, declaredMs: 0,
-      lengthMissing: 0, meetings: 0 };
+      lengthMissing: 0, waCalls: 0, waMissing: 0, meetings: 0 };
     return agents[id];
   };
   leads.forEach(function(l){
@@ -7754,6 +7803,10 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     a.noteMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.noteMs || 0); }, 0);
     a.declaredMs = callsByOwner[oid].reduce(function(n, c){ return n + (c.declaredMs || 0); }, 0);
     a.lengthMissing = callsByOwner[oid].filter(function(c){ return c.lengthMissing; }).length;
+    /* Once agents type the call as WhatsApp, the fill rate stops guessing which calls were
+       supposed to carry a length and starts knowing. */
+    a.waCalls = callsByOwner[oid].filter(function(c){ return c.isWa; }).length;
+    a.waMissing = callsByOwner[oid].filter(function(c){ return c.isWa && c.lengthMissing; }).length;
   });
   Object.keys(meetsByOwner).forEach(function(oid){
     const a = agent(oid);
@@ -7770,7 +7823,13 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     a.measuredMs = a.callMs + a.meetMs;
     a.declaredTotalMs = a.declaredMs + a.noteMs;
     a.talkMs = a.measuredMs + a.declaredTotalMs;
-    a.logged = a.calls ? Math.round(100 * (a.calls - a.lengthMissing) / a.calls) : null;
+    /* Measured against the calls that were meant to carry a length, when the agent has
+       said which those are, and against everything otherwise. A floor of unanswered FreJun
+       dials should not dilute the number that is supposed to chase WhatsApp calls. */
+    a.logged = a.waCalls
+      ? Math.round(100 * (a.waCalls - a.waMissing) / a.waCalls)
+      : (a.calls ? Math.round(100 * (a.calls - a.lengthMissing) / a.calls) : null);
+    a.loggedOf = a.waCalls ? "wa" : "all";
     a.flagged = a.repeat + a.reopened + a.dropped;
     return a;
   });
@@ -7845,7 +7904,7 @@ app.get("/api/vp/ledger", async function(req, res){
         unknown: sum("unknown"), calls: sum("calls"), talkMs: sum("talkMs"),
         meetMs: sum("meetMs"), noteMs: sum("noteMs"), declaredMs: sum("declaredMs"),
         measuredMs: sum("measuredMs"), declaredTotalMs: sum("declaredTotalMs"),
-        lengthMissing: sum("lengthMissing") },
+        lengthMissing: sum("lengthMissing"), waCalls: sum("waCalls"), waMissing: sum("waMissing") },
       rows: rows, leads: leads,
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot forget to say it. */
@@ -7856,7 +7915,9 @@ app.get("/api/vp/ledger", async function(req, res){
         callTypes: Object.keys(CALL_TYPE_LABELS).length,
         bandedTypes: Object.keys(CALL_TYPE_LABELS).filter(function(k){
           return CALL_TYPE_MINUTES[CALL_TYPE_LABELS[k].trim().toLowerCase()] != null; }).length,
-        bands: Object.keys(CALL_TYPE_MINUTES) },
+        bands: Object.keys(CALL_TYPE_MINUTES), waTypes: WA_CALL_TYPES,
+        waTypeSet: Object.keys(CALL_TYPE_LABELS).filter(function(k){
+          return WA_CALL_TYPES.indexOf(CALL_TYPE_LABELS[k].trim().toLowerCase()) >= 0; }).length },
       followUpIsCurrentValue: true
     });
   } catch (e) {

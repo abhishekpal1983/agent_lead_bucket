@@ -373,6 +373,22 @@ quiet.forEach(function(r, i){
   hcall("204", r.id, 12 + i, 40, 0, "INTEGRATION");
 });
 
+/* 18. The shape Abhishek proposed: the call is typed as a WhatsApp call and the length is
+       the first thing in the note, sitting beside notes full of other numbers. The type is
+       what makes a bare number safe to read, and it must also stop the call being absorbed
+       into the FreJun call this same agent made to this same lead earlier. */
+const waTyped = rows.filter(function(r){ return r.owner === "203" && !history[r.id]; })[0];
+if (waTyped) {
+  history[waTyped.id] = [{ value: "counselled", timestamp: HTODAY(18, 15) }];
+  waTyped.fu = D(2026, 8, 12, 16);
+  hcall("203", waTyped.id, 11, 0, 900000, "INTEGRATION");
+  lseq++;
+  ledgerCalls.push({ id: "LCALL" + (5000 + lseq), at: D(2026, 8, 6, 18),
+    durMs: 0, disposition: "", owner: "203", source: "CRM_UI", contact: String(waTyped.id),
+    body: "<p>28 | cx has 7yrs exp, 35lpa, wants europe</p>", attach: true,
+    declaredMs: 0, hasDur: false, isWa: true });
+}
+
 /* 15. The practice that creates a duplicate: FreJun dials and logs the call, then the
        agent writes it up by hand so the notes live somewhere. One conversation, two
        records, seventeen minutes apart, which is far outside the two minute window the

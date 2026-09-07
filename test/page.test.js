@@ -964,7 +964,8 @@ ok("the month picker and the page filters both reload it",
     counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
     portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
     declaredField: { name: "manual_call_minutes", ready: false, maxMinutes: 180,
-      callTypes: 0, bandedTypes: 0, bands: ["under 5 min", "15 to 30 min"] },
+      callTypes: 0, bandedTypes: 0, bands: ["under 5 min", "15 to 30 min"],
+      waTypes: ["WA call"], waTypeSet: 0 },
     teams: [{ id: "t1", name: "Team Sid" }],
     totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
       noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000,
@@ -976,14 +977,14 @@ ok("the month picker and the page filters both reload it",
         noFollowUp: 1, short: 1, unknown: 0, screenshot: 1,
         calls: 5, callMs: 3000000, meetMs: 2400000, noteMs: 0, meetings: 1,
         declaredMs: 0, lengthMissing: 0, measuredMs: 5400000, declaredTotalMs: 0,
-        logged: 100, talkMs: 5400000 },
+        waCalls: 0, waMissing: 0, logged: 100, loggedOf: "all", talkMs: 5400000 },
       /* The agent the view exists for: a full day of calls and nothing recorded. */
       { id: "204", name: "Neha Iyer", team: "Team Sid", teamId: "t1", active: true,
         counsellings: 1, progress: 0, repeat: 0, reopened: 0, dropped: 0, flagged: 0,
         noFollowUp: 0, short: 0, unknown: 2, screenshot: 2,
         calls: 4, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0,
         declaredMs: 0, lengthMissing: 4, measuredMs: 0, declaredTotalMs: 0,
-        logged: 0, talkMs: 0 }
+        waCalls: 3, waMissing: 3, logged: 0, loggedOf: "wa", talkMs: 0 }
     ],
     leads: [
       { id: "L1", name: "Dee Sehgal", owner: "201", creator: "simrankhokha", stage: "counselled",
@@ -1052,7 +1053,13 @@ ok("the month picker and the page filters both reload it",
   /* Both of these were computed on the server and rendered nowhere, which is a silent
      way to lose a column: the number is right, in a payload nobody reads. */
   ok("WhatsApp logged counsellings have a column of their own",
-    o3.indexOf(">WhatsApp</th>") >= 0 && o3.indexOf("carry no duration in HubSpot") >= 0);
+    o3.indexOf(">WhatsApp</th>") >= 0 && o3.indexOf("a length has to come from") >= 0);
+  /* Zero in the Declared column has two very different causes and the banner has to name
+     the route rather than leave somebody guessing which one they are looking at. */
+  ok("the setup banner names the call type and the note convention together",
+    o3.indexOf("Create a <b>Call type</b> named") >= 0 &&
+    o3.indexOf("25 | cx wants Europe") >= 0 &&
+    o3.indexOf("makes a bare number safe") >= 0);
   ok("and the screenshot pill links through to the call in HubSpot",
     o3.indexOf("/calls/244132076/review/C9") >= 0 && o3.indexOf("screenshot &nearr;") >= 0,
     o3.indexOf("review/"));
@@ -1074,7 +1081,7 @@ ok("the month picker and the page filters both reload it",
      not editable in that form either. */
   ok("a missing setup is named, and names only routes HubSpot actually allows",
     o3.indexOf("No way to record a length has been set up yet") >= 0 &&
-    o3.indexOf("manual_call_minutes") >= 0 && o3.indexOf("Call types") >= 0 &&
+    o3.indexOf("manual_call_minutes") >= 0 && o3.indexOf("Call type") >= 0 &&
     o3.indexOf("does not allow a custom property on the Log call form") >= 0 &&
     o3.indexOf("add it to the call logging form") < 0);
   ok("the page says screenshots are marked and not read",

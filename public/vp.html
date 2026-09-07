@@ -876,11 +876,13 @@ function renderLedger(){
     h += "<div class='warn'><b>No way to record a length has been set up yet, so the Declared " +
       "column can only pick up what an agent happens to type into the call note.</b> " +
       fmt(j.totals.lengthMissing) + " calls on this day carry no length at all. " +
-      "HubSpot does not allow a custom property on the Log call form, so there are two routes: " +
-      "add duration bands as <b>Call types</b>, which sit inside the form and are one click " +
-      "(" + esc((df.bands || []).join(", ")) + "), " +
-      "or create a Number property <b>" + esc(df.name) + "</b> on the Call object, which is exact " +
-      "but has to be filled in after logging. Either one is read automatically once it exists.</div>";
+      "HubSpot does not allow a custom property on the Log call form, so the length has to come " +
+      "from a field that is already on it. Create a <b>Call type</b> named " +
+      esc((df.waTypes || ["WA call"])[0]) + " and ask agents to put the minutes at the front of " +
+      "the call note, like <b>25 | cx wants Europe</b>. The type is what makes a bare number safe " +
+      "to read, and it also stops the call being mistaken for the write-up of a FreJun call. " +
+      "Duration bands as call types (" + esc((df.bands || []).join(", ")) + ") and the exact " +
+      "property <b>" + esc(df.name) + "</b> are both read too, if you prefer either.</div>";
   } else if (!df.ready && df.bandedTypes) {
     h += "<div class='sub'>Declared lengths are coming from Call type bands. Exact minutes would " +
       "need the <b>" + esc(df.name) + "</b> property, which is read automatically if it is created.</div>";
@@ -905,11 +907,13 @@ function renderLedger(){
     "<th>Agent</th><th class='n'>Couns</th>" +
     "<th class='n'>Repeat</th><th class='n'>Reopened</th><th class='n'>Dropped</th>" +
     "<th class='n'>No FU</th><th class='n'>Short</th><th class='n'>Unknown</th>" +
-    "<th class='n' title='Counsellings logged with a screenshot instead of a dialled call. " +
-    "These carry no duration in HubSpot. Open the agent to click through to the image.'>WhatsApp</th>" +
+    "<th class='n' title='Calls the agent typed as a WhatsApp call, or logged with a " +
+    "screenshot. None of these carry a duration from HubSpot, so a length has to come from " +
+    "the agent.'>WhatsApp</th>" +
     "<th class='n'>Calls</th>" +
-    "<th class='n' title='Share of this agent&#39;s calls that carry a length from any source: " +
-    "dialled, declared or written in the note'>Logged</th>" +
+    "<th class='n' title='Share of the calls that were meant to carry a length and do. " +
+    "Measured against WhatsApp typed calls where the agent has typed them, and against all " +
+    "calls otherwise, so a floor of unanswered dials cannot flatter it.'>Logged</th>" +
     "<th class='n' title='Timed by FreJun or by a meeting recording'>Measured</th>" +
     "<th class='n' title='Typed in by the agent. Not verified, and shown apart for that reason.'>Declared</th>" +
     "<th class='n'>Total talk</th>" +
@@ -931,11 +935,15 @@ function renderLedger(){
       "<td class='n " + (r.noFollowUp ? "ca" : "mut") + "'>" + fmt(r.noFollowUp) + "</td>" +
       "<td class='n " + (r.short ? "ca" : "mut") + "'>" + fmt(r.short) + "</td>" +
       "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
-      "<td class='n " + (r.screenshot ? "" : "mut") + "'>" + fmt(r.screenshot) + "</td>" +
+      "<td class='n " + (r.waCalls || r.screenshot ? "" : "mut") + "'>" +
+        fmt(r.waCalls || r.screenshot) +
+        (r.waMissing ? "<div class='cr' style='font-size:11px'>" + fmt(r.waMissing) + " with no length</div>" : "") +
+      "</td>" +
       "<td class='n'>" + fmt(r.calls) + "</td>" +
       "<td class='n " + (r.logged == null ? "mut" : r.logged < 50 ? "cr" : r.logged < 90 ? "ca" : "cg") + "'>" +
         (r.logged == null ? "&ndash;" : r.logged + "%") +
-        (r.lengthMissing ? "<div class='mut' style='font-size:11px'>" + fmt(r.lengthMissing) + " blank</div>" : "") +
+        (r.loggedOf === "wa" ? "<div class='mut' style='font-size:11px'>of WA calls</div>"
+          : r.lengthMissing ? "<div class='mut' style='font-size:11px'>" + fmt(r.lengthMissing) + " blank</div>" : "") +
       "</td>" +
       "<td class='n'>" + lgMins(r.measuredMs) +
         (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) +
@@ -991,6 +999,8 @@ function lgCsv(){
     ["NoFollowUp", function(r){ return r.noFollowUp; }],
     ["UnderTenMinutes", function(r){ return r.short; }],
     ["LengthUnknown", function(r){ return r.unknown; }],
+    ["WhatsAppCalls", function(r){ return r.waCalls; }],
+    ["WhatsAppCallsWithNoLength", function(r){ return r.waMissing; }],
     ["LoggedWithScreenshot", function(r){ return r.screenshot; }],
     ["Calls", function(r){ return r.calls; }],
     ["CallTalkMinutes", function(r){ return Math.round(r.callMs / 60000); }],
