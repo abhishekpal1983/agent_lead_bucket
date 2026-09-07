@@ -1129,9 +1129,10 @@ function renderTalktime(){
   h += "</tbody></table></div>";
   h += "<div class='sub' style='margin-top:10px'>" +
     "FreJun time is read from the call records it writes into HubSpot rather than from FreJun " +
-    "directly, so it matches every other call number on this site. Meetings count only when " +
-    "they are attached to a lead and carry a recording. WhatsApp time is the agent's own " +
-    "figure and is never mixed into the measured columns." +
+    "directly, so it matches every other call number on this site. A meeting counts only when " +
+    "it is attached to a lead and has a transcript, since a recording alone can be a notetaker " +
+    "in an empty room. WhatsApp time is the agent's own figure and is never mixed into the " +
+    "measured columns." +
     "</div>";
   h += "<div style='margin-top:10px'><button class='btn' onclick='ttCsv()'>Download CSV</button></div>";
   h += "</div>";

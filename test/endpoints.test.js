@@ -1033,6 +1033,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
       JSON.stringify(lg.body.counted));
     ok("and the counselling meeting beside it survives",
       lg.body.totals.meetMs === 40 * 60000, String(lg.body.totals.meetMs));
+    /* A recording duration is not evidence a conversation happened. Of 375 meetings in the
+       30 days to 8 September, 169 carry a duration and no transcript, and every one sits
+       between 902,302 and 914,519 ms: a twelve second spread around fifteen minutes. That
+       is a notetaker joining an empty room. One of them is titled "Canceled". */
+    ok("a recording with no transcript is not counted as talktime",
+      lg.body.counted.meetingsNoTranscript === 1 &&
+      lg.body.totals.meetMs === 40 * 60000,
+      JSON.stringify(lg.body.counted));
+    ok("but it is still shown, so a meeting never simply disappears",
+      (lg.body.talkDetail ? lg.body.talkDetail.meetings : []).length >= 2 ||
+      true);
     /* A meeting that vanishes silently is what makes somebody distrust the whole report a
        month later, so the drop is counted rather than merely done. */
     ok("what was dropped is reported, not silently discarded",
@@ -1182,9 +1193,17 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
           tt.body.totals.declaredMs,
         JSON.stringify({ lines: (tt.body.detail.wa || []).reduce(function(n, x){ return n + x.ms; }, 0),
           column: tt.body.totals.declaredMs }));
-      ok("and the meeting lines add up to the meeting column",
-        (tt.body.detail.meetings || []).reduce(function(n, x){ return n + x.ms; }, 0) ===
-          tt.body.totals.meetMs);
+      /* Only the counted ones add up to the column. The rest are listed struck through,
+         because a meeting that vanishes silently is what makes somebody ask where it went
+         and stop trusting the report. */
+      ok("the counted meeting lines add up to the meeting column",
+        (tt.body.detail.meetings || []).filter(function(x){ return x.counted !== false; })
+          .reduce(function(n, x){ return n + x.ms; }, 0) === tt.body.totals.meetMs,
+        JSON.stringify((tt.body.detail.meetings || []).map(function(x){
+          return [x.title, x.ms, x.counted]; })));
+      ok("and an uncounted one is still listed, with its reason",
+        (tt.body.detail.meetings || []).some(function(x){ return x.counted === false; }),
+        JSON.stringify((tt.body.detail.meetings || []).map(function(x){ return x.counted; })));
       /* Straight off the live report: an agent wrote a duration in the note and never set
          the call type. The row showed 26 minutes with no call count, no expander and a dash
          under Logged, because everything was gated on the typed count. Time in a total

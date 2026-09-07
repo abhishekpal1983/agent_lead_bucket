@@ -465,13 +465,19 @@ if (rangOut) {
    lead on it that must stay out of anybody's talktime. */
 const meetings = [
   { id: "MEET1", at: D(2026, 8, 6, 17), durMs: 2400000, owner: L(0).owner,
-    title: "Counselling call", contact: L(0).id },
+    title: "Counselling call", contact: L(0).id, transcript: true },
   { id: "MEET2", at: D(2026, 8, 6, 15), durMs: 4900000, owner: L(1).owner,
-    title: "From Beginner to Host: a creator session", contact: "" },
+    title: "From Beginner to Host: a creator session", contact: "", transcript: true },
   /* Attached to a real lead, so nothing but the owner's name can keep it out of the
      floor's talktime. Long enough that including it would be obvious. */
   { id: "MEET3", at: D(2026, 8, 6, 16), durMs: 5400000, owner: "206",
-    title: "Leadership sync", contact: L(2).id }
+    title: "Leadership sync", contact: L(2).id, transcript: true },
+  /* The notetaker that joined and heard nothing. Every one of the 169 real examples sits
+     between 902,302 and 914,519 ms, a twelve second spread around fifteen minutes, and one
+     of them is a meeting titled "Canceled". Counting these put half an hour a day of
+     silence into the floor's talktime. */
+  { id: "MEET4", at: D(2026, 8, 6, 19), durMs: 913426, owner: L(0).owner,
+    title: "Canceled: Career Evaluation", contact: L(0).id, transcript: false }
 ];
 
 /* A call the day before, so a day boundary bug shows up as a wrong total rather than as

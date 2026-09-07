@@ -1111,8 +1111,12 @@ ok("the month picker and the page filters both reload it",
       tt.indexOf("Not verified") >= 0);
     ok("it says FreJun time comes through HubSpot rather than from FreJun itself",
       tt.indexOf("read from the call records it writes into HubSpot") >= 0);
-    ok("a meeting counts only when it is on a lead and was recorded",
-      tt.indexOf("attached to a lead and carry a recording") >= 0);
+    /* Attached to a lead AND evidenced by a transcript. The recording alone is not
+       evidence: 169 real meetings carry one and no transcript, all at about fifteen
+       minutes, which is a notetaker waiting in an empty room. */
+    ok("a meeting counts only when it is on a lead and somebody actually spoke",
+      tt.indexOf("attached to a lead and has a transcript") >= 0 &&
+      tt.indexOf("notetaker in an empty room") >= 0);
   }
   ok("the export pairs each column name with the value it reads",
     vpsrc.indexOf('["LengthUnknown", function(r){ return r.unknown; }]') >= 0 &&
@@ -1285,7 +1289,19 @@ ok("the month picker and the page filters both reload it",
       o.indexOf("/contacts/244132076/record/0-1/543659356863") >= 0);
     ok("the two sources are labelled, since one is measured and one is not",
       o.indexOf("length entered by the agent") >= 0 &&
-      o.indexOf("measured by the recording") >= 0);
+      o.indexOf("counted only where a transcript") >= 0);
+    /* A notetaker in an empty room records about fifteen minutes of nothing, so the
+       recording alone cannot carry a meeting into talktime. */
+    ok("a meeting with no transcript is shown struck through and named as not counted",
+      (function(){
+        ctx2.T = Object.assign({}, withDetail, { detail: { wa: [], meetings: [
+          { owner: "1", meetingId: "m1", contact: "c1", name: "Ankith Singh Malik",
+            title: "Canceled: Career Evaluation", ms: 913426,
+            at: Date.parse("2026-09-04T10:00:00Z"), counted: false }] } });
+        ctx2.OPEN = { "1": true }; ctx2.draw();
+        const f = els2.app.innerHTML;
+        return f.indexOf("no transcript, not counted") >= 0 && f.indexOf("<s>15m</s>") >= 0;
+      })());
     /* A row can be expandable and still have nothing behind it, when the WhatsApp calls
        were counted but their detail did not survive. Saying so beats an empty box. */
     ok("an expandable row with nothing behind it says so rather than opening blank",

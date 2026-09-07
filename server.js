@@ -7530,10 +7530,23 @@ async function ledgerCalls(b){
 
 /* Meetings in the day that were actually held, attached to a lead.
 
-   Two things are deliberately not used. `hs_meeting_outcome` says SCHEDULED on a meeting
-   whose recording ran 82 minutes, so it cannot answer "was this conducted". And the
-   start and end times are the slot somebody booked, not the conversation. The recording
-   duration is the only field that reflects what happened, and 1,647 meetings carry one.
+   Three things are deliberately not used, and the third cost a wrong number in production.
+
+   `hs_meeting_outcome` says SCHEDULED on a meeting whose recording ran 82 minutes, so it
+   cannot answer "was this conducted". The start and end times are the slot somebody
+   booked, not the conversation.
+
+   And a recording duration on its own is NOT evidence a conversation happened. Of 375
+   meetings in the 30 days to 8 September, 169 carry a duration and no transcript, and
+   every one of those sits between 902,302 and 914,519 milliseconds: a twelve second spread
+   around fifteen minutes. That is a notetaker joining an empty room and waiting, not
+   people talking. One of them is titled "Canceled: Career Evaluation" and still carries a
+   903,136 millisecond recording.
+
+   So a meeting counts only when it has a TRANSCRIPT. No speech, no transcript, no
+   talktime. This is what Abhishek asked for originally, and I talked him out of it on the
+   grounds that HubSpot already held the number. HubSpot holds a number; it is just not the
+   one anybody wanted.
 
    Only meetings tied to a lead count. Most recorded meetings in this portal are creator
    sessions, the Airbnb Journey and the engineering sprints, which are not counselling and
@@ -7568,13 +7581,15 @@ async function ledgerMeetings(b){
         { propertyName: "hs_meeting_recording_duration", operator: "HAS_PROPERTY" }
       ]}],
       properties: ["hs_timestamp", "hs_meeting_recording_duration", "hubspot_owner_id",
-        "hs_meeting_title", "hs_meeting_outcome"],
+        "hs_meeting_title", "hs_meeting_outcome", "hs_has_meeting_transcript"],
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }], limit: 100, after: after })});
     ((j && j.results) || []).forEach(function(r){
       rows.push({ id: String(r.id), at: ts(r.properties.hs_timestamp),
         durMs: num(r.properties.hs_meeting_recording_duration),
         owner: String(r.properties.hubspot_owner_id || ""),
-        title: String(r.properties.hs_meeting_title || ""), contact: "" });
+        title: String(r.properties.hs_meeting_title || ""),
+        transcript: String(r.properties.hs_has_meeting_transcript || "") === "true",
+        contact: "" });
     });
     after = j && j.paging && j.paging.next && j.paging.next.after;
     pages++;
@@ -7872,6 +7887,10 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
      month. */
   const meetsExcluded = meets.filter(function(m){ return meetingExcluded(m.owner); }).length;
   meets = meets.filter(function(m){ return !meetingExcluded(m.owner); });
+  /* Kept in the detail so the expander can show them as not counted and say why, rather
+     than a meeting disappearing and somebody having to ask where it went. */
+  const meetsSilent = meets.filter(function(m){ return !m.transcript; });
+  meets = meets.filter(function(m){ return !!m.transcript; });
 
   const meetsByOwner = {}, meetsByLead = {};
   meets.forEach(function(m){
@@ -8006,9 +8025,10 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
       contact: String(c.contact || ""), ms: ms, at: c.at || 0,
       typed: !!c.isWa, missing: !!c.lengthMissing });
   });
-  meets.forEach(function(m){
+  meets.concat(meetsSilent).forEach(function(m){
     talkDetail.meetings.push({ owner: String(m.owner || ""), meetingId: m.id,
-      contact: String(m.contact || ""), title: m.title || "", ms: m.durMs || 0, at: m.at || 0 });
+      contact: String(m.contact || ""), title: m.title || "", ms: m.durMs || 0,
+      at: m.at || 0, counted: !!m.transcript });
   });
   /* Names for free where the day already fetched them. The rest are looked up by the
      caller, which is the only part of this that costs a request. */
@@ -8032,7 +8052,7 @@ function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
     counted: { contacts: contacts.length, withHistory: Object.keys(hist).length,
       calls: calls.length, dedupedCalls: deduped.length, mergedCalls: merged.length,
       writeUps: wu.absorbed.length, meetings: meets.length,
-      meetingsExcluded: meetsExcluded } };
+      meetingsExcluded: meetsExcluded, meetingsNoTranscript: meetsSilent.length } };
 }
 
 /* Warmed at 00:20 IST, ten minutes before the cohort so the two do not collide, and after

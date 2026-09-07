@@ -1138,11 +1138,36 @@ judged on a blank, and the note body is parsed, because agents already write it 
 ever read those minutes stay in their own column rather than being folded into verified
 talktime.
 
+## 39a. A recording is not a conversation. The transcript is.
+
+This corrects rule 39 below, which was wrong in production and was caught by Abhishek
+asking how a meeting could read as "recorded" when there was no recording.
+
+Of 375 meetings in the 30 days to 8 September, **169 carry a recording duration and no
+transcript, and every single one sits between 902,302 and 914,519 milliseconds**. That is a
+twelve second spread around fifteen minutes, across 169 meetings. It is not a measurement of
+anything; it is a notetaker joining, waiting, and leaving. One of them is titled "Canceled:
+Career Evaluation" and still carries a 903,136 millisecond recording.
+
+The 206 meetings that do have a transcript have a median of 29.9 minutes and a wide spread,
+which is what real conversations look like.
+
+**So a meeting counts only when `hs_has_meeting_transcript` is true.** No speech, no
+transcript, no talktime. That is what was originally asked for, and I argued against it on
+the grounds that HubSpot already held the conducted duration. HubSpot holds a number. It is
+just not the one anybody wanted, and it was adding roughly half an hour of silence a day to
+the floor's talktime. On one real agent's day it was 30 of 129 meeting minutes.
+
+Uncounted meetings are still listed in the expander, struck through, with "no transcript,
+not counted" beside them. A meeting that vanishes silently is what makes somebody ask where
+it went and then stop trusting the whole report.
+
 ## 39. Meeting length comes from the recording, not the booking and not the transcript
 
-`hs_meeting_recording_duration` holds what actually happened and 1,647 meetings carry one.
-Deriving it from a transcript was asked for and is unnecessary; HubSpot already has the
-number.
+`hs_meeting_recording_duration` holds the length of whatever was captured, and 1,647
+meetings carry one. **Read 39a first: the presence of that duration does not mean a
+conversation happened, and this rule was wrong on its own.** The duration is the right
+measure once a transcript has established that somebody spoke.
 
 `hs_meeting_outcome` must not be used as the conducted test. It says `SCHEDULED` on a
 meeting whose recording ran 82 minutes. The presence of a recording duration is the test.

@@ -125,14 +125,21 @@ function detailFor(id){
     h += "</tbody></table>";
   }
   if (mt.length) {
-    h += "<div class='dhead'>Meetings <span class='mut'>measured by the recording</span></div>" +
-      "<table class='dtab'><tbody>";
+    h += "<div class='dhead'>Meetings <span class='mut'>counted only where a transcript " +
+      "proves somebody spoke</span></div><table class='dtab'><tbody>";
     mt.forEach(function(x){
-      h += "<tr><td style='width:58px' class='mut'>" + clock(x.at) + "</td>" +
+      /* A recording duration on its own is not evidence of a conversation: a notetaker
+         that joins an empty room still records about fifteen minutes of nothing. Shown
+         anyway, struck through, so a meeting never simply disappears. */
+      var out = x.counted === false;
+      h += "<tr" + (out ? " style='opacity:.55'" : "") + ">" +
+        "<td style='width:58px' class='mut'>" + clock(x.at) + "</td>" +
         "<td>" + leadLink(x.contact, x.name) +
           (x.title ? "<div class='mut'>" + esc(x.title) + "</div>" : "") + "</td>" +
-        "<td class='n' style='width:90px'>" + mins(x.ms) + "</td>" +
-        "<td style='width:96px' class='mut'>recorded</td></tr>";
+        "<td class='n' style='width:90px'>" +
+          (out ? "<s>" + mins(x.ms) + "</s>" : mins(x.ms)) + "</td>" +
+        "<td style='width:130px' class='mut'>" +
+          (out ? "no transcript, not counted" : "transcript") + "</td></tr>";
     });
     h += "</tbody></table>";
   }
