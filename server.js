@@ -7507,6 +7507,25 @@ async function ledgerCalls(b){
    Only meetings tied to a lead count. Most recorded meetings in this portal are creator
    sessions, the Airbnb Journey and the engineering sprints, which are not counselling and
    would otherwise land in an agent's talktime as several hours a week. */
+/* Meetings that are not counselling, however they are attached.
+
+   Rule 39 says only meetings tied to a lead count, and that rule is weaker than it looks:
+   it cannot tell a counselling from a leadership call that happens to have one lead on it.
+   These three hold exactly that kind of meeting, so their meeting time is excluded by name.
+   Their calls are untouched; this is about meetings only.
+
+   Excluded by email rather than owner id because an email is readable and survives HubSpot
+   renumbering. The count of what was dropped is reported, since a meeting that vanishes
+   silently is the thing that makes somebody distrust the whole report a month later. */
+const MEETING_EXCLUDE = String(process.env.MEETING_EXCLUDE_EMAILS ||
+  "dinesh@topmate.io,anuj@topmate.io,abhishek.pal@topmate.io")
+  .split(",").map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+function meetingExcluded(ownerId){
+  if (!MEETING_EXCLUDE.length) return false;
+  const em = String(ledgerOwner(ownerId).email || "").toLowerCase();
+  return !!em && MEETING_EXCLUDE.indexOf(em) >= 0;
+}
+
 async function ledgerMeetings(b){
   const rows = [];
   let after, pages = 0;
@@ -7545,7 +7564,8 @@ async function ledgerMeetings(b){
     } catch (e) { console.error("ledger meeting assoc @" + i + ": " + e.message); }
     if (i + 100 < ids.length) await sleep(90);
   }
-  // No lead on it means it is not lead work, whatever it was.
+  // No lead on it means it is not lead work, whatever it was. The excluded owners are
+  // dropped in ledgerBuild, which is the one place both the live and fixture paths reach.
   return rows.filter(function(r){ return !!r.contact; });
 }
 
@@ -7767,7 +7787,8 @@ async function ledgerFetch(dayKey){
 
 /* Everything above is I/O. This is the part with judgement in it, kept separate so the
    tests can drive it without a token. */
-function ledgerBuild(dayKey, contacts, hist, calls, meets){
+function ledgerBuild(dayKey, contacts, hist, calls, meetsIn){
+  let meets = meetsIn;
   const dayOf = function(ms){ return istDayKey(ms); };
 
   /* One call, however many records HubSpot holds for it. FreJun writes the dial and the
@@ -7813,6 +7834,14 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     if (c.contact) (callsByLead[c.contact] = callsByLead[c.contact] || []).push(c);
     if (c.owner && c.owner !== "none") (callsByOwner[c.owner] = callsByOwner[c.owner] || []).push(c);
   });
+  /* Filtered here rather than at the read, because the fixture path builds its own meeting
+     list and never calls ledgerMeetings. A rule that lives only in the read path is a rule
+     no test can reach, which is how three of these have shipped green already. The cost is
+     an association read on a meeting we then drop, and there are about five of those a
+     month. */
+  const meetsExcluded = meets.filter(function(m){ return meetingExcluded(m.owner); }).length;
+  meets = meets.filter(function(m){ return !meetingExcluded(m.owner); });
+
   const meetsByOwner = {}, meetsByLead = {};
   meets.forEach(function(m){
     if (m.owner) (meetsByOwner[m.owner] = meetsByOwner[m.owner] || []).push(m);
@@ -7964,7 +7993,8 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
     shortMs: LEDGER_SHORT_MS,
     counted: { contacts: contacts.length, withHistory: Object.keys(hist).length,
       calls: calls.length, dedupedCalls: deduped.length, mergedCalls: merged.length,
-      writeUps: wu.absorbed.length, meetings: meets.length } };
+      writeUps: wu.absorbed.length, meetings: meets.length,
+      meetingsExcluded: meetsExcluded } };
 }
 
 /* Warmed at 00:20 IST, ten minutes before the cohort so the two do not collide, and after

@@ -1012,6 +1012,28 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
        several hours a week of webinar into somebody's talktime. */
     ok("a meeting with no lead on it is not talktime",
       lg.body.counted.meetings === 1, JSON.stringify(lg.body.counted));
+    /* Rule 39's lead-level test cannot tell a counselling from a leadership call that
+       happens to have one lead on it, so those owners are excluded by name. The fixture
+       holds a 90 minute one attached to a real lead: nothing but the owner keeps it out. */
+    ok("a leadership meeting is excluded by owner, however it is attached",
+      lg.body.counted.meetingsExcluded === 1,
+      JSON.stringify(lg.body.counted));
+    ok("and the counselling meeting beside it survives",
+      lg.body.totals.meetMs === 40 * 60000, String(lg.body.totals.meetMs));
+    /* A meeting that vanishes silently is what makes somebody distrust the whole report a
+       month later, so the drop is counted rather than merely done. */
+    ok("what was dropped is reported, not silently discarded",
+      typeof lg.body.counted.meetingsExcluded === "number");
+    /* The rule sits in ledgerBuild rather than in the read path, because the fixture path
+       builds its own meeting list and never calls ledgerMeetings. A rule only the live
+       path reaches is a rule no test can reach. */
+    ok("the exclusion lives where both the live and fixture paths go through it",
+      (function(){
+        const src = require("fs").readFileSync(
+          require("path").join(__dirname, "..", "server.js"), "utf8");
+        const build = src.split("function ledgerBuild(")[1].slice(0, 4000);
+        return build.indexOf("meetingExcluded(m.owner)") >= 0;
+      })());
     ok("a meeting attached to a lead is",
       lg.body.totals.meetMs > 0, String(lg.body.totals.meetMs));
     ok("total talk is its parts and never less than any one of them",

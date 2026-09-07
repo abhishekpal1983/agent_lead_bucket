@@ -6,12 +6,21 @@ const D = function(y, m, d, h){ return Date.UTC(y, m - 1, d, (h || 10) - 5, -30)
 const TODAY = D(2026, 8, 6, 12);                 // a Thursday
 const day = cn2.dayBoundsFor(TODAY);
 const AGENTS = [
-  { id: "201", name: "Sid Menon", team: "t1" },
-  { id: "202", name: "Rhea Kapoor", team: "t1" },
-  { id: "203", name: "Vikram Rao", team: "t2" },
-  { id: "204", name: "Neha Iyer", team: "t2" },
+  { id: "201", name: "Sid Menon", team: "t1", email: "sid.menon@topmate.io" },
+  { id: "202", name: "Rhea Kapoor", team: "t1", email: "rhea.kapoor@topmate.io" },
+  { id: "203", name: "Vikram Rao", team: "t2", email: "vikram.rao@topmate.io" },
+  { id: "204", name: "Neha Iyer", team: "t2", email: "neha.iyer@topmate.io" },
   // Has left. Still holding leads, which is the whole point of the assignment pool.
-  { id: "205", name: "Gone Gita", team: "t1", active: false }
+  { id: "205", name: "Gone Gita", team: "t1", active: false, email: "gita@topmate.io" }
+];
+/* Holds meetings and no calls. Leadership meetings land on a lead like any other, so the
+   lead-level rule cannot see them for what they are and they have to go by name.
+
+   Kept OUT of AGENTS on purpose. `lead()` hands owners out with `AGENTS[n % AGENTS.length]`,
+   so adding a sixth name there silently reassigns every lead in the fixture and half the
+   suite starts testing a different agent than it was written for. */
+const MEETING_ONLY = [
+  { id: "206", name: "Abhishek Pal", team: "", email: "abhishek.pal@topmate.io" }
 ];
 const CREATORS = ["ayush_singh13", "payalineurope", "ankita_gulati"];
 const STAGES = ["counselled", "program_pitched", "discovery", "pricing_pitched", "Follow up",
@@ -442,7 +451,11 @@ const meetings = [
   { id: "MEET1", at: D(2026, 8, 6, 17), durMs: 2400000, owner: L(0).owner,
     title: "Counselling call", contact: L(0).id },
   { id: "MEET2", at: D(2026, 8, 6, 15), durMs: 4900000, owner: L(1).owner,
-    title: "From Beginner to Host: a creator session", contact: "" }
+    title: "From Beginner to Host: a creator session", contact: "" },
+  /* Attached to a real lead, so nothing but the owner's name can keep it out of the
+     floor's talktime. Long enough that including it would be obvious. */
+  { id: "MEET3", at: D(2026, 8, 6, 16), durMs: 5400000, owner: "206",
+    title: "Leadership sync", contact: L(2).id }
 ];
 
 /* A call the day before, so a day boundary bug shows up as a wrong total rather than as
@@ -452,7 +465,8 @@ ledgerCalls.push({ id: "LCALLPREV", at: D(2026, 8, 5, 15), durMs: 1800000, dispo
   hasDur: true });
 
 module.exports = {
-  waIds: waIds, calls: calls, rows: rows, now: TODAY, agents: AGENTS,
+  waIds: waIds, calls: calls, rows: rows, now: TODAY,
+  agents: AGENTS.concat(MEETING_ONLY),
   history: history, ledgerCalls: ledgerCalls, meetings: meetings,
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
             creators: ["ayush_singh13", "ankita_gulati"] },

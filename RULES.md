@@ -1166,6 +1166,25 @@ in 30 days carry a recording duration, and on 4 September there was exactly one.
 column will read zero for most agents on most days. That is the truth about the data, not a
 bug in the view.
 
+**Some owners are excluded by name.** `MEETING_EXCLUDE_EMAILS` defaults to
+`dinesh@topmate.io`, `anuj@topmate.io` and `abhishek.pal@topmate.io`. Leadership meetings
+attach to a lead exactly like a counselling does, so the lead-level rule cannot see them for
+what they are and nothing but the owner can keep them out. Their calls are untouched; this
+is about meetings only. What was dropped is counted in `meetingsExcluded` rather than
+silently discarded, because a meeting that vanishes without trace is what makes somebody
+distrust the whole report a month later.
+
+The filter sits in `ledgerBuild`, not in `ledgerMeetings`. The fixture path builds its own
+meeting list and never calls the reader, so a rule living only in the read path is a rule no
+test can reach. It cost an hour to find that the first time: the exclusion was written,
+looked right, and did nothing under fixtures. The price of putting it in the shared path is
+one association read on a meeting that is then dropped, about five a month.
+
+**Fixture note.** The excluded owner is deliberately kept out of `AGENTS`. `lead()` hands
+owners out with `AGENTS[n % AGENTS.length]`, so adding a sixth name there silently reassigns
+every lead in the fixture and half the suite quietly starts testing a different agent than
+it was written for.
+
 ## 40. The ledger is built once a night, not swept
 
 About seventy requests builds a day: eight pages of changed contacts, fifteen batches of
