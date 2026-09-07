@@ -1340,3 +1340,60 @@ sync. If a cross-check is ever wanted, that is the reason to do it, not accuracy
 The **Logged** column is the fill rate on WhatsApp calls specifically, because those are the
 only ones where a length has to come from a person. An agent showing 3 of 8 there has five
 conversations nobody can evaluate.
+
+## 46. The locked talktime report, and what a lock can honestly mean
+
+Served at `/talktime.html`, outside Revenue Command, on the existing Google sign in which
+already enforces `@topmate.io`.
+
+### HubSpot has no record lock, so this does not claim to have built one
+
+An agent can edit yesterday's call tomorrow and nothing here will stop them. Two things are
+possible and both are done: the edit is not allowed to change the published figure, and it
+is recorded with the agent, the call, the old and new value, and when it was noticed. The
+payload carries `canBlockEdits: false` so no page can quietly imply otherwise.
+
+Detection is the honest version of prevention here. A block that does not exist deters
+nobody; a line reading "Nithin Thomas changed call 396778580729 from 20 minutes to 48" does.
+
+### The lock has to survive a restart
+
+Firing at 23:59 on the clock works until the night the service is redeploying at 23:58, and
+then the day is silently never locked and nobody finds out for a week. `pendingLock` asks
+which day is **owed** a lock rather than whether it is 23:59 now, checks yesterday before
+today because a restart spanning midnight owes both, and stamps `late: true` when the window
+was missed. **A lock at 00:40 must never be able to present itself as a 23:59 one**, and the
+page prints "locked late, the window was missed" when it was.
+
+`since` stops it walking backwards forever on a fresh volume.
+
+### Only what a person typed is guarded
+
+The change log tracks the agent-entered minutes per call. FreJun durations and meeting
+recordings are machine-written and cannot be argued with, so logging all 1,430 of a day's
+calls landing would bury the two entries that matter.
+
+### Without a volume this is theatre
+
+Everything persists to `DATA_DIR`. With no Railway volume mounted, a lock lasts until the
+next deploy. The payload carries `persistent` and the page shouts it in red, because a lock
+people trust and that is not there is worse than no lock at all.
+
+### Three scopes, defaulting to nothing
+
+HR from `HR_EMAILS` and VPs see everyone, a team manager sees their team, an agent sees
+their own row. Anything unrecognised sees nothing, because the failure that matters here is
+showing one agent another agent's numbers.
+
+HR needs the explicit list: they own no leads and lead no team, so the existing role rule
+would file them as an agent with no owner id and hand them an empty page. An agent whose
+address is not a HubSpot owner is told exactly that rather than shown a blank table.
+
+Agents see the log entries about their own day. Nobody is marked against without being able
+to read the mark.
+
+### Verified end to end rather than asserted
+
+The endpoint suite locks the fixture day, edits a WhatsApp call through to HubSpot, proves
+the edit really landed, proves the report did not move, and proves the recheck named it. A
+lock that is never actually attacked in a test is not a tested lock.

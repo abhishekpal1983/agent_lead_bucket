@@ -3076,6 +3076,7 @@ function ownerCounted(id){
 const CN2 = require("./lib/cn2");
 const IDLE = require("./lib/idle");
 const COUNSEL_LIB = require("./lib/counsel");
+const TALKLOCK = require("./lib/talklock");
 const ROLE = require("./lib/role");
 const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
@@ -7873,6 +7874,11 @@ function ledgerBuild(dayKey, contacts, hist, calls, meets){
   });
 
   return { at: Date.now(), day: dayKey, rows: rows, leads: leads, error: null,
+    /* The merged calls, so the lock can snapshot exactly what an agent typed. Not sent
+       to any page: it is a working set, not a payload. */
+    declaredCalls: merged.map(function(c){
+      return { id: (c.ids || [])[0] || c.id, owner: c.owner, contact: c.contact,
+        declaredMs: c.declaredMs || 0, noteMs: c.noteMs || 0, isWa: !!c.isWa }; }),
     shortMs: LEDGER_SHORT_MS,
     counted: { contacts: contacts.length, withHistory: Object.keys(hist).length,
       calls: calls.length, dedupedCalls: deduped.length, mergedCalls: merged.length,
@@ -7963,6 +7969,253 @@ app.get("/api/vp/ledger", async function(req, res){
   }
 });
 
+
+/* ---------- the locked daily talktime report ---------------------------------------
+
+   The same numbers as the ledger, closed off at 23:59 IST and then never allowed to move.
+
+   HubSpot has no record lock and this does not pretend to have built one. An agent can
+   edit yesterday's call tomorrow and nothing here will stop them. What this does is refuse
+   to let the edit change the published figure, and record who changed what. Detection is
+   the honest version of prevention here, and naming a change deters better than a block
+   that does not exist.
+
+   Everything lives on the volume. Without one mounted at DATA_DIR the lock survives until
+   the next deploy and no further, which is why the payload carries `persistent` and the
+   page says so in red rather than letting somebody trust a lock that is not there. */
+
+const TALK_FILE = path.join(DATA_DIR, "talktime.json");
+const TALK_LOCK_HM = process.env.TALK_LOCK_HM || "23:59";
+const TALK_RECHECK_HM = process.env.TALK_RECHECK_HM || "12:00";
+const TALK_KEEP_DAYS = parseInt(process.env.TALK_KEEP_DAYS || "120", 10);
+const TALK_LOG_MAX = parseInt(process.env.TALK_LOG_MAX || "4000", 10);
+/* HR are not lead owners and lead no team, so without an explicit list the role rule
+   below would file them as agents with no owner id and show them an empty page. */
+const HR_EMAILS = (process.env.HR_EMAILS || "").split(",")
+  .map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+
+let TALK = { days: {}, log: [], since: "", persistent: false };
+
+function talkLoad(){
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(TALK_FILE)) {
+      const j = JSON.parse(fs.readFileSync(TALK_FILE, "utf8"));
+      TALK = Object.assign({ days: {}, log: [], since: "" }, j);
+    }
+    if (!TALK.since) TALK.since = istParts(new Date(cn2Now())).date;
+    TALK.persistent = true;
+    fs.writeFileSync(TALK_FILE + ".probe", "1"); fs.unlinkSync(TALK_FILE + ".probe");
+    console.log("Talktime store ready at " + TALK_FILE + " (" +
+      Object.keys(TALK.days).length + " locked days, " + (TALK.log || []).length + " log entries)");
+  } catch (e) {
+    TALK.persistent = false;
+    if (!TALK.since) TALK.since = istParts(new Date(cn2Now())).date;
+    console.error("Talktime store NOT persistent (" + e.message +
+      "). Locks will vanish on the next deploy. Attach a Railway volume at " + DATA_DIR + ".");
+  }
+}
+function talkSave(){
+  if (!TALK.persistent) return false;
+  try {
+    const days = Object.keys(TALK.days).sort();
+    while (days.length > TALK_KEEP_DAYS) delete TALK.days[days.shift()];
+    if ((TALK.log || []).length > TALK_LOG_MAX) TALK.log = TALK.log.slice(-TALK_LOG_MAX);
+    const tmp = TALK_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(TALK));
+    fs.renameSync(tmp, TALK_FILE);          // rename is atomic, write plus truncate is not
+    return true;
+  } catch (e) {
+    console.error("Talktime save failed: " + e.message);
+    return false;
+  }
+}
+
+/* A day, captured. Used while it is open to keep a trail, and once at 23:59 to close it. */
+async function talkCapture(day, phase){
+  const built = await ledgerFetch(day);
+  if (built.error && !(built.rows || []).length) return null;
+  const calls = built.declaredCalls || [];
+  const snap = TALKLOCK.snapshotOf(built, { calls: calls });
+  const rec = TALK.days[day];
+  const prev = rec ? { rows: rec.rows, declared: rec.declared } : null;
+  const at = new Date(cn2Now()).toISOString();
+  /* The first capture of a day is not a change, it is the day appearing. */
+  const changes = prev ? TALKLOCK.diff(prev, snap, { day: day, phase: phase, at: at }) : [];
+  if (changes.length) {
+    TALK.log = (TALK.log || []).concat(changes);
+    changes.forEach(function(c){
+      if (c.phase === "locked") {
+        console.log("Talktime AMENDED after lock: " + c.name + " " + c.kind + " call " +
+          c.callId + " " + Math.round(c.from / 60000) + "m to " + Math.round(c.to / 60000) + "m");
+      }
+    });
+  }
+  return { snap: snap, changes: changes, at: at };
+}
+
+/* Close the day. After this the stored rows are what everybody reads, whatever HubSpot
+   says later. */
+async function talkLockDue(force){
+  if (CN2_FIXTURE_DATA && !force) return;
+  const p = istParts(new Date(cn2Now()));
+  const due = TALKLOCK.pendingLock(p.date, p.hm, TALK.days,
+    { lockHm: TALK_LOCK_HM, since: TALK.since });
+  if (!due) return;
+  try {
+    const got = await talkCapture(due.day, "open");
+    if (!got) { console.error("Talktime lock " + due.day + ": nothing to lock"); return; }
+    TALK.days[due.day] = { day: due.day, lockedAt: got.at, late: !!due.late,
+      lockHm: TALK_LOCK_HM, rows: got.snap.rows, declared: got.snap.declared,
+      rechecked: null };
+    talkSave();
+    console.log("Talktime locked " + due.day + " at " + got.at +
+      (due.late ? " (LATE, the window was missed)" : "") + ": " +
+      Object.keys(got.snap.rows).length + " agents");
+  } catch (e) {
+    console.error("Talktime lock " + due.day + " failed: " + e.message);
+  }
+}
+
+/* Read the locked day again the next afternoon and see whether it moved. This is the
+   whole point: the figure is frozen, and the fact that somebody tried to move it is
+   worth more than the block we cannot build. */
+async function talkRecheckDue(force){
+  if (CN2_FIXTURE_DATA && !force) return;
+  const p = istParts(new Date(cn2Now()));
+  if (!force && p.hm < TALK_RECHECK_HM) return;
+  const y = TALKLOCK.prevDay(p.date);
+  const rec = TALK.days[y];
+  if (!rec || rec.rechecked) return;
+  try {
+    /* The cached build is the one that produced the lock, so it has to go or the recheck
+       compares the day against itself and can never find anything. */
+    delete LEDGER_CACHE[y];
+    const got = await talkCapture(y, "locked");
+    rec.rechecked = new Date(cn2Now()).toISOString();
+    rec.amended = got ? got.changes.length : 0;
+    talkSave();
+    console.log("Talktime recheck " + y + ": " + (rec.amended || 0) + " changes after lock");
+  } catch (e) {
+    console.error("Talktime recheck " + y + " failed: " + e.message);
+  }
+}
+
+/* Who is this, and how much of the floor do they get?
+
+   Three scopes and a deliberate default of nothing. An unrecognised signed-in address
+   sees an empty report rather than everybody's, because the failure that matters here is
+   showing one agent another agent's numbers. */
+function talkScope(req){
+  const s = req.session || sessionOf(req) || {};
+  const em = String(s.email || "").toLowerCase();
+  if (!AUTH_ON) return { role: "hr", email: em || "open access", ids: null, label: "everyone" };
+  if (!em) return null;
+  if (HR_EMAILS.indexOf(em) >= 0) return { role: "hr", email: em, ids: null, label: "everyone" };
+  if (isVP(req)) return { role: "vp", email: em, ids: null, label: "everyone" };
+  const mine = cn2Teams().filter(function(t){
+    return String(t.managerEmail || "").toLowerCase() === em; });
+  if (mine.length) {
+    const ids = [];
+    mine.forEach(function(t){ (t.agentIds || []).forEach(function(id){ ids.push(String(id)); }); });
+    return { role: "manager", email: em, ids: ids,
+      label: mine.map(function(t){ return t.name; }).join(", ") };
+  }
+  const own = ownerIdForEmail(em);
+  if (own) return { role: "agent", email: em, ids: [String(own)], label: "your own calls" };
+  return { role: "none", email: em, ids: [], label: "no calls are recorded against this address" };
+}
+
+app.get("/api/talktime", async function(req, res){
+  const scope = talkScope(req);
+  if (!scope) return res.status(401).json({ error: "not signed in" });
+  const today = istParts(new Date(cn2Now())).date;
+  const day = String(req.query.date || TALKLOCK.prevDay(today));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
+  if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
+  try {
+    const rec = TALK.days[day];
+    let rows, locked = null;
+    if (rec) {
+      /* Locked. Served from the store and never re-read, which is the entire point. */
+      locked = { at: rec.lockedAt, late: !!rec.late, hm: rec.lockHm,
+        rechecked: rec.rechecked || null, amended: rec.amended || 0 };
+      rows = Object.keys(rec.rows).map(function(id){
+        return Object.assign({ id: id }, rec.rows[id]); });
+    } else {
+      const built = await ledgerFetch(day);
+      rows = (built.rows || []).map(function(r){
+        return { id: String(r.id), name: r.name, callMs: r.callMs || 0, meetMs: r.meetMs || 0,
+          declaredMs: r.declaredTotalMs || 0, talkMs: r.talkMs || 0, calls: r.calls || 0,
+          waCalls: r.waCalls || 0, waMissing: r.waMissing || 0, meetings: r.meetings || 0 };
+      });
+    }
+    const teamOf = {}, teamName = {};
+    (ORG.teams || []).forEach(function(t){
+      teamName[t.id] = t.name || "(unnamed)";
+      (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+    });
+    const inScope = function(id){ return !scope.ids || scope.ids.indexOf(String(id)) >= 0; };
+    rows = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
+      .map(function(r){ return Object.assign({}, r,
+        { team: teamName[teamOf[r.id]] || "", teamId: teamOf[r.id] || "" }); });
+    rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
+
+    /* An agent sees the entries about their own day and nobody else's, so nobody is
+       marked against without being able to read the mark. */
+    const log = (TALK.log || []).filter(function(e){
+      return e.day === day && e.phase === "locked" && inScope(e.owner); });
+    const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+    res.json({
+      date: day, today: today, isToday: day === today,
+      you: { email: scope.email, role: scope.role, scope: scope.label },
+      locked: locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
+      totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
+        declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
+        waCalls: sum("waCalls"), waMissing: sum("waMissing"), meetings: sum("meetings"),
+        amended: log.length },
+      rows: rows, log: log,
+      /* Said in the payload so the page cannot quietly imply otherwise. */
+      canBlockEdits: false
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* Fixture-only hooks so the lock, a tamper and the recheck can be driven in a test.
+   Registered only under CN2_FIXTURES, so they cannot exist in production. */
+if (CN2_FIXTURE_DATA) {
+  app.get("/api/_test/lock", async function(req, res){
+    const d = String(req.query.date || "");
+    const got = await talkCapture(d, "open");
+    TALK.days[d] = { day: d, lockedAt: new Date(cn2Now()).toISOString(), late: false,
+      lockHm: TALK_LOCK_HM, rows: got.snap.rows, declared: got.snap.declared, rechecked: null };
+    res.json({ ok: true });
+  });
+  app.get("/api/_test/tamper", function(req, res){
+    const F = CN2_FIXTURE_DATA;
+    const c = (F.ledgerCalls || []).filter(function(x){ return x.isWa; })[0];
+    const was = c.declaredMs || 0;
+    c.declaredMs = 55 * 60000;                       // the edit an agent makes the next day
+    LEDGER_CACHE = {};
+    res.json({ call: c.id, was: was, now: c.declaredMs });
+  });
+  app.get("/api/_test/live", async function(req, res){
+    LEDGER_CACHE = {};
+    const b = await ledgerFetch(String(req.query.date || ""));
+    res.json({ declaredMs: (b.rows || []).reduce(function(n, r){ return n + r.declaredTotalMs; }, 0) });
+  });
+  app.get("/api/_test/recheck", async function(req, res){
+    const d = String(req.query.date || "");
+    delete LEDGER_CACHE[d];
+    const got = await talkCapture(d, "locked");
+    const rec = TALK.days[d];
+    if (rec) { rec.rechecked = new Date(cn2Now()).toISOString();
+      rec.amended = got ? got.changes.length : 0; }
+    res.json({ changes: got ? got.changes.length : 0 });
+  });
+}
 
 /* ---------- creator targets, week by week ----------
 
@@ -9115,6 +9368,9 @@ SERVER = app.listen(PORT, () => {
      scheduled once, so a restart at 00:20 does not lose the window. */
   setInterval(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 15 * 60 * 1000);
   setInterval(guard("ledgerWarm", function(){ return ledgerWarmDue(false); }), 15 * 60 * 1000);
+  talkLoad();
+  setInterval(guard("talkLock", function(){ return talkLockDue(false); }), 5 * 60 * 1000);
+  setInterval(guard("talkRecheck", function(){ return talkRecheckDue(false); }), 30 * 60 * 1000);
   setTimeout(guard("cohortWarm", function(){ return cohortWarmDue(false); }), 6 * 60 * 1000);
   // Compare ourselves to HubSpot on a timer rather than on request.
   setTimeout(guard("cn2Drift", cn2DriftCheck), 6 * 60 * 1000);

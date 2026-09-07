@@ -1058,6 +1058,63 @@ const sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }
         require("path").join(__dirname, "..", "server.js"), "utf8")
         .split('app.get("/api/vp/ledger"')[1].slice(0, 1400)));
 
+    /* ---- the locked talktime report ------------------------------------------------
+
+       HubSpot has no record lock and this does not pretend to. The test that matters is
+       that an edit made after the lock cannot move the published figure and does not go
+       unrecorded. */
+    {
+      const TD = "2026-08-06";
+      let tt = await get("/api/talktime?date=" + TD);
+      ok("the talktime report answers", tt.status === 200, "status " + tt.status + " " + tt.raw);
+      ok("and has real time behind it, not an empty day",
+        tt.body.totals.talkMs > 0 && (tt.body.rows || []).length > 1,
+        JSON.stringify(tt.body.totals));
+      ok("an open day says so rather than pretending to be closed",
+        tt.body.locked === null && tt.body.lockAt === "23:59");
+      ok("the three sources stay separate all the way into this payload",
+        (tt.body.rows || []).every(function(r){
+          return r.talkMs === r.callMs + r.meetMs + r.declaredMs; }),
+        JSON.stringify((tt.body.rows || [])[0]));
+
+      const openTotal = tt.body.totals.talkMs, openWa = tt.body.totals.declaredMs;
+      await get("/api/_test/lock?date=" + TD);
+      tt = await get("/api/talktime?date=" + TD);
+      ok("locking a day records when it was closed",
+        tt.body.locked && tt.body.locked.at && tt.body.locked.late === false,
+        JSON.stringify(tt.body.locked));
+      ok("and does not change the numbers by closing them",
+        tt.body.totals.talkMs === openTotal && tt.body.totals.declaredMs === openWa);
+
+      /* An agent going back into yesterday's call the next morning. */
+      const t = await get("/api/_test/tamper");
+      const live = await get("/api/_test/live?date=" + TD);
+      ok("the edit really does reach HubSpot, or this proves nothing",
+        live.body.declaredMs !== openWa,
+        JSON.stringify({ was: openWa, now: live.body.declaredMs, call: t.body.call }));
+      tt = await get("/api/talktime?date=" + TD);
+      ok("but the locked report does not move",
+        tt.body.totals.declaredMs === openWa && tt.body.totals.talkMs === openTotal,
+        JSON.stringify({ locked: openWa, showing: tt.body.totals.declaredMs }));
+
+      await get("/api/_test/recheck?date=" + TD);
+      tt = await get("/api/talktime?date=" + TD);
+      ok("the recheck names the change: who, which call, from what to what",
+        (tt.body.log || []).length === 1 &&
+        tt.body.log[0].phase === "locked" && tt.body.log[0].callId &&
+        tt.body.log[0].name && tt.body.log[0].to > tt.body.log[0].from,
+        JSON.stringify(tt.body.log));
+      ok("and the figure is still the locked one afterwards",
+        tt.body.totals.declaredMs === openWa);
+      /* Detection is the honest version of prevention here, and the payload says so. */
+      ok("the payload admits it cannot block the edit",
+        tt.body.canBlockEdits === false);
+      ok("a future day is refused",
+        (await get("/api/talktime?date=2099-01-01")).status === 400);
+      ok("and the store says whether any of this survives a deploy",
+        typeof tt.body.persistent === "boolean");
+    }
+
     /* Creator targets split across the weeks of the month. */
     const cw = await get("/api/vp/creator-weeks");
     ok("creator weeks answers", cw.status === 200, "status " + cw.status + " " + cw.raw);

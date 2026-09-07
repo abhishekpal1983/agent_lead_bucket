@@ -1130,5 +1130,102 @@ ok("the month picker and the page filters both reload it",
     })());
 }
 
+/* The standalone talktime page.
+
+   Rendered rather than grepped, and rendered three times, because the whole point of it is
+   that three different people see three different amounts. */
+{
+  const tsrc = fs.readFileSync(path.join(__dirname, "..", "public", "talktime.html"), "utf8");
+  const tscript = tsrc.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const run = function(payload){
+    const els = {};
+    const ctx = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ els[id] = els[id] || { innerHTML: "" }; return els[id]; },
+        createElement: function(){ return { click(){}, set href(v){}, set download(v){} }; } },
+      location: { href: "" }, fetch: function(){ return new Promise(function(){}); },
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, URL: { createObjectURL: function(){ return ""; } },
+      Blob: function(){}, setTimeout(){}, setInterval(){} };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(tscript, ctx);
+    ctx.T = payload; ctx.DATE = payload.date;
+    let err = null;
+    try { ctx.draw(); } catch (e) { err = e; }
+    return { err: err, html: els.app.innerHTML, who: (els.who || {}).innerHTML || "" };
+  };
+  const row = function(id, name, team, call, meet, decl){
+    return { id: id, name: name, team: team, teamId: "t1", callMs: call, meetMs: meet,
+      declaredMs: decl, talkMs: call + meet + decl, calls: 40, waCalls: decl ? 2 : 0,
+      waMissing: 0, meetings: meet ? 1 : 0 };
+  };
+  const base = function(o){
+    return Object.assign({
+      date: "2026-09-04", today: "2026-09-05", isToday: false,
+      you: { email: "hr@topmate.io", role: "hr", scope: "everyone" },
+      locked: { at: "2026-09-04T18:29:00Z", late: false, hm: "23:59", rechecked: null, amended: 0 },
+      lockAt: "23:59", persistent: true, canBlockEdits: false,
+      totals: { agents: 2, callMs: 11035098, meetMs: 0, declaredMs: 1320000,
+        talkMs: 12355098, calls: 142, waCalls: 2, waMissing: 0, meetings: 0, amended: 0 },
+      rows: [row("1", "Bibin Christopher", "Prashant", 11035098, 0, 0),
+             row("2", "Nithin Thomas", "Anand", 306479, 0, 1320000)],
+      log: []
+    }, o || {});
+  };
+
+  const hr = run(base());
+  ok("the talktime page renders", !hr.err, hr.err && hr.err.message);
+  ok("a locked day shows the time it was closed",
+    hr.html.indexOf("LOCKED 18:29") >= 0 && hr.html.indexOf("OPEN until") < 0);
+  ok("and names who is looking and how much they get",
+    hr.who.indexOf("hr@topmate.io") >= 0 && hr.who.indexOf("everyone") >= 0);
+  ok("HR sees the agent and team columns",
+    hr.html.indexOf(">Agent</th>") >= 0 && hr.html.indexOf("Bibin Christopher") >= 0 &&
+    hr.html.indexOf("Nithin Thomas") >= 0);
+
+  /* An agent gets their own row and no names at all, not even a column for them. */
+  const agent = run(base({
+    you: { email: "nithin.thomas@topmate.io", role: "agent", scope: "your own calls" },
+    rows: [row("2", "Nithin Thomas", "Anand", 306479, 0, 1320000)],
+    totals: Object.assign({}, base().totals, { agents: 1 }) }));
+  ok("an agent's own view carries no agent column at all",
+    agent.html.indexOf(">Agent</th>") < 0 && agent.html.indexOf("Bibin Christopher") < 0);
+  ok("and no amended column, since there is nobody to compare against",
+    agent.html.indexOf("Amended after lock") < 0);
+
+  /* The change is the agent's own, so they can read what was recorded about them. */
+  const amended = run(base({
+    log: [{ day: "2026-09-04", phase: "locked", owner: "2", name: "Nithin Thomas",
+      kind: "changed", callId: "396778580729", from: 1200000, to: 2880000,
+      at: "2026-09-05T06:30:00Z" }],
+    totals: Object.assign({}, base().totals, { amended: 1 }) }));
+  ok("an amendment names the call and both figures",
+    amended.html.indexOf("396778580729") >= 0 && amended.html.indexOf("20m to 48m") >= 0 &&
+    amended.html.indexOf("Changed after the day was locked") >= 0);
+  ok("and the page says the locked figure is the one that stands",
+    amended.html.indexOf("The locked figure stands") >= 0 &&
+    amended.html.indexOf("cannot change the figure") >= 0);
+  ok("the amended row is marked, not just listed underneath",
+    amended.html.indexOf("amended after lock</span>") >= 0);
+
+  /* A lock nobody can trust is worse than no lock, so this is shouted. */
+  const novol = run(base({ persistent: false }));
+  ok("a missing volume is shouted, because a lock that vanishes is worse than none",
+    novol.html.indexOf("Nothing is being saved") >= 0 &&
+    novol.html.indexOf("locks vanish on the next deploy") >= 0);
+  const late = run(base({ locked: { at: "2026-09-05T19:10:00Z", late: true, hm: "23:59" } }));
+  ok("a late lock says so, so 00:40 cannot pass itself off as 23:59",
+    late.html.indexOf("locked late, the window was missed") >= 0);
+  const never = run(base({ locked: null, isToday: false }));
+  ok("a day that was never locked warns that its numbers can still move",
+    never.html.indexOf("never locked") >= 0 && never.html.indexOf("can still move") >= 0);
+  const none = run(base({
+    you: { email: "someone@topmate.io", role: "none", scope: "no calls are recorded against this address" },
+    rows: [], totals: Object.assign({}, base().totals, { agents: 0 }) }));
+  ok("a signed in address with no calls is told why, not shown an empty table",
+    none.html.indexOf("no calls are recorded against this address") >= 0 &&
+    none.html.indexOf("owner email in HubSpot") >= 0);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
