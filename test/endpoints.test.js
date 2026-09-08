@@ -1330,6 +1330,22 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
       const src = require("fs").readFileSync(
         require("path").join(__dirname, "..", "server.js"), "utf8");
       const scope = src.split("function talkScope(req)")[1].slice(0, 1200);
+      /* HR own no leads, so sessionOf files them as agents with no owner id, and the gate
+         refused every API call they made: the report loaded and then said "no HubSpot lead
+         owner matches ayushree@topmate.io". The scope rule inside the handler already knew
+         they see everyone; the request never reached it. */
+      ok("HR are exempted from the no-owner refusal, or they never reach the handler",
+        /const isHr = HR_EMAILS\.indexOf/.test(src) &&
+        /if \(isHr && !isVP\(req\)\)/.test(src));
+      /* And given exactly one API in exchange. Widening sessionOf to invent a role would
+         have been shorter and would have handed them every manager endpoint by default. */
+      ok("and are confined to the talktime API rather than let loose",
+        /p\.indexOf\("\/api\/talktime"\) !== 0 && p !== "\/api\/me"/.test(src) &&
+        src.indexOf("this account can only open the talktime report") >= 0);
+      /* Fixtures never populate CACHE.owners, so before this every fixture agent resolved
+         to no owner id and the entire agent path was untestable. */
+      ok("a fixture agent resolves to an owner id, so the agent path is reachable at all",
+        /if \(CN2_FIXTURE_DATA\) \{\n    const a = \(CN2_FIXTURE_DATA\.agents/.test(src));
       ok("HR is an explicit list, since they own no leads and lead no team",
         /HR_EMAILS\.indexOf\(em\) >= 0/.test(scope) && src.indexOf("hr@topmate.io") >= 0);
       ok("and the three HR addresses are configured",

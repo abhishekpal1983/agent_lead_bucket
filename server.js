@@ -6175,6 +6175,14 @@ function baseUrl(req){
 }
 function ownerIdForEmail(email){
   const e = String(email || "").toLowerCase();
+  /* Fixtures carry their own agent list and never populate CACHE.owners, so without this
+     every fixture agent resolves to no owner id and the whole agent path, including the
+     one that decides whether an agent may read their own talktime, is untestable. */
+  if (CN2_FIXTURE_DATA) {
+    const a = (CN2_FIXTURE_DATA.agents || []).filter(function(x){
+      return String(x.email || "").toLowerCase() === e; })[0];
+    if (a) return String(a.id);
+  }
   const ids = Object.keys(CACHE.owners || {});
   for (const id of ids) {
     if (String((CACHE.owners[id] || {}).email || "").toLowerCase() === e) return id;
@@ -6324,6 +6332,23 @@ function authGate(req, res, next){
     if (home && here !== home && HR_EMAILS.indexOf(String(s.email || "").toLowerCase()) >= 0) {
       return res.redirect(home);
     }
+  }
+
+  /* HR are not lead owners and never will be, so `sessionOf` files them as agents with no
+     owner id and the rule below refuses every API call they make: the report loads and then
+     says "no HubSpot lead owner matches ayushree@topmate.io". The scope rule inside the
+     handler already knows they see everyone, but the request never reached it.
+
+     They are exempted here and given exactly one API in exchange. Widening `sessionOf` to
+     invent a role for them would have been the shorter change and would have handed them
+     every manager endpoint by default, which is the opposite of what anybody wants. */
+  const isHr = HR_EMAILS.indexOf(String(s.email || "").toLowerCase()) >= 0;
+  if (isHr && !isVP(req)) {
+    if (p.indexOf("/api/") === 0 &&
+        p.indexOf("/api/talktime") !== 0 && p !== "/api/me" && p !== "/api/health") {
+      return res.status(403).json({ error: "this account can only open the talktime report" });
+    }
+    return next();
   }
 
   // v2 is scoped per role like v1, so an agent opening it sees their own leads only.

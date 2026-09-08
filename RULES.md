@@ -1205,6 +1205,11 @@ test can reach. It cost an hour to find that the first time: the exclusion was w
 looked right, and did nothing under fixtures. The price of putting it in the shared path is
 one association read on a meeting that is then dropped, about five a month.
 
+**Fixture note.** `ownerIdForEmail` now reads the fixture agent list. It only read
+`CACHE.owners`, which fixtures never populate, so every fixture agent resolved to no owner
+id and the entire agent path was untestable: any test of "an agent sees only their own row"
+was really testing a 403.
+
 **Fixture note.** The excluded owner is deliberately kept out of `AGENTS`. `lead()` hands
 owners out with `AGENTS[n % AGENTS.length]`, so adding a sixth name there silently reassigns
 every lead in the fixture and half the suite quietly starts testing a different agent than
@@ -1547,6 +1552,25 @@ it would naturally have been put and where it would have helped nobody.
 
 The identity bar fetches `/api/me` and swallows its own failures. Page chrome must never be
 the reason a page fails to render.
+
+### The gate refuses HR before the scope rule ever runs
+
+`talkScope` gives HR the whole floor. It never got the chance. `sessionOf` files anyone who
+is not a manager or VP as an agent, HR own no leads so they have no owner id, and the gate
+refuses every API call from an agent without one. The page loaded and then said "no HubSpot
+lead owner matches ayushree@topmate.io", which is a true sentence about a person who was
+never going to own a lead.
+
+They are exempted in the gate and given exactly one API in exchange: `/api/talktime`,
+`/api/me`, `/api/health`, and nothing else. The shorter fix was to widen `sessionOf` and
+invent a role for them, and that would have handed them every manager endpoint by default,
+which is the opposite of what anybody wanted. **A permission bug is worth fixing narrowly
+even when the broad fix is three lines shorter.**
+
+Three separate bugs stood between HR and this page: the callback sent them to Call Now, the
+gate redirected them off the report as agents, and then the gate refused their API. Each one
+was invisible until the one in front of it was fixed. When a permission path is wrong,
+expect to fix it more than once.
 
 ### Three scopes, defaulting to nothing
 
