@@ -92,6 +92,20 @@ console.log("\nAn empty scope must exclude, never wave everything through");
     home("hr@topmate.io") === "/talktime.html");
   ok("and everybody else still lands on Call Now",
     home("sid.menon@topmate.io") === "/callnow.html");
+  /* Fixing the sign-in redirect was not enough. Somebody already signed in never passes
+     through the callback: they open a bookmark or the root and land on a page with nothing
+     for them. So the gate enforces it on every page request. */
+  const gate = src.split("req.session = s;")[1].slice(0, 1400);
+  ok("an HR address is sent to their own page from anywhere, not only at sign in",
+    /HR_EMAILS\.indexOf\(String\(s\.email/.test(gate) && /res\.redirect\(home\)/.test(gate));
+  ok("but never from the API, or every fetch turns into a redirect",
+    /p\.indexOf\("\/api\/"\) !== 0/.test(gate));
+  ok("and never from the sign-in machinery, or they cannot change account",
+    /p\.indexOf\("\/auth\/"\) !== 0/.test(gate) && /p !== "\/login\.html"/.test(gate));
+  /* Agents are allow-listed to a few pages. Leaving the report off that list sent every
+     agent who opened it back to Call Now, and sent HR round in a loop between the two. */
+  ok("the talktime report is on the list agents may open",
+    src.indexOf('"/talktime.html", "/"]') >= 0);
   ok("the talktime page asks to come back to itself rather than to the default",
     require("fs").readFileSync(
       require("path").join(__dirname, "..", "public", "talktime.html"), "utf8")

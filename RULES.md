@@ -1496,6 +1496,25 @@ Everything persists to `DATA_DIR`. With no Railway volume mounted, a lock lasts 
 next deploy. The payload carries `persistent` and the page shouts it in red, because a lock
 people trust and that is not there is worse than no lock at all.
 
+### Fixing the sign-in redirect fixes nothing for people already signed in
+
+HR still landed on Call Now after the callback was fixed, because somebody with a live
+session never passes through the callback. They open a bookmark, or the root, and arrive on
+a page that has nothing for them and says so: "no HubSpot lead owner matches
+ayushree@topmate.io". Correct, and useless.
+
+So it is enforced in the gate, on every page request, not only at sign in. Page requests
+only, never the API or every fetch becomes a redirect, and never `/auth/` or `/login.html`
+or somebody who needs to change account cannot reach the door.
+
+**And the agent allow-list did not include the report.** Agents may only open a short list
+of pages, `/talktime.html` was not on it, so every agent who opened their own talktime was
+bounced to Call Now, and HR went round in a loop between the two. The report is scoped to an
+agent's own day by design; leaving it off that list quietly cancelled that whole decision.
+
+The loop is the thing to remember: two redirect rules that are each correct alone can trap a
+person between them, and neither rule looks wrong when you read it.
+
 ### Signing in has to put you back where you were going
 
 The callback redirected everyone to `/callnow.html`. So HR opened `/talktime.html`, were

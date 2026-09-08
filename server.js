@@ -6285,7 +6285,9 @@ app.get("/api/me", function(req, res){
   // Role alone cannot tell a manager from a VP, since both carry role "manager".
   // Pages that gate a control need the distinction, so say it plainly.
   res.json({ email: s.email, name: s.name, role: s.role, ownerId: s.ownerId, authOn: AUTH_ON,
-    isVP: isVP(req), domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS });
+    isVP: isVP(req), domain: ALLOWED_DOMAIN, managers: MANAGER_EMAILS,
+    // Where this person belongs, so a page can offer the way there rather than a dead end.
+    home: homeFor(s.email) });
 });
 
 // Gate every page and API call. Agents are forced onto their own owner id, so a
@@ -6304,6 +6306,26 @@ function authGate(req, res, next){
     return res.redirect("/login.html");
   }
   req.session = s;
+
+  /* Somebody who belongs on one page should not be able to land anywhere else and be told
+     they do not exist.
+
+     HR are not lead owners, so Call Now correctly reports "no HubSpot lead owner matches
+     ayushree@topmate.io" and shows an empty screen. Fixing the sign-in redirect was not
+     enough, because an already signed-in person never passes through the callback: they
+     open a bookmark, or the root, and land on a page that has nothing for them.
+
+     So this is enforced on every page request rather than only at sign-in. Page requests
+     only, never the API, and never the sign-in machinery itself, or somebody who needs to
+     change account cannot reach the door. */
+  if (p.indexOf("/api/") !== 0 && p.indexOf("/auth/") !== 0 && p !== "/login.html") {
+    const home = homeFor(s.email);
+    const here = p === "/" ? "" : p;
+    if (home && here !== home && HR_EMAILS.indexOf(String(s.email || "").toLowerCase()) >= 0) {
+      return res.redirect(home);
+    }
+  }
+
   // v2 is scoped per role like v1, so an agent opening it sees their own leads only.
   if (s.role === "agent") {
     if (!s.ownerId && p.indexOf("/api/") === 0) {
@@ -6330,8 +6352,11 @@ function authGate(req, res, next){
         }
       }
     }
-    // agents only get the call list and their own snapshot
-    const allowed = ["/callnow.html", "/callnow2.html", "/agent.html", "/login.html", "/"];
+    /* Agents get the call list, their own snapshot, and the talktime report, which is
+       scoped to their own day by design. Leaving it out sent every agent who opened it
+       straight back to Call Now, and sent HR round in a loop between the two. */
+    const allowed = ["/callnow.html", "/callnow2.html", "/agent.html", "/login.html",
+      "/talktime.html", "/"];
     if (p.indexOf("/api/") !== 0 && allowed.indexOf(p) < 0 && p.endsWith(".html")) return res.redirect("/callnow.html");
     if (p === "/") return res.redirect("/callnow.html");
   }
