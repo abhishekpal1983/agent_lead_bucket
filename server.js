@@ -204,6 +204,24 @@ async function hs(path, opts, attempt){
   return res.json();
 }
 
+/* A timestamp on its way into a HubSpot filter.
+
+   HubSpot answers a filter value of "NaN" with a 400 and the sentence "There was a problem
+   with the request.", which says nothing about which request or which value, and the
+   generic wording is what let a broken day boundary read as a HubSpot outage for months.
+   Anything that is not a real millisecond timestamp is refused here instead, in a sentence
+   that names the caller and the value, so the log and the report banner say what actually
+   went wrong rather than blaming HubSpot. */
+function hsMs(v, what){
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0) {
+    throw new Error("Not asking HubSpot for " + what + ": the day boundary came out as " +
+      String(v) + " instead of a timestamp, so whatever worked it out was handed nothing. " +
+      "This is our bug, not HubSpot's.");
+  }
+  return String(Math.round(n));
+}
+
 // A HubSpot user who never filled in a name would otherwise render as "Owner 166827115".
 // Their email is far more useful than the internal id.
 function ownerLabel(o){
@@ -671,7 +689,7 @@ async function syncCallsToday(){
       guard++;
       const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
         filterGroups: [{ filters: [
-          { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
+          { propertyName: "last_call_date_and_time", operator: "GTE", value: hsMs(day.start, "today's calls") },
           { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
         ]}],
         properties: PROPS,
@@ -900,8 +918,8 @@ let CALLS = { byMonth: {}, dispositions: {}, loadedAt: null, syncing: false, err
 
 async function fetchCallsRange(fromMs, toMs, sink, depth){
   const filters = [
-    { propertyName: "hs_timestamp", operator: "GTE", value: String(fromMs) },
-    { propertyName: "hs_timestamp", operator: "LT", value: String(toMs) }
+    { propertyName: "hs_timestamp", operator: "GTE", value: hsMs(fromMs, "calls in a month") },
+    { propertyName: "hs_timestamp", operator: "LT", value: hsMs(toMs, "calls in a month") }
   ];
   const probe = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({ filterGroups: [{ filters }], properties: ["hs_timestamp"], limit: 1 }) });
   const total = probe.total || 0;
@@ -3822,8 +3840,8 @@ let CN2_OUT = { at: 0, running: false, data: null };
 async function cn2CallLadder(){
   const day = istDayBounds();
   const filters = [
-    { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
-    { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+    { propertyName: "last_call_date_and_time", operator: "GTE", value: hsMs(day.start, "today's calls") },
+    { propertyName: "last_call_date_and_time", operator: "LT", value: hsMs(day.end, "today's calls") }
   ];
   const base = (cn2Store() || {}).rows || {};
   const pool = {};
@@ -3942,8 +3960,8 @@ async function cn2DriftCheck(){
   try {
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
-        { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
-        { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+        { propertyName: "last_call_date_and_time", operator: "GTE", value: hsMs(day.start, "today's calls") },
+        { propertyName: "last_call_date_and_time", operator: "LT", value: hsMs(day.end, "today's calls") }
       ]}], properties: ["hs_object_id"], limit: 1 })});
     const theirs = j.total || 0;
     let ours = 0;
@@ -6875,8 +6893,8 @@ const RECON_TTL_MS = 5 * 60 * 1000;
 async function buildRecon(){
   const day = istDayBounds();
   const filters = [
-    { propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) },
-    { propertyName: "last_call_date_and_time", operator: "LT", value: String(day.end) }
+    { propertyName: "last_call_date_and_time", operator: "GTE", value: hsMs(day.start, "today's calls") },
+    { propertyName: "last_call_date_and_time", operator: "LT", value: hsMs(day.end, "today's calls") }
   ];
   // Pull the ids, not just the count, so the gap can be attributed.
   const hub = {};
@@ -7125,10 +7143,14 @@ let LEDGER_WARMED = "";
 /* An IST day as a pair of epoch millisecond bounds. IST has no daylight saving, so a
    fixed offset is exact rather than merely convenient. */
 const IST_MS = 5.5 * 3600 * 1000;
-function istDayBounds(dayKey){
-  const start = Date.parse(dayKey + "T00:00:00Z") - IST_MS;
-  return { start: start, end: start + 86400000 };
-}
+/* Named istBoundsFor, not istDayBounds.
+
+   This was declared as a second `function istDayBounds(dayKey)` and JavaScript let it
+   through: two declarations of the same name in one file do not error, the later one
+   simply wins for the whole module. Nine callers of the no-argument istDayBounds() above
+   started getting this one instead, passed nothing, and got { start: NaN, end: NaN }. The
+   searches then asked HubSpot for calls since "NaN" and got a 400 for four months; the
+   comparisons just quietly matched nothing. Use istBoundsFor for a named day. */
 function istDayKey(ms){ return new Date(ms + IST_MS).toISOString().slice(0, 10); }
 
 /* Contacts whose engagement stage moved inside the day. This is the only cheap way to
@@ -7140,8 +7162,8 @@ async function ledgerChanged(b){
     guard++;
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
-        { propertyName: "engagement_stage_last_changed_at", operator: "GTE", value: String(b.start) },
-        { propertyName: "engagement_stage_last_changed_at", operator: "LT", value: String(b.end) },
+        { propertyName: "engagement_stage_last_changed_at", operator: "GTE", value: hsMs(b.start, "stage changes in a day") },
+        { propertyName: "engagement_stage_last_changed_at", operator: "LT", value: hsMs(b.end, "stage changes in a day") },
         { propertyName: "hs_object_id", operator: "GT", value: String(lastId) }
       ]}],
       properties: ["contact_engagement_stage", "hubspot_owner_id", "topmate_username",
@@ -7189,8 +7211,8 @@ async function ledgerCalls(b){
   do {
     const j = await hs("/crm/v3/objects/calls/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
-        { propertyName: "hs_timestamp", operator: "GTE", value: String(b.start) },
-        { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) }
+        { propertyName: "hs_timestamp", operator: "GTE", value: hsMs(b.start, "a day of calls and meetings") },
+        { propertyName: "hs_timestamp", operator: "LT", value: hsMs(b.end, "a day of calls and meetings") }
       ]}],
       properties: ["hs_timestamp", "hs_call_duration", "hubspot_owner_id",
         "hs_object_source_label", "hs_call_disposition", "hs_attachment_ids",
@@ -7282,8 +7304,8 @@ async function ledgerMeetings(b){
   do {
     const j = await hs("/crm/v3/objects/meetings/search", { method: "POST", body: JSON.stringify({
       filterGroups: [{ filters: [
-        { propertyName: "hs_timestamp", operator: "GTE", value: String(b.start) },
-        { propertyName: "hs_timestamp", operator: "LT", value: String(b.end) },
+        { propertyName: "hs_timestamp", operator: "GTE", value: hsMs(b.start, "a day of calls and meetings") },
+        { propertyName: "hs_timestamp", operator: "LT", value: hsMs(b.end, "a day of calls and meetings") },
         { propertyName: "hs_meeting_recording_duration", operator: "HAS_PROPERTY" }
       ]}],
       properties: ["hs_timestamp", "hs_meeting_recording_duration", "hubspot_owner_id",
@@ -7449,7 +7471,7 @@ function ledgerOwner(id){
 function ledgerFixture(dayKey){
   const F = CN2_FIXTURE_DATA;
   const hist = F.history || {};
-  const b = istDayBounds(dayKey);
+  const b = istBoundsFor(dayKey);
   const contacts = (F.rows || []).filter(function(r){ return hist[r.id]; }).map(function(r){
     return { id: r.id, firstname: r.name, lastname: "",
       hubspot_owner_id: r.owner, topmate_username: r.creator,
@@ -7516,7 +7538,7 @@ async function ledgerFetch(dayKey){
   if (CN2_FIXTURE_DATA) return ledgerFixture(dayKey);
   if (!TOKEN) return { at: Date.now(), day: dayKey, rows: [], leads: [], error: "no token" };
 
-  const b = istDayBounds(dayKey);
+  const b = istBoundsFor(dayKey);
   let changed, hist, calls, meets, error = null;
   try {
     changed = await ledgerChanged(b);

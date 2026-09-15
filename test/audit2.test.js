@@ -111,5 +111,62 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
     on.length > 30, String(on.length));
 }
 
+/* ---- 7. one name, one function, in the server too --------------------------------
+
+   `function istDayBounds()` returning today was declared near the top. Months later
+   `function istDayBounds(dayKey)` was declared for the counselling ledger, further down
+   the same file. JavaScript does not complain about that: both are hoisted and the later
+   one wins for the whole module. So nine callers that passed no argument started getting
+   the day-key version, computed Date.parse("undefinedT00:00:00Z"), and got NaN.
+
+   What that cost: every HubSpot search asking for calls since "NaN" got a 400 that read
+   like a HubSpot fault, and every in-memory comparison against NaN quietly matched
+   nothing. Four surfaces reported zero rather than reporting a problem. `node --check`
+   passes on this, every existing test passed on this, and it survived until somebody
+   asked why a banner was red.
+
+   A name declared twice at the top level of one file is always a mistake. */
+{
+  ["server.js", "lib/cn2.js", "lib/counsel.js", "lib/talklock.js", "lib/idle.js",
+   "lib/revenue.js", "lib/selfcheck.js", "lib/role.js"].forEach(function(f){
+    const p = path.join("/tmp/repo", f);
+    if (!fs.existsSync(p)) return;
+    const src = fs.readFileSync(p, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const seen = {};
+    [...src.matchAll(/^function ([a-zA-Z_$][\w$]*)\s*\(/gm)].forEach(function(m){
+      seen[m[1]] = (seen[m[1]] || 0) + 1; });
+    const dups = Object.keys(seen).filter(function(k){ return seen[k] > 1; });
+    chk(f + " declares each top-level function once", dups.length === 0,
+      dups.map(function(d){ return d + " x" + seen[d]; }).join(", "));
+  });
+}
+
+/* ---- 8. a broken day boundary must never reach HubSpot ---------------------------
+
+   The second line of defence for the same fault. HubSpot answers a filter value of "NaN"
+   with "There was a problem with the request.", which names neither the request nor the
+   value, and that wording is what made our bug look like theirs. Every day boundary now
+   goes through hsMs, which refuses anything that is not a real timestamp and says whose
+   fault it is. */
+{
+  const src = fs.readFileSync(path.join("/tmp/repo", "server.js"), "utf8");
+  chk("hsMs exists and refuses anything that is not a timestamp",
+    /function hsMs\(v, what\)/.test(src) && src.indexOf("This is our bug, not HubSpot's.") > 0);
+  const bare = [...src.matchAll(/operator: "(?:GTE|LT|GT|LTE)", value: String\((?:day|b|dayR|fromMs|toMs)[.\w]*\)/g)];
+  chk("no day boundary is sent to a HubSpot filter unchecked", bare.length === 0,
+    bare.map(function(m){ return m[0]; }).join(" | "));
+  /* Run it, rather than trust the regex. */
+  const fn = new Function("return " + src.slice(src.indexOf("function hsMs(v, what)"),
+    src.indexOf("\n}", src.indexOf("function hsMs(v, what)")) + 2))();
+  let threw = null;
+  try { fn(NaN, "today's calls"); } catch (e) { threw = e.message; }
+  chk("NaN is refused with a sentence that says what went wrong",
+    threw && threw.indexOf("NaN") >= 0 && threw.indexOf("our bug") >= 0, String(threw));
+  chk("and a real timestamp passes straight through",
+    fn(1789410600000, "x") === "1789410600000");
+}
+
 console.log("\n"+(bad?bad+" failed":"all clear"));
 process.exit(bad?1:0);

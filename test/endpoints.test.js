@@ -365,8 +365,14 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
       srv2.indexOf("if (!got.caughtUp) deltaSoon(20);") >= 0);
     /* The sweep that matters asks the specific question rather than the general one. */
     ok("today's calls are asked for directly, by the call date itself",
-      srv2.indexOf('{ propertyName: "last_call_date_and_time", operator: "GTE", value: String(day.start) }') >= 0 &&
+      srv2.indexOf('{ propertyName: "last_call_date_and_time", operator: "GTE", value: hsMs(day.start,') >= 0 &&
       srv2.indexOf("async function syncCallsToday") >= 0);
+    /* And the boundary it asks for is a real one. This sweep spent months sending "NaN"
+       and reading the 400 that came back as a HubSpot fault. */
+    ok("the day it asks for is a real timestamp, checked before the request goes out",
+      srv2.indexOf("function hsMs(v, what)") >= 0 &&
+      srv2.slice(srv2.indexOf("async function syncCallsToday"),
+                 srv2.indexOf("async function syncDelta")).indexOf("hsMs(day.start,") > 0);
     ok("it re-reads the whole day rather than carrying a cursor, so a missed run costs nothing",
       srv2.indexOf("idempotent and self healing") >= 0 &&
       srv2.slice(srv2.indexOf("async function syncCallsToday"),

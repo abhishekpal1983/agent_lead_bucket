@@ -1765,3 +1765,41 @@ a test because its endpoint went is how live logic loses its guard.
 nav wrapper on the calling floor was left showing an empty box after its only child went.
 The paper-skinned CSS for the Daily review outlived the view by a full commit. Grep for the
 page name, the class prefix and the nav id, not just the route.
+
+## Two functions, one name, and four months of wrong numbers
+
+`function istDayBounds()` returning today's IST bounds was declared near the top of
+server.js. Later, `function istDayBounds(dayKey)` was declared for the counselling ledger,
+1,300 lines further down the same file. JavaScript accepts this without a word: both are
+hoisted, the later one wins for the entire module, and the first is simply gone.
+
+Nine callers passed no argument. They got `Date.parse("undefinedT00:00:00Z")`, which is
+NaN, and a day that ran from NaN to NaN.
+
+**What that broke, all of it quietly:**
+
+- the calls-today sweep asked HubSpot for calls since `"NaN"` and got a 400
+- the drift check, whose whole job is to catch this class of fault, failed the same way
+  and reported nothing
+- the reconcile endpoint, the v1 Call Now day counters, the today drill and the Revenue
+  Command day figures compared against NaN, which is false against everything, so they
+  reported zero rather than reporting a problem
+
+`node --check` passes. The file parses. Every test passed. The only reason it surfaced is
+that the talktime report's self-check put the HubSpot 400 in red on a page somebody opened,
+and the wording of HubSpot's 400 ("There was a problem with the request.") had made it look
+like a HubSpot outage for months.
+
+**The rules now:**
+
+**A top-level name declared twice in one file is always a bug**, and `test/audit2.js`
+fails on it for server.js and every lib. This is the cheapest possible check for a fault
+class that nothing else in the toolchain sees.
+
+**Nothing that is not a real timestamp reaches a HubSpot filter.** `hsMs(value, what)`
+refuses it and says, in the log and on the banner, which boundary was wrong and that the
+fault is ours. A vendor's generic error message is not a diagnosis, and treating it as one
+cost four months here.
+
+**A checker that shares a dependency with the thing it checks is not a checker.** The drift
+check was meant to be the guard and went down with the same line of code.
