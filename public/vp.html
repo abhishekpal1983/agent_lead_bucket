@@ -96,32 +96,6 @@ table.rt td:first-child,table.rt th:first-child{text-align:left}
 .mut{color:#6B7A8A}.cg{color:#0A5346}.cr{color:#8C2D12}.ca{color:#7A4A08}
 .pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:5px;display:inline-block}
 .pill.g{background:#DDEFEA;color:#0A5346}.pill.r{background:#FBE2D8;color:#8C2D12}.pill.a{background:#FAEBD7;color:#7A4A08}
-/* Daily review is a frozen report, not the live board, so it gets a paper skin: warm
-   off-white ground, white cards with a coloured spine instead of filled pastel blocks.
-   Nobody should mistake yesterday for today at a glance. */
-.rv{background:#F8F6F2;border:1px solid #E7E1D7;border-radius:12px;padding:16px 18px 18px}
-.rv h2{color:#1F2937;letter-spacing:-.01em}
-.rv .sub,.rv .mut{color:#6F6A62}
-.rv .tile{background:#fff;border:1px solid #E7E1D7;border-left:3px solid #9AA3AE;border-radius:6px;padding:11px 13px 12px;box-shadow:0 1px 1px rgba(31,41,55,.03)}
-.rv .tile .v{color:#1F2937;font-size:23px}
-.rv .tile .l{color:#6F6A62;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;margin-top:4px}
-.rv .tile .sb{border-top:1px dashed #E7E1D7;color:#6F6A62}
-.rv .tile.blue{border-left-color:#4F7FA8}.rv .tile.blue .v{color:#1F2937}.rv .tile.blue .l{color:#6F6A62}
-.rv .tile.teal{border-left-color:#3F8C77}.rv .tile.teal .v{color:#1F2937}.rv .tile.teal .l{color:#6F6A62}
-.rv .tile.amber{border-left-color:#C08A3E}.rv .tile.amber .v{color:#1F2937}.rv .tile.amber .l{color:#6F6A62}
-.rv .tile.red{border-left-color:#B4553A}.rv .tile.red .v{color:#8C2D12}.rv .tile.red .l{color:#6F6A62}
-.rv .tile.grey{border-left-color:#9AA3AE}.rv .tile.grey .v{color:#1F2937}.rv .tile.grey .l{color:#6F6A62}
-.rv .tw{border-color:#E7E1D7;background:#fff}
-.rv th{background:#F1ECE4;color:#6F6A62;border-bottom:1px solid #DED7CB}
-.rv td{border-bottom:1px solid #F1ECE4}
-.rv .warn{background:#FBF3E4;border:1px solid #E8D7B4;color:#6B5320;border-radius:8px;padding:10px 13px;font-size:12.5px;line-height:1.55}
-.rv .rvh{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A7B62;
-  font-weight:700;margin:15px 0 7px}
-.rv .mbar{height:4px;border-radius:3px;background:#EFE7DA;margin-top:3px;overflow:hidden}
-.rv .mbar i{display:block;height:4px;background:#C25A3C;border-radius:3px}
-.rvhead{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;border-bottom:2px solid #1F2937;padding-bottom:9px;margin-bottom:13px}
-.rvhead .d{font-size:25px;font-weight:600;color:#1F2937;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.rvhead .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:#8A8378}
 .warn{background:#FAEBD7;color:#7A4A08;border:1px solid #EFD3AE;border-radius:8px;padding:10px 13px;font-size:13px;margin-bottom:12px}
 .warn.bad{background:#FBE2D8;border-color:#F0C0B2;color:#8C2D12}
 tr.clik{cursor:pointer}
@@ -383,788 +357,8 @@ function syncPanel(){
     " minutes. Counselling, forms and creator fresh run hourly.</span></div></div>";
   return h;
 }
-var DAILY = null, DAILY_DATE = "";
-function loadDaily(d){
-  fetch("/api/vp/daily" + (d ? "?date=" + encodeURIComponent(d) : ""))
-    .then(asJson)
-    .then(function(j){ DAILY = j; DAILY_DATE = j.date; renderDaily(); })
-    .catch(function(e){
-      var el = document.getElementById("dailywrap");
-      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
-    });
-}
-function pcCell(done, total){
-  // null means the number was never captured for that day, which is not the same as zero.
-  if (total == null || done == null) return "<span class='mut' title='Not captured for this day'>–</span>";
-  if (!total) return "<span class='mut'>0</span>";
-  var p = Math.round(100 * done / total);
-  return "<b>" + fmt(done) + "</b> <span class='mut'>of " + fmt(total) + " · " + p + "%</span>";
-}
-function nc(v){ return v == null ? "<span class='mut' title='Not captured for this day'>–</span>" : fmt(v); }
-function dailyRows(map, label, back){
-  var keys = Object.keys(map || {});
-  if (back) return "<tr><td colspan='4' class='mut'>Not available for a rebuilt day.</td></tr>";
-  if (!keys.length) return "<tr><td colspan='12' class='mut'>Nothing recorded.</td></tr>";
-  var d = function(o, c){ return o == null ? c : o; };
-  return keys.map(function(k){ return Object.assign({ k: k }, map[k]); })
-    .sort(function(a, b){ return (b.calls || 0) - (a.calls || 0) || d(b.oPool, b.pool) - d(a.oPool, a.pool); })
-    .map(function(x){
-      return "<tr><td><b>" + esc(x.name || x.k) + "</b>" +
-        (label === "agent" && x.team ? " <span class='mut'>" + esc(x.team) + "</span>" : "") + "</td>" +
-        "<td class='n'>" + pcCell(x.calls, d(x.oPool, x.pool)) + "</td>" +
-        "<td class='n'>" + pcCell(x.done, d(x.oDue, x.due)) + "</td>" +
-        "<td class='n " + (x.missed ? "cr" : "mut") + "'>" + nc(x.missed) + "</td>" +
-        "<td class='n'>" + pcCell(x.overdueC, d(x.oOverdue, x.overdue)) + "</td>" +
-        "<td class='n'>" + pcCell(x.nofuC, x.nofu) + "</td>" +
-        "<td class='n'>" + pcCell(x.freshC, d(x.oFresh, x.fresh)) + "</td>" +
-        "<td class='n'>" + pcCell(x.formC, d(x.oForm, x.form)) + "</td>" +
-        "<td class='n'>" + pcCell(x.scoreC, d(x.oScore, x.score)) + "</td>" +
-        "<td class='n'>" + pcCell(x.intlC, d(x.oIntl, x.intl)) + "</td>" +
-        "<td class='n'>" + pcCell(x.needsC, d(x.oNeeds, x.needs)) + "</td>" +
-        "<td class='n'>" + fmt(x.counsellings || 0) + "</td>" +
-        "<td class='n " + (x.counsDeep == null ? "mut" : "") + "'>" +
-          (x.counsDeep == null ? "\u2013" : fmt(x.counsDeep)) + "</td>" +
-        "<td class='n'>" + inr(x.revenue || 0) +
-          (x.enrolments ? " <span class='mut'>· " + fmt(x.enrolments) + "</span>" : "") + "</td>" +
-        "<td class='n'>" + auditCell(x.audits, x.auditTarget) + "</td></tr>";
-    }).join("");
-}
-function auditTile(sn){
-  var t = sn.auditTarget || 0, dn = sn.audits || 0;
-  return tile(t && dn >= t ? "teal" : (dn ? "amber" : "red"),
-    fmt(dn) + " <span style='font-size:14px;font-weight:400'>of " + fmt(t) + "</span>",
-    "Call audits done",
-    t ? Math.round(100 * dn / t) + "% of the cadence" : "no agents on rotation");
-}
-// Every tile answers the same question the Call Now queue asks, one day later: of the
-// leads that sat in this bucket, how many were actually dialled.
-function workedTile(cls, done, total, label){
-  if (total == null || done == null) {
-    return tile("grey", "<span style='font-size:20px'>–</span>", label, "not captured for this day");
-  }
-  var pc = total ? Math.round(100 * done / total) : 0;
-  return tile(total && pc >= 60 ? "teal" : (pc > 0 ? cls : "red"),
-    fmt(done) + " <span style='font-size:14px;font-weight:400'>of " + fmt(total) + "</span>",
-    label, total ? pc + "% worked" : "nothing in this bucket");
-}
-function renderDaily(){
-  var el = document.getElementById("dailywrap");
-  if (!el) return;
-  var j = DAILY, sn = j && j.snapshot;
-  var h = "<div class='sec rv'>" +
-    "<div class='rvhead'><span class='k'>Daily review</span><span class='d'>" + esc(j.date || "") + "</span>" +
-    "<span class='k'>" + (sn && sn.backfilled ? "rebuilt from history" : "captured live") + "</span></div>" +
-    "<div class='sub'>Call Now 2.0 as it stood that day, and how much of it was actually worked. Same buckets, same definitions, same denominators, one day later.</div>";
-  h += "<div style='display:flex;gap:9px;align-items:center;margin-bottom:11px;flex-wrap:wrap'>" +
-    "<select onchange='loadDaily(this.value)'>" +
-    (j.dates || []).map(function(d){ return "<option value='" + d + "'" + (d === j.date ? " selected" : "") + ">" + d + (d === j.today ? " (today, still moving)" : "") + "</option>"; }).join("") +
-    "</select>" +
-    (DAILY && DAILY.isVP ? "<button class='btn' onclick='dailyCsv()'>Download CSV</button>" : "") +
-    "<button class='btn' onclick='window.print()'>Print</button>" +
-    (sn ? "<span class='mut' style='font-size:12px'>captured " + new Date(sn.at).toLocaleString('en-IN') + "</span>" : "") +
-    "</div>";
-  if (!sn) return void (el.innerHTML = h + "<div class='mut'>No snapshot stored for that date yet. The first one is written within 15 minutes of a deploy, and a full day appears from tomorrow.</div></div>");
-  var back = !!sn.backfilled;
-  if (back) {
-    h += "<div class='warn' style='margin-bottom:12px'>This day was rebuilt from history, not captured live, so the cadence question cannot be answered for it. " +
-      "Bucket sizes and who was dialled inside each bucket were point-in-time states that HubSpot has since overwritten. " +
-      "What survives with its own date is below. Full cadence review runs from the first day captured live.</div>";
-    var cr = sn.attempts ? Math.round(100 * (sn.connected || 0) / sn.attempts) : 0;
-    h += "<div class='tiles' style='margin-bottom:4px'>" +
-      tile("grey", fmt(sn.attempts || 0), "Call attempts logged") +
-      tile("grey", fmt(sn.connected || 0), "Connected", sn.attempts ? cr + "% of attempts" : "") +
-      tile("grey", fmt(sn.counsellings || 0), "Counsellings") +
-      tile("grey", inr(sn.revenue || 0), "Revenue booked", fmt(sn.enrolments || 0) + " enrolments") +
-      auditTile(sn) + "</div>";
-    return void (el.innerHTML = h + "</div>");
-  }
-  var d = function(o, c){ return o == null ? c : o; };
-  var pool = d(sn.oPool, sn.pool), due = d(sn.oDue, sn.due);
-  var pushed = (due != null && sn.done != null && sn.missed != null) ? due - (sn.done + sn.missed) : 0;
-  h += "<div class='sub' style='margin:-4px 0 10px'>" +
-    (sn.openAt ? "Bucket sizes frozen at " + esc(hm24(sn.openAt)) + " IST. Work counts run to close of day, so pushing a follow-up to tomorrow does not shrink the denominator."
-               : "Opening position was not captured for this day, so the bucket sizes are as they stood at the last capture.") + "</div>";
-  /* Call Now 2.0's own buckets, in its own words, so a manager reviewing yesterday is
-     reading the same page their agent worked. Timing first, because a lead has exactly
-     one of those; then the reasons to call, which overlap on purpose. */
-  h += "<h3 class='rvh'>Where the day stood, and what was worked</h3>";
-  h += "<div class='tiles' style='margin-bottom:12px'>" +
-    workedTile("amber", sn.calls, pool, "Call today, worked") +
-    workedTile("amber", sn.done, due, "Due today, called") +
-    workedTile("amber", sn.overdueC, d(sn.oOverdue, sn.overdue), "Overdue, called") +
-    workedTile("amber", sn.nofuC, sn.nofu, "No next call set, called") +
-    workedTile("amber", sn.freshC, d(sn.oFresh, sn.fresh), "Fresh leads, called") +
-    tile(sn.missed ? "red" : "teal", nc(sn.missed), "Due today, missed",
-      (due ? Math.round(100 * (sn.missed || 0) / due) + "% of the day's due" : "") +
-      (pushed > 0 ? " · " + fmt(pushed) + " pushed out" : "") +
-      (pushed < 0 ? " · " + fmt(-pushed) + " pulled in" : "")) +
-    "</div>";
-  h += "<h3 class='rvh'>Reasons to call, and how much of each was covered</h3>";
-  h += "<div class='tiles' style='margin-bottom:12px'>" +
-    workedTile("amber", sn.formC, d(sn.oForm, sn.form), "Filled the form") +
-    workedTile("amber", sn.scoreC, d(sn.oScore, sn.score), "Score &ge; 6") +
-    workedTile("amber", sn.intlC, d(sn.oIntl, sn.intl), "International") +
-    workedTile("amber", sn.refillC, sn.refill, "Refilled the form") +
-    workedTile("amber", sn.ifcC, sn.ifc, "IFC came due") +
-    workedTile("amber", sn.needsC, d(sn.oNeeds, sn.needs), "Needs owner") +
-    tile("blue", fmt(sn.counsellings), "Counsellings",
-      (sn.counsDeep == null ? "not captured for this day" : fmt(sn.counsDeep) + " reached counselled or beyond")) +
-    tile("blue", inr(sn.revenue), "Revenue booked", fmt(sn.enrolments) + " enrolments") +
-    auditTile(sn) +
-    "</div>";
-  h += missedTable(sn.agents, back);
-  var head = "<thead><tr><th>Name</th>" +
-    "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Missed</th>" +
-    "<th class='n' title='Follow-ups carried in from before that day'>Overdue</th>" +
-    "<th class='n' title='No next call date was ever set'>No FU</th><th class='n'>Fresh</th>" +
-    "<th class='n'>Form</th><th class='n'>Score &ge; 6</th><th class='n'>International</th>" +
-    "<th class='n'>Needs owner</th>" +
-    "<th class='n'>Counsellings</th>" +
-    "<th class='n' title='The subset that reached counselled or beyond, which is what the Counselled QA tool counts.'>QA scope</th>" +
-    "<th class='n'>Revenue</th><th class='n'>Audits</th></tr></thead>";
-  h += "<h3 class='rvh'>By team</h3><div class='tw' style='margin-bottom:14px'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.teams, "team", back) + "</tbody></table></div>";
-  h += "<h3 class='rvh'>By agent</h3><div class='tw'><table class='rt'>" + head + "<tbody>" + dailyRows(sn.agents, "agent", back) + "</tbody></table></div>";
-  el.innerHTML = h + "</div>";
-}
-
-/* Who missed what.
-
-   Every other table here answers "how much was done". This one answers the question a
-   manager actually opens the page with, which is who to talk to and about what. It is
-   the same buckets, subtracted: what sat in front of the agent, minus what they dialled.
-   Sorted by the biggest gap, so the conversation order is the row order. */
-function missedTable(map, back){
-  if (back) return "";
-  var keys = Object.keys(map || {});
-  if (!keys.length) return "";
-  var BUCK = [["due", "done", "Due today"], ["overdue", "overdueC", "Overdue"],
-    ["nofu", "nofuC", "No FU set"], ["fresh", "freshC", "Fresh"],
-    ["form", "formC", "Form"], ["score", "scoreC", "Score"], ["needs", "needsC", "Needs owner"]];
-  var rows = keys.map(function(k){
-    var x = Object.assign({ k: k }, map[k]);
-    var gaps = {}, total = 0;
-    BUCK.forEach(function(b){
-      var had = x[b[0]] || 0, did = x[b[1]] || 0;
-      gaps[b[0]] = Math.max(0, had - did);
-    });
-    total = Math.max(0, (x.pool || 0) - (x.calls || 0));
-    return { x: x, gaps: gaps, total: total };
-  }).filter(function(r){ return (r.x.pool || 0) > 0; })
-    .sort(function(a, b){ return b.total - a.total || (b.gaps.due - a.gaps.due); });
-  if (!rows.length) return "";
-  var worst = rows[0].total || 1;
-  var h = "<h3 class='rvh'>Who missed what</h3>" +
-    "<div class='sub' style='margin:-4px 0 8px'>What sat in front of each agent that day, minus what they dialled. " +
-    "Biggest gap first, so the order of the rows is the order of the conversations.</div>" +
-    "<div class='tw' style='margin-bottom:14px'><table class='rt'><thead><tr><th>Agent</th>" +
-    "<th class='n'>Not worked</th><th class='n'>Of</th>" +
-    BUCK.map(function(b){ return "<th class='n'>" + b[2] + "</th>"; }).join("") +
-    "</tr></thead><tbody>";
-  h += rows.map(function(r){
-    var pc = r.x.pool ? Math.round(100 * r.total / r.x.pool) : 0;
-    var bar = Math.round(100 * r.total / worst);
-    return "<tr><td><b>" + esc(r.x.name || r.x.k) + "</b>" +
-      (r.x.team ? " <span class='mut'>" + esc(r.x.team) + "</span>" : "") + "</td>" +
-      "<td class='n'><b class='" + (pc >= 60 ? "cr" : (pc >= 30 ? "ca" : "cg")) + "'>" + fmt(r.total) + "</b>" +
-      "<div class='mbar'><i style='width:" + bar + "%'></i></div></td>" +
-      "<td class='n mut'>" + fmt(r.x.pool || 0) + " · " + pc + "%</td>" +
-      BUCK.map(function(b){
-        var g = r.gaps[b[0]];
-        return "<td class='n " + (g ? "" : "mut") + "'>" + (g ? fmt(g) : "–") + "</td>";
-      }).join("") + "</tr>";
-  }).join("");
-  return h + "</tbody></table></div>";
-}
-// Days captured before the midnight fix recorded the hour as 24 rather than 00.
-function hm24(t){ return String(t || "").replace(/^24:/, "00:"); }
-function dailyCsv(){
-  var sn = DAILY && DAILY.snapshot;
-  if (!sn) return;
-  if (!DAILY.isVP) return;
-  var lines = [];
-  var src = sn.backfilled ? "rebuilt" : "live";
-  var d = function(o, c){ return o == null ? c : o; };
-  /* The header and the row are one list, paired, so they cannot drift apart. They did:
-     the header was rewritten into Call Now 2.0's buckets and the row was left in the old
-     order, so every column in the export was mislabelled. */
-  var COLS = [
-    ["CallToday", function(x){ return d(x.oPool, x.pool); }], ["CallTodayWorked", function(x){ return x.calls; }],
-    ["Due", function(x){ return d(x.oDue, x.due); }], ["DueDone", function(x){ return x.done; }],
-    ["Missed", function(x){ return x.missed; }],
-    ["Overdue", function(x){ return d(x.oOverdue, x.overdue); }], ["OverdueWorked", function(x){ return x.overdueC; }],
-    ["NoFU", function(x){ return x.nofu; }], ["NoFUWorked", function(x){ return x.nofuC; }],
-    ["Fresh", function(x){ return d(x.oFresh, x.fresh); }], ["FreshWorked", function(x){ return x.freshC; }],
-    ["Form", function(x){ return d(x.oForm, x.form); }], ["FormWorked", function(x){ return x.formC; }],
-    ["Score", function(x){ return d(x.oScore, x.score); }], ["ScoreWorked", function(x){ return x.scoreC; }],
-    ["Intl", function(x){ return d(x.oIntl, x.intl); }], ["IntlWorked", function(x){ return x.intlC; }],
-    ["Refill", function(x){ return x.refill; }], ["RefillWorked", function(x){ return x.refillC; }],
-    ["IFC", function(x){ return x.ifc; }], ["IFCWorked", function(x){ return x.ifcC; }],
-    ["NeedsOwner", function(x){ return d(x.oNeeds, x.needs); }], ["NeedsOwnerWorked", function(x){ return x.needsC; }],
-    ["NeverCalled", function(x){ return d(x.oUncalled, x.uncalled); }], ["NeverCalledWorked", function(x){ return x.uncalledC; }],
-    ["Counsellings", function(x){ return x.counsellings; }],
-    ["CounsellingsQAScope", function(x){ return x.counsDeep; }],
-    ["Revenue", function(x){ return Math.round(x.revenue || 0); }],
-    ["Enrolments", function(x){ return x.enrolments; }],
-    ["Audits", function(x){ return x.audits; }], ["AuditTarget", function(x){ return x.auditTarget; }]
-  ];
-  var row = function(level, name, team, x){
-    lines.push([level, name, team || "", src]
-      .concat(COLS.map(function(c){ return c[1](x); }))
-      .map(function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }).join(","));
-  };
-  lines.push(["Level","Name","Team","Source"].concat(COLS.map(function(c){ return c[0]; })).join(","));
-  row("company", "All teams", "", sn);
-  Object.keys(sn.teams || {}).forEach(function(k){ row("team", sn.teams[k].name, "", sn.teams[k]); });
-  Object.keys(sn.agents || {}).forEach(function(k){ row("agent", sn.agents[k].name, sn.agents[k].team, sn.agents[k]); });
-  var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
-  a.download = "daily_review_" + DAILY.date + ".csv";
-  a.click();
-}
-/* Creator targets, week by week.
-
-   A monthly target is not something a manager can act on until the month is nearly over.
-   Split across the weeks it becomes a Monday question: are we ahead or behind, and on
-   which creator. The split is by working days, so a short last week is handed a small
-   share rather than an equal one.
-
-   Attribution here is by creator, not by agent. Rule 8 follows the agent when the
-   question is who to credit; this question is whether a creator's pipeline is producing
-   what it was expected to. */
-var WEEKS = null;
-function loadWeeks(){
-  fetch("/api/vp/creator-weeks?month=" + encodeURIComponent(J.month))
-    .then(asJson)
-    .then(function(j){ WEEKS = j; renderWeeks(); })
-    .catch(function(e){
-      var el = document.getElementById("weekwrap");
-      if (el) el.innerHTML = "<div class='warn bad'>Could not load: " + esc(e.message) + "</div>";
-    });
-}
-function wkCell(w){
-  if (!w.target && !w.actual) return "<td class='n mut'>–</td>";
-  if (!w.started) return "<td class='n mut' title='This week has not started'>" +
-    (w.target ? "<span class='mut'>" + inr(w.target) + "</span>" : "–") + "</td>";
-  var pc = w.target ? Math.round(100 * w.actual / w.target) : null;
-  var cls = pc === null ? "" : (pc >= 100 ? "cg" : (pc >= 60 ? "ca" : "cr"));
-  return "<td class='n'><b class='" + cls + "'>" + inr(w.actual) + "</b>" +
-    (w.target ? "<div class='mut' style='font-size:11px'>of " + inr(w.target) +
-      (pc === null ? "" : " · " + pc + "%") + "</div>" +
-      "<div class='pbar'><i style='width:" + Math.min(100, pc || 0) + "%'></i></div>" : "") +
-    "</td>";
-}
-function renderWeeks(){
-  var el = document.getElementById("weekwrap");
-  if (!el) return;
-  var j = WEEKS;
-  if (!j) return;
-  var h = "<div class='sec'><h2>Creator targets, week by week</h2>" +
-    "<div class='sub'>The monthly target for each creator, split across the weeks of " + esc(j.month) +
-    " in proportion to the working days each week holds, against what actually came in. " +
-    "A week that has not started yet shows its target in grey; it is not a miss until it is due. " +
-    (j.scoped ? "Your team's creators only. " : "") +
-    "Counted against the creator the payment names, which is the creator whose target it is.</div>";
-
-  if (!j.rows.length) {
-    return void (el.innerHTML = h + "<div class='mut'>No creator has a target for this month yet. " +
-      "Set them under Teams and targets.</div></div>");
-  }
-
-  var t = j.totals;
-  var gap = t.actual - t.dueSoFar;
-  h += "<div class='tiles compact' style='margin-bottom:12px'>" +
-    tile("grey", inr(t.actual), "Booked this month", "of " + inr(t.target)) +
-    tile("grey", inr(t.dueSoFar), "Owed by now", "weeks started so far") +
-    tile(gap >= 0 ? "teal" : "red", (gap >= 0 ? "+" : "") + inr(gap), "Against the weeks due",
-      t.dueSoFar ? Math.round(100 * t.actual / t.dueSoFar) + "% of what is owed" : "") +
-    tile("grey", fmt(t.enrolments), "Enrolments") +
-    "</div>";
-
-  h += "<div class='tw'><table class='rt'><thead><tr><th>Creator</th><th class='n'>Month</th>" +
-    j.weeks.map(function(w){
-      return "<th class='n" + (w.done ? "" : (w.started ? " on" : " mut")) + "'>W" + w.n +
-        "<div class='mut' style='font-weight:400;font-size:10px'>" + esc(w.label) + " · " +
-        w.workDays + "d</div></th>";
-    }).join("") + "<th class='n'>Against pace</th></tr></thead><tbody>";
-
-  j.rows.forEach(function(r){
-    h += "<tr><td><b>" + esc(r.u) + "</b>" +
-      (r.team ? "<div class='mut' style='font-size:11.5px'>" + esc(r.team) + "</div>" : "") + "</td>" +
-      "<td class='n'><b>" + inr(r.actual) + "</b><div class='mut' style='font-size:11px'>of " +
-      (r.target ? inr(r.target) : "no target") + "</div></td>" +
-      r.weeks.map(wkCell).join("") +
-      "<td class='n'>" + (r.dueSoFar
-        ? (r.gap >= 0 ? "<span class='pill g'>+" + inr(r.gap) + "</span>"
-                      : "<span class='pill r'>" + inr(-r.gap) + "</span>")
-        : "<span class='mut'>–</span>") + "</td></tr>";
-  });
-  h += "</tbody></table></div></div>";
-  el.innerHTML = h;
-}
-
-/* The counselling ledger: what each agent did on one day.
-
-   Two questions on one screen because they answer each other. "Twelve counsellings" reads
-   well until you see the talktime beside it, and "five minutes of talktime" looks like a
-   wasted day until you see that the calls carry no duration at all.
-
-   The flags are not accusations and the page says so. A lead can genuinely be counselled,
-   go quiet and be counselled again. What the flags do is put the shape in front of a
-   manager who can ask. */
-var LG = null, LG_DATE = "", LG_TEAM = "", LG_AGENT = "", LG_CREATOR = "", LG_OPEN = {};
-function lgSet(k, v){
-  if (k === "team") { LG_TEAM = v; LG_AGENT = ""; }
-  else if (k === "creator") LG_CREATOR = v;
-  else LG_AGENT = v;
-  renderLedger();
-}
-function lgToggle(id){ LG_OPEN[id] = !LG_OPEN[id]; renderLedger(); }
-function lgMins(ms){
-  ms = ms || 0;
-  if (!ms) return "0";
-  var m = Math.round(ms / 60000);
-  return m >= 60 ? Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m" : m + "m";
-}
-function lgClock(ms){
-  var d = new Date(ms + 5.5 * 3600000);
-  return d.toISOString().slice(11, 16);
-}
-function lgRows(){
-  return (LG && LG.rows ? LG.rows : []).filter(function(r){
-    if (LG_TEAM && r.teamId !== LG_TEAM) return false;
-    if (LG_AGENT && String(r.id) !== LG_AGENT) return false;
-    if (LG_CREATOR) return lgLeads(r.id).length > 0;
-    return true;
-  });
-}
-function lgLeads(ownerId){
-  return (LG && LG.leads ? LG.leads : []).filter(function(l){
-    if (String(l.owner) !== String(ownerId)) return false;
-    if (LG_CREATOR && l.creator !== LG_CREATOR) return false;
-    return true;
-  });
-}
-function lgCreators(){
-  var seen = {};
-  (LG && LG.leads ? LG.leads : []).forEach(function(l){ if (l.creator) seen[l.creator] = 1; });
-  return Object.keys(seen).sort();
-}
-function loadLedger(d){
-  var el = document.getElementById("lgwrap");
-  if (el) el.innerHTML = "<div class='sec'>Reading the day...</div>";
-  fetch("/api/vp/ledger" + (d ? "?date=" + encodeURIComponent(d) : ""))
-    .then(asJson)
-    .then(function(j){ LG = j; LG_DATE = j.date; renderLedger(); })
-    .catch(function(e){
-      if (el) el.innerHTML = "<div class='sec'><h2>Counselling day</h2>" +
-        "<div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>";
-    });
-}
-/* A counselling with no length behind it is not a short counselling. Kept apart in the
-   summary as well as on the row, because a tile that adds the two together is how the
-   distinction gets quietly lost again. */
-function lgTile(cls, k, v, s){
-  return "<div class='tile " + cls + "'><div class='k'>" + esc(k) + "</div>" +
-    "<div class='v'>" + v + "</div><div class='mut' style='font-size:11px'>" + esc(s) + "</div></div>";
-}
-function lgFlagPills(l){
-  var h = "";
-  if (l.repeat && l.repeat.length) h += "<span class='pill r' title='Entered a stage this lead had already been in'>repeat</span> ";
-  if (l.reopened && l.reopened.length) h += "<span class='pill r' title='Came back into a counselling stage out of a follow-up stage'>reopened</span> ";
-  if (l.dropped && l.dropped.length) h += "<span class='pill r' title='Moved to DNP or RCB after having been counselled'>dropped to " + esc(l.dropped[0].label) + "</span> ";
-  /* Every lead reaching this list moved through a counselling stage today, so a missing
-     next call is worth saying on all of them and not only on first counsellings. The
-     tile above counts first counsellings alone and says so, because that denominator has
-     to stay comparable day to day. */
-  if (l.noFollowUp) h += "<span class='pill a'>no follow up</span> ";
-  if (l.counselling && l.unknown) h += "<span class='pill' style='background:#F2EFE7;color:#6B5B37'>no duration</span> ";
-  else if (l.counselling && l.short) h += "<span class='pill a'>under " + Math.round((LG.shortMs || 600000) / 60000) + " min</span> ";
-  if (l.screenshot) {
-    /* The image itself is not read, so the least this can do is take you to it. */
-    var pid = LG.portal || {};
-    var cid = (l.shotIds || [])[0];
-    var tip = "The only record of length is an image the agent attached. Not read by the app.";
-    h += cid && pid.uiDomain
-      ? "<a class='pill' style='background:#EEF1F5;color:#42526B;text-decoration:none' target='_blank' rel='noopener' " +
-        "title='" + tip + " Opens the call in HubSpot.' href='https://" + esc(pid.uiDomain) +
-        "/calls/" + esc(String(pid.portalId)) + "/review/" + esc(String(cid)) + "'>screenshot &nearr;</a> "
-      : "<span class='pill' style='background:#EEF1F5;color:#42526B' title='" + tip + "'>screenshot</span> ";
-  }
-  if (l.declaredMs) h += "<span class='pill' style='background:#E7EFEA;color:#1F5B42' title='Length the agent entered on the call record. Not verified.'>declared " + lgMins(l.declaredMs) + "</span> ";
-  if (l.noteMs) h += "<span class='pill' style='background:#EEF1F5;color:#42526B' title='Length taken from what the agent typed in the call note'>note " + lgMins(l.noteMs) + "</span> ";
-  return h || "<span class='mut'>clean</span>";
-}
-function lgLeadRows(ownerId){
-  var rows = lgLeads(ownerId);
-  if (!rows.length) return "<tr><td colspan='8' class='mut'>Nothing on this day.</td></tr>";
-  rows.sort(function(a, b){
-    var at = a.counselling ? a.counselling.at : (a.events && a.events[0] ? a.events[0].at : 0);
-    var bt = b.counselling ? b.counselling.at : (b.events && b.events[0] ? b.events[0].at : 0);
-    return bt - at;
-  });
-  return rows.map(function(l){
-    var ev = l.counselling || (l.repeat[0] || l.reopened[0] || l.dropped[0] || l.progress[0]);
-    var talk = l.unknown ? "<span class='mut' title='No call on this lead carried a duration'>not recorded</span>"
-      : lgMins(l.callMs + l.meetMs + l.noteMs);
-    /* Named, because the lead-level rule cannot tell a counselling from a group session
-       that happens to have one lead attached. The title usually can. */
-    var mt = (l.meetings || []).map(function(m){
-      return "<div class='mut' style='font-size:11px'>meeting " + lgMins(m.durMs) + ": " +
-        esc(m.title || "untitled") + "</div>"; }).join("");
-    return "<tr>" +
-      "<td>" + esc(l.name) + (l.counselling ? "" : " <span class='mut' style='font-size:11px'>not a first counselling</span>") + "</td>" +
-      "<td class='mut'>" + esc(l.creator || "") + "</td>" +
-      "<td>" + (ev ? esc(ev.label) : "") + "</td>" +
-      "<td class='mut'>" + (ev ? lgClock(ev.at) : "") + "</td>" +
-      "<td class='mut'>" + (ev ? esc(ev.fromLabel) : "") + "</td>" +
-      "<td class='n'>" + fmt(l.calls) + "</td>" +
-      "<td class='n'>" + talk + "</td>" +
-      "<td>" + lgFlagPills(l) + mt + "</td>" +
-      "</tr>";
-  }).join("");
-}
-function renderLedger(){
-  var el = document.getElementById("lgwrap");
-  if (!el || !LG) return;
-  var j = LG;
-  var rows = lgRows();
-  var t = { couns: 0, flag: 0, nofu: 0, short: 0, unknown: 0, talk: 0, calls: 0, meet: 0,
-    measured: 0, declared: 0, missing: 0 };
-  rows.forEach(function(r){
-    t.couns += r.counsellings; t.flag += r.flagged; t.nofu += r.noFollowUp;
-    t.short += r.short; t.unknown += r.unknown; t.talk += r.talkMs;
-    t.calls += r.calls; t.meet += r.meetMs;
-    t.measured += r.measuredMs; t.declared += r.declaredTotalMs; t.missing += r.lengthMissing;
-  });
-  var filtered = LG_TEAM || LG_AGENT || LG_CREATOR;
-
-  var h = "<div class='sec'><h2>Counselling day <span class='mut' style='font-size:12.5px;font-weight:400'>" +
-    esc(j.date) + (j.isToday ? ", still running" : "") + "</span></h2>" +
-    "<div class='sub'>A counselling is the first time a lead reaches Discovery, Program pitched, " +
-    "Pricing pitched or Counselled. One lead counts once, on the day it first got there, however " +
-    "many of the four it climbs afterwards.</div>";
-
-  h += "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0'>" +
-    "<input type='date' value='" + esc(j.date) + "' onchange='loadLedger(this.value)'>" +
-    "<select onchange=\"lgSet('team',this.value)\"><option value=''>All managers</option>" +
-    (j.teams || []).map(function(tm){
-      return "<option value='" + esc(tm.id) + "'" + (LG_TEAM === tm.id ? " selected" : "") + ">" +
-        esc(tm.name) + "</option>"; }).join("") + "</select>" +
-    "<select onchange=\"lgSet('agent',this.value)\"><option value=''>All agents</option>" +
-    (j.rows || []).filter(function(r){ return !LG_TEAM || r.teamId === LG_TEAM; })
-      .slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); })
-      .map(function(r){
-        return "<option value='" + esc(String(r.id)) + "'" + (LG_AGENT === String(r.id) ? " selected" : "") + ">" +
-          esc(r.name) + "</option>"; }).join("") + "</select>" +
-    "<select onchange=\"lgSet('creator',this.value)\"><option value=''>All creators</option>" +
-    lgCreators().map(function(c){
-      return "<option value='" + esc(c) + "'" + (LG_CREATOR === c ? " selected" : "") + ">" +
-        esc(c) + "</option>"; }).join("") + "</select>" +
-    (filtered ? "<button class='btn' onclick=\"LG_TEAM='';LG_AGENT='';LG_CREATOR='';renderLedger()\">Clear</button>" : "") +
-    "<span class='mut' style='margin-left:auto;font-size:12px'>read " + esc(String(j.readAt || "").slice(11, 16)) + " UTC" +
-    (j.counted ? ", " + fmt(j.counted.contacts) + " stage changes walked" : "") + "</span>" +
-    "</div>";
-
-  if (j.error) h += "<div class='warn bad'><b>This day is incomplete.</b> " + esc(j.error) + "</div>";
-  /* The declared column reads zero either because nobody filled it in or because the
-     property does not exist. Those are completely different problems and the page has to
-     say which. */
-  var df = j.declaredField || {};
-  if (!df.ready && !df.bandedTypes) {
-    /* HubSpot does not allow a custom property on the Log call widget, so the banner
-       must not tell anybody to put one there. It names the two routes that do work. */
-    h += "<div class='warn'><b>No way to record a length has been set up yet, so the Declared " +
-      "column can only pick up what an agent happens to type into the call note.</b> " +
-      fmt(j.totals.lengthMissing) + " calls on this day carry no length at all. " +
-      "HubSpot does not allow a custom property on the Log call form, so the length has to come " +
-      "from a field that is already on it. Create a <b>Call type</b> named " +
-      esc((df.waTypes || ["WA call"])[0]) + " and ask agents to put the minutes at the front of " +
-      "the call note, like <b>25 | cx wants Europe</b>. The type is what makes a bare number safe " +
-      "to read, and it also stops the call being mistaken for the write-up of a FreJun call. " +
-      "Duration bands as call types (" + esc((df.bands || []).join(", ")) + ") and the exact " +
-      "property <b>" + esc(df.name) + "</b> are both read too, if you prefer either.</div>";
-  } else if (!df.ready && df.bandedTypes) {
-    h += "<div class='sub'>Declared lengths are coming from Call type bands. Exact minutes would " +
-      "need the <b>" + esc(df.name) + "</b> property, which is read automatically if it is created.</div>";
-  }
-  if (j.truncated) h += "<div class='warn'>More leads changed stage than one read holds, so this day is partial.</div>";
-  if (j.scoped) h += "<div class='warn'>Your team only.</div>";
-  if (filtered) h += "<div class='sub'>" + fmt(rows.length) + " of " + fmt((j.rows || []).length) + " agents shown.</div>";
-
-  h += "<div class='tiles' style='margin-top:4px'>" +
-    lgTile("", "Counsellings", fmt(t.couns), "first entries") +
-    lgTile(t.flag ? "bad" : "", "Flagged", fmt(t.flag), "repeat, reopened or dropped") +
-    lgTile(t.nofu ? "warn" : "", "No follow up", fmt(t.nofu), "of " + fmt(t.couns)) +
-    lgTile(t.short ? "warn" : "", "Under " + Math.round((j.shortMs || 600000) / 60000) + " min", fmt(t.short), "measured length") +
-    lgTile(t.unknown ? "warn" : "", "Length unknown", fmt(t.unknown), "no duration held") +
-    lgTile("", "Talktime", lgMins(t.talk),
-      lgMins(t.measured) + " measured, " + lgMins(t.declared) + " declared") +
-    lgTile(t.missing ? "warn" : "", "Length not logged", fmt(t.missing),
-      "calls of " + fmt(t.calls) + " with no length at all") +
-    "</div>";
-
-  h += "<div class='tw' style='margin-top:12px'><table class='rt'><thead><tr>" +
-    "<th>Agent</th><th class='n'>Couns</th>" +
-    "<th class='n'>Repeat</th><th class='n'>Reopened</th><th class='n'>Dropped</th>" +
-    "<th class='n'>No FU</th><th class='n'>Short</th><th class='n'>Unknown</th>" +
-    "<th class='n' title='Calls the agent typed as a WhatsApp call, or logged with a " +
-    "screenshot. None of these carry a duration from HubSpot, so a length has to come from " +
-    "the agent.'>WhatsApp</th>" +
-    "<th class='n'>Calls</th>" +
-    "<th class='n' title='Of the calls nothing measured, how many the agent supplied a " +
-    "length for. Calls FreJun timed are excluded, so a floor of unanswered dials cannot " +
-    "flatter it.'>Logged</th>" +
-    "<th class='n' title='Timed by FreJun or by a meeting recording'>Measured</th>" +
-    "<th class='n' title='Typed in by the agent. Not verified, and shown apart for that reason.'>Declared</th>" +
-    "<th class='n'>Total talk</th>" +
-    "</tr></thead><tbody>";
-
-  if (!rows.length) {
-    h += "<tr><td colspan='14' class='mut'>Nobody moved a lead through a counselling stage on this day.</td></tr>";
-  }
-  rows.forEach(function(r){
-    var open = !!LG_OPEN[r.id];
-    h += "<tr style='cursor:pointer' onclick=\"lgToggle('" + esc(String(r.id)) + "')\">" +
-      "<td><b>" + esc(r.name) + "</b>" +
-      (r.active === false ? " <span class='pill' style='background:#EEF1F5;color:#42526B'>left</span>" : "") +
-      "<div class='mut' style='font-size:11px'>" + esc(r.team || "no team") + " · " + (open ? "hide" : "show") + " leads</div></td>" +
-      "<td class='n'><b>" + fmt(r.counsellings) + "</b></td>" +
-      "<td class='n " + (r.repeat ? "cr" : "mut") + "'>" + fmt(r.repeat) + "</td>" +
-      "<td class='n " + (r.reopened ? "cr" : "mut") + "'>" + fmt(r.reopened) + "</td>" +
-      "<td class='n " + (r.dropped ? "cr" : "mut") + "'>" + fmt(r.dropped) + "</td>" +
-      "<td class='n " + (r.noFollowUp ? "ca" : "mut") + "'>" + fmt(r.noFollowUp) + "</td>" +
-      "<td class='n " + (r.short ? "ca" : "mut") + "'>" + fmt(r.short) + "</td>" +
-      "<td class='n " + (r.unknown ? "ca" : "mut") + "'>" + fmt(r.unknown) + "</td>" +
-      "<td class='n " + (r.declaredCalls || r.waCalls || r.screenshot ? "" : "mut") + "'>" +
-        fmt(r.declaredCalls || r.waCalls || r.screenshot) +
-        (r.waMissing ? "<div class='cr' style='font-size:11px'>" + fmt(r.waMissing) + " with no length</div>" : "") +
-      "</td>" +
-      "<td class='n'>" + fmt(r.calls) + "</td>" +
-      "<td class='n " + (r.logged == null ? "mut" : r.logged < 50 ? "cr" : r.logged < 90 ? "ca" : "cg") + "'>" +
-        (r.logged == null ? "&ndash;" : r.logged + "%") +
-        (r.needLength ? "<div class='mut' style='font-size:11px'>of " + fmt(r.needLength) +
-          " unmeasured</div>" : "") +
-      "</td>" +
-      "<td class='n'>" + lgMins(r.measuredMs) +
-        (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) +
-          (r.meetings === 1 ? " meeting" : " meetings") + ", " + lgMins(r.meetMs) + "</div>" : "") + "</td>" +
-      "<td class='n " + (r.declaredTotalMs ? "" : "mut") + "'>" + lgMins(r.declaredTotalMs) + "</td>" +
-      "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
-      "</tr>";
-    if (open) {
-      h += "<tr><td colspan='14' style='background:#F7F9FB;padding:0'><div style='padding:10px 12px'>" +
-        /* These were one warning until the two cases could be told apart. A dial FreJun
-           timed at nought rang out; a manual log with no duration property is a
-           conversation nobody measured. Reading the second as the first was marking most
-           of the floor as unrecorded, since most dials go unanswered. */
-        (r.lengthMissing ? "<div class='warn'><b>" + fmt(r.lengthMissing) +
-          (r.lengthMissing === 1 ? " call carries" : " calls carry") + " no length at all.</b> " +
-          "Logged by hand with nothing to say how long it lasted, so this agent's talktime is " +
-          "understated by however long those ran.</div>" : "") +
-        (r.calls && !r.callMs && !r.lengthMissing ? "<div class='warn'><b>" + fmt(r.calls) +
-          " dials, none of them answered.</b> Every call was timed and every one came back at " +
-          "nought, so this is a day of nobody picking up rather than a day of missing data.</div>" : "") +
-        "<table class='rt'><thead><tr><th>Lead</th><th>Creator</th><th>Reached</th><th>At</th>" +
-        "<th>From</th><th class='n'>Calls</th><th class='n'>Talk</th><th>Flags</th></tr></thead><tbody>" +
-        lgLeadRows(r.id) + "</tbody></table></div></td></tr>";
-    }
-  });
-  h += "</tbody></table></div>";
-
-  h += "<div class='sub' style='margin-top:10px'>" +
-    "Flags are for asking about, not for concluding with. A lead can genuinely be counselled, " +
-    "go quiet and be counselled again. " +
-    (j.screenshotsRead === false ? "Screenshots attached to a call log are marked but not read, so those " +
-      "conversations show a length only where the agent typed one into the note. " : "") +
-    "Measured time was timed by FreJun or by a meeting recording. Declared time was typed in " +
-    "by the agent and is not verified, which is why the two are never added into one column " +
-    "without being shown apart. " +
-    "Follow up is the value on the lead now, not as it stood on the day." +
-    "</div>";
-
-  h += "<div style='margin-top:10px'><button class='btn' onclick='lgCsv()'>Download CSV</button></div>";
-  h += "</div>";
-  el.innerHTML = h;
-}
-/* Header and value are one paired list, so the two cannot drift the way the daily review's
-   export once did and mislabel every column. */
-function lgCsv(){
-  var cols = [
-    ["Agent", function(r){ return r.name; }],
-    ["Team", function(r){ return r.team || ""; }],
-    ["Counsellings", function(r){ return r.counsellings; }],
-    ["Repeat", function(r){ return r.repeat; }],
-    ["Reopened", function(r){ return r.reopened; }],
-    ["DroppedToPreStage", function(r){ return r.dropped; }],
-    ["NoFollowUp", function(r){ return r.noFollowUp; }],
-    ["UnderTenMinutes", function(r){ return r.short; }],
-    ["LengthUnknown", function(r){ return r.unknown; }],
-    ["WhatsAppCalls", function(r){ return r.waCalls; }],
-    ["WhatsAppCallsWithNoLength", function(r){ return r.waMissing; }],
-    ["LoggedWithScreenshot", function(r){ return r.screenshot; }],
-    ["Calls", function(r){ return r.calls; }],
-    ["CallTalkMinutes", function(r){ return Math.round(r.callMs / 60000); }],
-    ["LengthNotLogged", function(r){ return r.lengthMissing; }],
-    ["LoggedPercent", function(r){ return r.logged == null ? "" : r.logged; }],
-    ["MeasuredMinutes", function(r){ return Math.round(r.measuredMs / 60000); }],
-    ["DeclaredMinutes", function(r){ return Math.round(r.declaredTotalMs / 60000); }],
-    ["Meetings", function(r){ return r.meetings; }],
-    ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
-    ["NoteMinutes", function(r){ return Math.round(r.noteMs / 60000); }],
-    ["TotalTalkMinutes", function(r){ return Math.round(r.talkMs / 60000); }]
-  ];
-  var out = [cols.map(function(c){ return c[0]; }).join(",")];
-  lgRows().forEach(function(r){
-    out.push(cols.map(function(c){ return '"' + String(c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
-  });
-  var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" }));
-  a.download = "counselling-" + (LG ? LG.date : "day") + ".csv";
-  a.click();
-}
-
-/* The daily talktime report.
-
-   Same read as the counselling day, rendered to answer a different question. Sharing the
-   endpoint is deliberate: two reports about the same day that disagree are worse than one
-   report, and this way they cannot.
-
-   Three sources, kept apart on the row. FreJun timed the call. A meeting recording timed
-   itself. The WhatsApp minutes are what the agent typed. Adding them gives a manager a
-   usable number and separating them says how much of it is anybody's word. */
-function ttRows(){ return lgRows(); }
-function loadTalktime(d){
-  var el = document.getElementById("ttwrap");
-  if (el) el.innerHTML = "<div class='sec'>Reading the day...</div>";
-  fetch("/api/vp/ledger" + (d ? "?date=" + encodeURIComponent(d) : ""))
-    .then(asJson)
-    .then(function(j){ LG = j; LG_DATE = j.date; renderTalktime(); })
-    .catch(function(e){
-      if (el) el.innerHTML = "<div class='sec'><h2>Daily talktime</h2>" +
-        "<div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>";
-    });
-}
-function ttBar(measured, declared, meet, max){
-  if (!max) return "";
-  var w = function(v){ return Math.round(100 * v / max); };
-  return "<div style='display:flex;height:7px;border-radius:4px;overflow:hidden;background:#EDF1F5;min-width:90px'>" +
-    "<div title='FreJun' style='width:" + w(measured) + "%;background:#0A2540'></div>" +
-    "<div title='Meetings' style='width:" + w(meet) + "%;background:#4C7A8C'></div>" +
-    "<div title='WhatsApp, declared' style='width:" + w(declared) + "%;background:#B9C6D2'></div>" +
-    "</div>";
-}
-function renderTalktime(){
-  var el = document.getElementById("ttwrap");
-  if (!el || !LG) return;
-  var j = LG, rows = ttRows().slice();
-  rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
-  var t = { call: 0, meet: 0, decl: 0, total: 0, calls: 0, wa: 0, waMiss: 0, mtg: 0 };
-  rows.forEach(function(r){
-    t.call += r.callMs; t.meet += r.meetMs; t.decl += r.declaredTotalMs;
-    t.total += r.talkMs; t.calls += r.calls; t.wa += r.waCalls || 0;
-    t.waMiss += r.waMissing || 0; t.mtg += r.meetings || 0;
-  });
-  var max = rows.reduce(function(n, r){ return Math.max(n, r.talkMs); }, 0);
-  var filtered = LG_TEAM || LG_AGENT || LG_CREATOR;
-
-  var h = "<div class='sec'><h2>Daily talktime <span class='mut' style='font-size:12.5px;font-weight:400'>" +
-    esc(j.date) + (j.isToday ? ", still running" : "") + "</span></h2>" +
-    "<div class='sub'>Time on the phone, from the three places it is recorded: calls FreJun " +
-    "timed, meetings measured by their recording, and WhatsApp calls where the length is " +
-    "whatever the agent typed.</div>";
-
-  h += "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0'>" +
-    "<input type='date' value='" + esc(j.date) + "' onchange='loadTalktime(this.value)'>" +
-    "<select onchange=\"LG_TEAM=this.value;LG_AGENT='';renderTalktime()\"><option value=''>All managers</option>" +
-    (j.teams || []).map(function(tm){
-      return "<option value='" + esc(tm.id) + "'" + (LG_TEAM === tm.id ? " selected" : "") + ">" +
-        esc(tm.name) + "</option>"; }).join("") + "</select>" +
-    (filtered ? "<button class='btn' onclick=\"LG_TEAM='';LG_AGENT='';LG_CREATOR='';renderTalktime()\">Clear</button>" : "") +
-    "<span class='mut' style='margin-left:auto;font-size:12px'>read " +
-    esc(String(j.readAt || "").slice(11, 16)) + " UTC</span></div>";
-
-  if (j.error) h += "<div class='warn bad'><b>This day is incomplete.</b> " + esc(j.error) + "</div>";
-  if (j.scoped) h += "<div class='warn'>Your team only.</div>";
-  var df = j.declaredField || {};
-  if (!df.waTypeSet && !df.ready)
-    h += "<div class='warn'>WhatsApp time will read zero until a <b>" +
-      esc((df.waTypes || ["Whatsapp Call"])[0]) + "</b> call type is in use and agents fill the " +
-      "duration in the note. " + fmt(j.totals.lengthMissing) + " calls on this day carry no length.</div>";
-
-  h += "<div class='tiles' style='margin-top:4px'>" +
-    lgTile("", "Total talktime", lgMins(t.total), fmt(rows.length) + " agents") +
-    lgTile("", "FreJun", lgMins(t.call), fmt(t.calls) + " calls") +
-    lgTile("", "Meetings", lgMins(t.meet), fmt(t.mtg) + (t.mtg === 1 ? " held" : " held")) +
-    lgTile(t.decl ? "" : "warn", "WhatsApp", lgMins(t.decl), fmt(t.wa) + " calls, declared") +
-    lgTile(t.waMiss ? "bad" : "", "No length given", fmt(t.waMiss), "WhatsApp calls") +
-    lgTile("", "Average", rows.length ? lgMins(Math.round(t.total / rows.length)) : "0", "per agent") +
-    "</div>";
-
-  h += "<div class='tw' style='margin-top:12px'><table class='rt'><thead><tr>" +
-    "<th>Agent</th><th>Team</th>" +
-    "<th class='n' title='Calls FreJun dialled and timed'>FreJun</th><th class='n'>Calls</th>" +
-    "<th class='n' title='Measured by the meeting recording, not the slot booked'>Meetings</th>" +
-    "<th class='n' title='Length as the agent typed it. Not verified.'>WhatsApp</th>" +
-    "<th class='n'>Total</th><th style='width:130px'>Split</th>" +
-    "<th class='n' title='Share of WhatsApp calls carrying a length'>Logged</th>" +
-    "</tr></thead><tbody>";
-  if (!rows.length) h += "<tr><td colspan='9' class='mut'>Nobody was on the phone on this day.</td></tr>";
-  rows.forEach(function(r){
-    h += "<tr>" +
-      "<td><b>" + esc(r.name) + "</b>" +
-      (r.active === false ? " <span class='pill' style='background:#EEF1F5;color:#42526B'>left</span>" : "") + "</td>" +
-      "<td class='mut'>" + esc(r.team || "no team") + "</td>" +
-      "<td class='n'>" + lgMins(r.callMs) + "</td>" +
-      "<td class='n mut'>" + fmt(r.calls) + "</td>" +
-      "<td class='n " + (r.meetMs ? "" : "mut") + "'>" + lgMins(r.meetMs) +
-        (r.meetings ? "<div class='mut' style='font-size:11px'>" + fmt(r.meetings) + "</div>" : "") + "</td>" +
-      "<td class='n " + (r.declaredTotalMs ? "" : "mut") + "'>" + lgMins(r.declaredTotalMs) +
-        (r.waCalls ? "<div class='mut' style='font-size:11px'>" + fmt(r.waCalls) + " calls</div>" : "") + "</td>" +
-      "<td class='n'><b>" + lgMins(r.talkMs) + "</b></td>" +
-      "<td>" + ttBar(r.callMs, r.declaredTotalMs, r.meetMs, max) + "</td>" +
-      "<td class='n " + (r.waMissing ? "cr" : "mut") + "'>" +
-        (r.waCalls ? (r.waCalls - r.waMissing) + " of " + r.waCalls : "&ndash;") + "</td>" +
-      "</tr>";
-  });
-  h += "</tbody></table></div>";
-  h += "<div class='sub' style='margin-top:10px'>" +
-    "FreJun time is read from the call records it writes into HubSpot rather than from FreJun " +
-    "directly, so it matches every other call number on this site. A meeting counts only when " +
-    "it is attached to a lead and has a transcript, since a recording alone can be a notetaker " +
-    "in an empty room. WhatsApp time is the agent's own figure and is never mixed into the " +
-    "measured columns." +
-    "</div>";
-  h += "<div style='margin-top:10px'><button class='btn' onclick='ttCsv()'>Download CSV</button></div>";
-  h += "</div>";
-  el.innerHTML = h;
-}
-function ttCsv(){
-  var cols = [
-    ["Agent", function(r){ return r.name; }],
-    ["Team", function(r){ return r.team || ""; }],
-    ["FreJunMinutes", function(r){ return Math.round(r.callMs / 60000); }],
-    ["Calls", function(r){ return r.calls; }],
-    ["MeetingMinutes", function(r){ return Math.round(r.meetMs / 60000); }],
-    ["Meetings", function(r){ return r.meetings; }],
-    ["WhatsAppMinutesDeclared", function(r){ return Math.round(r.declaredTotalMs / 60000); }],
-    ["WhatsAppCalls", function(r){ return r.waCalls || 0; }],
-    ["WhatsAppCallsWithNoLength", function(r){ return r.waMissing || 0; }],
-    ["TotalTalkMinutes", function(r){ return Math.round(r.talkMs / 60000); }]
-  ];
-  var out = [cols.map(function(c){ return c[0]; }).join(",")];
-  ttRows().forEach(function(r){
-    out.push(cols.map(function(c){ return '"' + String(c[1](r)).replace(/"/g, '""') + '"'; }).join(","));
-  });
-  var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([out.join("\n")], { type: "text/csv" }));
-  a.download = "talktime-" + (LG ? LG.date : "day") + ".csv";
-  a.click();
-}
-
 function drawNav(){
-  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)],
-    ["ledger", "Counselling day", ""], ["talktime", "Daily talktime", ""],
-    ["weeks", "Creator weeks", ""], ["daily", "Daily review", ""]];
+  var items = [["overview", "Overview", ""], ["managers", "Managers", String(J.teams.length)]];
   if (J.isVP) {
     items.push(["admin", "Teams and targets", ""]);
     items.push(["mapping", "Mapping", String(J.drift.length)]);
@@ -1178,9 +372,6 @@ function drawNav(){
   document.getElementById("navlinks").innerHTML = h;
   var tools = [
     ["/callnow.html", "Call Now", false],
-    ["/coaching.html", "Call coaching", false],
-    ["/coaching.html?view=managers", "Coaching compliance", false],
-    ["https://d1exlk6979guxa.cloudfront.net/audits/", "Quality", true]
   ];
   // The manager dashboard is a VP surface, so managers get the working tools only.
   // v2 now serves /callnow.html. The old page stays reachable for a side by side check.
@@ -1203,8 +394,7 @@ function draw(){
   // full width below them.
   // One view at a time: the nav rail decides what is on screen, so no page is crowded.
   var title = { overview: "Overview", managers: "Managers", mapping: "Mapping",
-    admin: "Teams and targets", ledger: "Counselling day",
-    talktime: "Daily talktime" }[VIEW] || "Overview";
+    admin: "Teams and targets" }[VIEW] || "Overview";
   if (ONLY) {
     var only = J.teams.filter(function(t){ return t.id === ONLY; })[0];
     title += " · " + (only ? (only.name || "team") : "team");
@@ -1212,20 +402,12 @@ function draw(){
   h += "<div class='top'><h2>" + esc(title) + "</h2><span id='mon'></span>" +
     "<span id='syncbadge' style='margin-left:auto'></span>" +
     (ONLY ? "<a href='/vp.html' class='btn'>All teams</a>" : "") + "</div>" + syncPanel();
-  if (VIEW === "ledger") h += "<div id='lgwrap'>Reading the day...</div>";
-  else if (VIEW === "talktime") h += "<div id='ttwrap'>Reading the day...</div>";
-  else if (VIEW === "daily") h += "<div id='dailywrap'>Loading the daily snapshot...</div>";
-  else if (VIEW === "weeks") h += "<div id='weekwrap'>Loading creator targets...</div>";
-  else if (VIEW === "managers") h += drawTeams();
+  if (VIEW === "managers") h += drawTeams();
   else if (VIEW === "mapping" && J.isVP) h += drawUnattributed() + drawDrift() + drawCreatorRoster();
   else if (VIEW === "admin" && J.isVP) h += drawAdmin();
   else h += drawStrip() + drawCallNow() + drawRecon() + drawExceptions();
   document.getElementById("app").innerHTML = h;
   drawNav();
-  if (VIEW === "ledger") loadLedger(LG_DATE);
-  if (VIEW === "talktime") loadTalktime(LG_DATE);
-  if (VIEW === "daily") loadDaily(DAILY_DATE);
-  if (VIEW === "weeks") loadWeeks();
   drawSync();
   var behind = J.teams.filter(function(t){ return t.target && t.gap < 0; }).length;
   document.getElementById("mon").innerHTML = "<select onchange='load(this.value)' style='font-size:12px'>" + monthOpts() + "</select>" +
@@ -1250,12 +432,6 @@ function monthOpts(){
 function tile(cls, v, l, sub){
   return "<div class='tile " + cls + "'><div class='v'>" + v + "</div><div class='l'>" + l + "</div>" +
     (sub ? "<div class='sb'>" + sub + "</div>" : "") + "</div>";
-}
-function auditCell(done, target){
-  if (!target) return "<span class='mut'>–</span>";
-  var d = done || 0;
-  var cl = d >= target ? "cg" : (d === 0 ? "cr" : "ca");
-  return "<b class='" + cl + "'>" + d + "</b><span class='mut'>/" + target + "</span>";
 }
 /* ---------- Overview strip ----------
    Twelve tiles in three bands, and the band names are the argument: revenue is a
@@ -1307,7 +483,7 @@ function tile2(o){
 
 function drawStrip(){
   var t = 0, a = 0, e = 0, te = 0, co = 0, due = 0, done = 0, missed = 0, over = 0, unc = 0;
-  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0, au = 0, auT = 0;
+  var act = 0, tot = 0, created = 0, cohC = 0, risk = 0, ctoday = 0, ctarget = 0;
   J.teams.forEach(function(x){
     t += x.target; a += x.revenue; e += x.enrolments; te += (x.targetEnrolments || 0);
     co += (x.counsellings || 0); due += x.due; done += x.done; missed += x.missed;
@@ -1315,7 +491,6 @@ function drawStrip(){
     act += (x.activeAgents || 0); tot += (x.agents || []).length;
     created += (x.created || 0); cohC += (x.cohortCounselled || 0); risk += (x.risk || 0);
     ctoday += (x.counsToday || 0); ctarget += (x.targetCounsellings || 0);
-    au += (x.audits || 0); auT += (x.auditTarget || 0);
   });
   var P = J.prior || {};
   var pace = t * (J.dayOfMonth / J.daysInMonth);
@@ -1439,13 +614,6 @@ function drawStrip(){
     foot: (J.unattributed && J.unattributed.missing)
       ? "Booked by agents on no team, so it is missing from every number above."
       : "Every payment maps to a team."
-  });
-  h += tile2({
-    label: "Call audits", cls: auT && !au ? "bad" : "", href: "/coaching.html?view=managers",
-    chip: "<span class='ch " + (auT && au >= auT ? "g" : (au ? "a" : "r")) + "'>" +
-      (auT ? Math.round(100 * au / auT) + "% of cadence" : "no rotation") + "</span>",
-    value: fmt(au), of: auT ? "of " + fmt(auT) : "",
-    foot: auT ? "Managers owe " + fmt(auT) + " reviews today." : "No agents on rotation yet."
   });
   h += "</div>";
 
@@ -1631,7 +799,7 @@ function drawCallNow(){
     "<th class='n'>Call today</th><th class='n'>Due today</th><th class='n'>Overdue</th>" +
     "<th class='n'>No FU set</th><th class='n'>Fresh</th>" +
     "<th class='n'>Form</th><th class='n'>Score</th><th class='n'>Intl</th>" +
-    "<th class='n'>Needs owner</th><th class='n' title='Call audits submitted today against the cadence'>Audits</th>" +
+    "<th class='n'>Needs owner</th>" +
     "<th></th></tr></thead><tbody>";
   rows.sort(function(a, b){ return b.queue - a.queue; }).forEach(function(x){
     h += "<tr><td><b>" + esc(x.name || "(unnamed)") + "</b>" +
@@ -1645,7 +813,6 @@ function drawCallNow(){
       pcell(x.scoreT || 0, x.score) +
       pcell(x.intlT || 0, x.intl) +
       pcell(x.needsT || 0, x.needs) +
-      "<td class='n'>" + (byAgent ? "<span class='mut'>–</span>" : auditCell(x.audits, x.auditTarget)) + "</td>" +
       "<td><a class='mlink' href='/callnow.html" + (byAgent && x.id ? "?id=" + esc(x.id) : "") + "' title='Open Call Now'>open</a></td></tr>";
   });
   if (!rows.length) h += "<tr><td colspan='12' class='mut'>No agents with a priority queue yet.</td></tr>";
@@ -1655,7 +822,7 @@ function drawCallNow(){
 function drawTeams(){
   var h = "<div class='sec'><h2>Managers</h2><div class='sub'>Target versus actual for " + J.month + ", with today's call progress. Click a manager to break it down by creator, then a creator to see the agents behind it.</div>";
   if (!J.teams.length) return h + "<div class='mut'>No teams yet. Create one below.</div></div>";
-  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th><th class='n' title='Call audits submitted today against the cadence'>Audits</th></tr></thead><tbody>";
+  h += "<div class='tw'><table><thead><tr><th>Manager</th><th class='n'>Target and actual</th><th class='n'>Pace</th><th class='n'>Enrol</th><th class='n'>Couns</th><th class='n'>C2E</th><th class='n'>Queue</th><th class='n'>Today</th><th class='n'>Backlog</th></tr></thead><tbody>";
   J.teams.filter(function(t){ return !ONLY || t.id === ONLY; }).forEach(function(t){
     var p = t.gap >= 0 ? "<span class='pill g'>+" + inr(t.gap) + "</span>" : "<span class='pill r'>" + inr(-t.gap) + "</span>";
     var open = !!OPEN[t.id];
@@ -1670,7 +837,7 @@ function drawTeams(){
       "<td class='n'>" + fmt(t.counsellings || 0) + "</td>" +
       "<td class='n'>" + (t.counsellings ? (Math.round(1000 * t.enrolments / t.counsellings) / 10) + "%" : "<span class='mut'>–</span>") + "</td>" +
       "<td class='n'>" + fmt(t.queue) + "</td>" + todayCell(t) + backlogCell(t) +
-      "<td class='n'>" + auditCell(t.audits, t.auditTarget) + "</td></tr>";
+      "</tr>";
     if (open) h += creatorRows(t);
   });
   h += "</tbody></table></div></div>";

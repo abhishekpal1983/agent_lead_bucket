@@ -847,274 +847,90 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
     ok("a thread on a lead that does not exist fails cleanly",
       [200, 403, 404, 500].indexOf((await get("/api/callnow2/lead/nope/wa")).status) >= 0);
 
-    /* The counselling ledger. Fixtures carry stage histories of every shape the walker
-       has to tell apart, so this is exercised rather than merely reachable. The day is
-       the fixture's Thursday. */
+    /* ---- what the day's calls and meetings add up to --------------------------------
+
+       The Counselling day view that used to expose this has been removed. The machinery
+       under it has not: the talktime report is built from the same day ledger, so every
+       rule about reading a duration is still live and is exercised here through the
+       endpoint that survives. Fixtures carry a call of every shape the parser has to tell
+       apart, and the day is the fixture's Thursday. */
     const LGDAY = "2026-08-06";
-    const lg = await get("/api/vp/ledger?date=" + LGDAY);
-    ok("the ledger answers", lg.status === 200, "status " + lg.status + " " + lg.raw);
-    /* Four features in this codebase have shipped green against fixture data that was
-       not there. A non-zero check comes before trusting anything below it. */
-    ok("and it has real counsellings behind it, not an empty day",
-      (lg.body.totals || {}).counsellings > 0 && (lg.body.rows || []).length > 1,
-      JSON.stringify(lg.body.totals));
-    ok("a lead that climbed all four stages counts once, not four times", (function(){
-      const climbed = (lg.body.leads || []).filter(function(l){ return l.progress.length === 3; })[0];
-      return !!climbed && !!climbed.counselling &&
-        (lg.body.leads || []).filter(function(l){ return l.id === climbed.id && l.counselling; }).length === 1;
-    })(), JSON.stringify((lg.body.leads || []).map(function(l){ return l.progress.length; })));
-    ok("every flag kind is present, so none of them is dead code",
-      lg.body.totals.repeat > 0 && lg.body.totals.reopened > 0 && lg.body.totals.dropped > 0,
-      JSON.stringify(lg.body.totals));
-    /* 199 leads landed in DNP on one real Thursday. Flagging those would drown the view. */
-    ok("DNP before any counselling is not flagged",
-      (lg.body.leads || []).every(function(l){
-        return !l.dropped.length || l.counselledAt === undefined || true; }) &&
-      (lg.body.leads || []).some(function(l){ return !l.counselling && !l.dropped.length; }));
-    ok("a lead first counselled weeks ago is not a counselling today",
-      (lg.body.leads || []).some(function(l){ return !l.counselling && l.reopened.length; }));
+    const lgt = await get("/api/talktime?date=" + LGDAY);
+    ok("the day's talktime answers", lgt.status === 200, "status " + lgt.status + " " + lgt.raw);
+    /* Features in this codebase have shipped green against fixture data that was not
+       there. A non-zero check comes before trusting anything below it. */
+    ok("and it has real time behind it, not an empty day",
+      lgt.body.totals.talkMs > 0 && (lgt.body.rows || []).length > 1,
+      JSON.stringify(lgt.body.totals));
 
-    /* The distinction the whole view turns on. One real agent logged 41 calls totalling
-       five minutes; calling that "under ten minutes" would be a false accusation. */
-    const quiet = (lg.body.rows || []).filter(function(r){ return r.lengthMissing > 0; })[0];
-    ok("an agent whose calls carry no duration at all is held as unknown, never as short",
-      !!quiet && quiet.unknown > 0,
-      JSON.stringify(quiet && { n: quiet.name, c: quiet.calls, miss: quiet.lengthMissing,
-        u: quiet.unknown, s: quiet.short }));
-    /* A counselling whose only call was timed at nought seconds is the most suspicious
-       row there is, and it used to fall between short and unknown and show as neither. */
-    ok("a counselling measured at nought seconds reads as short, not as silence",
-      (lg.body.leads || []).some(function(l){
-        return l.counselling && l.short && l.callMs === 0 && l.calls > 0; }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.counselling && !l.callMs; })
-        .map(function(l){ return [l.name, l.calls, l.short, l.unknown]; })));
-    ok("and somebody with real short calls is counted as short instead",
-      (lg.body.rows || []).some(function(r){ return r.short > 0 && r.callMs > 0; }));
-    /* Free before anybody pays to read an image: the agent typed the length in the note. */
-    ok("a length typed into the call note is read and used",
-      lg.body.totals.noteMs > 0, String(lg.body.totals.noteMs));
-    ok("a screenshot call carries its id, so the image is one click away",
-      (lg.body.leads || []).some(function(l){ return l.screenshot && (l.shotIds || []).length; }) &&
-      lg.body.portal && lg.body.portal.portalId,
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.screenshot; })
-        .map(function(l){ return l.shotIds; })));
-    ok("and the agent row counts them, rather than leaving it to the expander",
-      (lg.body.rows || []).some(function(r){ return r.screenshot > 0; }),
-      JSON.stringify((lg.body.rows || []).map(function(r){ return r.screenshot; })));
-    ok("meetings arrive named, because a title is how a 1:1 is told from a group session",
-      (lg.body.leads || []).some(function(l){
-        return (l.meetings || []).some(function(m){ return m.title; }); }));
-    /* The agent-declared length. 16,832 calls were logged by hand in 30 days and not one
-       carried a duration, so this field is worth roughly a hundred times what reading the
-       screenshots would have been. */
-    ok("a declared length is read and counted",
-      lg.body.totals.declaredMs > 0, String(lg.body.totals.declaredMs));
-    /* Per call, a measured duration wins outright. A lead can legitimately hold both,
-       from two different calls: a FreJun call in the morning and a declared WhatsApp call
-       that evening. What must never happen is one call contributing to both. */
-    ok("a lead holding both measured and declared time has more than one call behind it",
-      (lg.body.leads || []).every(function(l){
-        return !(l.callMs > 0 && l.declaredMs > 0) || l.calls > 1; }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){
-        return l.callMs > 0 && l.declaredMs > 0 && l.calls <= 1; })
-        .map(function(l){ return [l.name, l.calls, l.callMs, l.declaredMs]; })));
-    /* One conversation, logged twice, with the box filled in on the manual copy. Adding
-       the two would count it twice and reward filling the box in. */
-    /* Found from the fixture rather than named, so adding a case does not silently turn
-       this into a test of a number somebody bumped until it went green. */
-    ok("declared minutes on a call FreJun already timed are ignored", (function(){
-      const F = require("../fixtures/make.js");
-      const both = (F.ledgerCalls || []).filter(function(c){ return c.hasDur && c.declaredMs > 0; })[0];
-      if (!both) return false;
-      const lead = (lg.body.leads || []).filter(function(l){ return String(l.id) === String(both.contact); })[0];
-      // The measured duration survives and the number typed beside it does not.
-      return lead && lead.callMs >= both.durMs && lead.declaredMs === 0;
-    })(), "the fixture holds a FreJun call carrying a declared number too");
-    ok("measured and declared are reported apart as well as together",
-      (lg.body.rows || []).every(function(r){
-        return r.talkMs === r.measuredMs + r.declaredTotalMs; }),
-      JSON.stringify((lg.body.rows || [])[0]));
-    ok("a declared length stops a lead reading as unknown",
-      (lg.body.leads || []).every(function(l){ return !(l.declaredMs > 0 && l.unknown); }));
-    /* A number a human typed. Humans type 600 when they mean 60. */
-    ok("an absurd declared figure is discarded rather than believed",
+    /* The three sources are added but never mixed: a measured dial, a length the agent
+       typed, and a meeting that actually happened each keep their own column. */
+    ok("the three sources stay apart in every row",
+      (lgt.body.rows || []).every(function(r){
+        return r.talkMs === r.callMs + r.meetMs + r.declaredMs; }),
+      JSON.stringify((lgt.body.rows || [])[0]));
+
+    /* The snippet an agent fills in. Read from the call note, anchored on the word
+       duration, and turned into minutes. */
+    ok("a length typed into the note is read and counted",
+      lgt.body.totals.declaredMs > 0 &&
+      (lgt.body.detail.wa || []).some(function(d){ return d.ms === 28 * 60000; }),
+      JSON.stringify((lgt.body.detail.wa || []).map(function(d){ return d.ms; })));
+    ok("calls typed as WhatsApp are counted as such",
+      lgt.body.totals.waCalls > 0, String(lgt.body.totals.waCalls));
+    /* Bibin's case. He types the duration and never sets the call type, and for a while
+       that made his whole WhatsApp day invisible. A declared length counts whether or not
+       the type was set. */
+    ok("a length declared without the WhatsApp type still counts",
+      (lgt.body.detail.wa || []).some(function(d){ return !d.typed && d.ms > 0; }),
+      JSON.stringify((lgt.body.detail.wa || []).filter(function(d){ return !d.typed; })));
+    ok("and the expander names the lead behind every entry, so a total can be checked",
+      (lgt.body.detail.wa || []).every(function(d){ return d.contact && d.callId; }) &&
+      lgt.body.portal && lgt.body.portal.portalId);
+    /* A call HubSpot measured at nothing and nobody wrote a length on is not silently
+       dropped: it is counted as a call still needing one. */
+    ok("a call with no length at all is flagged rather than forgotten",
+      lgt.body.totals.needLength > 0, String(lgt.body.totals.needLength));
+
+    /* A meeting only counts if somebody spoke in it. A recording with no transcript is a
+       notetaker sitting in an empty room, and 169 of them in the live portal all sat
+       within twelve seconds of fifteen minutes. */
+    ok("a meeting with no transcript is shown but not counted",
+      (lgt.body.detail.meetings || []).some(function(m){ return m.counted === false && m.ms > 0; }),
+      JSON.stringify(lgt.body.detail.meetings));
+    ok("and the meeting total is only the meetings that were counted",
+      lgt.body.totals.meetMs === (lgt.body.detail.meetings || [])
+        .reduce(function(n, m){ return n + (m.counted ? m.ms : 0); }, 0),
+      JSON.stringify([lgt.body.totals.meetMs, lgt.body.detail.meetings]));
+
+    /* A day is a day. Yesterday's call belongs to yesterday, and the IST boundary is the
+       only thing that decides it. Counted against the fixture rather than a literal,
+       because a literal breaks every time a case is added and teaches whoever fixes it to
+       just bump the number. */
+    ok("nothing from outside the day is in the day",
       (function(){
-        const src = require("fs").readFileSync(
-          require("path").join(__dirname, "..", "server.js"), "utf8");
-        return src.indexOf("if (n > MANUAL_MIN_MAX) return 0;") >= 0;
+        const F = require("../fixtures/make.js");
+        const IST = 5.5 * 3600000;
+        const start = Date.parse(LGDAY + "T00:00:00Z") - IST;
+        const outside = (F.ledgerCalls || []).filter(function(c){
+          return c.at < start || c.at >= start + 86400000; }).length;
+        const inside = (lgt.body.detail.wa || []).concat(lgt.body.detail.meetings || [])
+          .every(function(d){ return d.at >= start && d.at < start + 86400000; });
+        return outside > 0 && inside;
       })());
-    /* Naming a property the portal does not have fails the whole search, so this has to
-       be deployable before anybody creates it. */
-    /* The only route that lives inside HubSpot's Log call widget, since a custom property
-       cannot be added to it and the duration field is not editable there. */
-    /* Located through the fixture, not by name, so adding a case cannot turn this into a
-       test of a total somebody bumped until it passed. */
-    ok("a duration band picked from the Call type dropdown is read as its midpoint", (function(){
-      const F = require("../fixtures/make.js");
-      const banded = (F.ledgerCalls || []).filter(function(c){ return c.typeMs > 0; })[0];
-      if (!banded) return false;
-      const lead = (lg.body.leads || []).filter(function(l){
-        return String(l.id) === String(banded.contact); })[0];
-      return lead && lead.declaredMs === banded.typeMs;
-    })(), "the fixture holds a call carrying only a call type band");
-    /* End to end through the real handler, in the shape the live snippet writes. */
-    ok("the snippet's labelled duration is read end to end",
-      (lg.body.leads || []).some(function(l){ return l.noteMs === 32 * 60000; }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.noteMs; })
-        .map(function(l){ return [l.name, l.noteMs]; })));
-    ok("and the payload reports whether either route is configured at all",
-      lg.body.declaredField && typeof lg.body.declaredField.bandedTypes === "number" &&
-      Array.isArray(lg.body.declaredField.bands) && lg.body.declaredField.bands.length > 0,
-      JSON.stringify(lg.body.declaredField));
-    ok("the field is discovered, not assumed, so this deploys before the property exists",
-      lg.body.declaredField && lg.body.declaredField.name === "manual_call_minutes" &&
-      "ready" in lg.body.declaredField, JSON.stringify(lg.body.declaredField));
-    ok("and the fill rate says how much talking has no length at all",
-      lg.body.totals.lengthMissing > 0,
-      JSON.stringify((lg.body.rows || []).map(function(r){ return [r.name, r.logged]; })));
-    /* FreJun writes a duration of 0 on a dial that rang out. That is a measurement, and
-       reading it as missing marked most of the floor as unrecorded, because most dials go
-       unanswered. Only an absent duration property is ignorance. */
-    ok("a dial timed at nought counts as measured, not as a missing length", (function(){
-      /* Located through the fixture: the call FreJun timed and got nothing back. Naming an
-         agent here breaks the moment a case is added to their day. */
-      const F = require("../fixtures/make.js");
-      const rang = (F.ledgerCalls || []).filter(function(c){
-        return c.hasDur && !c.durMs && !c.declaredMs && !c.isWa; })[0];
-      if (!rang) return false;
-      const lead = (lg.body.leads || []).filter(function(l){
-        return String(l.id) === String(rang.contact); })[0];
-      // Timed at nothing is knowledge. It is not a length we are missing.
-      return lead && lead.lengthMissing === 0 && lead.unknown === false;
-    })(), "the fixture holds a dial timed at nought seconds");
-    /* The real practice: FreJun logs the call, the agent writes it up by hand so the
-       notes live somewhere. One conversation, two records, measured on the floor at 1, 8,
-       16 and 70 minutes apart, so a two minute window catches almost none of them. */
-    ok("a note written up after a FreJun call is merged into it, not counted again",
-      lg.body.counted.writeUps > 0 &&
-      lg.body.counted.mergedCalls < lg.body.counted.dedupedCalls,
-      JSON.stringify(lg.body.counted));
-    /* Typing the call as a WhatsApp call is the agent saying three things at once: it was
-       a real conversation, FreJun did not dial it, and a length is expected. It is what
-       makes a bare number at the front of a note safe to read. */
-    ok("a call typed as WhatsApp is counted as one, and its length read from the note",
-      lg.body.totals.waCalls > 0 &&
-      (lg.body.leads || []).some(function(l){ return l.waCalls > 0 && l.noteMs === 28 * 60000; }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.waCalls; })
-        .map(function(l){ return [l.name, l.waCalls, l.noteMs]; })));
-    ok("and a bare number is read past the other numbers in the same note",
-      (lg.body.leads || []).some(function(l){ return l.noteMs === 28 * 60000; }),
-      "the fixture note reads '28 | cx has 7yrs exp, 35lpa'");
-    /* The same agent called the same lead through FreJun earlier that day, so without the
-       type this would be absorbed as the write-up of that call and vanish. */
-    ok("a WhatsApp typed call is never absorbed into a FreJun call on the same lead",
-      (lg.body.leads || []).some(function(l){
-        return l.waCalls > 0 && l.callMs > 0 && l.calls > 1; }),
-      JSON.stringify((lg.body.leads || []).filter(function(l){ return l.waCalls; })
-        .map(function(l){ return [l.name, l.calls, l.callMs, l.noteMs]; })));
-    /* The denominator is calls nothing measured, whether or not the agent set the type.
-       Counting only typed ones made an agent who writes durations without the type read as
-       a dash, with their time still in the total. */
-    ok("the fill rate is measured against every call that needed a person",
-      (lg.body.rows || []).every(function(x){
-        return x.needLength === x.declaredCalls + x.lengthMissing; }) &&
-      (lg.body.rows || []).some(function(x){ return x.loggedOf === "manual"; }),
-      JSON.stringify((lg.body.rows || []).map(function(x){
-        return [x.name, x.declaredCalls, x.lengthMissing, x.needLength, x.logged]; })));
-    ok("and an agent with nothing manual is given no rate rather than a flattering zero",
-      (lg.body.rows || []).every(function(x){
-        return x.needLength > 0 ? x.logged !== null : x.logged === null; }),
-      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.needLength, x.logged]; })));
-    /* Declaring a length is the agent saying this was its own call, so it must survive
-       the write-up merge even on a lead that also had a FreJun call that day. */
-    ok("a declared WhatsApp call on the same lead is not absorbed into the FreJun one",
-      (lg.body.rows || []).some(function(x){ return x.declaredTotalMs > 0 && x.measuredMs > 0; }),
-      JSON.stringify((lg.body.rows || []).map(function(x){ return [x.name, x.measuredMs, x.declaredTotalMs]; })));
-    ok("the payload says out loud that screenshots are not read",
-      lg.body.screenshotsRead === false && lg.body.followUpIsCurrentValue === true);
-
-    /* Most recorded meetings in the portal are creator sessions. Counting those would put
-       several hours a week of webinar into somebody's talktime. */
-    ok("a meeting with no lead on it is not talktime",
-      lg.body.counted.meetings === 1, JSON.stringify(lg.body.counted));
-    /* Rule 39's lead-level test cannot tell a counselling from a leadership call that
-       happens to have one lead on it, so those owners are excluded by name. The fixture
-       holds a 90 minute one attached to a real lead: nothing but the owner keeps it out. */
-    ok("a leadership meeting is excluded by owner, however it is attached",
-      lg.body.counted.meetingsExcluded === 1,
-      JSON.stringify(lg.body.counted));
-    ok("and the counselling meeting beside it survives",
-      lg.body.totals.meetMs === 40 * 60000, String(lg.body.totals.meetMs));
-    /* A recording duration is not evidence a conversation happened. Of 375 meetings in the
-       30 days to 8 September, 169 carry a duration and no transcript, and every one sits
-       between 902,302 and 914,519 ms: a twelve second spread around fifteen minutes. That
-       is a notetaker joining an empty room. One of them is titled "Canceled". */
-    ok("a recording with no transcript is not counted as talktime",
-      lg.body.counted.meetingsNoTranscript === 1 &&
-      lg.body.totals.meetMs === 40 * 60000,
-      JSON.stringify(lg.body.counted));
-    ok("but it is still shown, so a meeting never simply disappears",
-      (lg.body.talkDetail ? lg.body.talkDetail.meetings : []).length >= 2 ||
-      true);
-    /* A meeting that vanishes silently is what makes somebody distrust the whole report a
-       month later, so the drop is counted rather than merely done. */
-    ok("what was dropped is reported, not silently discarded",
-      typeof lg.body.counted.meetingsExcluded === "number");
-    /* The rule sits in ledgerBuild rather than in the read path, because the fixture path
-       builds its own meeting list and never calls ledgerMeetings. A rule only the live
-       path reaches is a rule no test can reach. */
-    ok("the exclusion lives where both the live and fixture paths go through it",
-      (function(){
-        const src = require("fs").readFileSync(
-          require("path").join(__dirname, "..", "server.js"), "utf8");
-        const build = src.split("function ledgerBuild(")[1].slice(0, 4000);
-        return build.indexOf("meetingExcluded(m.owner)") >= 0;
-      })());
-    ok("a meeting attached to a lead is",
-      lg.body.totals.meetMs > 0, String(lg.body.totals.meetMs));
-    ok("total talk is its parts and never less than any one of them",
-      (lg.body.rows || []).every(function(r){
-        return r.talkMs === r.callMs + r.meetMs + r.noteMs + r.declaredMs &&
-               r.measuredMs === r.callMs + r.meetMs &&
-               r.declaredTotalMs === r.declaredMs + r.noteMs; }),
-      JSON.stringify((lg.body.rows || []).filter(function(r){
-        return r.talkMs !== r.callMs + r.meetMs + r.noteMs + r.declaredMs; })));
-    /* A call the previous evening is in the fixture precisely so a day boundary bug shows
-       up as a wrong total rather than as nothing at all. */
-    /* The fixture deliberately holds a call the previous evening so a day boundary bug
-       shows up as a wrong total rather than as nothing at all. Counted against the fixture
-       rather than a literal, because a literal breaks every time a case is added and
-       teaches whoever fixes it to just bump the number. */
-    ok("yesterday's call is not in today's talktime", (function(){
-      const F = require("../fixtures/make.js");
-      const IST = 5.5 * 3600000;
-      const start = Date.parse(LGDAY + "T00:00:00Z") - IST;
-      const inDay = (F.ledgerCalls || []).filter(function(c){
-        return c.at >= start && c.at < start + 86400000; }).length;
-      const outside = (F.ledgerCalls || []).length - inDay;
-      return outside > 0 && lg.body.counted.calls === inDay;
-    })(), JSON.stringify(lg.body.counted));
-
     ok("a day that has not happened is refused rather than answered with zeros",
-      (await get("/api/vp/ledger?date=2099-01-01")).status === 400);
+      (await get("/api/talktime?date=2099-01-01")).status === 400);
     ok("and a malformed date is refused too",
-      (await get("/api/vp/ledger?date=notadate")).status === 400);
+      (await get("/api/talktime?date=notadate")).status === 400);
     ok("every row carries the team id the picker filters on",
-      (lg.body.rows || []).every(function(r){ return "teamId" in r; }));
-    ok("the agent who left is shown as having left rather than dropped",
-      (lg.body.rows || []).some(function(r){ return r.active === false; }));
-    /* A management report about agents is not for agents. The cohort made the same call
-       and RULES 33 says why. Auth is off under fixtures so the guard cannot be exercised
-       over HTTP here; the source is checked instead, the same way the assignment pool's
-       guard is checked above. */
-    ok("agents are refused this view in the handler, not merely unlinked",
-      /role === "agent"/.test(require("fs").readFileSync(
+      (lgt.body.rows || []).every(function(r){ return "teamId" in r; }));
+    /* This report is scoped rather than withheld: an agent sees their own line. The
+       scoping itself is exercised in test/scope.test.js against talkScope. */
+    ok("the rows are scoped by who is asking, in the handler",
+      /talkScope\(req\)/.test(require("fs").readFileSync(
         require("path").join(__dirname, "..", "server.js"), "utf8")
-        .split('app.get("/api/vp/ledger"')[1].slice(0, 700)));
-    ok("and a manager's scope is applied to the rows, not just to the nav",
-      /cn2Scope\(req\)/.test(require("fs").readFileSync(
-        require("path").join(__dirname, "..", "server.js"), "utf8")
-        .split('app.get("/api/vp/ledger"')[1].slice(0, 1400)));
+        .split('app.get("/api/talktime"')[1].slice(0, 400)));
+
 
     /* ---- the locked talktime report ------------------------------------------------
 
@@ -1364,25 +1180,14 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
     }
 
 
-    /* Creator targets split across the weeks of the month. */
-    const cw = await get("/api/vp/creator-weeks");
-    ok("creator weeks answers", cw.status === 200, "status " + cw.status + " " + cw.raw);
-    ok("it splits the month into four or five weeks",
-      cw.body && Array.isArray(cw.body.weeks) && cw.body.weeks.length >= 4 && cw.body.weeks.length <= 5,
-      JSON.stringify(cw.body && cw.body.weeks));
-    ok("every week covers a real span of days",
-      cw.body.weeks.every(function(w){ return /^\d+\u2013\d+$/.test(w.label); }),
-      JSON.stringify(cw.body.weeks.map(function(w){ return w.label; })));
-    ok("the weekly shares add up to the month",
-      Math.abs(cw.body.weeks.reduce(function(a, w){ return a + w.share; }, 0) - 100) < 0.5,
-      String(cw.body.weeks.reduce(function(a, w){ return a + w.share; }, 0)));
-    ok("Sunday is not counted as a working day",
-      cw.body.weeks.every(function(w){ return w.workDays <= 6; }),
-      JSON.stringify(cw.body.weeks.map(function(w){ return w.workDays; })));
-    ok("a week that has not started is marked, so it is not read as a miss",
-      cw.body.weeks.every(function(w){ return typeof w.started === "boolean"; }));
-    ok("and it reports what is owed by now separately from the month",
-      cw.body.totals && "dueSoFar" in cw.body.totals && "target" in cw.body.totals);
+    /* The seven removed views answer nothing now. A route left behind after its page is
+       gone is a way in that nobody is watching. */
+    for (const gone of ["/api/vp/ledger?date=" + LGDAY, "/api/vp/daily", "/api/vp/creator-weeks",
+                        "/api/coaching/today", "/api/coaching/summary", "/api/coaching/progress"]) {
+      const r = await get(gone);
+      ok("the removed route " + gone.split("?")[0] + " is gone", r.status === 404,
+        "status " + r.status);
+    }
 
     const vp = (await get("/api/vp")).body;
     const floor = (await get("/api/callnow2")).body;

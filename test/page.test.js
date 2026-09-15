@@ -614,7 +614,7 @@ console.log("\nA link into the page opens what the link said");
 }
 
 
-/* ---- the header, and the Daily review ---------------------------------------------
+/* ---- the header, and the Overview --------------------------------------------------
    Static checks: these live on two different pages and neither needs a render to be
    wrong in the way they were wrong. */
 console.log("\nThe page names itself once and links out once per destination");
@@ -625,14 +625,13 @@ console.log("\nThe page names itself once and links out once per destination");
   ok("the private badge is gone", hdr.indexOf("PRIVATE") < 0);
   ok("Revenue command is linked once, not twice",
     (hdr.match(/Revenue command/g) || []).length === 1);
-  ok("and the second link goes somewhere else", hdr.indexOf("/coaching.html") >= 0);
+  ok("and the coaching link is gone with the page", hdr.indexOf("/coaching.html") < 0);
 }
 
-console.log("\nDaily review speaks Call Now 2.0's buckets");
+console.log("\nThe Overview speaks Call Now 2.0's buckets");
 {
   const vphtml = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
-  ok("it says which page it is reviewing", vphtml.indexOf("Call Now 2.0 as it stood that day") >= 0);
-  /* Overview's queue block has to speak the same buckets, and every one of them has to
+  /* Overview's queue block has to speak the floor's buckets, and every one of them has to
      be worked against total. A bare count is not something a manager can act on. */
   ok("the queue block uses Call Now 2.0's buckets",
     ["Call today", "Due today", "Overdue", "No FU set", "Fresh", "Refilled", "IFC due"]
@@ -643,47 +642,14 @@ console.log("\nDaily review speaks Call Now 2.0's buckets");
   ok("every team column is worked against total, not a bare count",
     vphtml.indexOf("var pcell = function(did, tot") >= 0 &&
     vphtml.indexOf("pcell(x.overdueT || 0, x.overdue)") >= 0);
-  ok("and the audit cadence sits in the same table",
-    vphtml.indexOf("auditCell(x.audits, x.auditTarget)") >= 0);
-  /* Creator targets week by week: a monthly number nobody can act on until the 25th,
-     split into a Monday question. */
-  ok("the daily review carries both too",
-    vphtml.indexOf("reached counselled or beyond") >= 0 &&
-    vphtml.indexOf('["CounsellingsQAScope", function(x){ return x.counsDeep; }]') >= 0);
-  ok("a day captured before this counter existed shows a dash, not a zero",
-    vphtml.indexOf("x.counsDeep == null") >= 0 &&
-    vphtml.indexOf("not captured for this day") >= 0);
-  ok("creator weeks is its own view", vphtml.indexOf('["weeks", "Creator weeks", ""]') >= 0 &&
-    vphtml.indexOf("function renderWeeks") >= 0);
-  ok("it explains that the split follows working days",
-    vphtml.indexOf("in proportion to the working days each week holds") >= 0);
-  ok("a week not yet started is shown as not yet due, not as a miss",
-    vphtml.indexOf("it is not a miss until it is due") >= 0 &&
-    vphtml.indexOf("This week has not started") >= 0);
-  ok("and it says which way it attributes, since the other view attributes the other way",
-    vphtml.indexOf("which is the creator whose target it is") >= 0);
   ok("the Overview cards are packed tighter",
     vphtml.indexOf("minmax(168px,1fr)") >= 0 && vphtml.indexOf("tiles.compact") >= 0);
-  ok("timings are named as the floor names them",
-    ["Due today, called", "Overdue, called", "No next call set, called", "Fresh leads, called"]
-      .every(function(t){ return vphtml.indexOf(t) >= 0; }));
-  ok("reasons are kept apart from timings",
-    vphtml.indexOf("Reasons to call, and how much of each was covered") >= 0);
-  ok("the two buckets the old snapshot could not answer are there now",
-    vphtml.indexOf("Refilled the form") >= 0 && vphtml.indexOf("IFC came due") >= 0);
-  ok("who missed what is its own table, sorted worst first",
-    vphtml.indexOf("function missedTable") >= 0 && vphtml.indexOf("Who missed what") >= 0 &&
-    vphtml.indexOf("the order of the rows is the order of the conversations") >= 0);
-  ok("and it subtracts rather than re-counting",
-    vphtml.indexOf("minus what they dialled") >= 0);
-  /* The header and the values were two separate lists and drifted: the header was
-     rewritten into the new buckets and the row was left in the old order, so every
-     column in the export was mislabelled. They are one paired list now. */
-  ok("the export pairs each column name with the value it reads",
-    vphtml.indexOf('["NoFU", function(x){ return x.nofu; }]') >= 0 &&
-    vphtml.indexOf('["RefillWorked", function(x){ return x.refillC; }]') >= 0);
-  ok("and the header is built from that same list, so it cannot drift again",
-    vphtml.indexOf('["Level","Name","Team","Source"].concat(COLS.map(function(c){ return c[0]; }))') >= 0);
+  /* The seven removed views left nothing behind on the page. A nav entry that survives
+     its render function is a dead tab that throws when somebody clicks it. */
+  ok("the removed views are gone from the nav and the code",
+    ["Counselling day", "Daily talktime", "Creator weeks", "Daily review", "Call coaching",
+     "Coaching compliance", "renderWeeks", "renderLedger", "renderTalktime", "auditCell",
+     "coaching.html"].every(function(t){ return vphtml.indexOf(t) < 0; }));
 }
 
 /* The segment box had the same fault the lead search had: a keystroke redrew the whole
@@ -930,209 +896,6 @@ ok("and the queue header describes which drill opened it",
 ok("the month picker and the page filters both reload it",
   html.indexOf("function setCohortMonth(v)") >= 0 &&
   html.indexOf('if(VIEW==="cohort"){C=null;loadCohort();}') >= 0);
-
-/* The counselling ledger view.
-
-   Rendered rather than grepped. Earlier in this codebase a view shipped with every string
-   test passing and a "since is not defined" on screen, because grepping for text proves
-   the text exists and nothing about whether the page runs. */
-{
-  const vpsrc = fs.readFileSync(path.join(__dirname, "..", "public", "vp.html"), "utf8");
-  const vpscript = vpsrc.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const lgEls = {};
-  const lgCtx = { console: { log(){}, error(){} },
-    document: { getElementById: function(id){ lgEls[id] = lgEls[id] || { innerHTML: "", style: {}, className: "" }; return lgEls[id]; },
-      createElement: function(){ return { click(){}, set href(v){}, set download(v){} }; },
-      addEventListener(){} },
-    localStorage: { getItem(){ return null; }, setItem(){} },
-    location: { search: "", href: "" }, URLSearchParams,
-    fetch: function(){ return new Promise(function(){}); }, setInterval(){}, setTimeout(){},
-    Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
-    isNaN, parseInt, parseFloat, Intl, confirm(){ return false; }, alert(){},
-    URL: { createObjectURL: function(){ return ""; } }, Blob: function(){} };
-  lgCtx.window = lgCtx; lgCtx.window.addEventListener = function(){};
-  vm.createContext(lgCtx); vm.runInContext(vpscript, lgCtx);
-
-  const ev = function(kind, stage, label, from, at){
-    return { kind: kind, stage: stage, label: label, from: from, fromLabel: from, at: at, day: "2026-08-06" };
-  };
-  const T = Date.parse("2026-08-06T08:00:00Z");
-  const payload = {
-    date: "2026-08-06", isToday: false, readAt: new Date(T).toISOString(),
-    error: null, truncated: false, shortMs: 600000, scoped: false, isVP: true,
-    screenshotsRead: false, followUpIsCurrentValue: true,
-    counted: { contacts: 12, withHistory: 12, calls: 14, mergedCalls: 14, meetings: 1 },
-    portal: { uiDomain: "app-na2.hubspot.com", portalId: "244132076" },
-    declaredField: { name: "manual_call_minutes", ready: false, maxMinutes: 180,
-      callTypes: 0, bandedTypes: 0, bands: ["under 5 min", "15 to 30 min"],
-      waTypes: ["WA call"], waTypeSet: 0 },
-    teams: [{ id: "t1", name: "Team Sid" }],
-    totals: { agents: 2, counsellings: 4, flagged: 3, repeat: 1, reopened: 1, dropped: 1,
-      noFollowUp: 1, short: 1, unknown: 2, calls: 9, talkMs: 5400000, meetMs: 2400000,
-      noteMs: 2400000, declaredMs: 1320000, measuredMs: 5400000, declaredTotalMs: 3720000,
-      lengthMissing: 4 },
-    rows: [
-      { id: "201", name: "Sid Menon", team: "Team Sid", teamId: "t1", active: true,
-        counsellings: 3, progress: 3, repeat: 1, reopened: 1, dropped: 1, flagged: 3,
-        noFollowUp: 1, short: 1, unknown: 0, screenshot: 1,
-        calls: 5, callMs: 3000000, meetMs: 2400000, noteMs: 0, meetings: 1,
-        declaredMs: 0, lengthMissing: 0, measuredMs: 5400000, declaredTotalMs: 0,
-        waCalls: 0, waMissing: 0, logged: 100, loggedOf: "all", talkMs: 5400000 },
-      /* The agent the view exists for: a full day of calls and nothing recorded. */
-      { id: "204", name: "Neha Iyer", team: "Team Sid", teamId: "t1", active: true,
-        counsellings: 1, progress: 0, repeat: 0, reopened: 0, dropped: 0, flagged: 0,
-        noFollowUp: 0, short: 0, unknown: 2, screenshot: 2,
-        calls: 4, callMs: 0, meetMs: 0, noteMs: 0, meetings: 0,
-        declaredMs: 0, lengthMissing: 4, measuredMs: 0, declaredTotalMs: 0,
-        waCalls: 3, waMissing: 3, logged: 0, loggedOf: "wa", talkMs: 0 }
-    ],
-    leads: [
-      { id: "L1", name: "Dee Sehgal", owner: "201", creator: "simrankhokha", stage: "counselled",
-        counselling: ev("counselling", "discovery", "Discovery", "", T), progress: [], repeat: [],
-        reopened: [], dropped: [], calls: 2, callMs: 3000000, withDuration: 2, meetMs: 2400000,
-        noteMs: 0, screenshot: false, unknown: false, short: false, noFollowUp: false,
-        shotIds: [], meetings: [{ id: "M1", title: "Counselling call", durMs: 2400000 }] },
-      { id: "L2", name: "Komal Verma", owner: "201", creator: "ayush_singh13", stage: "discovery",
-        counselling: null, progress: [], repeat: [ev("repeat", "discovery", "Discovery", "program_pitched", T)],
-        reopened: [], dropped: [], calls: 1, callMs: 0, withDuration: 0, meetMs: 0, noteMs: 0,
-        screenshot: false, unknown: true, short: false, noFollowUp: true },
-      { id: "L3", name: "Winston K", owner: "204", creator: "payalineurope", stage: "counselled",
-        counselling: ev("counselling", "counselled", "Counselled", "dnp_did_not_pick", T),
-        progress: [], repeat: [], reopened: [], dropped: [], calls: 2, callMs: 0, withDuration: 0,
-        meetMs: 0, noteMs: 0, screenshot: true, unknown: true, short: false, noFollowUp: false,
-        shotIds: ["C9001"], meetings: [], declaredMs: 1320000, lengthMissing: 0 }
-    ]
-  };
-  lgCtx.LG = payload; lgCtx.LG_DATE = payload.date;
-  let lgErr = null;
-  try { lgCtx.renderLedger(); } catch (e) { lgErr = e; }
-  ok("the counselling day actually renders", !lgErr, lgErr && lgErr.message);
-  const o = lgEls.lgwrap.innerHTML;
-
-  ok("it is reachable from the rail and has a title of its own",
-    vpsrc.indexOf('["ledger", "Counselling day", ""]') >= 0 &&
-    vpsrc.indexOf('ledger: "Counselling day"') >= 0);
-  ok("the definition is stated on the page, not left to a meeting",
-    o.indexOf("One lead counts once") >= 0 && o.indexOf("first time a lead reaches") >= 0);
-  ok("both agents and the day are on screen",
-    o.indexOf("Sid Menon") >= 0 && o.indexOf("Neha Iyer") >= 0 && o.indexOf("2026-08-06") >= 0);
-  /* Short and unknown are separate tiles. One tile adding them together is how the
-     distinction gets quietly lost again. */
-  ok("length unknown is its own tile, never folded into short",
-    o.indexOf("Length unknown") >= 0 && o.indexOf("Under 10 min") >= 0);
-  /* Matched on the warning's own words. "no length at all" also appears in the summary
-     tile, so testing for that phrase alone passes whether or not the warning rendered. */
-  ok("the warning about unmeasured calls belongs to the expander, not the summary",
-    o.indexOf("understated by however long") < 0, "should not be there before expanding");
-  lgCtx.LG_OPEN["204"] = true; lgCtx.renderLedger();
-  const o2 = lgEls.lgwrap.innerHTML;
-  /* Two warnings, because they are two different problems. A dial FreJun timed at nought
-     rang out. A manual log carrying no duration property is a conversation nobody
-     measured, and only that one understates the agent's talktime. */
-  ok("a genuinely unmeasured call is named as understating the agent's talktime",
-    o2.indexOf("no length at all") >= 0 && o2.indexOf("understated by however long") >= 0);
-  ok("while a day of unanswered dials is not confused with missing data",
-    (function(){
-      lgCtx.LG.rows[1] = Object.assign({}, lgCtx.LG.rows[1], { lengthMissing: 0 });
-      lgCtx.renderLedger();
-      const f = lgEls.lgwrap.innerHTML;
-      lgCtx.LG.rows[1] = Object.assign({}, lgCtx.LG.rows[1], { lengthMissing: 4 });
-      lgCtx.renderLedger();
-      return f.indexOf("dials, none of them answered") >= 0 &&
-        f.indexOf("rather than a day of missing data") >= 0;
-    })());
-  ok("a lead with no duration reads as not recorded, never as a zero",
-    o2.indexOf("not recorded") >= 0 && o2.indexOf("no duration") >= 0);
-  lgCtx.LG_OPEN["201"] = true; lgCtx.renderLedger();
-  const o3 = lgEls.lgwrap.innerHTML;
-  ok("every flag kind has a pill and they carry an explanation",
-    o3.indexOf(">repeat</span>") >= 0 && o3.indexOf("already been in") >= 0 &&
-    o3.indexOf(">no follow up</span>") >= 0, o3.indexOf(">repeat</span>") + "/" + o3.indexOf(">no follow up</span>"));
-  ok("a lead that is not a first counselling says so rather than being hidden",
-    o3.indexOf("not a first counselling") >= 0);
-  /* Both of these were computed on the server and rendered nowhere, which is a silent
-     way to lose a column: the number is right, in a payload nobody reads. */
-  ok("WhatsApp logged counsellings have a column of their own",
-    o3.indexOf(">WhatsApp</th>") >= 0 && o3.indexOf("a length has to come from") >= 0);
-  /* Zero in the Declared column has two very different causes and the banner has to name
-     the route rather than leave somebody guessing which one they are looking at. */
-  ok("the setup banner names the call type and the note convention together",
-    o3.indexOf("Create a <b>Call type</b> named") >= 0 &&
-    o3.indexOf("25 | cx wants Europe") >= 0 &&
-    o3.indexOf("makes a bare number safe") >= 0);
-  ok("and the screenshot pill links through to the call in HubSpot",
-    o3.indexOf("/calls/244132076/review/C9") >= 0 && o3.indexOf("screenshot &nearr;") >= 0,
-    o3.indexOf("review/"));
-  ok("meetings show how many as well as how long",
-    o3.indexOf("1 meeting, 40m</div>") >= 0);
-  /* The lead-level rule cannot tell a counselling from a group session that happens to
-     have one lead attached. The title can, so it is on screen. */
-  ok("and each meeting is named, since the title is how you tell a 1:1 from a group call",
-    o3.indexOf("meeting 40m: Counselling call") >= 0);
-  ok("measured and declared time are separate columns, never one number",
-    o3.indexOf(">Measured</th>") >= 0 && o3.indexOf(">Declared</th>") >= 0 &&
-    o3.indexOf("not verified") >= 0);
-  ok("and the fill rate shows how much talking carries no length at all",
-    o3.indexOf(">Logged</th>") >= 0 && o3.indexOf("Length not logged") >= 0);
-  /* Zero in the declared column means either nobody filled it in or the property does not
-     exist, and those are completely different problems. */
-  /* HubSpot does not permit a custom property on the Log call widget, so the banner must
-     not tell anybody to put one there. Its own documentation says the duration field is
-     not editable in that form either. */
-  ok("a missing setup is named, and names only routes HubSpot actually allows",
-    o3.indexOf("No way to record a length has been set up yet") >= 0 &&
-    o3.indexOf("manual_call_minutes") >= 0 && o3.indexOf("Call type") >= 0 &&
-    o3.indexOf("does not allow a custom property on the Log call form") >= 0 &&
-    o3.indexOf("add it to the call logging form") < 0);
-  ok("the page says screenshots are marked and not read",
-    o3.indexOf("marked but not read") >= 0);
-  ok("and that follow up is the value now, not as it stood on the day",
-    o3.indexOf("not as it stood on the day") >= 0);
-  ok("flags are framed as questions rather than conclusions",
-    o3.indexOf("for asking about, not for concluding with") >= 0);
-  /* The daily review's export once drifted from its header and mislabelled every column,
-     so this one is a single paired list. */
-  /* The talktime report reads the same payload as the counselling day on purpose: two
-     reports about one day that disagree are worse than one report. */
-  {
-    lgCtx.LG_TEAM = ""; lgCtx.LG_AGENT = ""; lgCtx.LG_CREATOR = "";
-    let ttErr = null;
-    try { lgCtx.renderTalktime(); } catch (e) { ttErr = e; }
-    ok("the daily talktime report actually renders", !ttErr, ttErr && ttErr.message);
-    const tt = lgEls.ttwrap.innerHTML;
-    ok("it is its own view in the rail",
-      vpsrc.indexOf('["talktime", "Daily talktime", ""]') >= 0 &&
-      vpsrc.indexOf('talktime: "Daily talktime"') >= 0);
-    ok("the three sources are separate columns, never one figure",
-      tt.indexOf(">FreJun</th>") >= 0 && tt.indexOf(">Meetings</th>") >= 0 &&
-      tt.indexOf(">WhatsApp</th>") >= 0 && tt.indexOf(">Total</th>") >= 0);
-    ok("and it says which of them is the agent's own word",
-      tt.indexOf("never mixed into the measured columns") >= 0 &&
-      tt.indexOf("Not verified") >= 0);
-    ok("it says FreJun time comes through HubSpot rather than from FreJun itself",
-      tt.indexOf("read from the call records it writes into HubSpot") >= 0);
-    /* Attached to a lead AND evidenced by a transcript. The recording alone is not
-       evidence: 169 real meetings carry one and no transcript, all at about fifteen
-       minutes, which is a notetaker waiting in an empty room. */
-    ok("a meeting counts only when it is on a lead and somebody actually spoke",
-      tt.indexOf("attached to a lead and has a transcript") >= 0 &&
-      tt.indexOf("notetaker in an empty room") >= 0);
-  }
-  ok("the export pairs each column name with the value it reads",
-    vpsrc.indexOf('["LengthUnknown", function(r){ return r.unknown; }]') >= 0 &&
-    vpsrc.indexOf('["TotalTalkMinutes"') >= 0);
-  ok("filtering to one team narrows the table rather than the totals lying",
-    (function(){
-      lgCtx.LG_TEAM = "t1"; lgCtx.LG_AGENT = "204"; lgCtx.renderLedger();
-      const f = lgEls.lgwrap.innerHTML;
-      lgCtx.LG_TEAM = ""; lgCtx.LG_AGENT = "";
-      /* Sid Menon still appears in the agent picker's options, which is correct, so
-         this looks at the table body rather than at the whole page. */
-      const body = f.slice(f.indexOf("<tbody>"));
-      return f.indexOf("1 of 2 agents shown") >= 0 && body.indexOf("Sid Menon") < 0 &&
-        body.indexOf("Neha Iyer") >= 0;
-    })());
-}
 
 /* The standalone talktime page.
 

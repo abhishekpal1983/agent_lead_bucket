@@ -140,11 +140,7 @@ tr.det b{color:#0A2540}
   <span id="whobadge"></span>
   <p id="sub">Priority leads by stage: waitlist form submitters, conversion score, international</p>
   <span style="margin-left:auto;display:flex;gap:13px;align-items:center;flex-wrap:wrap">
-    <span id="extnav" style="display:none;gap:13px;align-items:center;flex-wrap:wrap">
-      <a href="https://d1exlk6979guxa.cloudfront.net/audits/" target="_blank" rel="noopener" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Quality &nearr;</a>
-    </span>
     <span id="mgrnav" style="display:none;gap:13px;align-items:center;flex-wrap:wrap">
-      <a href="/coaching.html" style="font-size:12px;color:#4338CA;text-decoration:none;font-weight:600">Call coaching</a>
       <a href="/vp.html" style="font-size:12px;color:#0091AE;text-decoration:none;font-weight:600">Revenue command &nearr;</a>
       <a href="/" style="font-size:12px;color:#697386;text-decoration:none;font-weight:600">Dashboard</a>
     </span>
@@ -500,15 +496,6 @@ function drawCards(){
   h += "<div class='mrow'>" +
        mi(t.missed, "Missed", "missed", "r") + mi(bwork, "Backlog worked", "bwork", "c") +
        mi(t.touched, "Calls made", "touched") + "</div>";
-  var y = J.yesterday;
-  if (y) {
-    h += "<div style='margin-top:9px;padding-top:8px;border-top:1px solid #EFF3F7;font-size:11.5px;color:#566575;line-height:1.6'>" +
-      "<b style='color:#0A2540'>Yesterday, " + esc(y.date) + ":</b> " + fmt(y.calls) + " of " + fmt(y.pool) + " priority leads called" +
-      (y.pool ? " (" + Math.round(100 * y.calls / y.pool) + "%)" : "") + " · " +
-      fmt(y.scoreC) + " of " + fmt(y.score) + " score leads · " +
-      fmt(y.formC) + " of " + fmt(y.form) + " form leads · " +
-      fmt(y.done) + " of " + fmt(y.due) + " due follow-ups</div>";
-  }
   var ct = J.callsToday;
   if (ct) {
     h += "<div style='margin-top:9px;padding-top:8px;border-top:1px solid #EFF3F7;font-size:11.5px;color:#566575;line-height:1.6'>" +
@@ -756,7 +743,7 @@ function showNav(role){
   // Manager tools stay hidden from agents. The server already redirects them away from
   // those pages, but a link that bounces you back looks like a fault, not a boundary.
   var mgr = role !== "agent";
-  ["mgrnav", "extnav"].forEach(function(id){
+  ["mgrnav"].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.style.display = mgr ? "flex" : "none";
   });

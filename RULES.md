@@ -1731,3 +1731,37 @@ itself, says which day it is reading, counts the seconds, and finishes with how 
 it corrected. A relocked day is also marked verified, because a relock IS a fresh read taken
 after the day closed; leaving that unset made a day somebody had just corrected display as
 "not checked".
+
+## Removing a view is a change to the live app, not the absence of one
+
+Seven surfaces came out in one pass: Counselling day, Daily talktime in Revenue Command,
+Creator weeks, Daily review, Call coaching, Coaching compliance and the Quality link. What
+stays live is Overview, Managers, the cohort, the calling floor and the standalone
+`/talktime.html` report.
+
+**A deletion is auditable in exactly one way: boot it and ask.** After the cut, every
+surface that stays was requested over HTTP and every route that went was requested too and
+had to answer 404. `node --check` passes on a file with a route missing from it, and has
+twice: once when a deleted handler took the closing `*/` of the comment above it and
+silently swallowed five neighbours, and once when a cut started one line late and left an
+orphan brace. `test/audit2.js` compares the route literals in commented source against
+live source for the first fault; the endpoint suite's 404 list guards the second.
+
+**The machinery under a removed view is not automatically dead.** The day ledger that fed
+Counselling day is what the talktime report is built from, so `ledgerBuild`, `lib/counsel.js`
+and the whole duration-reading chain stay. What did die with the view: the daily snapshot
+(`snapshotToday`, `snapBackfill`, `snapCounters`, `snapAdd`, `OPEN_HM`), `ORG.daily` and its
+two readers, the week-splitting for creator targets, and everything under `lib/coach.js`.
+The test for "is this dead" is not "was it written for that view" but "does anything still
+call it".
+
+**Coverage has to move with the code, not be deleted with it.** The 260 assertions about
+reading a WhatsApp duration, a note-written length, an untyped declared call and a meeting
+with no transcript were all written against `/api/vp/ledger`. That endpoint is gone; the
+rules are not. They were re-pointed at `/api/talktime`, which reads the same build. Deleting
+a test because its endpoint went is how live logic loses its guard.
+
+**A removed page leaves links behind.** `coaching.html` was linked from three places, and a
+nav wrapper on the calling floor was left showing an empty box after its only child went.
+The paper-skinned CSS for the Daily review outlived the view by a full commit. Grep for the
+page name, the class prefix and the nav id, not just the route.

@@ -6,7 +6,7 @@ let bad=0;
 function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;console.log("  FAIL "+name+(extra?"  ->  "+extra:""));} }
 
 // ---- 1. every page script parses and every top-level function is reachable ---------
-["callnow2.html","vp.html","coaching.html","callnow.html","agent.html","index.html"].forEach(function(f){
+["callnow2.html","vp.html","callnow.html","agent.html","index.html","talktime.html"].forEach(function(f){
   const p=path.join("/tmp/repo/public",f);
   if(!fs.existsSync(p))return;
   const html=fs.readFileSync(p,"utf8");
