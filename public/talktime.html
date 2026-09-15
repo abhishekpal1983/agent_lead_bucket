@@ -43,6 +43,8 @@ tr:last-child td{border-bottom:0}
 .warn{background:#FDF3E7;border:1px solid #F0D3AB;border-radius:9px;padding:10px 12px;
   margin-bottom:12px;font-size:12.5px}
 .warn.bad{background:#FBECEC;border-color:#EFC9C9}
+.okline{background:#EDF6F0;border:1px solid #C6E2D1;border-radius:9px;padding:9px 12px;
+  margin-bottom:12px;font-size:12.5px;color:#1F5B42}
 .log{border:1px solid #EFC9C9;background:#FDF6F6;border-radius:10px;padding:11px 13px;margin-top:14px}
 .log h3{margin:0 0 7px;font-size:13px;font-weight:600;color:#8C2126}
 .logrow{font-size:12px;color:#42526B;padding:5px 0;border-top:1px solid #F0DADA}
@@ -212,6 +214,14 @@ function draw(){
     (j.locked && j.locked.late
       ? "<span class='ctl' style='color:#8C2126'>closed " + esc(hoursLate(j.locked.lateMin)) +
         " after the day ended</span>" : "") +
+    /* The question "how do I know yesterday is right now" needs an answer on the page,
+       not a reconciliation done by hand. */
+    (j.locked && j.locked.verified === true
+      ? "<span class='ctl' style='background:#EDF6F0;border-color:#C6E2D1;color:#1F5B42;font-weight:600'" +
+        " title='After closing, the whole day was read again from HubSpot and the two matched'>" +
+        "CHECKED against HubSpot</span>" : "") +
+    (j.locked && j.locked.verified === null
+      ? "<span class='ctl mut' title='Closed before the self check existed'>not checked</span>" : "") +
     (j.locked && j.locked.relocked
       ? "<span class='ctl' style='color:#8C2126' title='" + esc(j.locked.relockReason || "") +
         "'>re-locked, see the log</span>" : "") +
@@ -220,11 +230,20 @@ function draw(){
 
   /* At the very top, in red, before any number. Every failure this report has had was a
      quiet one, and a warning nobody sees is a comment. */
-  (j.selfcheck || []).filter(function(c){ return c.level !== "ok"; }).forEach(function(c){
+  (j.selfcheck || []).forEach(function(c){
+    if (c.level === "ok") {
+      h += "<div class='okline'><b>Checked.</b> " + esc(c.name) +
+        (c.detail ? ". " + esc(c.detail) : "") + "</div>";
+      return;
+    }
+    /* "Worth knowing" told the reader nothing. A failure says the numbers are wrong; a
+       warning says they are right but something needs attention. */
     h += "<div class='warn " + (c.level === "fail" ? "bad" : "") + "'>" +
-      (c.level === "fail" ? "<b>Something is wrong: </b>" : "<b>Worth knowing: </b>") +
+      (c.level === "fail"
+        ? "<b>The numbers below are wrong: </b>"
+        : "<b>Everything below is correct, but: </b>") +
       esc(c.name) + (c.detail ? ". " + esc(c.detail) : "") +
-      (c.hint ? " <span class='mut'>" + esc(c.hint) + "</span>" : "") + "</div>";
+      (c.hint ? "<div class='mut' style='margin-top:3px'>" + esc(c.hint) + "</div>" : "") + "</div>";
   });
   if (j.locked && j.locked.verified === false)
     h += "<div class='warn bad'><b>This day did not match a fresh read when it was closed.</b> " +
@@ -324,8 +343,8 @@ function draw(){
     /* A lock stops the data being edited after the fact. It must not stop a bug in the
        arithmetic being corrected, so long as the correction is on the record. */
     (j.locked && j.you.role === "vp"
-      ? "<button class='btn' onclick='relock()'>Re-lock this day</button>" +
-        "<span class='mut'>rebuilds the day and records what moved, and why</span>"
+      ? "<button class='btn' id='relockbtn' onclick='relock()'>Re-lock this day</button>" +
+        "<span class='mut' id='relockmsg'>rebuilds the day and records what moved, and why</span>"
       : "") +
     "</div>";
   h += "</div>";
@@ -343,18 +362,38 @@ function relock(){
   if (why === null) return;
   why = String(why).trim();
   if (why.length < 8) { alert("Say why, in a sentence."); return; }
+  /* Rebuilding a day is about seventy HubSpot reads and takes a while. Silence for half a
+     minute reads as nothing happening, and the second click makes it worse. */
+  var btn = document.getElementById("relockbtn");
+  var msg = document.getElementById("relockmsg");
+  var t0 = Date.now(), tick = null;
+  if (btn) { btn.disabled = true; btn.textContent = "Re-locking..."; }
+  if (msg) {
+    msg.className = "";
+    msg.innerHTML = "<b>Reading " + esc(T.date) + " again from HubSpot.</b> " +
+      "This takes about half a minute. Leave the page open.";
+    tick = setInterval(function(){
+      msg.innerHTML = "<b>Reading " + esc(T.date) + " again from HubSpot.</b> " +
+        Math.round((Date.now() - t0) / 1000) + " seconds so far. Leave the page open.";
+    }, 1000);
+  }
+  var done = function(html, cls){
+    if (tick) clearInterval(tick);
+    if (btn) { btn.disabled = false; btn.textContent = "Re-lock this day"; }
+    if (msg) { msg.className = cls || "mut"; msg.innerHTML = html; }
+  };
   fetch("/api/talktime/relock", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date: T.date, reason: why }) })
     .then(function(r){ return r.json(); })
     .then(function(j){
-      if (j.error) { alert("Could not re-lock: " + j.error); return; }
-      alert("Re-locked " + j.day + ". " + j.moved +
-        (j.moved === 1 ? " figure moved." : " figures moved.") +
-        "\nThe change log below now shows what and why.");
-      load(T.date);
+      if (j.error) { done("<b style='color:#8C2126'>Could not re-lock: " + esc(j.error) + "</b>"); return; }
+      done("<b style='color:#1F5B42'>Done in " + Math.round((Date.now() - t0) / 1000) +
+        " seconds. " + fmt(j.moved) + (j.moved === 1 ? " figure" : " figures") +
+        " corrected.</b> Reloading...");
+      setTimeout(function(){ load(T.date); }, 1200);
     })
-    .catch(function(e){ alert("Could not re-lock: " + e.message); });
+    .catch(function(e){ done("<b style='color:#8C2126'>Could not re-lock: " + esc(e.message) + "</b>"); });
 }
 function csv(){
   var cols = [

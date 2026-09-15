@@ -1247,7 +1247,17 @@ ok("the month picker and the page filters both reload it",
                { meetings: 1 }),
              row("2", "Nithin Thomas", "Anand", 306479, 0, 1320000)] });
     const shut = run(withDetail);
-    ok("the calls behind a total are hidden until the row is opened",
+    /* Rebuilding a day is about seventy HubSpot reads. Silence for half a minute reads as
+     nothing happening, and the second click makes it worse. */
+  ok("the re-lock reports progress, disables itself, and counts the seconds",
+    tsrc.indexOf("again from HubSpot") >= 0 &&
+    tsrc.indexOf("btn.disabled = true") >= 0 &&
+    tsrc.indexOf("seconds so far") >= 0 &&
+    tsrc.indexOf("btn.disabled = false") >= 0);
+  ok("and says how many figures it corrected rather than finishing in silence",
+    tsrc.indexOf("figures\") +\n        \" corrected") >= 0 ||
+    tsrc.indexOf("corrected.</b> Reloading") >= 0);
+  ok("the calls behind a total are hidden until the row is opened",
       shut.html.indexOf("Dee Sehgal") < 0 && shut.html.indexOf("show the WhatsApp calls") >= 0);
     /* The bug this replaced: the gate asked for typed WhatsApp calls, so an agent who
        wrote a duration in the note without setting the type showed time with no way to
@@ -1341,14 +1351,35 @@ ok("the month picker and the page filters both reload it",
       { level: "ok", name: "The last lock matches a fresh read", detail: "2026-09-15" }
     ] }));
     ok("a failure is shouted at the top of the report, above every number",
-      broken.html.indexOf("Something is wrong: ") >= 0 &&
+      broken.html.indexOf("The numbers below are wrong: ") >= 0 &&
       broken.html.indexOf("84 figures differ") >= 0 &&
       broken.html.indexOf("Re-lock that day") >= 0);
-    ok("a warning is shown but not dressed as a failure",
-      broken.html.indexOf("Worth knowing: ") >= 0 &&
+    ok("a warning is shown but says the numbers are still right",
+      broken.html.indexOf("Everything below is correct, but: ") >= 0 &&
       broken.html.indexOf("One in 3 HubSpot requests") >= 0);
-    ok("and the checks that passed are not paraded as warnings",
-      broken.html.indexOf("The last lock matches a fresh read") < 0);
+    /* Passing checks are shown too, in green. Silence is not an answer to "is this right",
+       and the reader asked that question out loud. */
+    ok("and a check that passed is shown as passed, not hidden",
+      broken.html.indexOf("<b>Checked.</b>") >= 0 &&
+      broken.html.indexOf("The last lock matches a fresh read") >= 0 &&
+      broken.html.indexOf("okline") >= 0);
+    /* "Worth knowing" told the reader nothing they could act on. A failure has to say the
+       numbers are wrong; a warning has to say they are right. */
+    ok("a failure says plainly that the numbers below it are wrong",
+      broken.html.indexOf("The numbers below are wrong: ") >= 0);
+    ok("and a warning says plainly that they are not",
+      broken.html.indexOf("Everything below is correct, but: ") >= 0 &&
+      broken.html.indexOf("Worth knowing") < 0);
+    /* "How do I know yesterday is right" needs an answer on the page. */
+    ok("a day that passed its check says so where the reader can see it",
+      run(base({ locked: { at: "2026-09-04T18:29:00Z", late: false, lateMin: 0, hm: "23:59",
+        verified: true, verifyMoved: 0 } })).html.indexOf("CHECKED against HubSpot") >= 0);
+    ok("and a day closed before the check existed does not claim to have passed it",
+      (function(){
+        const o = run(base({ locked: { at: "2026-09-04T18:29:00Z", late: false, lateMin: 0,
+          hm: "23:59", verified: null } })).html;
+        return o.indexOf("not checked") >= 0 && o.indexOf("CHECKED against HubSpot") < 0;
+      })());
     ok("a day whose lock failed its own verification says so",
       run(base({ locked: { at: "2026-09-04T18:29:00Z", late: false, lateMin: 0, hm: "23:59",
         verified: false, verifyMoved: 84 } })).html

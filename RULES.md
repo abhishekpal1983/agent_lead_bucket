@@ -1701,4 +1701,33 @@ right now", `warn` is "they are right and will not stay right".
 **The page shows it in red, above every number.** A check that only exists in a health
 endpoint is a comment. `/api/selfcheck` exists for scripting, but the banner is the point.
 
-`ok` results are reported too, not hidden, so silence is never mistaken for health.
+`ok` results are reported too, not hidden, so silence is never mistaken for health. The
+report carries a green "CHECKED against HubSpot" badge beside the close time when a day
+passed its own verification, and "not checked" when it was closed before this existed.
+"How do I know yesterday is right" deserves an answer on the page rather than a
+reconciliation done by hand against FreJun.
+
+### Write it for whoever is reading it
+
+The first version said **"One in 3 HubSpot requests is a retry. 38% of 4254 requests since
+boot. Something is being rate limited and silently resent."** Abhishek asked what it meant,
+which is the correct response and also the proof it failed: this report is read by HR and by
+managers, and that sentence is about our plumbing.
+
+Every line now answers two questions in their order of importance: **is the number in front
+of me wrong, and what do I do about it.** So a failure opens "The numbers below are wrong",
+a warning opens "Everything below is correct, but", and the retry storm reads "HubSpot is
+asking us to slow down. 30 out of every 100 requests are being refused and sent again.
+Nothing on this page is wrong because of it."
+
+"Worth knowing" told the reader nothing at all, which is the same as saying nothing while
+occupying the space where something should have been said.
+
+### A slow job must say it is running
+
+Re-locking a day is about seventy HubSpot reads and takes half a minute. It ran silently and
+looked like a dead button, so the natural thing to do is click it again. It now disables
+itself, says which day it is reading, counts the seconds, and finishes with how many figures
+it corrected. A relocked day is also marked verified, because a relock IS a fresh read taken
+after the day closed; leaving that unset made a day somebody had just corrected display as
+"not checked".

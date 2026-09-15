@@ -8451,6 +8451,11 @@ app.post("/api/talktime/relock", express.json(), async function(req, res){
     const changes = TALKLOCK.diff(before, got.snap,
       { day: day, phase: "relock", at: new Date(cn2Now()).toISOString(), rows: true });
     TALK.days[day] = talkRecordOf(day, got, rec.late, rec.lateMin);
+    /* A relock drops the cache and reads the whole day again after it closed, so the record
+       IS a fresh read. Leaving `verified` unset made a day somebody had just corrected
+       display as "not checked", which is the opposite of what happened to it. */
+    TALK.days[day].verified = true;
+    TALK.days[day].verifyMoved = 0;
     TALK.days[day].relocked = new Date(cn2Now()).toISOString();
     TALK.days[day].relockReason = why;
     TALK.days[day].relockedBy = whoami(req) || "";
