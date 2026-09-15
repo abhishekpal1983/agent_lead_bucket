@@ -1671,3 +1671,34 @@ build it by hand and quietly omitted the detail, so the suite locked days whose 
 empty while production's was not, and every test about the expander passed against a shape
 that did not exist. A second place that builds the same structure is a second place to
 forget a field.
+
+## 48. Breakage has to announce itself
+
+Every failure this codebase has shipped had the same shape: it was quiet.
+
+A WhatsApp watermark that stopped matching looked exactly like a quiet floor. An activity
+sweep running four copies of itself looked like normal load. A lock that froze a stale
+mid-day build looked like thirty agents editing records after the fact. Not one of them
+announced anything. Somebody noticed a number that felt wrong, days later, and only then
+went looking.
+
+The 14 September lock published **32h 12m against an actual 42h 00m**: 443 calls and nine
+hours and forty eight minutes missing, 23% of the day, and it sat there until somebody
+compared one agent against FreJun by hand.
+
+Three things now, and the first matters most.
+
+**The lock proves itself.** After closing a day, it drops the cache, reads the day again
+from nothing, and compares. Any difference and it keeps the fresh read, marks the day
+`verified: false`, and says so in the log and on the page. One extra build of one day, once
+a night, against a class of bug that published wrong numbers and blamed the floor for them.
+
+**`lib/selfcheck.js` names what is broken**, pure and unit tested: a lock that did not
+verify, a sync that is failing, a store that cannot save, a retry storm, a finished day with
+nobody on it. Severity means something specific: `fail` is "the numbers on screen are wrong
+right now", `warn` is "they are right and will not stay right".
+
+**The page shows it in red, above every number.** A check that only exists in a health
+endpoint is a comment. `/api/selfcheck` exists for scripting, but the banner is the point.
+
+`ok` results are reported too, not hidden, so silence is never mistaken for health.

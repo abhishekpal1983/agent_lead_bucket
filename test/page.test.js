@@ -1332,6 +1332,29 @@ ok("the month picker and the page filters both reload it",
       })());
   }
 
+  /* Every failure this report has had was quiet. A warning nobody sees is a comment. */
+  {
+    const broken = run(base({ selfcheck: [
+      { level: "fail", name: "A locked day does not match what the day actually held",
+        detail: "2026-09-14: 84 figures differ from a fresh read", hint: "Re-lock that day." },
+      { level: "warn", name: "One in 3 HubSpot requests is a retry", detail: "30% of 7675" },
+      { level: "ok", name: "The last lock matches a fresh read", detail: "2026-09-15" }
+    ] }));
+    ok("a failure is shouted at the top of the report, above every number",
+      broken.html.indexOf("Something is wrong: ") >= 0 &&
+      broken.html.indexOf("84 figures differ") >= 0 &&
+      broken.html.indexOf("Re-lock that day") >= 0);
+    ok("a warning is shown but not dressed as a failure",
+      broken.html.indexOf("Worth knowing: ") >= 0 &&
+      broken.html.indexOf("One in 3 HubSpot requests") >= 0);
+    ok("and the checks that passed are not paraded as warnings",
+      broken.html.indexOf("The last lock matches a fresh read") < 0);
+    ok("a day whose lock failed its own verification says so",
+      run(base({ locked: { at: "2026-09-04T18:29:00Z", late: false, lateMin: 0, hm: "23:59",
+        verified: false, verifyMoved: 84 } })).html
+        .indexOf("did not match a fresh read when it was closed") >= 0);
+  }
+
   /* A lock nobody can trust is worse than no lock, so this is shouted. */
   const novol = run(base({ persistent: false }));
   ok("a missing volume is shouted, because a lock that vanishes is worse than none",

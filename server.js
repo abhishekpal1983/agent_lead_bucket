@@ -3093,6 +3093,7 @@ const CN2 = require("./lib/cn2");
 const IDLE = require("./lib/idle");
 const COUNSEL_LIB = require("./lib/counsel");
 const TALKLOCK = require("./lib/talklock");
+const SELFCHECK = require("./lib/selfcheck");
 const ROLE = require("./lib/role");
 const COACHLIB = require("./lib/coach");
 const CHECKS = require("./lib/checks");
@@ -8330,10 +8331,46 @@ async function talkLockDue(force){
     const got = await talkCapture(due.day, "open");
     if (!got) { console.error("Talktime lock " + due.day + ": nothing to lock"); return; }
     TALK.days[due.day] = talkRecordOf(due.day, got, due.late, due.lateMin);
+
+    /* Prove the lock. Read the day again, from nothing, and compare.
+
+       The lock is the whole contract of this report, and when it froze a stale mid-day
+       build on 14 September nothing noticed for a day and a half: the report published
+       understated figures and the change log blamed thirty agents for the difference.
+       A check that runs a minute later would have caught it before anyone saw it.
+
+       Costs one extra build of one day, once a night. */
+    try {
+      delete LEDGER_CACHE[due.day];
+      const again = await talkCapture(due.day, "verify", true);
+      const moved = again ? TALKLOCK.diff({ rows: got.snap.rows, declared: got.snap.declared },
+        again.snap, { day: due.day, phase: "verify", rows: true }) : [];
+      const worst = moved.reduce(function(n, e){
+        return Math.max(n, Math.abs((e.to || 0) - (e.from || 0))); }, 0);
+      TALK.days[due.day].verified = moved.length === 0;
+      TALK.days[due.day].verifyMoved = moved.length;
+      TALK.days[due.day].verifyWorstMs = worst;
+      if (moved.length) {
+        /* Take the truthful one. A lock is meant to stop the data being edited later, not
+           to enshrine a read we already know was short. */
+        TALK.days[due.day] = talkRecordOf(due.day, again, due.late, due.lateMin);
+        TALK.days[due.day].verified = false;
+        TALK.days[due.day].verifyMoved = moved.length;
+        TALK.days[due.day].verifyWorstMs = worst;
+        console.error("Talktime lock " + due.day + " DID NOT VERIFY: " + moved.length +
+          " figures differed from a fresh read, worst by " + Math.round(worst / 60000) +
+          " minutes. The fresh read has been kept.");
+      }
+    } catch (e) {
+      TALK.days[due.day].verified = null;
+      console.error("Talktime lock verify " + due.day + " failed: " + e.message);
+    }
+
     talkSave();
     console.log("Talktime locked " + due.day + " at " + got.at +
-      (due.late ? " (LATE, the window was missed)" : "") + ": " +
-      Object.keys(got.snap.rows).length + " agents");
+      (due.late ? " (LATE by " + due.lateMin + " min)" : "") + ": " +
+      Object.keys(TALK.days[due.day].rows).length + " agents, verified=" +
+      TALK.days[due.day].verified);
   } catch (e) {
     console.error("Talktime lock " + due.day + " failed: " + e.message);
   }
@@ -8428,6 +8465,39 @@ app.post("/api/talktime/relock", express.json(), async function(req, res){
   }
 });
 
+/* Everything that could be quietly wrong, in one place.
+
+   Open to anybody signed in, and surfaced at the top of the report in red, because a check
+   that only exists in a health endpoint is a comment. */
+function selfcheckNow(day){
+  const last = Object.keys(TALK.days || {}).sort().pop();
+  const rec = last ? TALK.days[last] : null;
+  const hs = (typeof hsLoad === "function") ? hsLoad() : null;
+  return SELFCHECK.run({
+    lock: rec ? { day: rec.day, verified: rec.verified === undefined ? null : rec.verified,
+      movedFigures: rec.verifyMoved || 0, worstMs: rec.verifyWorstMs || 0,
+      late: !!rec.late, lateMin: rec.lateMin || 0 } : null,
+    store: { persistent: !!TALK.persistent, loadedFromDisk: !!TALK.loadedFromDisk,
+      lockedDays: Object.keys(TALK.days || {}).length },
+    syncs: [
+      { name: "calls", error: (typeof CALLSYNC !== "undefined" && CALLSYNC.error) || null,
+        behindMin: null, everyMinutes: CALLSYNC_MINUTES },
+      { name: "WhatsApp replies", error: (typeof WASYNC !== "undefined" && WASYNC.error) || null,
+        behindMin: null }
+    ],
+    hubspot: hs ? { total: hs.total, retries: hs.retries } : null,
+    day: day || null
+  });
+}
+
+app.get("/api/selfcheck", function(req, res){
+  const s = req.session || sessionOf(req);
+  if (AUTH_ON && !s) return res.status(401).json({ error: "not signed in" });
+  const checks = selfcheckNow(null);
+  res.json({ worst: SELFCHECK.worst(checks), checks: checks,
+    at: new Date(cn2Now()).toISOString() });
+});
+
 app.get("/api/talktime", async function(req, res){
   const scope = talkScope(req);
   if (!scope) return res.status(401).json({ error: "not signed in" });
@@ -8448,6 +8518,8 @@ app.get("/api/talktime", async function(req, res){
          detail is frozen with it: an expander read live would list calls that disagree
          with the totals it is meant to explain. */
       locked = { at: rec.lockedAt, late: !!rec.late, lateMin: rec.lateMin || 0,
+        verified: rec.verified === undefined ? null : rec.verified,
+        verifyMoved: rec.verifyMoved || 0,
         hm: rec.lockHm, relocked: rec.relocked || null, relockReason: rec.relockReason || null,
         rechecked: rec.rechecked || null, amended: rec.amended || 0 };
       rows = Object.keys(rec.rows).map(function(id){
@@ -8498,6 +8570,10 @@ app.get("/api/talktime", async function(req, res){
         declaredCalls: sum("declaredCalls"), needLength: sum("needLength"),
         meetings: sum("meetings"), amended: log.length },
       rows: rows, log: log, detail: detail,
+      /* Carried here rather than fetched separately, so the warning cannot be the thing
+         that fails to load. */
+      selfcheck: selfcheckNow({ date: day, isPast: day < today, agents: rows.length }),
+      lockVerified: locked ? (rec.verified === undefined ? null : rec.verified) : null,
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot quietly imply otherwise. */
       canBlockEdits: false

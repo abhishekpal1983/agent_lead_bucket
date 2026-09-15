@@ -218,6 +218,18 @@ function draw(){
     "<span class='mut' style='margin-left:auto'>" + fmt(rows.length) +
       (rows.length === 1 ? " agent" : " agents") + "</span></div>";
 
+  /* At the very top, in red, before any number. Every failure this report has had was a
+     quiet one, and a warning nobody sees is a comment. */
+  (j.selfcheck || []).filter(function(c){ return c.level !== "ok"; }).forEach(function(c){
+    h += "<div class='warn " + (c.level === "fail" ? "bad" : "") + "'>" +
+      (c.level === "fail" ? "<b>Something is wrong: </b>" : "<b>Worth knowing: </b>") +
+      esc(c.name) + (c.detail ? ". " + esc(c.detail) : "") +
+      (c.hint ? " <span class='mut'>" + esc(c.hint) + "</span>" : "") + "</div>";
+  });
+  if (j.locked && j.locked.verified === false)
+    h += "<div class='warn bad'><b>This day did not match a fresh read when it was closed.</b> " +
+      fmt(j.locked.verifyMoved) + " figures differed and the fresh read was kept. " +
+      "Re-lock it if you want the change log to agree with the figures.</div>";
   if (!j.persistent)
     h += "<div class='warn bad'><b>Nothing is being saved.</b> No writable volume is mounted, " +
       "so locks vanish on the next deploy. Attach a Railway volume before relying on this.</div>";

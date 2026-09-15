@@ -148,6 +148,38 @@ console.log("\nA cached day is only final if it was built after the day ended");
     T.cacheUsable({ at: now - 3600000 }, "2026-09-14", "2026-09-15", { now: now }) === false);
 }
 
+console.log("\nBreakage has to announce itself");
+/* Every failure this codebase has shipped was quiet: a watermark that stopped matching
+   looked like a quiet floor, a sweep running four copies looked like normal load, a lock
+   that froze a stale build looked like thirty agents editing records. */
+{
+  const S = require("../lib/selfcheck.js");
+  const bad = S.run({ lock: { day: "2026-09-14", verified: false, movedFigures: 84,
+    worstMs: 6600000 } });
+  ok("a lock that does not match a fresh read is a failure, not a note",
+    bad.length === 1 && bad[0].level === "fail" && S.worst(bad) === "fail",
+    JSON.stringify(bad));
+  ok("and it says which day and how far out",
+    bad[0].detail.indexOf("2026-09-14") >= 0 && bad[0].detail.indexOf("84") >= 0);
+  ok("a verified lock is reported too, so silence is not mistaken for health",
+    S.run({ lock: { day: "2026-09-15", verified: true } })[0].level === "ok");
+  ok("a dead sync is a failure, since its numbers just stop moving",
+    S.run({ syncs: [{ name: "calls", error: "HubSpot 400" }] })[0].level === "fail");
+  ok("locks that cannot be saved are a failure",
+    S.run({ store: { persistent: false } })[0].level === "fail");
+  ok("a retry storm is a warning with the share named",
+    (function(){ const r = S.run({ hubspot: { total: 7675, retries: 2275 } });
+      return r[0].level === "warn" && r[0].detail.indexOf("30%") >= 0; })());
+  /* A finished working day with nobody on it is a failed read, not a quiet day. */
+  ok("a past day with no agents at all is a failure",
+    S.run({ day: { date: "2026-09-14", isPast: true, agents: 0 } })[0].level === "fail");
+  ok("and a clean system says nothing alarming",
+    S.worst(S.run({ lock: { day: "x", verified: true },
+      store: { persistent: true, loadedFromDisk: true, lockedDays: 2 },
+      syncs: [{ name: "calls", error: null }],
+      hubspot: { total: 4000, retries: 80 } })) === "ok");
+}
+
 console.log("");
 console.log(pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
