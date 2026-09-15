@@ -7853,9 +7853,10 @@ async function ledgerNameDetail(built){
 async function ledgerFetch(dayKey){
   const hit = LEDGER_CACHE[dayKey];
   const today = istParts(new Date(cn2Now())).date;
-  if (hit && !hit.error) {
-    if (dayKey < today) return hit;                       // a past day cannot change
-    if (Date.now() - hit.at < LEDGER_TTL_MS) return hit;
+  /* Pure, in lib/talklock, because this one line quietly published a whole day of wrong
+     numbers and blamed the floor for them. It is worth being able to test. */
+  if (TALKLOCK.cacheUsable(hit, dayKey, today, { ttlMs: LEDGER_TTL_MS, now: Date.now() })) {
+    return hit;
   }
   if (CN2_FIXTURE_DATA) return ledgerFixture(dayKey);
   if (!TOKEN) return { at: Date.now(), day: dayKey, rows: [], leads: [], error: "no token" };
@@ -7876,6 +7877,9 @@ async function ledgerFetch(dayKey){
   catch (e) { console.error("ledger detail names: " + e.message); }
   built.truncated = changed.truncated;
   built.error = error;
+  // Which day it was when this was built, so a build made mid-day is never mistaken for
+  // the finished article once midnight passes.
+  built.builtOn = today;
   LEDGER_CACHE[dayKey] = built;
   const keys = Object.keys(LEDGER_CACHE).sort();
   while (keys.length > LEDGER_MAX_DAYS) delete LEDGER_CACHE[keys.shift()];
@@ -8320,6 +8324,9 @@ async function talkLockDue(force){
     { lockHm: TALK_LOCK_HM, since: TALK.since, graceMin: TALK_GRACE_MIN });
   if (!due) return;
   try {
+    /* Belt and braces beside the cache fix above. A lock is the one read that must not be
+       served from anything held earlier: it is the read the whole report is built on. */
+    delete LEDGER_CACHE[due.day];
     const got = await talkCapture(due.day, "open");
     if (!got) { console.error("Talktime lock " + due.day + ": nothing to lock"); return; }
     TALK.days[due.day] = talkRecordOf(due.day, got, due.late, due.lateMin);

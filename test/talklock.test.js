@@ -118,6 +118,36 @@ console.log("\nA correction has to leave a mark of its own");
     T.diff(rowsA, rowsB, {}).length === 0);
 }
 
+console.log("\nA cached day is only final if it was built after the day ended");
+/* The rule this replaces read "if (dayKey < today) return hit", commented "a past day
+   cannot change". The day cannot. The cache entry can be a picture of the afternoon, and
+   the moment midnight passes that test starts calling it finished. It froze 14 September
+   and then reported 84 calls that had been there all along as amendments by the agents. */
+{
+  const now = Date.parse("2026-09-15T08:00:00Z");
+  const mid = { at: now - 3600000, builtOn: "2026-09-14" };   // built during the 14th
+  const after = { at: now - 3600000, builtOn: "2026-09-15" }; // built once it had closed
+  ok("a build made during the day is never final once that day is over",
+    T.cacheUsable(mid, "2026-09-14", "2026-09-15", { now: now }) === false);
+  ok("a build made after the day closed is",
+    T.cacheUsable(after, "2026-09-14", "2026-09-15", { now: now }) === true);
+  ok("today's own build is used while it is fresh",
+    T.cacheUsable({ at: now - 60000, builtOn: "2026-09-15" }, "2026-09-15", "2026-09-15",
+      { now: now, ttlMs: 900000 }) === true);
+  ok("and rebuilt once it is stale",
+    T.cacheUsable({ at: now - 3600000, builtOn: "2026-09-15" }, "2026-09-15", "2026-09-15",
+      { now: now, ttlMs: 900000 }) === false);
+  ok("nothing cached means nothing to use",
+    T.cacheUsable(null, "2026-09-14", "2026-09-15", { now: now }) === false);
+  ok("and a build that errored is never served",
+    T.cacheUsable({ at: now, builtOn: "2026-09-15", error: "boom" }, "2026-09-14",
+      "2026-09-15", { now: now }) === false);
+  /* An entry from before this field existed has no builtOn at all. Treating it as final
+     is how the original bug would come back through the back door. */
+  ok("an entry with no build day is not trusted as final either",
+    T.cacheUsable({ at: now - 3600000 }, "2026-09-14", "2026-09-15", { now: now }) === false);
+}
+
 console.log("");
 console.log(pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

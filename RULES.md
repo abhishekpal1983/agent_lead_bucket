@@ -1417,6 +1417,35 @@ payload carries `canBlockEdits: false` so no page can quietly imply otherwise.
 Detection is the honest version of prevention here. A block that does not exist deters
 nobody; a line reading "Nithin Thomas changed call 396778580729 from 20 minutes to 48" does.
 
+### A past day cannot change. A cache entry made during it can.
+
+The worst bug in this feature so far, because it published wrong numbers and then blamed the
+floor for them.
+
+`ledgerFetch` held `if (dayKey < today) return hit`, commented "a past day cannot change".
+The day cannot. The cache entry can be a picture of the afternoon, and the moment midnight
+passes that line starts calling it finished. The lock fires just after midnight, so on
+14 September it was served a build made during the evening and froze a day that was missing
+every call logged after it. The recheck rebuilt properly at 12:06 the next day, found **84
+calls that had been there all along**, and wrote them into the change log as amendments
+against named agents.
+
+Nobody had edited anything. Every one of those entries read "added 0 to 42m" against a real
+person's name, on a page their manager and HR can see.
+
+Two fixes. Cache entries record `builtOn`, the day it was when they were made, and an entry
+built while its own day was still running is never treated as final; an entry with no
+`builtOn` is not trusted either, because the point is not guessing. And `talkLockDue` drops
+the cache before capturing, the way the recheck already did. The lock is the one read the
+whole report rests on and it must not be served from anything held earlier.
+
+The decision now lives in `TALKLOCK.cacheUsable`, pure and unit tested, because one line of
+implicit caching logic quietly accused thirty people of altering records.
+
+**The tell, for next time:** every entry was `added`, every one was `from: 0`, and every one
+carried the same timestamp. Real edits by real people are none of those three. A change log
+that suddenly indicts everybody at once is reporting a bug in itself.
+
 ### A poll cannot hit a moment, and "late" must mean something
 
 The first version asked "is it 23:59 now". That is a one minute target checked every five
