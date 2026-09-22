@@ -112,5 +112,45 @@ console.log("\nAn empty scope must exclude, never wave everything through");
       .indexOf('"/auth/login?to=" + encodeURIComponent(location.pathname') >= 0);
 }
 
+/* ---- the shared link lands where the link pointed --------------------------------
+
+   Somebody sent the talktime link signed in and arrived at Call Now with an empty call
+   list, which reads as broken. The gate redirected to /login.html bare, so the page they
+   asked for was gone before Google ever saw it: login.html builds its sign-in link from
+   ?to=, found nothing, and the callback fell back to homeFor(), which is Call Now for
+   everyone who is not HR. */
+console.log("\nA shared link survives the sign-in");
+{
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "server.js"), "utf8");
+
+  ok("the gate carries the page they asked for into the login redirect",
+    /res\.redirect\("\/login\.html" \+ \(back \? "\?to=" \+ encodeURIComponent\(back\) : ""\)\)/.test(src),
+    "a bare redirect to /login.html loses the destination");
+  ok("and it is validated before it is carried, not after",
+    /const back = safeReturnTo\(req\.originalUrl \|\| p\);/.test(src));
+
+  /* safeReturnTo is what stands between a query parameter and an open redirect, so the
+     shapes that matter are asserted here rather than assumed. */
+  const fn = new Function("return " + src.slice(src.indexOf("function safeReturnTo(v)"),
+    src.indexOf("\n}", src.indexOf("function safeReturnTo(v)")) + 2))();
+  ok("a normal path is carried", fn("/talktime.html") === "/talktime.html");
+  ok("a path with a query is carried whole", fn("/talktime.html?date=2026-09-21") === "/talktime.html?date=2026-09-21");
+  ok("a protocol relative URL is refused, because a browser follows it off site",
+    fn("//evil.example") === "");
+  ok("an absolute URL is refused", fn("https://evil.example/x") === "");
+  ok("a backslash trick is refused", fn("/\\evil.example") === "");
+  ok("an encoded newline is refused", fn("/x%0aSet-Cookie:%20a=b") === "");
+  ok("and nothing at all yields nothing, so the caller falls back on purpose", fn("") === "");
+
+  /* The login page has to use it once it arrives. */
+  const login = require("fs").readFileSync(require("path").join(__dirname, "..", "public", "login.html"), "utf8");
+  ok("login.html reads ?to= and puts it on the sign-in link",
+    /get\("to"\)/.test(login) && /auth\/login\?to=/.test(login));
+
+  /* And the callback has to prefer it over the default. */
+  ok("the callback sends them where they asked, and only then falls back",
+    /res\.redirect\(safeReturnTo\(st\.to\) \|\| homeFor\(email\)\)/.test(src));
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

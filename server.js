@@ -3097,6 +3097,7 @@ const CN2 = require("./lib/cn2");
 const IDLE = require("./lib/idle");
 const COUNSEL_LIB = require("./lib/counsel");
 const TALKLOCK = require("./lib/talklock");
+const XLSX = require("./lib/xlsx");
 const SELFCHECK = require("./lib/selfcheck");
 const ROLE = require("./lib/role");
 const CHECKS = require("./lib/checks");
@@ -6306,7 +6307,15 @@ function authGate(req, res, next){
   if (!s) {
     if (p === "/api/me") return res.json({ authOn: true, email: "", role: "", domain: ALLOWED_DOMAIN });
     if (p.indexOf("/api/") === 0) return res.status(401).json({ error: "not signed in" });
-    return res.redirect("/login.html");
+    /* Carry where they were going.
+
+       This redirected to /login.html bare, so the page they asked for was lost before
+       Google ever saw it. login.html reads ?to= to build the sign-in link, found nothing,
+       and the callback fell back to homeFor(), which is Call Now for everyone who is not
+       HR. Anybody sent a link to the talktime report signed in and landed on a call list
+       instead, which is exactly what it looked like: broken. */
+    const back = safeReturnTo(req.originalUrl || p);
+    return res.redirect("/login.html" + (back ? "?to=" + encodeURIComponent(back) : ""));
   }
   req.session = s;
 
@@ -8118,6 +8127,69 @@ app.get("/api/selfcheck", function(req, res){
     at: new Date(cn2Now()).toISOString() });
 });
 
+/* One day, scoped, for whoever is asking.
+
+   Pulled out of the single-day handler so the range endpoint and the workbook export use
+   this and not a copy. Scoping is the part that must never be duplicated: a second
+   implementation is a second place for an agent to start seeing a colleague's figures. */
+async function talkDay(day, scope){
+  const rec = TALK.days[day];
+  let rows, locked = null, detail = { wa: [], meetings: [] };
+  if (rec) {
+    /* Locked. Served from the store and never re-read, which is the entire point. The
+       detail is frozen with it: an expander read live would list calls that disagree
+       with the totals it is meant to explain. */
+    locked = { at: rec.lockedAt, late: !!rec.late, lateMin: rec.lateMin || 0,
+      verified: rec.verified === undefined ? null : rec.verified,
+      verifyMoved: rec.verifyMoved || 0,
+      hm: rec.lockHm, relocked: rec.relocked || null, relockReason: rec.relockReason || null,
+      rechecked: rec.rechecked || null, amended: rec.amended || 0 };
+    rows = Object.keys(rec.rows).map(function(id){
+      return Object.assign({ id: id }, rec.rows[id]); });
+    detail = rec.detail || detail;
+  } else {
+    const built = await ledgerFetch(day);
+    rows = (built.rows || []).map(function(r){
+      return { id: String(r.id), name: r.name, callMs: r.callMs || 0, meetMs: r.meetMs || 0,
+        declaredMs: r.declaredTotalMs || 0, talkMs: r.talkMs || 0, calls: r.calls || 0,
+        waCalls: r.waCalls || 0, waMissing: r.waMissing || 0,
+        declaredCalls: r.declaredCalls || 0, needLength: r.needLength || 0,
+        meetings: r.meetings || 0 };
+    });
+    detail = built.talkDetail || detail;
+  }
+  const teamOf = {}, teamName = {};
+  (ORG.teams || []).forEach(function(t){
+    teamName[t.id] = t.name || "(unnamed)";
+    (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
+  });
+  const inScope = function(id){ return !scope.ids || scope.ids.indexOf(String(id)) >= 0; };
+  rows = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
+    .map(function(r){ return Object.assign({}, r,
+      { team: teamName[teamOf[r.id]] || "", teamId: teamOf[r.id] || "" }); });
+  rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
+
+  /* An agent sees the entries about their own day and nobody else's, so nobody is
+     marked against without being able to read the mark. */
+  /* Edits made after the lock, and corrections we made ourselves. Both belong in the
+     same place: somebody reading a figure that moved should not have to know which kind
+     of movement to go looking for. */
+  const log = (TALK.log || []).filter(function(e){
+    return e.day === day && (e.phase === "locked" || e.phase === "relock") &&
+      inScope(e.owner); });
+  const scoped = function(list){
+    return (list || []).filter(function(x){ return inScope(x.owner); })
+      .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
+  detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
+  const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+  return { day: day, rows: rows, log: log, detail: detail, locked: locked, rec: rec,
+    totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
+      declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
+      waCalls: sum("waCalls"), waMissing: sum("waMissing"),
+      declaredCalls: sum("declaredCalls"), needLength: sum("needLength"),
+      meetings: sum("meetings"), amended: log.length } };
+}
+
 app.get("/api/talktime", async function(req, res){
   const scope = talkScope(req);
   if (!scope) return res.status(401).json({ error: "not signed in" });
@@ -8131,73 +8203,135 @@ app.get("/api/talktime", async function(req, res){
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
   if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
   try {
-    const rec = TALK.days[day];
-    let rows, locked = null, detail = { wa: [], meetings: [] };
-    if (rec) {
-      /* Locked. Served from the store and never re-read, which is the entire point. The
-         detail is frozen with it: an expander read live would list calls that disagree
-         with the totals it is meant to explain. */
-      locked = { at: rec.lockedAt, late: !!rec.late, lateMin: rec.lateMin || 0,
-        verified: rec.verified === undefined ? null : rec.verified,
-        verifyMoved: rec.verifyMoved || 0,
-        hm: rec.lockHm, relocked: rec.relocked || null, relockReason: rec.relockReason || null,
-        rechecked: rec.rechecked || null, amended: rec.amended || 0 };
-      rows = Object.keys(rec.rows).map(function(id){
-        return Object.assign({ id: id }, rec.rows[id]); });
-      detail = rec.detail || detail;
-    } else {
-      const built = await ledgerFetch(day);
-      rows = (built.rows || []).map(function(r){
-        return { id: String(r.id), name: r.name, callMs: r.callMs || 0, meetMs: r.meetMs || 0,
-          declaredMs: r.declaredTotalMs || 0, talkMs: r.talkMs || 0, calls: r.calls || 0,
-          waCalls: r.waCalls || 0, waMissing: r.waMissing || 0,
-          declaredCalls: r.declaredCalls || 0, needLength: r.needLength || 0,
-          meetings: r.meetings || 0 };
-      });
-      detail = built.talkDetail || detail;
-    }
-    const teamOf = {}, teamName = {};
-    (ORG.teams || []).forEach(function(t){
-      teamName[t.id] = t.name || "(unnamed)";
-      (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
-    });
-    const inScope = function(id){ return !scope.ids || scope.ids.indexOf(String(id)) >= 0; };
-    rows = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
-      .map(function(r){ return Object.assign({}, r,
-        { team: teamName[teamOf[r.id]] || "", teamId: teamOf[r.id] || "" }); });
-    rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
-
-    /* An agent sees the entries about their own day and nobody else's, so nobody is
-       marked against without being able to read the mark. */
-    /* Edits made after the lock, and corrections we made ourselves. Both belong in the
-       same place: somebody reading a figure that moved should not have to know which kind
-       of movement to go looking for. */
-    const log = (TALK.log || []).filter(function(e){
-      return e.day === day && (e.phase === "locked" || e.phase === "relock") &&
-        inScope(e.owner); });
-    const scoped = function(list){
-      return (list || []).filter(function(x){ return inScope(x.owner); })
-        .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
-    detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
-    const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
+    const d = await talkDay(day, scope);
     res.json({
       date: day, today: today, yesterday: TALKLOCK.prevDay(today), isToday: day === today,
       you: { email: scope.email, role: scope.role, scope: scope.label },
-      locked: locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
-      totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
-        declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
-        waCalls: sum("waCalls"), waMissing: sum("waMissing"),
-        declaredCalls: sum("declaredCalls"), needLength: sum("needLength"),
-        meetings: sum("meetings"), amended: log.length },
-      rows: rows, log: log, detail: detail,
+      locked: d.locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
+      totals: d.totals,
+      rows: d.rows, log: d.log, detail: d.detail,
       /* Carried here rather than fetched separately, so the warning cannot be the thing
          that fails to load. */
-      selfcheck: selfcheckNow({ date: day, isPast: day < today, agents: rows.length }),
-      lockVerified: locked ? (rec.verified === undefined ? null : rec.verified) : null,
+      selfcheck: selfcheckNow({ date: day, isPast: day < today, agents: d.rows.length }),
+      lockVerified: d.locked ? (d.rec.verified === undefined ? null : d.rec.verified) : null,
       portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
       /* Said in the payload so the page cannot quietly imply otherwise. */
       canBlockEdits: false
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* A span of days.
+
+   Locked days come straight out of the store, so a month of history is cheap. Only days
+   that are still open cost a HubSpot read, which in practice is today and nothing else.
+   The cap is there because somebody will eventually ask for a year, and 365 ledger builds
+   would take the floor's rate budget with it. */
+const TALK_RANGE_MAX_DAYS = 92;
+function talkRangeDays(from, to){
+  const out = [];
+  let cur = from;
+  while (cur <= to && out.length <= TALK_RANGE_MAX_DAYS) { out.push(cur); cur = TALKLOCK.nextDay(cur); }
+  return out;
+}
+async function talkRange(req){
+  const scope = talkScope(req);
+  if (!scope) return { status: 401, error: "not signed in" };
+  const today = istParts(new Date(cn2Now())).date;
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  const ok = /^\d{4}-\d{2}-\d{2}$/;
+  if (!ok.test(from) || !ok.test(to)) return { status: 400, error: "bad date" };
+  if (from > to) return { status: 400, error: "the start is after the end" };
+  if (from > today) return { status: 400, error: "that range has not happened yet" };
+  const end = to > today ? today : to;
+  const days = talkRangeDays(from, end);
+  if (days.length > TALK_RANGE_MAX_DAYS) {
+    return { status: 400, error: "that is more than " + TALK_RANGE_MAX_DAYS + " days. Ask for a shorter span." };
+  }
+  const out = [];
+  for (const d of days) out.push(await talkDay(d, scope));
+  return { status: 200, scope: scope, today: today, from: from, to: end, days: out };
+}
+
+app.get("/api/talktime/range", async function(req, res){
+  try {
+    const r = await talkRange(req);
+    if (r.status !== 200) return res.status(r.status).json({ error: r.error });
+    /* Per day totals and a per agent roll up across the span. The two answer different
+       questions and neither is derivable from the other on the page, so both are sent. */
+    const byAgent = {};
+    r.days.forEach(function(d){
+      d.rows.forEach(function(row){
+        const a = byAgent[row.id] || (byAgent[row.id] = { id: row.id, name: row.name,
+          team: row.team, callMs: 0, meetMs: 0, declaredMs: 0, talkMs: 0, calls: 0,
+          waCalls: 0, waMissing: 0, meetings: 0, days: 0 });
+        ["callMs","meetMs","declaredMs","talkMs","calls","waCalls","waMissing","meetings"]
+          .forEach(function(k){ a[k] += row[k] || 0; });
+        a.days++;
+      });
+    });
+    const agents = Object.values(byAgent).sort(function(x, y){ return y.talkMs - x.talkMs; });
+    res.json({
+      from: r.from, to: r.to, today: r.today,
+      you: { email: r.scope.email, role: r.scope.role, scope: r.scope.label },
+      maxDays: TALK_RANGE_MAX_DAYS,
+      days: r.days.map(function(d){
+        return { date: d.day, locked: !!d.locked, totals: d.totals };
+      }),
+      agents: agents,
+      totals: ["callMs","meetMs","declaredMs","talkMs","calls","waCalls","waMissing","meetings"]
+        .reduce(function(o, k){ o[k] = agents.reduce(function(n, a){ return n + a[k]; }, 0); return o; },
+          { agents: agents.length, days: r.days.length })
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* The workbook. One tab per date, which is the whole reason this is not a CSV. */
+app.get("/api/talktime/export.xlsx", async function(req, res){
+  try {
+    const r = await talkRange(req);
+    if (r.status !== 200) return res.status(r.status).json({ error: r.error });
+    const head = ["Agent", "Team", "FreJun minutes", "Calls", "Meeting minutes", "Meetings",
+      "WhatsApp minutes declared", "WhatsApp calls", "WhatsApp calls with no length",
+      "Total minutes"];
+    const mins = function(ms){ return Math.round((ms || 0) / 60000); };
+    const line = function(r2){
+      return [r2.name, r2.team || "", mins(r2.callMs), r2.calls || 0, mins(r2.meetMs),
+        r2.meetings || 0, mins(r2.declaredMs), r2.waCalls || 0, r2.waMissing || 0, mins(r2.talkMs)];
+    };
+
+    /* A summary tab first, then one per day. Somebody opening a month of tabs wants the
+       total before they want 1 September. */
+    const byAgent = {};
+    r.days.forEach(function(d){ d.rows.forEach(function(row){
+      const a = byAgent[row.id] || (byAgent[row.id] = Object.assign({}, row,
+        { callMs: 0, meetMs: 0, declaredMs: 0, talkMs: 0, calls: 0, waCalls: 0, waMissing: 0, meetings: 0 }));
+      ["callMs","meetMs","declaredMs","talkMs","calls","waCalls","waMissing","meetings"]
+        .forEach(function(k){ a[k] += row[k] || 0; });
+    }); });
+    const totalRows = Object.values(byAgent).sort(function(x, y){ return y.talkMs - x.talkMs; });
+
+    const sheets = [{ name: "Total " + r.from + " to " + r.to,
+      rows: [["Talktime", r.from + " to " + r.to], ["Scope", r.scope.label],
+        ["Days", r.days.length], [], head].concat(totalRows.map(line)) }];
+    r.days.forEach(function(d){
+      sheets.push({ name: d.day, rows: [
+        ["Date", d.day], ["Day", d.locked ? "closed and fixed" : "still open, figures can move"],
+        [], head
+      ].concat(d.rows.map(line)) });
+    });
+
+    const buf = XLSX.build(sheets);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition",
+      'attachment; filename="talktime-' + r.from + "-to-" + r.to + '.xlsx"');
+    res.setHeader("Cache-Control", "no-store");
+    res.end(buf);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

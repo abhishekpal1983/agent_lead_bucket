@@ -59,6 +59,18 @@ function post(p, body){
     req.end();
   });
 }
+function getBuffer(p){
+  return new Promise(function(resolve, reject){
+    const req = http.get({ host: "127.0.0.1", port: PORT, path: p, timeout: 30000 }, function(res){
+      const chunks = [];
+      res.on("data", function(c){ chunks.push(c); });
+      res.on("end", function(){ resolve({ status: res.statusCode, body: Buffer.concat(chunks),
+        type: res.headers["content-type"], disp: res.headers["content-disposition"] }); });
+    });
+    req.on("timeout", function(){ req.destroy(new Error("timed out")); });
+    req.on("error", reject);
+  });
+}
 function getText(p){
   return new Promise(function(resolve, reject){
     const req = http.get({ host: "127.0.0.1", port: PORT, path: p, timeout: 20000 }, function(res){
@@ -937,6 +949,65 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
         require("path").join(__dirname, "..", "server.js"), "utf8")
         .split('app.get("/api/talktime"')[1].slice(0, 400)));
 
+
+    /* ---- a span of days, and the workbook -------------------------------------------
+
+       The ask was a date range and a download with one tab per date. A CSV cannot hold
+       tabs, so the download is a real xlsx and the range endpoint feeds it. */
+    {
+      const RF = "2026-08-05", RT = "2026-08-06";
+      const rg = await get("/api/talktime/range?from=" + RF + "&to=" + RT);
+      ok("a range of days answers", rg.status === 200, "status " + rg.status + " " + rg.raw);
+      ok("it returns one entry per day in the span, in order",
+        (rg.body.days || []).length === 2 &&
+        rg.body.days[0].date === RF && rg.body.days[1].date === RT,
+        JSON.stringify((rg.body.days || []).map(function(d){ return d.date; })));
+      ok("each day carries its own totals and whether it was closed",
+        rg.body.days.every(function(d){ return d.totals && "talkMs" in d.totals && "locked" in d; }));
+      ok("and there is a per agent roll up across the whole span",
+        Array.isArray(rg.body.agents) && rg.body.agents.length > 0);
+      /* A roll up that does not equal the sum of its days is the bug worth catching. */
+      ok("the roll up adds up to the days it came from", (function(){
+        const byDay = rg.body.days.reduce(function(n, d){ return n + d.totals.talkMs; }, 0);
+        const byAgent = rg.body.agents.reduce(function(n, a){ return n + a.talkMs; }, 0);
+        return byDay === byAgent;
+      })(), JSON.stringify({ days: rg.body.days.map(function(d){ return d.totals.talkMs; }),
+        agents: rg.body.agents.map(function(a){ return a.talkMs; }) }));
+      ok("an agent working both days is counted once with days = 2",
+        rg.body.agents.some(function(a){ return a.days === 2; }) ||
+        rg.body.days.some(function(d){ return d.totals.agents === 0; }),
+        JSON.stringify(rg.body.agents.map(function(a){ return [a.name, a.days]; })));
+
+      ok("a backwards range is refused rather than silently swapped",
+        (await get("/api/talktime/range?from=" + RT + "&to=" + RF)).status === 400);
+      ok("a malformed date is refused", (await get("/api/talktime/range?from=nope&to=" + RT)).status === 400);
+      ok("and a span longer than the cap is refused rather than costing the rate budget",
+        (await get("/api/talktime/range?from=2020-01-01&to=" + RT)).status === 400);
+
+      /* The workbook itself. Fetched as bytes, because a corrupt file is the failure. */
+      const xl = await getBuffer("/api/talktime/export.xlsx?from=" + RF + "&to=" + RT);
+      ok("the workbook downloads", xl.status === 200, "status " + xl.status);
+      ok("as a spreadsheet, named for the span",
+        /spreadsheetml/.test(xl.type || "") && /talktime-2026-08-05-to-2026-08-06\.xlsx/.test(xl.disp || ""),
+        (xl.type || "") + " | " + (xl.disp || ""));
+      ok("and it really is a zip", xl.body.slice(0, 2).toString() === "PK");
+      const names = (function(){
+        const b = xl.body; const out = []; let i = 0;
+        while (i < b.length - 4 && b.readUInt32LE(i) === 0x04034b50) {
+          const size = b.readUInt32LE(i + 18), nl = b.readUInt16LE(i + 26), el = b.readUInt16LE(i + 28);
+          out.push({ name: b.slice(i + 30, i + 30 + nl).toString(),
+            data: b.slice(i + 30 + nl + el, i + 30 + nl + el + size) });
+          i += 30 + nl + el + size;
+        }
+        return out;
+      })();
+      const wb = (names.find(function(f){ return f.name === "xl/workbook.xml"; }) || {}).data;
+      ok("it has a workbook part", !!wb);
+      const tabs = [...String(wb).matchAll(/<sheet name="([^"]+)"/g)].map(function(m){ return m[1]; });
+      ok("with one tab per date, plus a total tab first",
+        tabs.length === 3 && /^Total/.test(tabs[0]) && tabs[1] === RF && tabs[2] === RT,
+        tabs.join(" | "));
+    }
 
     /* ---- the locked talktime report ------------------------------------------------
 

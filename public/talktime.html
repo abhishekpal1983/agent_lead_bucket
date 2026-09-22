@@ -74,7 +74,7 @@ a{color:#0A5A8C}
   <div id="app"><div class="sec">Loading...</div></div>
 </div>
 <script>
-var T = null, DATE = "", OPEN = {};
+var T = null, DATE = "", OPEN = {}, R = null, RFROM = "", RTO = "";
 function esc(s){ return String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
@@ -339,7 +339,7 @@ function draw(){
     "Editing a record afterwards cannot change the figure, and is recorded above." +
     "</div>";
   h += "<div style='margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
-    "<button class='btn' onclick='csv()'>Download CSV</button>" +
+    "<button class='btn' onclick='csv()'>Download CSV for this day</button>" +
     /* A lock stops the data being edited after the fact. It must not stop a bug in the
        arithmetic being corrected, so long as the correction is on the record. */
     (j.locked && j.you.role === "vp"
@@ -348,6 +348,27 @@ function draw(){
       : "") +
     "</div>";
   h += "</div>";
+
+  /* A span of days, under the day.
+
+     The single day stays the front door, because that is what somebody opening this at
+     three in the afternoon wants. A range is a different question, asked less often, so it
+     sits below rather than replacing the thing people come here for. */
+  h += "<div class='sec'>" +
+    "<div style='font-weight:600;margin-bottom:4px'>A range of days</div>" +
+    "<div class='mut' style='font-size:13px;margin-bottom:10px'>Totals per day and per agent across the span. " +
+    "The download is a workbook with one tab per date, plus a total tab, because a CSV cannot hold tabs.</div>" +
+    "<div class='bar'>" +
+    "<span class='mut' style='font-size:13px'>From</span>" +
+    "<input type='date' id='rf' value='" + esc(RFROM || j.yesterday) + "' max='" + esc(j.today) + "'>" +
+    "<span class='mut' style='font-size:13px'>to</span>" +
+    "<input type='date' id='rt' value='" + esc(RTO || j.today) + "' max='" + esc(j.today) + "'>" +
+    "<button class='btn' onclick='loadRange()'>Show</button>" +
+    "<button class='btn' id='xlbtn' onclick='workbook()'>Download Excel</button>" +
+    "<span class='mut' id='rmsg' style='font-size:13px'></span>" +
+    "</div>" +
+    "<div id='rangebox'></div>" +
+    "</div>";
   document.getElementById("app").innerHTML = h;
 }
 function tile(cls, k, v, s){
@@ -416,6 +437,86 @@ function csv(){
   a.download = "talktime-" + (T ? T.date : "day") + ".csv";
   a.click();
 }
+
+/* The span. Locked days come out of the store, so a month is cheap; only days still open
+   cost a read, which in practice is today. */
+function loadRange(){
+  var f = document.getElementById("rf").value, t = document.getElementById("rt").value;
+  if (!f || !t) { document.getElementById("rmsg").textContent = "Pick both dates."; return; }
+  if (f > t) { document.getElementById("rmsg").textContent = "The start is after the end."; return; }
+  RFROM = f; RTO = t;
+  document.getElementById("rmsg").textContent = "Reading...";
+  document.getElementById("rangebox").innerHTML = "";
+  fetch("/api/talktime/range?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t))
+    .then(function(r){
+      if (r.status === 401) {
+        location.href = "/auth/login?to=" + encodeURIComponent(location.pathname + location.search);
+        throw new Error("signing in");
+      }
+      return r.json();
+    })
+    .then(function(j){
+      if (j.error) throw new Error(j.error);
+      R = j; drawRange();
+      document.getElementById("rmsg").textContent = "";
+    })
+    .catch(function(e){
+      document.getElementById("rmsg").textContent = "";
+      document.getElementById("rangebox").innerHTML =
+        "<div class='warn bad' style='margin-top:10px'>Could not load: " + esc(e.message) + "</div>";
+    });
+}
+function drawRange(){
+  var j = R, h = "";
+  var open = (j.days || []).filter(function(d){ return !d.locked; }).length;
+  h += "<div class='mut' style='font-size:13px;margin:10px 0'>" +
+    esc(j.from) + " to " + esc(j.to) + " &middot; " + j.days.length + " day" + (j.days.length === 1 ? "" : "s") +
+    " &middot; " + mins(j.totals.talkMs) + " across " + j.totals.agents + " agent" + (j.totals.agents === 1 ? "" : "s") +
+    (open ? " &middot; " + open + " day" + (open === 1 ? " is" : "s are") + " still open, so those figures can still move" : "") +
+    "</div>";
+
+  h += "<table><thead><tr><th>Date</th><th>Day</th><th class='n'>Agents</th><th class='n'>FreJun</th>" +
+    "<th class='n'>Meetings</th><th class='n'>WhatsApp</th><th class='n'>Total</th></tr></thead><tbody>";
+  (j.days || []).forEach(function(d){
+    h += "<tr><td><a href='#' onclick=\"load('" + esc(d.date) + "');return false\">" + esc(d.date) + "</a></td>" +
+      "<td class='mut'>" + (d.locked ? "closed" : "open") + "</td>" +
+      "<td class='n'>" + d.totals.agents + "</td>" +
+      "<td class='n'>" + mins(d.totals.callMs) + "</td>" +
+      "<td class='n'>" + mins(d.totals.meetMs) + "</td>" +
+      "<td class='n'>" + mins(d.totals.declaredMs) + "</td>" +
+      "<td class='n'><b>" + mins(d.totals.talkMs) + "</b></td></tr>";
+  });
+  h += "</tbody></table>";
+
+  if ((j.agents || []).length) {
+    h += "<div style='font-weight:600;margin:16px 0 6px'>Across the whole span, by agent</div>";
+    h += "<table><thead><tr><th>Agent</th><th>Team</th><th class='n'>Days</th><th class='n'>FreJun</th>" +
+      "<th class='n'>Calls</th><th class='n'>Meetings</th><th class='n'>WhatsApp</th><th class='n'>Total</th></tr></thead><tbody>";
+    j.agents.forEach(function(a){
+      h += "<tr><td><b>" + esc(a.name) + "</b></td><td class='mut'>" + esc(a.team || "") + "</td>" +
+        "<td class='n'>" + a.days + "</td>" +
+        "<td class='n'>" + mins(a.callMs) + "</td>" +
+        "<td class='n'>" + a.calls + "</td>" +
+        "<td class='n'>" + mins(a.meetMs) + "</td>" +
+        "<td class='n'>" + mins(a.declaredMs) + "</td>" +
+        "<td class='n'><b>" + mins(a.talkMs) + "</b></td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  document.getElementById("rangebox").innerHTML = h;
+}
+/* Straight to the endpoint rather than built here: the workbook is a binary the server
+   already knows how to make, and a second implementation in the browser is a second set of
+   numbers to keep in step. */
+function workbook(){
+  var f = document.getElementById("rf").value, t = document.getElementById("rt").value;
+  if (!f || !t) { document.getElementById("rmsg").textContent = "Pick both dates."; return; }
+  if (f > t) { document.getElementById("rmsg").textContent = "The start is after the end."; return; }
+  document.getElementById("rmsg").textContent = "Building the workbook...";
+  location.href = "/api/talktime/export.xlsx?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t);
+  setTimeout(function(){ document.getElementById("rmsg").textContent = ""; }, 4000);
+}
+
 load("");
 </script>
 </body>
