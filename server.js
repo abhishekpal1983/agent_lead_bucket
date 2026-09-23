@@ -8127,12 +8127,30 @@ app.get("/api/selfcheck", function(req, res){
     at: new Date(cn2Now()).toISOString() });
 });
 
+/* An agent picker, on top of the scope, never instead of it.
+
+   The page lets a manager look at four of their thirty six agents. That is a narrowing of
+   what they may already see, so it is applied after scoping and can only ever remove rows.
+   Written as its own function with that property stated, because the tempting shortcut is
+   to treat the parameter as the list of agents to show, and an endpoint that trusts a
+   query parameter for who you may look at is how an agent ends up reading a colleague. */
+function pickedAgents(q){
+  const raw = String(q || "").trim();
+  if (!raw) return null;
+  const ids = raw.split(",").map(function(x){ return String(x).trim(); }).filter(Boolean).slice(0, 200);
+  return ids.length ? ids : null;
+}
+function narrowToPicked(rows, picked){
+  if (!picked) return rows;
+  return rows.filter(function(r){ return picked.indexOf(String(r.id)) >= 0; });
+}
+
 /* One day, scoped, for whoever is asking.
 
    Pulled out of the single-day handler so the range endpoint and the workbook export use
    this and not a copy. Scoping is the part that must never be duplicated: a second
    implementation is a second place for an agent to start seeing a colleague's figures. */
-async function talkDay(day, scope){
+async function talkDay(day, scope, picked){
   const rec = TALK.days[day];
   let rows, locked = null, detail = { wa: [], meetings: [] };
   if (rec) {
@@ -8164,9 +8182,13 @@ async function talkDay(day, scope){
     (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
   });
   const inScope = function(id){ return !scope.ids || scope.ids.indexOf(String(id)) >= 0; };
-  rows = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
+  /* Scope first, always. The pick is applied to what survives it, so asking for an agent
+     you may not see returns nothing rather than returning them. */
+  const inPick = function(id){ return !picked || picked.indexOf(String(id)) >= 0; };
+  const roster = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
     .map(function(r){ return Object.assign({}, r,
       { team: teamName[teamOf[r.id]] || "", teamId: teamOf[r.id] || "" }); });
+  rows = roster.filter(function(r){ return inPick(r.id); });
   rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
 
   /* An agent sees the entries about their own day and nobody else's, so nobody is
@@ -8176,13 +8198,17 @@ async function talkDay(day, scope){
      of movement to go looking for. */
   const log = (TALK.log || []).filter(function(e){
     return e.day === day && (e.phase === "locked" || e.phase === "relock") &&
-      inScope(e.owner); });
+      inScope(e.owner) && inPick(e.owner); });
   const scoped = function(list){
-    return (list || []).filter(function(x){ return inScope(x.owner); })
+    return (list || []).filter(function(x){ return inScope(x.owner) && inPick(x.owner); })
       .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
   detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
   const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
   return { day: day, rows: rows, log: log, detail: detail, locked: locked, rec: rec,
+    /* Everyone in scope who worked that day, picked or not, so the page can offer a name
+       that today's filter happens to be hiding. */
+    roster: roster.map(function(r){ return { id: r.id, name: r.name, team: r.team }; })
+      .sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }),
     totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
       declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
       waCalls: sum("waCalls"), waMissing: sum("waMissing"),
@@ -8203,9 +8229,10 @@ app.get("/api/talktime", async function(req, res){
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
   if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
   try {
-    const d = await talkDay(day, scope);
+    const d = await talkDay(day, scope, pickedAgents(req.query.agents));
     res.json({
       date: day, today: today, yesterday: TALKLOCK.prevDay(today), isToday: day === today,
+      roster: d.roster, picked: pickedAgents(req.query.agents) || [],
       you: { email: scope.email, role: scope.role, scope: scope.label },
       locked: d.locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
       totals: d.totals,
@@ -8239,6 +8266,7 @@ function talkRangeDays(from, to){
 async function talkRange(req){
   const scope = talkScope(req);
   if (!scope) return { status: 401, error: "not signed in" };
+  const picked = pickedAgents(req.query.agents);
   const today = istParts(new Date(cn2Now())).date;
   const from = String(req.query.from || "");
   const to = String(req.query.to || "");
@@ -8252,8 +8280,9 @@ async function talkRange(req){
     return { status: 400, error: "that is more than " + TALK_RANGE_MAX_DAYS + " days. Ask for a shorter span." };
   }
   const out = [];
-  for (const d of days) out.push(await talkDay(d, scope));
-  return { status: 200, scope: scope, today: today, from: from, to: end, days: out };
+  for (const d of days) out.push(await talkDay(d, scope, picked));
+  return { status: 200, scope: scope, today: today, from: from, to: end, days: out,
+    picked: picked || [] };
 }
 
 app.get("/api/talktime/range", async function(req, res){
@@ -8274,9 +8303,15 @@ app.get("/api/talktime/range", async function(req, res){
       });
     });
     const agents = Object.values(byAgent).sort(function(x, y){ return y.talkMs - x.talkMs; });
+    /* The names on offer across the whole span, so the picker does not shrink to whoever
+       happened to work the first day of it. */
+    const rosterBy = {};
+    r.days.forEach(function(d){ (d.roster || []).forEach(function(a){ rosterBy[a.id] = a; }); });
     res.json({
       from: r.from, to: r.to, today: r.today,
       you: { email: r.scope.email, role: r.scope.role, scope: r.scope.label },
+      roster: Object.values(rosterBy).sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }),
+      picked: r.picked,
       maxDays: TALK_RANGE_MAX_DAYS,
       days: r.days.map(function(d){
         return { date: d.day, locked: !!d.locked, totals: d.totals };
@@ -8318,6 +8353,11 @@ app.get("/api/talktime/export.xlsx", async function(req, res){
 
     const sheets = [{ name: "Total " + r.from + " to " + r.to,
       rows: [["Talktime", r.from + " to " + r.to], ["Scope", r.scope.label],
+        /* Said in the file. A filtered export that does not admit it is a spreadsheet
+           somebody reconciles against the full floor a week later and cannot explain. */
+        ["Agents", r.picked.length
+          ? totalRows.map(function(x){ return x.name; }).join(", ")
+          : "everyone in scope"],
         ["Days", r.days.length], [], head].concat(totalRows.map(line)) }];
     r.days.forEach(function(d){
       sheets.push({ name: d.day, rows: [

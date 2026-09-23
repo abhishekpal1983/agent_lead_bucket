@@ -50,6 +50,21 @@ tr:last-child td{border-bottom:0}
 .logrow{font-size:12px;color:#42526B;padding:5px 0;border-top:1px solid #F0DADA}
 .logrow:first-of-type{border-top:0}
 code{background:#EEF1F5;padding:0 4px;border-radius:3px;font-size:11.5px}
+.pickwrap{position:relative;display:inline-block}
+.pickpanel{position:absolute;z-index:20;top:calc(100% + 5px);left:0;background:#fff;
+  border:1px solid #D6DEE7;border-radius:10px;box-shadow:0 8px 24px rgba(16,32,52,.13);
+  width:280px;max-width:88vw;padding:9px}
+.pickpanel input[type=text]{width:100%;border:1px solid #D6DEE7;border-radius:7px;
+  padding:7px 9px;font:inherit;font-size:13px;margin-bottom:7px}
+.picklist{max-height:236px;overflow:auto}
+.pickrow{display:flex;align-items:center;gap:8px;padding:6px 5px;border-radius:6px;
+  font-size:13px;cursor:pointer}
+.pickrow:hover{background:#F4F7FA}
+.pickrow input{margin:0;flex:none;width:15px;height:15px}
+.pickrow .t{color:#6B7A8A;font-size:11.5px;margin-left:auto;flex:none}
+.pickhead{display:flex;gap:7px;margin-bottom:7px}
+.pickhead button{flex:1;font-size:12px;padding:5px 8px}
+.pickchip{background:#EAF2FB;border-color:#C4D9F1;color:#1B4E86}
 .btn{border:1px solid #D6DEE7;background:#fff;border-radius:8px;padding:6px 11px;
   font-size:13px;cursor:pointer;font-family:inherit}
 tr.clik{cursor:pointer}
@@ -75,6 +90,18 @@ a{color:#0A5A8C}
 </div>
 <script>
 var T = null, DATE = "", OPEN = {}, R = null, RFROM = "", RTO = "";
+/* Who is picked, and whether the picker is open. Empty means everyone in scope, which is
+   not the same as nobody: an empty set is the default view, not a filter that hides all. */
+var PICK = [], PICKOPEN = false, PICKQ = "";
+function pickParam(){ return PICK.length ? "&agents=" + encodeURIComponent(PICK.join(",")) : ""; }
+/* Carried in the address bar so a filtered view is a link somebody can send, which is how
+   this page gets used. */
+function syncUrl(){
+  var q = [];
+  if (DATE) q.push("date=" + encodeURIComponent(DATE));
+  if (PICK.length) q.push("agents=" + encodeURIComponent(PICK.join(",")));
+  history.replaceState(null, "", location.pathname + (q.length ? "?" + q.join("&") : ""));
+}
 function esc(s){ return String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
@@ -166,7 +193,7 @@ function detailFor(id){
 }
 function load(d){
   document.getElementById("app").innerHTML = "<div class='sec'>Reading the day...</div>";
-  fetch("/api/talktime" + (d ? "?date=" + encodeURIComponent(d) : ""))
+  fetch("/api/talktime?" + (d ? "date=" + encodeURIComponent(d) : "") + pickParam())
     .then(function(r){
       if (r.status === 401) {
         /* Carry where we are, or signing in lands them on Call Now with an empty call
@@ -179,7 +206,10 @@ function load(d){
         catch(e){ throw new Error("Server returned " + r.status); } });
     })
     .then(function(j){ if (j.error && !j.rows) throw new Error(j.error);
-      T = j; DATE = j.date; draw(); })
+      T = j; DATE = j.date; syncUrl(); draw();
+      /* The span, if one is already on screen, so the two halves of the page never show
+         different agents. */
+      if (R) loadRange(); })
     .catch(function(e){
       document.getElementById("app").innerHTML =
         "<div class='sec'><div class='warn bad'>Could not load: " + esc(e.message) + "</div></div>"; });
@@ -199,6 +229,8 @@ function draw(){
   var h = "<div class='sec'>";
   h += "<div class='bar'>" +
     "<input type='date' value='" + esc(j.date) + "' max='" + esc(j.today) + "' onchange='load(this.value)'>" +
+    /* An agent sees only themselves, so a picker would be a control with one option. */
+    (one ? "" : pickerHtml(j.roster || [])) +
     /* The two days anybody actually wants, without going through the picker. Yesterday is
        the locked one, so it is the day to check; today is the one to watch. */
     (j.isToday ? "" : "<button class='btn' onclick=\"load('" + esc(j.today) + "')\">Today</button>") +
@@ -264,7 +296,10 @@ function draw(){
       "and can still move.</div>";
 
   h += "<div class='tiles'>" +
-    tile("", "Total", mins(j.totals.talkMs), one ? "your time" : fmt(rows.length) + " agents") +
+    tile("", "Total", mins(j.totals.talkMs),
+      one ? "your time"
+        : PICK.length ? fmt(rows.length) + " of " + fmt((j.roster || []).length) + " agents"
+        : fmt(rows.length) + " agents") +
     tile("", "FreJun", mins(j.totals.callMs), fmt(j.totals.calls) + " calls") +
     tile("", "Meetings", mins(j.totals.meetMs), fmt(j.totals.meetings) + " held") +
     tile("", "WhatsApp", mins(j.totals.declaredMs), fmt(j.totals.waCalls) + " calls, declared") +
@@ -280,7 +315,15 @@ function draw(){
     "<th class='n' title='Calls nothing measured, so the length had to come from the agent. 8 of 11 means eleven such calls and eight with a length on them.'>Length given</th>" + (one ? "" : "<th></th>") +
     "</tr></thead><tbody>";
   if (!rows.length)
-    h += "<tr><td colspan='9' class='mut' style='padding:14px'>Nothing on the phone this day.</td></tr>";
+    h += "<tr><td colspan='9' class='mut' style='padding:14px'>" +
+      (PICK.length
+        /* A filter that empties the table has to say so. Otherwise it reads as a floor
+           that made no calls, which is a very different thing to report upwards. */
+        ? "None of the " + PICK.length + " agent" + (PICK.length === 1 ? "" : "s") +
+          " you picked were on the phone this day. " +
+          "<a href='#' onclick='pickAll();return false'>Show everyone</a>"
+        : "Nothing on the phone this day.") +
+      "</td></tr>";
   rows.forEach(function(r){
     /* Whether there is anything behind the row, not whether the agent used the call type.
        An agent who writes "duration: 26" without setting the type has real calls to show,
@@ -438,6 +481,77 @@ function csv(){
   a.click();
 }
 
+/* ---- the agent picker ------------------------------------------------------------
+
+   Server side, not here. The day, the span and the workbook all have to agree about who
+   is in the figures, and the only way to guarantee that is one filter in one place. It
+   costs a round trip per change, which on a list of this size nobody notices. */
+function pickerHtml(roster){
+  var n = PICK.length;
+  var label = !n ? "All agents"
+    : n === 1 ? (nameOf(roster, PICK[0]) || "1 agent")
+    : n + " of " + roster.length + " agents";
+  var h = "<span class='pickwrap'>" +
+    "<button class='btn" + (n ? " pickchip" : "") + "' onclick='togglePicker()'>" +
+    esc(label) + " &#9662;</button>";
+  if (PICKOPEN) {
+    var q = PICKQ.toLowerCase();
+    var shown = roster.filter(function(a){ return !q || String(a.name).toLowerCase().indexOf(q) >= 0; });
+    h += "<div class='pickpanel' onclick='event.stopPropagation()'>" +
+      "<input type='text' placeholder='Find an agent' value='" + esc(PICKQ) +
+        "' oninput='pickSearch(this.value)'>" +
+      (n ? "<div class='pickhead'><button class='btn' onclick='pickAll()'>Show everyone</button></div>" : "") +
+      "<div class='picklist'>";
+    if (!shown.length) h += "<div class='mut' style='padding:8px 5px'>No agent by that name worked this day.</div>";
+    shown.forEach(function(a){
+      h += "<label class='pickrow'>" +
+        "<input type='checkbox'" + (PICK.indexOf(String(a.id)) >= 0 ? " checked" : "") +
+          " onchange=\"pickOne('" + esc(String(a.id)) + "')\">" +
+        "<span>" + esc(a.name) + "</span>" +
+        "<span class='t'>" + esc(a.team || "no team") + "</span></label>";
+    });
+    h += "</div></div>";
+  }
+  return h + "</span>";
+}
+function nameOf(roster, id){
+  var hit = (roster || []).filter(function(a){ return String(a.id) === String(id); })[0];
+  return hit ? hit.name : "";
+}
+function togglePicker(){ PICKOPEN = !PICKOPEN; PICKQ = ""; draw(); }
+function pickSearch(v){
+  PICKQ = v;
+  /* Redraw only the panel. Rebuilding the page on a keystroke drops the caret out of the
+     box mid word, which is the same fault the lead search on Call Now had to have fixed. */
+  var list = document.querySelector(".picklist");
+  if (!list || !T) return;
+  var q = String(v || "").toLowerCase();
+  var roster = (T.roster || []).filter(function(a){ return !q || String(a.name).toLowerCase().indexOf(q) >= 0; });
+  list.innerHTML = roster.length
+    ? roster.map(function(a){
+        return "<label class='pickrow'><input type='checkbox'" +
+          (PICK.indexOf(String(a.id)) >= 0 ? " checked" : "") +
+          " onchange=\"pickOne('" + esc(String(a.id)) + "')\"><span>" + esc(a.name) +
+          "</span><span class='t'>" + esc(a.team || "no team") + "</span></label>"; }).join("")
+    : "<div class='mut' style='padding:8px 5px'>No agent by that name worked this day.</div>";
+}
+function pickOne(id){
+  id = String(id);
+  var i = PICK.indexOf(id);
+  if (i >= 0) PICK.splice(i, 1); else PICK.push(id);
+  applyPick();
+}
+/* No filter at all, which is not the same as every box ticked: an empty pick is the
+   default view and survives changing the day. */
+function pickAll(){ PICK = []; applyPick(); }
+function applyPick(){ PICKOPEN = true; load(DATE); }
+/* Clicking away closes it, which is what everybody expects a dropdown to do. */
+document.addEventListener("click", function(e){
+  if (!PICKOPEN) return;
+  if (e.target.closest && e.target.closest(".pickwrap")) return;
+  PICKOPEN = false; PICKQ = ""; if (T) draw();
+});
+
 /* The span. Locked days come out of the store, so a month is cheap; only days still open
    cost a read, which in practice is today. */
 function loadRange(){
@@ -447,7 +561,7 @@ function loadRange(){
   RFROM = f; RTO = t;
   document.getElementById("rmsg").textContent = "Reading...";
   document.getElementById("rangebox").innerHTML = "";
-  fetch("/api/talktime/range?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t))
+  fetch("/api/talktime/range?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + pickParam())
     .then(function(r){
       if (r.status === 401) {
         location.href = "/auth/login?to=" + encodeURIComponent(location.pathname + location.search);
@@ -470,6 +584,7 @@ function drawRange(){
   var j = R, h = "";
   var open = (j.days || []).filter(function(d){ return !d.locked; }).length;
   h += "<div class='mut' style='font-size:13px;margin:10px 0'>" +
+    (PICK.length ? "Filtered to " + (j.agents || []).map(function(a){ return esc(a.name); }).join(", ") + " &middot; " : "") +
     esc(j.from) + " to " + esc(j.to) + " &middot; " + j.days.length + " day" + (j.days.length === 1 ? "" : "s") +
     " &middot; " + mins(j.totals.talkMs) + " across " + j.totals.agents + " agent" + (j.totals.agents === 1 ? "" : "s") +
     (open ? " &middot; " + open + " day" + (open === 1 ? " is" : "s are") + " still open, so those figures can still move" : "") +
@@ -513,11 +628,17 @@ function workbook(){
   if (!f || !t) { document.getElementById("rmsg").textContent = "Pick both dates."; return; }
   if (f > t) { document.getElementById("rmsg").textContent = "The start is after the end."; return; }
   document.getElementById("rmsg").textContent = "Building the workbook...";
-  location.href = "/api/talktime/export.xlsx?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t);
+  location.href = "/api/talktime/export.xlsx?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + pickParam();
   setTimeout(function(){ document.getElementById("rmsg").textContent = ""; }, 4000);
 }
 
-load("");
+/* A link can name both the day and the agents, so a filtered view is shareable. */
+(function(){
+  var q = new URLSearchParams(location.search);
+  var a = q.get("agents") || "";
+  if (a) PICK = a.split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+  load(q.get("date") || "");
+})();
 </script>
 </body>
 </html>

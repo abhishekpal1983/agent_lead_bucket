@@ -950,6 +950,73 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
         .split('app.get("/api/talktime"')[1].slice(0, 400)));
 
 
+    /* ---- picking agents --------------------------------------------------------------
+
+       The filter narrows what scope already allows and must never widen it. Everything
+       else here is presentation; that one property is the security of the endpoint. */
+    {
+      const all = await get("/api/talktime?date=" + LGDAY);
+      ok("the day carries a roster to build the picker from",
+        Array.isArray(all.body.roster) && all.body.roster.length > 1,
+        JSON.stringify((all.body.roster || []).map(function(a){ return a.name; })));
+      ok("and it is sorted by name, so the list does not reshuffle between days",
+        (function(){
+          const n = all.body.roster.map(function(a){ return String(a.name); });
+          return n.slice().sort(function(x, y){ return x.localeCompare(y); }).join("|") === n.join("|");
+        })(), JSON.stringify(all.body.roster.map(function(a){ return a.name; })));
+      ok("with nobody picked, picked comes back empty rather than as everyone",
+        Array.isArray(all.body.picked) && all.body.picked.length === 0);
+
+      const one = all.body.rows[0], two = all.body.rows[1];
+      const pick1 = await get("/api/talktime?date=" + LGDAY + "&agents=" + encodeURIComponent(one.id));
+      ok("picking one agent returns that agent and no other",
+        pick1.body.rows.length === 1 && String(pick1.body.rows[0].id) === String(one.id),
+        JSON.stringify(pick1.body.rows.map(function(r){ return r.name; })));
+      ok("and the totals are the filtered totals, not the floor's",
+        pick1.body.totals.talkMs === one.talkMs && pick1.body.totals.talkMs !== all.body.totals.talkMs,
+        pick1.body.totals.talkMs + " vs row " + one.talkMs + " vs floor " + all.body.totals.talkMs);
+      ok("the roster still offers everyone, so a name the filter hides can be chosen again",
+        pick1.body.roster.length === all.body.roster.length);
+
+      const pick2 = await get("/api/talktime?date=" + LGDAY + "&agents=" +
+        encodeURIComponent(one.id + "," + two.id));
+      ok("picking two returns exactly those two", pick2.body.rows.length === 2);
+      ok("and two agents total more than one of them",
+        pick2.body.totals.talkMs === one.talkMs + two.talkMs,
+        pick2.body.totals.talkMs + " vs " + (one.talkMs + two.talkMs));
+
+      /* The property that matters. */
+      ok("an id that is not in scope returns nothing rather than returning that agent",
+        (await get("/api/talktime?date=" + LGDAY + "&agents=999999")).body.rows.length === 0);
+      ok("and mixing a real id with an out of scope one returns only the real one",
+        (await get("/api/talktime?date=" + LGDAY + "&agents=999999," +
+          encodeURIComponent(one.id))).body.rows.length === 1);
+      ok("junk in the parameter is ignored rather than crashing the day",
+        (await get("/api/talktime?date=" + LGDAY + "&agents=,,,%20,")).status === 200);
+
+      /* The expander and the change log belong to the same filter as the rows above them. */
+      ok("the WhatsApp and meeting detail is filtered to the picked agents too",
+        (pick1.body.detail.wa || []).concat(pick1.body.detail.meetings || [])
+          .every(function(d){ return String(d.owner) === String(one.id); }),
+        JSON.stringify((pick1.body.detail.wa || []).map(function(d){ return d.owner; })));
+
+      /* And the span and the workbook use the same filter, or the page disagrees with
+         the file somebody downloads from it. */
+      const rgPick = await get("/api/talktime/range?from=2026-08-05&to=2026-08-06&agents=" +
+        encodeURIComponent(one.id));
+      ok("the span takes the same filter", rgPick.status === 200 &&
+        (rgPick.body.agents || []).every(function(a){ return String(a.id) === String(one.id); }),
+        JSON.stringify((rgPick.body.agents || []).map(function(a){ return a.name; })));
+      ok("and it echoes who was picked", (rgPick.body.picked || []).length === 1);
+
+      const xlPick = await getBuffer("/api/talktime/export.xlsx?from=2026-08-05&to=2026-08-06&agents=" +
+        encodeURIComponent(one.id));
+      ok("the workbook downloads filtered", xlPick.status === 200 &&
+        xlPick.body.slice(0, 2).toString() === "PK");
+      ok("and it names the agents it was filtered to, so the file is not a mystery later",
+        xlPick.body.toString("latin1").indexOf(String(one.name)) >= 0);
+    }
+
     /* ---- a span of days, and the workbook -------------------------------------------
 
        The ask was a date range and a download with one tab per date. A CSV cannot hold

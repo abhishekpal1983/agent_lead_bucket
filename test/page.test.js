@@ -908,8 +908,15 @@ ok("the month picker and the page filters both reload it",
     const els = {};
     const ctx = { console: { log(){}, error(){} },
       document: { getElementById: function(id){ els[id] = els[id] || { innerHTML: "" }; return els[id]; },
-        createElement: function(){ return { click(){}, set href(v){}, set download(v){} }; } },
-      location: { href: "" }, fetch: function(){ return new Promise(function(){}); },
+        createElement: function(){ return { click(){}, set href(v){}, set download(v){} }; },
+        /* The page closes the agent picker when you click away from it, which is a
+           document level listener. A stub without one throws before draw() is reached. */
+        addEventListener: function(){}, querySelector: function(){ return null; },
+        querySelectorAll: function(){ return []; } },
+      location: { href: "", pathname: "/talktime.html", search: "" },
+      history: { replaceState: function(){} },
+      URLSearchParams: URLSearchParams,
+      fetch: function(){ return new Promise(function(){}); },
       Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
       isNaN, parseInt, parseFloat, Intl, URL: { createObjectURL: function(){ return ""; } },
       Blob: function(){}, setTimeout(){}, setInterval(){} };
@@ -917,6 +924,8 @@ ok("the month picker and the page filters both reload it",
     vm.createContext(ctx);
     vm.runInContext(tscript, ctx);
     ctx.T = payload; ctx.DATE = payload.date;
+    if (payload.__pick) ctx.PICK = payload.__pick;
+    if (payload.__pickOpen) ctx.PICKOPEN = true;
     let err = null;
     try { ctx.draw(); } catch (e) { err = e; }
     return { err: err, html: els.app.innerHTML, who: (els.who || {}).innerHTML || "" };
@@ -1047,8 +1056,12 @@ ok("the month picker and the page filters both reload it",
     const els2 = {};
     const ctx2 = { console: { log(){}, error(){} },
       document: { getElementById: function(id){ els2[id] = els2[id] || { innerHTML: "" }; return els2[id]; },
-        createElement: function(){ return { click(){} }; } },
-      location: { href: "" }, fetch: function(){ return new Promise(function(){}); },
+        createElement: function(){ return { click(){} }; },
+        addEventListener: function(){}, querySelector: function(){ return null; },
+        querySelectorAll: function(){ return []; } },
+      location: { href: "", pathname: "/talktime.html", search: "" },
+      history: { replaceState: function(){} }, URLSearchParams: URLSearchParams,
+      fetch: function(){ return new Promise(function(){}); },
       Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
       isNaN, parseInt, parseFloat, Intl, URL: { createObjectURL(){ return ""; } },
       Blob: function(){}, setTimeout(){}, setInterval(){} };
@@ -1178,6 +1191,101 @@ ok("the month picker and the page filters both reload it",
   ok("a signed in address with no calls is told why, not shown an empty table",
     none.html.indexOf("no calls are recorded against this address") >= 0 &&
     none.html.indexOf("owner email in HubSpot") >= 0);
+}
+
+/* The agent picker.
+
+   Rendered, because the interesting cases are what it says when a filter empties the
+   table and whether an agent sees a control with one option in it. */
+{
+  const tsrc = fs.readFileSync(path.join(__dirname, "..", "public", "talktime.html"), "utf8");
+  const tscript = tsrc.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const draw = function(payload, pick, open){
+    const els = {};
+    const ctx = { console: { log(){}, error(){} },
+      document: { getElementById: function(id){ els[id] = els[id] || { innerHTML: "" }; return els[id]; },
+        createElement: function(){ return { click(){} }; },
+        addEventListener: function(){}, querySelector: function(){ return null; },
+        querySelectorAll: function(){ return []; } },
+      location: { href: "", pathname: "/talktime.html", search: "" },
+      history: { replaceState: function(){} }, URLSearchParams: URLSearchParams,
+      fetch: function(){ return new Promise(function(){}); },
+      Date, Math, JSON, Object, String, Number, Array, encodeURIComponent, Promise, RegExp,
+      isNaN, parseInt, parseFloat, Intl, URL: { createObjectURL(){ return ""; } },
+      Blob: function(){}, setTimeout(){}, setInterval(){} };
+    ctx.window = ctx; vm.createContext(ctx); vm.runInContext(tscript, ctx);
+    ctx.T = payload; ctx.DATE = payload.date;
+    if (pick) ctx.PICK = pick;
+    if (open) ctx.PICKOPEN = true;
+    let err = null; try { ctx.draw(); } catch (e) { err = e; }
+    return { err: err, html: els.app.innerHTML, ctx: ctx };
+  };
+  const mk = function(o){
+    const r = function(id, name, team, ms){
+      return { id: id, name: name, team: team, teamId: "t1", callMs: ms, meetMs: 0,
+        declaredMs: 0, talkMs: ms, calls: 10, waCalls: 0, waMissing: 0,
+        declaredCalls: 0, needLength: 0, meetings: 0 }; };
+    return Object.assign({
+      date: "2026-09-22", today: "2026-09-22", yesterday: "2026-09-21", isToday: true,
+      you: { email: "m@topmate.io", role: "manager", scope: "your team" },
+      locked: null, lockAt: "23:59", persistent: true,
+      roster: [{ id: "1", name: "Anjali Kumari", team: "Anand" },
+               { id: "2", name: "Bibin Christopher", team: "Ansh" },
+               { id: "3", name: "Nikitha S", team: "Anand" }],
+      picked: [],
+      rows: [r("1", "Anjali Kumari", "Anand", 3600000), r("2", "Bibin Christopher", "Ansh", 1800000)],
+      log: [], detail: { wa: [], meetings: [] },
+      totals: { agents: 2, callMs: 5400000, meetMs: 0, declaredMs: 0, talkMs: 5400000,
+        calls: 20, waCalls: 0, waMissing: 0, declaredCalls: 0, needLength: 0,
+        meetings: 0, amended: 0 },
+      selfcheck: [], lockVerified: null,
+      portal: { uiDomain: "app.hubspot.com", portalId: "1" }, canBlockEdits: false
+    }, o || {});
+  };
+
+  console.log("\nThe agent picker");
+  const closed = draw(mk());
+  ok("it renders", !closed.err, closed.err && closed.err.message);
+  ok("with nobody picked it says all agents", closed.html.indexOf("All agents") >= 0);
+  ok("and the panel is shut until you ask for it", closed.html.indexOf("pickpanel") < 0);
+
+  const open = draw(mk(), [], true);
+  ok("opening it lists every agent on the roster, not only those with rows",
+    ["Anjali Kumari", "Bibin Christopher", "Nikitha S"].every(function(n){ return open.html.indexOf(n) >= 0; }));
+  ok("each one is a checkbox, so several can be chosen at once",
+    (open.html.match(/type='checkbox'|type="checkbox"/g) || []).length >= 3,
+    (open.html.match(/type=.checkbox./g) || []).length + " boxes");
+  ok("and there is a box to find a name in a long list",
+    open.html.indexOf("Find an agent") >= 0);
+
+  const one = draw(mk(), ["1"]);
+  ok("picking one shows that agent's name on the button", one.html.indexOf("Anjali Kumari") >= 0);
+  const two = draw(mk(), ["1", "2"]);
+  ok("picking two says two of three", two.html.indexOf("2 of 3 agents") >= 0, "button label");
+  ok("and the total says it is a filtered one, not the floor's",
+    two.html.indexOf("of 3 agents") >= 0);
+
+  /* The case that matters. A filter that empties the table must not read as a floor that
+     made no calls, which is a very different thing to report upwards. */
+  const empty = draw(mk({ rows: [], totals: Object.assign({}, mk().totals, { agents: 0, talkMs: 0 }) }), ["3"]);
+  ok("an empty result blames the filter rather than the floor",
+    empty.html.indexOf("you picked were on the phone") >= 0 &&
+    empty.html.indexOf("Nothing on the phone this day") < 0);
+  ok("and offers a way straight back to everyone", empty.html.indexOf("Show everyone") >= 0);
+
+  /* An agent sees only themselves, so a picker would be a control with one option. */
+  const agent = draw(mk({ you: { email: "a@topmate.io", role: "agent", scope: "you" } }));
+  ok("an agent is not shown a picker at all", agent.html.indexOf("pickwrap") < 0);
+
+  /* The filter has to reach the span and the file, or the page disagrees with the
+     spreadsheet somebody downloads from it. */
+  ok("the pick is sent to the day, the span and the workbook",
+    (tsrc.match(/pickParam\(\)/g) || []).length >= 3,
+    (tsrc.match(/pickParam\(\)/g) || []).length + " uses");
+  ok("and it is carried in the address bar, so a filtered view is a link",
+    /history\.replaceState/.test(tsrc) && /agents=/.test(tsrc));
+  ok("typing in the search box rebuilds only the list, not the page",
+    /function pickSearch\(v\)/.test(tsrc) && /querySelector\(".picklist"\)/.test(tsrc));
 }
 
 /* Signing out.
