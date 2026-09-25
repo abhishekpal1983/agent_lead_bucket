@@ -93,13 +93,22 @@ var T = null, DATE = "", OPEN = {}, R = null, RFROM = "", RTO = "";
 /* Who is picked, and whether the picker is open. Empty means everyone in scope, which is
    not the same as nobody: an empty set is the default view, not a filter that hides all. */
 var PICK = [], PICKOPEN = false, PICKQ = "";
+/* Teams, held separately from the agent pick rather than resolved into one. A link that
+   says "Team Anand" still means Team Anand next week when its roster has changed, which
+   a list of agent ids frozen into the URL would not. */
+var TEAMS = [], TEAMOPEN = false;
 function pickParam(){ return PICK.length ? "&agents=" + encodeURIComponent(PICK.join(",")) : ""; }
+function teamParam(){ return TEAMS.length ? "&teams=" + encodeURIComponent(TEAMS.join(",")) : ""; }
+/* One place both filters are turned into a query, so the day, the span and the workbook
+   cannot disagree about who is in the figures. */
+function filterParams(){ return pickParam() + teamParam(); }
 /* Carried in the address bar so a filtered view is a link somebody can send, which is how
    this page gets used. */
 function syncUrl(){
   var q = [];
   if (DATE) q.push("date=" + encodeURIComponent(DATE));
   if (PICK.length) q.push("agents=" + encodeURIComponent(PICK.join(",")));
+  if (TEAMS.length) q.push("teams=" + encodeURIComponent(TEAMS.join(",")));
   history.replaceState(null, "", location.pathname + (q.length ? "?" + q.join("&") : ""));
 }
 function esc(s){ return String(s == null ? "" : s)
@@ -193,7 +202,7 @@ function detailFor(id){
 }
 function load(d){
   document.getElementById("app").innerHTML = "<div class='sec'>Reading the day...</div>";
-  fetch("/api/talktime?" + (d ? "date=" + encodeURIComponent(d) : "") + pickParam())
+  fetch("/api/talktime?" + (d ? "date=" + encodeURIComponent(d) : "") + filterParams())
     .then(function(r){
       if (r.status === 401) {
         /* Carry where we are, or signing in lands them on Call Now with an empty call
@@ -230,6 +239,7 @@ function draw(){
   h += "<div class='bar'>" +
     "<input type='date' value='" + esc(j.date) + "' max='" + esc(j.today) + "' onchange='load(this.value)'>" +
     /* An agent sees only themselves, so a picker would be a control with one option. */
+    (one ? "" : teamPickerHtml(j.teams || [])) +
     (one ? "" : pickerHtml(j.roster || [])) +
     /* The two days anybody actually wants, without going through the picker. Yesterday is
        the locked one, so it is the day to check; today is the one to watch. */
@@ -298,7 +308,8 @@ function draw(){
   h += "<div class='tiles'>" +
     tile("", "Total", mins(j.totals.talkMs),
       one ? "your time"
-        : PICK.length ? fmt(rows.length) + " of " + fmt((j.roster || []).length) + " agents"
+        : (PICK.length || TEAMS.length)
+          ? fmt(rows.length) + " of " + fmt((j.roster || []).length) + " agents"
         : fmt(rows.length) + " agents") +
     tile("", "FreJun", mins(j.totals.callMs), fmt(j.totals.calls) + " calls") +
     tile("", "Meetings", mins(j.totals.meetMs), fmt(j.totals.meetings) + " held") +
@@ -316,12 +327,15 @@ function draw(){
     "</tr></thead><tbody>";
   if (!rows.length)
     h += "<tr><td colspan='9' class='mut' style='padding:14px'>" +
-      (PICK.length
-        /* A filter that empties the table has to say so. Otherwise it reads as a floor
-           that made no calls, which is a very different thing to report upwards. */
-        ? "None of the " + PICK.length + " agent" + (PICK.length === 1 ? "" : "s") +
-          " you picked were on the phone this day. " +
-          "<a href='#' onclick='pickAll();return false'>Show everyone</a>"
+      /* A filter that empties the table has to say so, and say which one. Otherwise it
+         reads as a floor that made no calls, which is a very different thing to report
+         upwards. */
+      ((PICK.length || TEAMS.length)
+        ? "Nothing on the phone this day for " +
+          (TEAMS.length ? (TEAMS.length === 1 ? "that team" : "those " + TEAMS.length + " teams") : "") +
+          (TEAMS.length && PICK.length ? " and " : "") +
+          (PICK.length ? (PICK.length === 1 ? "that agent" : "those " + PICK.length + " agents") : "") +
+          ". <a href='#' onclick='clearFilters();return false'>Clear filters</a>"
         : "Nothing on the phone this day.") +
       "</td></tr>";
   rows.forEach(function(r){
@@ -486,7 +500,16 @@ function csv(){
    Server side, not here. The day, the span and the workbook all have to agree about who
    is in the figures, and the only way to guarantee that is one filter in one place. It
    costs a round trip per change, which on a list of this size nobody notices. */
+/* The chosen teams, or everyone when no team is chosen. The agent list has to agree
+   with the team chip beside it: offering a name the team filter would then hide is how a
+   filter starts lying about an empty table. */
+function rosterInTeams(roster){
+  if (!TEAMS.length) return roster || [];
+  return (roster || []).filter(function(a){
+    return TEAMS.indexOf(String(a.teamId || "none")) >= 0; });
+}
 function pickerHtml(roster){
+  roster = rosterInTeams(roster);
   var n = PICK.length;
   var label = !n ? "All agents"
     : n === 1 ? (nameOf(roster, PICK[0]) || "1 agent")
@@ -526,7 +549,7 @@ function pickSearch(v){
   var list = document.querySelector(".picklist");
   if (!list || !T) return;
   var q = String(v || "").toLowerCase();
-  var roster = (T.roster || []).filter(function(a){ return !q || String(a.name).toLowerCase().indexOf(q) >= 0; });
+  var roster = rosterInTeams(T.roster || []).filter(function(a){ return !q || String(a.name).toLowerCase().indexOf(q) >= 0; });
   list.innerHTML = roster.length
     ? roster.map(function(a){
         return "<label class='pickrow'><input type='checkbox'" +
@@ -545,11 +568,66 @@ function pickOne(id){
    default view and survives changing the day. */
 function pickAll(){ PICK = []; applyPick(); }
 function applyPick(){ PICKOPEN = true; load(DATE); }
+
+/* The team picker. Same shape as the agent one, minus the search box, because a floor has
+   a handful of teams and thirty odd agents. */
+function teamPickerHtml(teams){
+  var n = TEAMS.length;
+  var label = !n ? "All teams"
+    : n === 1 ? (teamNameOf(teams, TEAMS[0]) || "1 team")
+    : n + " of " + teams.length + " teams";
+  var h = "<span class='pickwrap teamwrap'>" +
+    "<button class='btn" + (n ? " pickchip" : "") + "' onclick='toggleTeamPicker()'>" +
+    esc(label) + " &#9662;</button>";
+  if (TEAMOPEN) {
+    h += "<div class='pickpanel' onclick='event.stopPropagation()'>" +
+      (n ? "<div class='pickhead'><button class='btn' onclick='teamAll()'>Show every team</button></div>" : "") +
+      "<div class='picklist'>";
+    if (!teams.length)
+      h += "<div class='mut' style='padding:8px 5px'>Nobody was on the phone this day.</div>";
+    teams.forEach(function(t){
+      h += "<label class='pickrow'>" +
+        "<input type='checkbox'" + (TEAMS.indexOf(String(t.id)) >= 0 ? " checked" : "") +
+          " onchange=\"teamOne('" + esc(String(t.id)) + "')\">" +
+        "<span>" + esc(t.name) + "</span></label>";
+    });
+    h += "</div></div>";
+  }
+  return h + "</span>";
+}
+function teamNameOf(teams, id){
+  var hit = (teams || []).filter(function(t){ return String(t.id) === String(id); })[0];
+  return hit ? hit.name : "";
+}
+function toggleTeamPicker(){ TEAMOPEN = !TEAMOPEN; draw(); }
+function teamOne(id){
+  id = String(id);
+  var i = TEAMS.indexOf(id);
+  if (i >= 0) TEAMS.splice(i, 1); else TEAMS.push(id);
+  /* An agent the team filter no longer shows must not stay picked. Leaving them would
+     empty the table from a control the page has stopped displaying, which is the kind of
+     quiet failure this file exists to avoid. */
+  prunePick();
+  TEAMOPEN = true; load(DATE);
+}
+function teamAll(){ TEAMS = []; TEAMOPEN = true; load(DATE); }
+function prunePick(){
+  if (!PICK.length || !TEAMS.length || !T) return;
+  var ok = {};
+  (T.roster || []).forEach(function(a){
+    if (TEAMS.indexOf(String(a.teamId || "none")) >= 0) ok[String(a.id)] = 1; });
+  PICK = PICK.filter(function(id){ return ok[String(id)]; });
+}
+function clearFilters(){ PICK = []; TEAMS = []; load(DATE); }
 /* Clicking away closes it, which is what everybody expects a dropdown to do. */
 document.addEventListener("click", function(e){
-  if (!PICKOPEN) return;
-  if (e.target.closest && e.target.closest(".pickwrap")) return;
-  PICKOPEN = false; PICKQ = ""; if (T) draw();
+  if (!PICKOPEN && !TEAMOPEN) return;
+  var inTeam = !!(e.target.closest && e.target.closest(".teamwrap"));
+  var inPick = !!(e.target.closest && e.target.closest(".pickwrap")) && !inTeam;
+  var changed = false;
+  if (PICKOPEN && !inPick) { PICKOPEN = false; PICKQ = ""; changed = true; }
+  if (TEAMOPEN && !inTeam) { TEAMOPEN = false; changed = true; }
+  if (changed && T) draw();
 });
 
 /* The span. Locked days come out of the store, so a month is cheap; only days still open
@@ -561,7 +639,7 @@ function loadRange(){
   RFROM = f; RTO = t;
   document.getElementById("rmsg").textContent = "Reading...";
   document.getElementById("rangebox").innerHTML = "";
-  fetch("/api/talktime/range?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + pickParam())
+  fetch("/api/talktime/range?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + filterParams())
     .then(function(r){
       if (r.status === 401) {
         location.href = "/auth/login?to=" + encodeURIComponent(location.pathname + location.search);
@@ -584,6 +662,8 @@ function drawRange(){
   var j = R, h = "";
   var open = (j.days || []).filter(function(d){ return !d.locked; }).length;
   h += "<div class='mut' style='font-size:13px;margin:10px 0'>" +
+    (TEAMS.length ? "Teams: " + (j.teams || []).filter(function(t){
+      return TEAMS.indexOf(String(t.id)) >= 0; }).map(function(t){ return esc(t.name); }).join(", ") + " &middot; " : "") +
     (PICK.length ? "Filtered to " + (j.agents || []).map(function(a){ return esc(a.name); }).join(", ") + " &middot; " : "") +
     esc(j.from) + " to " + esc(j.to) + " &middot; " + j.days.length + " day" + (j.days.length === 1 ? "" : "s") +
     " &middot; " + mins(j.totals.talkMs) + " across " + j.totals.agents + " agent" + (j.totals.agents === 1 ? "" : "s") +
@@ -628,7 +708,7 @@ function workbook(){
   if (!f || !t) { document.getElementById("rmsg").textContent = "Pick both dates."; return; }
   if (f > t) { document.getElementById("rmsg").textContent = "The start is after the end."; return; }
   document.getElementById("rmsg").textContent = "Building the workbook...";
-  location.href = "/api/talktime/export.xlsx?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + pickParam();
+  location.href = "/api/talktime/export.xlsx?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t) + filterParams();
   setTimeout(function(){ document.getElementById("rmsg").textContent = ""; }, 4000);
 }
 
@@ -637,6 +717,8 @@ function workbook(){
   var q = new URLSearchParams(location.search);
   var a = q.get("agents") || "";
   if (a) PICK = a.split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+  var tq = q.get("teams") || "";
+  if (tq) TEAMS = tq.split(",").map(function(x){ return x.trim(); }).filter(Boolean);
   load(q.get("date") || "");
 })();
 </script>

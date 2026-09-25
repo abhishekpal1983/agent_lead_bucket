@@ -493,4 +493,10 @@ module.exports = {
   teams: [{ id: "t1", name: "Team Sid", managerEmail: "m1@topmate.io", agentIds: ["201", "202", "205"],
             creators: ["ayush_singh13", "ankita_gulati"] },
           { id: "t2", name: "Team Vik", managerEmail: "m2@topmate.io", agentIds: ["203", "204"],
-            creators: ["payalineurope"] }] };
+            creators: ["payalineurope"] },
+          /* A team that exists in the org and never appears on the floor. Every team in
+             this fixture used to be on the roster, so a picker that listed the whole org
+             instead of the scoped roster looked identical to a correct one and no test
+             could tell them apart. This is the team that tells them apart. */
+          { id: "t3", name: "Team Ghost", managerEmail: "m3@topmate.io", agentIds: ["90901"],
+            creators: [] }] };

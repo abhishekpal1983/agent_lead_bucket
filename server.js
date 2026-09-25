@@ -8144,13 +8144,22 @@ function narrowToPicked(rows, picked){
   if (!picked) return rows;
   return rows.filter(function(r){ return picked.indexOf(String(r.id)) >= 0; });
 }
+/* Teams, read the same way as the agent pick and with the same rule: a filter can only
+   ever take names away. "none" is a real choice here, not a missing value, because an
+   agent on nobody's team is exactly the thing a manager goes looking for. */
+function pickedTeams(q){
+  const raw = String(q || "").trim();
+  if (!raw) return null;
+  const ids = raw.split(",").map(function(x){ return String(x).trim(); }).filter(Boolean).slice(0, 50);
+  return ids.length ? ids : null;
+}
 
 /* One day, scoped, for whoever is asking.
 
    Pulled out of the single-day handler so the range endpoint and the workbook export use
    this and not a copy. Scoping is the part that must never be duplicated: a second
    implementation is a second place for an agent to start seeing a colleague's figures. */
-async function talkDay(day, scope, picked){
+async function talkDay(day, scope, picked, teams){
   const rec = TALK.days[day];
   let rows, locked = null, detail = { wa: [], meetings: [] };
   if (rec) {
@@ -8177,7 +8186,11 @@ async function talkDay(day, scope, picked){
     detail = built.talkDetail || detail;
   }
   const teamOf = {}, teamName = {};
-  (ORG.teams || []).forEach(function(t){
+  /* cn2Teams(), not ORG.teams. talkScope decides who this person may see from cn2Teams();
+     reading the labels from a different source lets the two disagree, and under fixtures
+     they did: scope saw teams while this saw none, so the team column was blank in every
+     test and no test could reach the team filter at all. */
+  cn2Teams().forEach(function(t){
     teamName[t.id] = t.name || "(unnamed)";
     (t.agentIds || []).forEach(function(id){ teamOf[String(id)] = t.id; });
   });
@@ -8185,10 +8198,18 @@ async function talkDay(day, scope, picked){
   /* Scope first, always. The pick is applied to what survives it, so asking for an agent
      you may not see returns nothing rather than returning them. */
   const inPick = function(id){ return !picked || picked.indexOf(String(id)) >= 0; };
+  /* Same shape as the pick, and applied in the same place, so there is one answer to
+     "who is in these figures" rather than two that can drift apart. An agent with no
+     team is "none" rather than absent, so the filter can single them out. */
+  const inTeam = function(id){
+    if (!teams) return true;
+    return teams.indexOf(String(teamOf[String(id)] || "none")) >= 0;
+  };
+  const keep = function(id){ return inPick(id) && inTeam(id); };
   const roster = rows.filter(function(r){ return inScope(r.id) && (r.talkMs || r.calls); })
     .map(function(r){ return Object.assign({}, r,
       { team: teamName[teamOf[r.id]] || "", teamId: teamOf[r.id] || "" }); });
-  rows = roster.filter(function(r){ return inPick(r.id); });
+  rows = roster.filter(function(r){ return keep(r.id); });
   rows.sort(function(a, b){ return b.talkMs - a.talkMs; });
 
   /* An agent sees the entries about their own day and nobody else's, so nobody is
@@ -8198,17 +8219,30 @@ async function talkDay(day, scope, picked){
      of movement to go looking for. */
   const log = (TALK.log || []).filter(function(e){
     return e.day === day && (e.phase === "locked" || e.phase === "relock") &&
-      inScope(e.owner) && inPick(e.owner); });
+      inScope(e.owner) && keep(e.owner); });
   const scoped = function(list){
-    return (list || []).filter(function(x){ return inScope(x.owner) && inPick(x.owner); })
+    return (list || []).filter(function(x){ return inScope(x.owner) && keep(x.owner); })
       .sort(function(a, b){ return (a.at || 0) - (b.at || 0); }); };
   detail = { wa: scoped(detail.wa), meetings: scoped(detail.meetings) };
   const sum = function(k){ return rows.reduce(function(n, r){ return n + (r[k] || 0); }, 0); };
   return { day: day, rows: rows, log: log, detail: detail, locked: locked, rec: rec,
     /* Everyone in scope who worked that day, picked or not, so the page can offer a name
        that today's filter happens to be hiding. */
-    roster: roster.map(function(r){ return { id: r.id, name: r.name, team: r.team }; })
+    roster: roster.map(function(r){
+      return { id: r.id, name: r.name, team: r.team, teamId: r.teamId || "none" }; })
       .sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }),
+    /* Built from the scoped roster, so the picker can only ever offer teams this person
+       is already allowed to see. Deriving it from ORG.teams instead would list the whole
+       company to an agent. */
+    teams: (function(){
+      const seen = {};
+      roster.forEach(function(r){ seen[r.teamId || "none"] = r.teamId ? r.team : "No team"; });
+      return Object.keys(seen).map(function(id){ return { id: id, name: seen[id] }; })
+        .sort(function(a, b){
+          if (a.id === "none") return 1;
+          if (b.id === "none") return -1;
+          return String(a.name).localeCompare(String(b.name)); });
+    })(),
     totals: { agents: rows.length, callMs: sum("callMs"), meetMs: sum("meetMs"),
       declaredMs: sum("declaredMs"), talkMs: sum("talkMs"), calls: sum("calls"),
       waCalls: sum("waCalls"), waMissing: sum("waMissing"),
@@ -8229,10 +8263,11 @@ app.get("/api/talktime", async function(req, res){
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "bad date" });
   if (day > today) return res.status(400).json({ error: "that day has not happened yet" });
   try {
-    const d = await talkDay(day, scope, pickedAgents(req.query.agents));
+    const d = await talkDay(day, scope, pickedAgents(req.query.agents), pickedTeams(req.query.teams));
     res.json({
       date: day, today: today, yesterday: TALKLOCK.prevDay(today), isToday: day === today,
       roster: d.roster, picked: pickedAgents(req.query.agents) || [],
+      teams: d.teams, pickedTeams: pickedTeams(req.query.teams) || [],
       you: { email: scope.email, role: scope.role, scope: scope.label },
       locked: d.locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
       totals: d.totals,
@@ -8267,6 +8302,7 @@ async function talkRange(req){
   const scope = talkScope(req);
   if (!scope) return { status: 401, error: "not signed in" };
   const picked = pickedAgents(req.query.agents);
+  const teams = pickedTeams(req.query.teams);
   const today = istParts(new Date(cn2Now())).date;
   const from = String(req.query.from || "");
   const to = String(req.query.to || "");
@@ -8280,9 +8316,9 @@ async function talkRange(req){
     return { status: 400, error: "that is more than " + TALK_RANGE_MAX_DAYS + " days. Ask for a shorter span." };
   }
   const out = [];
-  for (const d of days) out.push(await talkDay(d, scope, picked));
+  for (const d of days) out.push(await talkDay(d, scope, picked, teams));
   return { status: 200, scope: scope, today: today, from: from, to: end, days: out,
-    picked: picked || [] };
+    picked: picked || [], teams: teams || [] };
 }
 
 app.get("/api/talktime/range", async function(req, res){
@@ -8312,6 +8348,16 @@ app.get("/api/talktime/range", async function(req, res){
       you: { email: r.scope.email, role: r.scope.role, scope: r.scope.label },
       roster: Object.values(rosterBy).sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }),
       picked: r.picked,
+      pickedTeams: r.teams,
+      teams: (function(){
+        const seen = {};
+        r.days.forEach(function(d){ (d.teams || []).forEach(function(t){ seen[t.id] = t.name; }); });
+        return Object.keys(seen).map(function(id){ return { id: id, name: seen[id] }; })
+          .sort(function(a, b){
+            if (a.id === "none") return 1;
+            if (b.id === "none") return -1;
+            return String(a.name).localeCompare(String(b.name)); });
+      })(),
       maxDays: TALK_RANGE_MAX_DAYS,
       days: r.days.map(function(d){
         return { date: d.day, locked: !!d.locked, totals: d.totals };
@@ -8358,6 +8404,15 @@ app.get("/api/talktime/export.xlsx", async function(req, res){
         ["Agents", r.picked.length
           ? totalRows.map(function(x){ return x.name; }).join(", ")
           : "everyone in scope"],
+        /* Same reason as the agent line. A team filtered export that does not say so is
+           a spreadsheet somebody reconciles against the whole floor and cannot explain. */
+        ["Teams", r.teams.length
+          ? (function(){
+              const seen = {};
+              r.days.forEach(function(d){ (d.teams || []).forEach(function(t){ seen[t.id] = t.name; }); });
+              return r.teams.map(function(id){ return seen[id] || id; }).join(", ");
+            })()
+          : "all teams in scope"],
         ["Days", r.days.length], [], head].concat(totalRows.map(line)) }];
     r.days.forEach(function(d){
       sheets.push({ name: d.day, rows: [

@@ -1017,6 +1017,88 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
         xlPick.body.toString("latin1").indexOf(String(one.name)) >= 0);
     }
 
+    /* ---- picking teams ---------------------------------------------------------------
+
+       Same rule as the agent pick, and the same reason for saying it out loud. A team
+       filter is the control most likely to be mistaken for a way onto another manager's
+       floor, so what is asserted here is that it narrows and can never widen. */
+    {
+      const all = await get("/api/talktime?date=" + LGDAY);
+      ok("the day carries the teams on the floor, to build the picker from",
+        Array.isArray(all.body.teams) && all.body.teams.length >= 1,
+        JSON.stringify(all.body.teams));
+      ok("every roster entry says which team it belongs to",
+        (all.body.roster || []).every(function(a){ return typeof a.teamId === "string" && a.teamId; }),
+        JSON.stringify((all.body.roster || []).slice(0, 3)));
+      ok("with no team chosen, pickedTeams comes back empty rather than as every team",
+        Array.isArray(all.body.pickedTeams) && all.body.pickedTeams.length === 0);
+      /* Derived from the scoped roster, never from ORG.teams, or the picker would list
+         the whole company to somebody who can only see one team of it. */
+      ok("the teams offered are only those on the scoped roster, never the whole org",
+        all.body.teams.every(function(t){
+          return (all.body.roster || []).some(function(a){ return String(a.teamId) === String(t.id); }); }),
+        JSON.stringify(all.body.teams));
+
+      const t0 = all.body.teams[0];
+      const teamOf = function(id){
+        const a = (all.body.roster || []).filter(function(x){ return String(x.id) === String(id); })[0];
+        return a ? String(a.teamId) : null;
+      };
+      const tPick = await get("/api/talktime?date=" + LGDAY + "&teams=" + encodeURIComponent(t0.id));
+      ok("picking a team returns only agents from that team",
+        tPick.status === 200 &&
+        tPick.body.rows.every(function(r){ return teamOf(r.id) === String(t0.id); }),
+        JSON.stringify(tPick.body.rows.map(function(r){ return r.name + "/" + teamOf(r.id); })));
+      ok("and it can only narrow, never widen",
+        tPick.body.rows.length <= all.body.rows.length,
+        tPick.body.rows.length + " vs " + all.body.rows.length);
+      ok("the roster still offers everyone, so the filter can be widened again",
+        tPick.body.roster.length === all.body.roster.length);
+      ok("and the totals are the filtered totals, not the floor's",
+        tPick.body.totals.talkMs <= all.body.totals.talkMs);
+
+      /* The property that matters. */
+      ok("a team that is not in scope returns nothing rather than returning that team",
+        (await get("/api/talktime?date=" + LGDAY + "&teams=not-a-real-team")).body.rows.length === 0);
+      ok("junk in the team parameter is ignored rather than crashing the day",
+        (await get("/api/talktime?date=" + LGDAY + "&teams=,,,%20,")).status === 200);
+
+      /* Two filters intersect. Asking for an agent outside the chosen team is a narrower
+         question with no answer, never a way around the team. */
+      const someone = all.body.rows[0];
+      ok("team and agent filters intersect rather than adding up",
+        (await get("/api/talktime?date=" + LGDAY + "&teams=" + encodeURIComponent(t0.id) +
+          "&agents=" + encodeURIComponent(someone.id))).body.rows.length <= 1);
+      ok("an agent outside the chosen team returns nothing, not that agent",
+        (await get("/api/talktime?date=" + LGDAY + "&teams=not-a-real-team&agents=" +
+          encodeURIComponent(someone.id))).body.rows.length === 0);
+
+      /* The expander and the change log belong to the same filter as the rows above them. */
+      ok("the WhatsApp and meeting detail is filtered by team too",
+        (tPick.body.detail.wa || []).concat(tPick.body.detail.meetings || [])
+          .every(function(d){ return teamOf(d.owner) === String(t0.id); }),
+        JSON.stringify((tPick.body.detail.wa || []).map(function(d){ return d.owner; })));
+
+      /* And the span and the workbook use the same filter, or the page disagrees with the
+         file somebody downloads from it. */
+      const rgTeam = await get("/api/talktime/range?from=2026-08-05&to=2026-08-06&teams=" +
+        encodeURIComponent(t0.id));
+      ok("the span takes the team filter", rgTeam.status === 200, "status " + rgTeam.status);
+      ok("and it echoes which teams were chosen", (rgTeam.body.pickedTeams || []).length === 1);
+      ok("and it offers the teams seen across the whole span",
+        Array.isArray(rgTeam.body.teams) && rgTeam.body.teams.length >= 1);
+
+      const xlTeam = await getBuffer("/api/talktime/export.xlsx?from=2026-08-05&to=2026-08-06&teams=" +
+        encodeURIComponent(t0.id));
+      ok("the workbook downloads team filtered", xlTeam.status === 200 &&
+        xlTeam.body.slice(0, 2).toString() === "PK");
+      ok("and it names the team it was filtered to, so the file is not a mystery later",
+        xlTeam.body.toString("latin1").indexOf(String(t0.name)) >= 0);
+      const xlAll = await getBuffer("/api/talktime/export.xlsx?from=2026-08-05&to=2026-08-06");
+      ok("an unfiltered workbook says all teams rather than staying silent",
+        xlAll.body.toString("latin1").indexOf("all teams in scope") >= 0);
+    }
+
     /* ---- a span of days, and the workbook -------------------------------------------
 
        The ask was a date range and a download with one tab per date. A CSV cannot hold

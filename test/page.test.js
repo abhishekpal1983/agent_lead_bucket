@@ -1200,7 +1200,7 @@ ok("the month picker and the page filters both reload it",
 {
   const tsrc = fs.readFileSync(path.join(__dirname, "..", "public", "talktime.html"), "utf8");
   const tscript = tsrc.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const draw = function(payload, pick, open){
+  const draw = function(payload, pick, open, teams, teamOpen){
     const els = {};
     const ctx = { console: { log(){}, error(){} },
       document: { getElementById: function(id){ els[id] = els[id] || { innerHTML: "" }; return els[id]; },
@@ -1217,6 +1217,8 @@ ok("the month picker and the page filters both reload it",
     ctx.T = payload; ctx.DATE = payload.date;
     if (pick) ctx.PICK = pick;
     if (open) ctx.PICKOPEN = true;
+    if (teams) ctx.TEAMS = teams;
+    if (teamOpen) ctx.TEAMOPEN = true;
     let err = null; try { ctx.draw(); } catch (e) { err = e; }
     return { err: err, html: els.app.innerHTML, ctx: ctx };
   };
@@ -1229,10 +1231,12 @@ ok("the month picker and the page filters both reload it",
       date: "2026-09-22", today: "2026-09-22", yesterday: "2026-09-21", isToday: true,
       you: { email: "m@topmate.io", role: "manager", scope: "your team" },
       locked: null, lockAt: "23:59", persistent: true,
-      roster: [{ id: "1", name: "Anjali Kumari", team: "Anand" },
-               { id: "2", name: "Bibin Christopher", team: "Ansh" },
-               { id: "3", name: "Nikitha S", team: "Anand" }],
+      roster: [{ id: "1", name: "Anjali Kumari", team: "Anand", teamId: "t1" },
+               { id: "2", name: "Bibin Christopher", team: "Ansh", teamId: "t2" },
+               { id: "3", name: "Nikitha S", team: "Anand", teamId: "t1" }],
       picked: [],
+      teams: [{ id: "t1", name: "Anand" }, { id: "t2", name: "Ansh" }],
+      pickedTeams: [],
       rows: [r("1", "Anjali Kumari", "Anand", 3600000), r("2", "Bibin Christopher", "Ansh", 1800000)],
       log: [], detail: { wa: [], meetings: [] },
       totals: { agents: 2, callMs: 5400000, meetMs: 0, declaredMs: 0, talkMs: 5400000,
@@ -1269,9 +1273,8 @@ ok("the month picker and the page filters both reload it",
      made no calls, which is a very different thing to report upwards. */
   const empty = draw(mk({ rows: [], totals: Object.assign({}, mk().totals, { agents: 0, talkMs: 0 }) }), ["3"]);
   ok("an empty result blames the filter rather than the floor",
-    empty.html.indexOf("you picked were on the phone") >= 0 &&
-    empty.html.indexOf("Nothing on the phone this day") < 0);
-  ok("and offers a way straight back to everyone", empty.html.indexOf("Show everyone") >= 0);
+    empty.html.indexOf("Nothing on the phone this day for that agent") >= 0);
+  ok("and offers a way straight back to everyone", empty.html.indexOf("Clear filters") >= 0);
 
   /* An agent sees only themselves, so a picker would be a control with one option. */
   const agent = draw(mk({ you: { email: "a@topmate.io", role: "agent", scope: "you" } }));
@@ -1279,13 +1282,69 @@ ok("the month picker and the page filters both reload it",
 
   /* The filter has to reach the span and the file, or the page disagrees with the
      spreadsheet somebody downloads from it. */
+  /* Both filters go through one helper, so the day, the span and the workbook cannot
+     disagree about who is in the figures. Counting filterParams rather than pickParam is
+     the point: a call site that used only one of the two would be the bug. */
   ok("the pick is sent to the day, the span and the workbook",
-    (tsrc.match(/pickParam\(\)/g) || []).length >= 3,
-    (tsrc.match(/pickParam\(\)/g) || []).length + " uses");
+    (tsrc.match(/filterParams\(\)/g) || []).length >= 3,
+    (tsrc.match(/filterParams\(\)/g) || []).length + " uses");
+  ok("and filterParams carries both the agents and the teams",
+    /function filterParams\(\)\{?\s*return pickParam\(\) \+ teamParam\(\);/.test(tsrc));
   ok("and it is carried in the address bar, so a filtered view is a link",
     /history\.replaceState/.test(tsrc) && /agents=/.test(tsrc));
   ok("typing in the search box rebuilds only the list, not the page",
     /function pickSearch\(v\)/.test(tsrc) && /querySelector\(".picklist"\)/.test(tsrc));
+
+  console.log("\nThe team filter");
+  const tclosed = draw(mk());
+  ok("with no team chosen it says all teams", tclosed.html.indexOf("All teams") >= 0);
+  ok("and its panel is shut until you ask for it",
+    (tclosed.html.match(/pickpanel/g) || []).length === 0);
+
+  const topen = draw(mk(), null, false, null, true);
+  ok("opening it lists the teams on the floor",
+    topen.html.indexOf("Anand") >= 0 && topen.html.indexOf("Ansh") >= 0);
+  ok("each team is a checkbox, so several can be chosen at once",
+    /teamOne\('t1'\)/.test(topen.html) && /teamOne\('t2'\)/.test(topen.html));
+
+  const t1 = draw(mk(), null, false, ["t1"]);
+  ok("choosing one team names it on the button", t1.html.indexOf("Anand") >= 0);
+  const tboth = draw(mk(), null, false, ["t1", "t2"]);
+  ok("choosing two says two of two", tboth.html.indexOf("2 of 2 teams") >= 0);
+
+  /* The two controls have to agree. Offering a name the team filter would then hide is
+     how a filter starts lying about an empty table. */
+  const narrowed = draw(mk(), null, true, ["t2"]);
+  /* Asserted on the picker's own checkboxes, not on the names anywhere in the page: the
+     table body lists agents too, so a plain name search would pass while the picker was
+     still wrong. */
+  ok("the agent picker only offers agents from the chosen team",
+    /pickOne\('2'\)/.test(narrowed.html) &&
+    !/pickOne\('1'\)/.test(narrowed.html) &&
+    !/pickOne\('3'\)/.test(narrowed.html));
+
+  /* A team filter that empties the table must say it was the team, not the floor. */
+  const temptied = draw(mk({ rows: [], totals: Object.assign({}, mk().totals, { agents: 0, talkMs: 0 }) }),
+    null, false, ["t2"]);
+  ok("an empty team result blames the team filter",
+    temptied.html.indexOf("Nothing on the phone this day for that team") >= 0);
+  const bothEmpty = draw(mk({ rows: [], totals: Object.assign({}, mk().totals, { agents: 0, talkMs: 0 }) }),
+    ["1"], false, ["t2"]);
+  ok("and with both filters on it names both",
+    bothEmpty.html.indexOf("that team and that agent") >= 0);
+
+  ok("an agent is not shown a team picker either",
+    draw(mk({ you: { email: "a@topmate.io", role: "agent", scope: "you" } })).html
+      .indexOf("teamwrap") < 0);
+
+  ok("the team filter is carried in the address bar, so a filtered view is a link",
+    /teams=/.test(tsrc) && /q\.get\("teams"\)/.test(tsrc));
+  ok("and the team is held as a team, not frozen into a list of agent ids",
+    /TEAMS\.length \? "&teams="/.test(tsrc));
+  /* An agent the team filter no longer shows must not stay picked, or the table empties
+     from a control the page has stopped displaying. */
+  ok("changing team drops agents that team no longer shows",
+    /function prunePick\(\)/.test(tsrc) && /prunePick\(\);/.test(tsrc));
 }
 
 /* Signing out.

@@ -1803,3 +1803,52 @@ cost four months here.
 
 **A checker that shares a dependency with the thing it checks is not a checker.** The drift
 check was meant to be the guard and went down with the same line of code.
+
+---
+
+## The team filter, and four ways the tests were lying
+
+25 September 2026. The talktime report grew a team filter beside the agent picker. The
+filter itself is small. Getting it tested honestly took four separate repairs, and every
+one of them was a test that looked green while checking nothing.
+
+**Scope builds the roster. Filters only ever narrow what survived it.**
+
+`talkDay` gates the roster on `inScope` alone, then applies `keep(id) = inPick(id) &&
+inTeam(id)` to the result. Rows, the change log and the WhatsApp and meeting detail all
+answer to that same `keep`. Two filters combine with **and**, never **or**: with **or**,
+either filter re-admits what the other removed, and a team filter becomes a route onto
+another manager's floor.
+
+**The suite could not have caught that.** `run-tests.sh` runs with `AUTH_ON` off, where
+`talkScope` hands every request `role: "hr"` and `ids: null`. Every one of the 330 endpoint
+tests is therefore unscoped. Applying the team filter *before* scope was tried deliberately
+and the entire suite stayed green. A rule that only bites when `AUTH_ON` is on is a rule no
+endpoint test can reach, so the ordering is asserted against the source in `audit2`, which
+is the only level that can still see it. That section names the reason, so nobody later
+"simplifies" it into an HTTP test that proves nothing.
+
+**A fixture where every case is the same case tests one case.** `fixtures/make.js` had two
+teams and both were on the talktime roster. A picker built correctly from the scoped roster
+and a broken one listing the whole org produced identical output, so no test could tell
+them apart. `Team Ghost` exists in the fixture for exactly one reason: it is in the org and
+never on the floor. Adding it is what turned that assertion from decoration into a test.
+
+**`ORG.teams` and `cn2Teams()` are not the same thing and must not both be used.**
+`talkDay` read team labels straight from `ORG.teams` while `talkScope`, which decides who
+you are allowed to see, read them from `cn2Teams()`. In production they are the same object
+so it worked. Under fixtures they diverge: scope saw teams, the ledger saw none, every
+talktime roster came back with a blank team, and the team filter had nothing to act on.
+Labels and scope now read from one place, because two sources can disagree and one cannot.
+
+**Code after `process.exit()` is not a test, it is a comment.** The new `audit2` section
+was appended to the end of the file, below `process.exit(bad?1:0)`. It parsed, the file
+grew by fifty lines, the suite said "all clear", and none of it ran. It was caught only
+because the expected output was missing from the console. Anything appended to `audit2`
+goes **above** the summary line, and a new check that does not appear in the output has not
+passed, it has not run.
+
+**Corollary, learned the same day: a check that cannot fail is worse than no check.** One
+assertion in the first draft tested a regex against the empty string. It passed, it would
+always have passed, and it was deleted rather than shipped. Every check added here was
+proved by breaking the thing it guards and watching it go red first.

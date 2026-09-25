@@ -2,12 +2,16 @@
 /* A quick, sceptical sweep for the classes of defect that have actually bitten:
    identifiers used but never defined, and column counts that disagree. */
 const fs=require("fs"),vm=require("vm"),path=require("path");
+/* The repo, wherever it happens to be checked out. This was pinned to /tmp/repo, so the
+   suite silently skipped or crashed anywhere else, which is precisely the class of quiet
+   failure this file was written to catch. */
+const ROOT=path.join(__dirname,"..");
 let bad=0;
 function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;console.log("  FAIL "+name+(extra?"  ->  "+extra:""));} }
 
 // ---- 1. every page script parses and every top-level function is reachable ---------
 ["callnow2.html","vp.html","callnow.html","agent.html","index.html","talktime.html"].forEach(function(f){
-  const p=path.join("/tmp/repo/public",f);
+  const p=path.join(path.join(ROOT,"public"),f);
   if(!fs.existsSync(p))return;
   const html=fs.readFileSync(p,"utf8");
   const blocks=(html.match(/<script>([\s\S]*?)<\/script>/g)||[]);
@@ -20,7 +24,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 
 // ---- 2. duplicate function declarations in one script -----------------------------
 ["callnow2.html","vp.html"].forEach(function(f){
-  const html=fs.readFileSync(path.join("/tmp/repo/public",f),"utf8");
+  const html=fs.readFileSync(path.join(path.join(ROOT,"public"),f),"utf8");
   const code=html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const names={};
   [...code.matchAll(/^\s*function ([a-zA-Z_$][\w$]*)\s*\(/gm)].forEach(function(m){
@@ -31,7 +35,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 
 // ---- 3. the queue's header count must equal the cells it renders -------------------
 {
-  const code=fs.readFileSync("/tmp/repo/public/callnow2.html","utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+  const code=fs.readFileSync(path.join(ROOT,"public","callnow2.html"),"utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
   const qv=code.slice(code.indexOf("function queueView"),code.indexOf("function leadCard"));
   const mine=(qv.match(/\["","",0\]/g)||[]).length;
   chk("the queue defines both a scoped and a full column set", mine>=4, "found "+mine+" spacer columns");
@@ -44,7 +48,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 
 // ---- 4. server: no await outside async, no handler that can throw before replying --
 {
-  const src=fs.readFileSync("/tmp/repo/server.js","utf8");
+  const src=fs.readFileSync(path.join(ROOT,"server.js"),"utf8");
   chk("no stray await in a non-async express handler",
     !/app\.(get|post)\([^,]+,\s*function\s*\([^)]*\)\s*\{[^}]*await /.test(src));
   // GET and POST on one path is a pair, not a duplicate. Compare method AND path.
@@ -61,7 +65,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 {
   const ALLOWED = ["asJson", "wkCell"];
   ["vp.html", "callnow2.html"].forEach(function(f){
-    const code = fs.readFileSync(path.join("/tmp/repo/public", f), "utf8")
+    const code = fs.readFileSync(path.join(path.join(ROOT,"public"), f), "utf8")
       .match(/<script>([\s\S]*?)<\/script>/)[1];
     const dead = [...code.matchAll(/^\s*function ([a-zA-Z_$][\w$]*)\s*\(/gm)]
       .map(function(m){ return m[1]; })
@@ -73,13 +77,13 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 
 // ---- 6. the pure model still holds its invariants ---------------------------------
 {
-  const cn2=require("/tmp/repo/lib/cn2");
+  const cn2=require(path.join(ROOT,"lib","cn2"));
   const day=cn2.dayBoundsFor(Date.UTC(2026,7,6,6,30));
   const r={id:"1",stage:"counselled",fu:0,last:0,forms:[],score:0,intl:false,owner:"9",creator:"c",counted:true};
   const c=cn2.classify(r,day,{work:cn2.workDaySet("1,2,3,4,5,6"),scoreMin:6});
   chk("a lead lands in exactly one section", ["n","a","d"].indexOf(c.sec)>=0, c.sec);
   chk("pack and unpack round trip", JSON.stringify(cn2.unpack(cn2.pack(c)).why)===JSON.stringify(c.why));
-  const rev=require("/tmp/repo/lib/revenue");
+  const rev=require(path.join(ROOT,"lib","revenue"));
   chk("zero() covers every key the aggregate writes",
     rev.KEYS.every(function(k){ return rev.zero()[k]===0; }));
 }
@@ -95,7 +99,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
    So: every route literal in the file has to be a live registration and not text sitting
    inside a comment. Comments are stripped and the two lists compared. */
 {
-  const src = fs.readFileSync(path.join("/tmp/repo", "server.js"), "utf8");
+  const src = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
   const live = src
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
@@ -129,7 +133,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
 {
   ["server.js", "lib/cn2.js", "lib/counsel.js", "lib/talklock.js", "lib/idle.js",
    "lib/revenue.js", "lib/selfcheck.js", "lib/role.js"].forEach(function(f){
-    const p = path.join("/tmp/repo", f);
+    const p = path.join(ROOT, f);
     if (!fs.existsSync(p)) return;
     const src = fs.readFileSync(p, "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -151,7 +155,7 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
    goes through hsMs, which refuses anything that is not a real timestamp and says whose
    fault it is. */
 {
-  const src = fs.readFileSync(path.join("/tmp/repo", "server.js"), "utf8");
+  const src = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
   chk("hsMs exists and refuses anything that is not a timestamp",
     /function hsMs\(v, what\)/.test(src) && src.indexOf("This is our bug, not HubSpot's.") > 0);
   const bare = [...src.matchAll(/operator: "(?:GTE|LT|GT|LTE)", value: String\((?:day|b|dayR|fromMs|toMs)[.\w]*\)/g)];
@@ -166,6 +170,59 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
     threw && threw.indexOf("NaN") >= 0 && threw.indexOf("our bug") >= 0, String(threw));
   chk("and a real timestamp passes straight through",
     fn(1789410600000, "x") === "1789410600000");
+}
+
+/* ---- 11. scope decides the roster, filters only narrow it ------------------------
+
+   The talktime filters are the only controls on this site that change whose figures a
+   person is looking at, so the ordering is the security of the endpoint: scope builds
+   the roster, and the agent pick and the team filter are applied to whatever survived it.
+   Reversed, or OR'd together, a team filter becomes a way onto another manager's floor.
+
+   This is asserted against the source rather than over HTTP because the suite runs with
+   AUTH_ON off, where talkScope hands every request role "hr" with ids null. Every request
+   in endpoints.test.js is therefore unscoped, and a filter that widened past scope would
+   pass all 330 of them. It was proved: applying the team filter before scope broke nothing
+   the suite could see. So the guard lives here, at the only level that can still see it. */
+{
+  const src = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
+  const body = src.split("async function talkDay(")[1] || "";
+  const talk = body.slice(0, body.indexOf("\napp.get(\"/api/talktime\""));
+
+  chk("talkDay exists to audit", talk.length > 400, String(talk.length));
+
+  /* The roster line must gate on scope and nothing else. */
+  const rosterLine = (talk.match(/const roster = rows\.filter\([^\n]*\n?[^\n]*/) || [""])[0];
+  chk("the roster is built from scope alone",
+    /inScope\(r\.id\)\s*&&\s*\(r\.talkMs \|\| r\.calls\)/.test(rosterLine), rosterLine.trim());
+  chk("and no filter is allowed to widen it",
+    rosterLine.indexOf("inTeam") < 0 && rosterLine.indexOf("inPick") < 0 &&
+    rosterLine.indexOf("||") === rosterLine.lastIndexOf("||"),
+    rosterLine.trim());
+
+  /* The two filters intersect. OR would let either one re-admit what the other removed. */
+  chk("the pick and the team filter are combined with and, never or",
+    /const keep = function\(id\)\{ return inPick\(id\) && inTeam\(id\); \};/.test(talk),
+    (talk.match(/const keep = function[^\n]*/) || ["missing"])[0].trim());
+
+  /* Rows, the change log and the expander detail all answer to the same filter. Any one
+     of them left on inPick alone would leak a colleague's calls into an expander while
+     the table above it looked correctly filtered. */
+  chk("the rows are narrowed by that combined filter",
+    /rows = roster\.filter\(function\(r\)\{ return keep\(r\.id\); \}\);/.test(talk));
+  chk("the change log is narrowed by it too",
+    /inScope\(e\.owner\) && keep\(e\.owner\)/.test(talk));
+  chk("and so is the WhatsApp and meeting detail",
+    /inScope\(x\.owner\) && keep\(x\.owner\)/.test(talk));
+
+  /* The picker is offered from the scoped roster, never from the org. */
+  chk("the teams offered are derived from the scoped roster, not from cn2Teams",
+    /roster\.forEach\(function\(r\)\{ seen\[r\.teamId \|\| "none"\]/.test(talk) &&
+    talk.split("teams: (function()")[1].indexOf("cn2Teams()") < 0);
+
+  /* Labels and scope must read teams from one place or they can disagree. */
+  chk("talkDay reads teams from the same source talkScope does",
+    /cn2Teams\(\)\.forEach\(function\(t\)\{/.test(talk) && talk.indexOf("(ORG.teams || [])") < 0);
 }
 
 console.log("\n"+(bad?bad+" failed":"all clear"));
