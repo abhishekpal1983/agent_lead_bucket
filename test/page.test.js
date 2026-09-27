@@ -1371,5 +1371,40 @@ ok("the month picker and the page filters both reload it",
     cn.indexOf('.catch(function(){});') >= 0 && cn.indexOf('r.ok?r.json():null') >= 0);
 }
 
+/* The head band degrades, it does not snap.
+
+   It was three fixed grid columns with one media query dropping the whole band to a
+   single column at max-width:1250px. A 1238px window, an ordinary laptop with the browser
+   not maximised, therefore lost the side by side layout entirely and put the filters back
+   underneath the cards, which is the arrangement the band exists to replace. Twelve pixels
+   decided it and nothing on the page explained why.
+
+   Measured before the change: beside at 1300, stacked at 1238. After: beside from 1000
+   up, then the chips drop, then the filters. So what is asserted here is the absence of a
+   hard breakpoint, because any breakpoint is a width at which somebody is on the wrong
+   side of it by a few pixels. */
+{
+  const cn = fs.readFileSync(path.join(__dirname, "..", "public", "callnow2.html"), "utf8");
+  const band = cn.slice(cn.indexOf(".wrap .headband{"), cn.indexOf(".wrap .viewstrip{"));
+
+  ok("the head band wraps rather than switching layout at a width",
+    /\.wrap \.headband\{[^}]*display:flex/.test(band) && /flex-wrap:wrap/.test(band),
+    band.slice(0, 120));
+  ok("and nothing drops it to one column at a fixed width",
+    band.indexOf("@media") < 0 && band.indexOf("1250px") < 0 &&
+    cn.indexOf("@media (max-width:1250px){ .wrap .headband") < 0);
+  /* Basis, not width: the columns shrink to fit instead of clipping or overflowing. */
+  ok("each column is given a basis it can grow and shrink from",
+    /\.wrap \.headband > \.heroside\{flex:1 1 \d+px/.test(band) &&
+    /\.wrap \.headband > \.bar\{flex:1 1 \d+px/.test(band),
+    (band.match(/flex:1 1 \d+px/g) || []).join(", ") || "no flex basis found");
+  /* The whole point of the band: cards two up on the left, controls beside them. */
+  ok("the cards stay two up inside their column",
+    /\.wrap \.herorow\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(cn));
+  /* A grid template left behind would fight the flex rules and only show up at one width. */
+  ok("no leftover grid template on the band",
+    band.indexOf("grid-template-columns") < 0, band.slice(0, 200));
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

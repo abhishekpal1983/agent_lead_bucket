@@ -1852,3 +1852,36 @@ passed, it has not run.
 assertion in the first draft tested a regex against the empty string. It passed, it would
 always have passed, and it was deleted rather than shipped. Every check added here was
 proved by breaking the thing it guards and watching it go red first.
+
+---
+
+## A breakpoint is a width at which somebody is wrong by twelve pixels
+
+27 September 2026. The Call Now head band is cards on the left, filters and chips beside
+them. It was built as three fixed grid columns with one media query dropping the whole
+band to a single column at `max-width:1250px`.
+
+A 1238px window, which is an ordinary laptop with the browser not maximised, therefore got
+no side by side layout at all. The filters went back underneath the cards, which is the
+exact arrangement the band was built to replace. Nothing was broken, nothing logged, and
+the page looked deliberate. It was reported as "the design changed", and the first two
+guesses, a role problem and a regression, were both wrong.
+
+Measured, before: beside at 1300, stacked at 1238. Twelve pixels decided it.
+
+**The rule: a layout that snaps has a width at which it is wrong, and somebody is always
+sitting at that width.** The band is now flex wrap with a basis per column. It gives up the
+chips column first, then the filters, and there is no width at which it changes its mind
+all at once. Measured after: beside from 1000 up, two lines from 900, stacked at 375.
+
+**Assert the absence of the breakpoint, not the presence of the fix.** `page.test.js` fails
+if `.wrap .headband` regains a `@media` rule or a `grid-template-columns`, because any
+future breakpoint reintroduces the same class of fault at some other width. Proved by
+putting the old rule back and watching three checks go red.
+
+**And the corollary for reports like this one.** Three things were reported as broken that
+day and none of them were: the VP view was complete but folded behind a collapsed section,
+the team filter deploy was byte perfect, and this was a breakpoint rather than a redesign.
+Two of the three were only settled by measuring the live page rather than reading the code.
+When somebody says a page looks different, get the viewport width and the rendered geometry
+before touching anything.

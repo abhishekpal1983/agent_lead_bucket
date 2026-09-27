@@ -517,15 +517,27 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
    Four cards across the full width was a screenful of chrome for four numbers, with the
    filters stranded underneath. Two by two on the left, controls beside them on the right,
    and the band is about half as tall. Everything below gets that height back. */
-.wrap .headband{display:grid !important;grid-template-columns:minmax(290px,330px) minmax(0,1fr) minmax(0,1fr) !important;
+/* Fluid, not a hard switch.
+
+   This was three fixed grid columns with a single media query dropping the whole band to
+   one column at 1250px. A 1238px window, which is an ordinary laptop with the browser not
+   maximised, therefore lost the side by side layout completely and stranded the filters
+   back underneath the cards, which is the exact arrangement this band was built to
+   replace. Twelve pixels decided it, and nothing on the page said why.
+
+   Flex wrap gives the columns up one at a time instead: three across while there is room,
+   then the chips drop to their own line, then the filters. There is no width at which the
+   layout snaps, so there is no width at which it can be wrong by twelve pixels. */
+.wrap .headband{display:flex !important;flex-wrap:wrap !important;
   gap:10px !important;align-items:stretch !important;margin-bottom:10px !important}
-.wrap .headband.solo{grid-template-columns:minmax(290px,330px) minmax(0,1fr) !important}
 .wrap .headband > *{margin-bottom:0 !important;min-width:0}
-.wrap .headband .heroside{display:flex;flex-direction:column}
+/* Basis, not a fixed width: each column keeps its share and shrinks rather than clipping.
+   The cards sit 2x2 inside heroside at any of these widths. */
+.wrap .headband > .heroside{flex:1 1 300px;display:flex;flex-direction:column}
+.wrap .headband > .bar{flex:1 1 330px}
 .wrap .headband .heroside > .herorow{margin-bottom:0 !important}
 /* The footnote sits at the bottom of its column, so all three columns end level. */
 .wrap .headband .heroside > .hnote{margin-top:auto !important;padding-top:6px}
-@media (max-width:1250px){ .wrap .headband,.wrap .headband.solo{grid-template-columns:1fr !important} }
 
 /* The view switch. It was one line, tabs then caption, which worked at three tabs and
    broke at five: the strip lives in a 330px column and the last tab was cut in half.
@@ -586,7 +598,8 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .top{grid-template-columns:1fr !important}
 /* Stage and owner chips: label and chips on one line, not stacked. */
 .wrap .top .bar:last-child{align-items:center !important}
-@media (max-width:1100px){ .wrap .herorow{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
+/* Removed: .wrap .herorow is already two columns at every width (see above), so this
+   restated the rule it was overriding and read as though something changed at 1100px. */
 /* Churn band, read straight off the row: attempts in this stage by the agent holding it. */
 /* Strong enough to read at a glance down a long list. A tint you have to look for is a
    tint nobody uses. */
