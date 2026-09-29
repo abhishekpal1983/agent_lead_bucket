@@ -1924,3 +1924,18 @@ with the real CSS and the longest live values and reading min-content width, the
 the Call Now head band was settled two days earlier. A floor derived from content stacks
 at exactly the width where two tables stop fitting. A floor someone chose stacks wherever
 they guessed, and somebody sits at that width.
+
+**Then, having measured it, change the number rather than accept it.** 628 stacked the two
+tables on a 1246px laptop. Correct and readable, but it gives up the side by side reading
+these two tables exist for. So the tables were made to need less: headers abbreviated with
+the full wording moved to `title`, and the name column capped at 168px with ellipsis and
+its full value in `title`. `kartikkapoorconsultation` was setting the width of a column,
+and through it whether two tables could share a row at all. Min-content fell to 559 and
+they fit at 1246 with room over. Measuring is not only how you pick a number, it is how
+you find out which piece of content is the one costing you the layout.
+
+**One thing that fell out of it: `esc()` was not safe in an attribute.** It escapes `&` and
+`<` and leaves double quotes alone, which is right between tags and wrong inside
+`title="..."`. The truncated names needed a title, so `escA()` now exists for that. A
+creator name is external data and it is not this page's business whether HubSpot happens
+to allow a quote in one.

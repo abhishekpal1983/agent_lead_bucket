@@ -35,20 +35,31 @@ tr.tot td{background:#F9FAFB;font-weight:700}
 .cg{color:#059669}.ci{color:#4338CA}.ca{color:#D97706}.cr{color:#DC2626}.mut{color:#9CA3AF}
 /* Two tables share a row only when both genuinely fit.
 
-   420px was a guess and the tables need 628: measured min-content of the widest of
-   them, six nowrap columns of creator names and rupee amounts. At a 1246px window that
-   gave two tracks of 577 holding tables of 627 and 606, and the left one ran 50px
-   straight over the right. It was worse unattended lower down: 105px at 600, 207px at
-   375, because nothing in this file was ever responsive.
+   420px was a guess. Measured, the widest of these tables needed 628: six nowrap
+   columns of creator names and rupee amounts. At a 1246px window that gave two tracks
+   of 577 holding tables of 627 and 606, and the left one ran 50px straight over the
+   right. It was worse unattended lower down: 105px at 600, 207px at 375, because
+   nothing in this file was ever responsive.
+
+   628 would have stacked them on a 1246px laptop, which is readable but gives up the
+   side by side comparison these two tables exist for. So the tables were made to need
+   less instead: headers abbreviated with the full wording on hover, and the name column
+   truncated to 168px with the full value in its title. That took min-content to 559,
+   measured the same way, and two of them now fit at 1246 with room to spare.
 
    min() so the floor can never exceed the container and force overflow on a phone. */
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(628px,100%),1fr));gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(559px,100%),1fr));gap:14px}
 /* The second half of the fix, and the half that makes overlap structurally impossible.
    A grid item defaults to min-width:auto, so a table wider than its track neither
    shrinks nor scrolls: it paints over the column beside it. min-width:0 lets the track
    win, and overflow-x gives the table its own scroller instead of its neighbour's
    space. Any future column added to any of these tables is now contained by this. */
 .grid2>*{min-width:0;overflow-x:auto}
+/* Only inside the paired tables. A creator name like kartikkapoorconsultation set the
+   width of the whole column and with it whether two tables could share a row at all.
+   The full name is in the title attribute, so nothing is lost, and the month table
+   above these is full width with short labels so it is deliberately not included. */
+.grid2 td.nm{max-width:168px;overflow:hidden;text-overflow:ellipsis}
 .pill{display:inline-block;background:#EEF2FF;color:#4338CA;border-radius:10px;padding:0 8px;font-size:10px;font-weight:600}
 .load{padding:50px;text-align:center;color:#9CA3AF}
 .spin{width:26px;height:26px;border:3px solid #E5E7EB;border-top-color:#6366F1;border-radius:50%;margin:0 auto 12px;animation:sp .9s linear infinite}
@@ -162,6 +173,10 @@ tr.tot td{background:#F9FAFB;font-weight:700}
 </div>
 <script>
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+/* esc() is for text between tags and leaves double quotes alone, which is correct there
+   and wrong inside title="...". A creator name is external data: it is not this page's
+   business whether HubSpot allows a quote in one. */
+function escA(s){return esc(s).replace(/"/g,"&quot;");}
 function inr(n){return "₹"+Math.round(n||0).toLocaleString("en-IN");}
 function rupee(v){v=Math.round(v||0);return v>=1e7?(v/1e7).toFixed(2)+"Cr":v>=1e5?(v/1e5).toFixed(1)+"L":inr(v);}
 function mn(m){if(!m)return "";const d=new Date(m+"-15");return isNaN(d)?m:d.toLocaleString("en-IN",{month:"short",year:"2-digit"});}
@@ -211,13 +226,19 @@ async function render(){
     const L=j.loanSplit||{byMonth:[],byCreator:[],byAgent:[],types:[]};
     function share(l,d){const t=l+d;return t?Math.round(100*l/t)+"%":"–";}
     function lrow(x,label){
-      return "<tr"+(label===false&&F.m===x.k?' style="background:#EEF2FF"':"")+"><td>"+(label===false?mn(x.k):esc(x.k))+"</td>"+
+      const nm=(label===false?mn(x.k):esc(x.k));
+      return "<tr"+(label===false&&F.m===x.k?' style="background:#EEF2FF"':"")+
+        '><td class="nm" title="'+escA(label===false?mn(x.k):x.k)+'">'+nm+"</td>"+
         "<td>"+x.ln+"</td><td>"+inr(x.lr)+"</td><td>"+x.dn+"</td><td>"+inr(x.dr)+"</td>"+
         '<td style="font-weight:700" class="'+(x.lr>x.dr?"ca":"")+'">'+share(x.lr,x.dr)+"</td></tr>";
     }
     function ltbl(arr,hdr,isMonth){
       const T=arr.reduce(function(t,x){t.ln+=x.ln;t.lr+=x.lr;t.dn+=x.dn;t.dr+=x.dr;return t;},{ln:0,lr:0,dn:0,dr:0});
-      return "<table><tr><th>"+hdr+'</th><th>Loan pays</th><th>Loan revenue</th><th>Direct pays</th><th>Direct revenue</th><th>Loan % of rev</th></tr>'+
+      /* Abbreviated so two of these tables fit side by side on a laptop. The full
+         wording is on hover rather than deleted. */
+      return "<table><tr><th>"+hdr+'</th><th title="Loan payments">Loan pays</th>'+
+        '<th title="Loan revenue">Loan rev</th><th title="Direct payments">Direct pays</th>'+
+        '<th title="Direct revenue">Direct rev</th><th title="Loan share of revenue">Loan %</th></tr>'+
         arr.slice(0,isMonth?99:14).map(function(x){return lrow(x,isMonth?false:true);}).join("")+
         '<tr class="tot"><td>TOTAL</td><td>'+T.ln+"</td><td>"+inr(T.lr)+"</td><td>"+T.dn+"</td><td>"+inr(T.dr)+"</td><td>"+share(T.lr,T.dr)+"</td></tr></table>";
     }

@@ -1432,11 +1432,24 @@ ok("the month picker and the page filters both reload it",
   ok("the pairing floor can never exceed the container",
     /\.grid2\{[^}]*minmax\(min\(\d+px,100%\),1fr\)/.test(css),
     (css.match(/\.grid2\{[^}]*\}/) || ["missing"])[0]);
+  /* 559 is the measured min-content after the headers were abbreviated and the name
+     column truncated; it was 628 before. The assertion is >= the measured figure, so
+     lowering the floor below what the content needs fails here rather than on somebody's
+     screen. Re-measure before changing it: adding a column moves this number. */
   ok("and the floor is at least the measured min-content of the widest table",
     (function(){
       const m = css.match(/\.grid2\{[^}]*minmax\(min\((\d+)px,100%\)/);
-      return !!m && Number(m[1]) >= 628;
+      return !!m && Number(m[1]) >= 559;
     })(), (css.match(/minmax\(min\(\d+px,100%\)/) || ["missing"])[0]);
+  /* The two things that bought the 69px. Lose either and 559 stops being true. */
+  ok("the name column is truncated rather than setting the table width",
+    /\.grid2 td\.nm\{[^}]*max-width:\d+px[^}]*text-overflow:ellipsis/.test(css),
+    (css.match(/\.grid2 td\.nm\{[^}]*\}/) || ["missing"])[0]);
+  ok("and the truncated name keeps its full value in a title",
+    /class=\"nm\" title='\+escA\(/.test(pa) || /class="nm" title/.test(pa));
+  /* esc() does not escape quotes, so it cannot be what fills a title attribute. */
+  ok("the title attribute is escaped for an attribute, not for text",
+    /function escA\(s\)\{return esc\(s\)\.replace\(\/\"\/g,"&quot;"\)/.test(pa));
   ok("the guessed 420px floor is gone",
     css.indexOf("minmax(420px,1fr)") < 0);
   /* The file had no @media rule at all, so a phone got desktop padding and desktop
