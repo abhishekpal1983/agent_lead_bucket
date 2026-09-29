@@ -113,6 +113,15 @@ tr.tot td{background:#F9FAFB;font-weight:700}
   .ptabs button{padding:6px 13px;font-size:12.5px}
   .dflex>div{height:185px}
 }
+.dn{color:#4338CA;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:600}
+.dn:hover{background:#EEF2FF}
+#dmask{display:none;position:fixed;inset:0;background:rgba(17,24,39,.45);z-index:50}
+#dbox{position:fixed;top:6vh;left:50%;transform:translateX(-50%);width:min(920px,94vw);max-height:84vh;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);z-index:51;display:none;flex-direction:column}
+#dhead{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #E5E7EB;font-weight:700;font-size:13px}
+#dclose{margin-left:auto;border:1px solid #E5E7EB;background:#F3F4F6;border-radius:7px;padding:3px 10px;cursor:pointer;font-size:12px}
+#dbody{overflow:auto;padding:10px 16px 16px}
+#dbody table{font-size:11.5px}
+#dbody a{color:#4338CA;text-decoration:none;font-weight:600}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
@@ -171,12 +180,54 @@ tr.tot td{background:#F9FAFB;font-weight:700}
     <div id="viewConv" style="display:none"><div class="load"><div class="spin"></div>Loading conversion explorer...</div></div>
   </div>
 </div>
+<div id="dmask"></div>
+<div id="dbox"><div id="dhead"><span id="dttl"></span><span class="mut" id="dsub" style="font-weight:400"></span><button id="dclose">Close</button></div><div id="dbody"></div></div>
 <script>
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
 /* esc() is for text between tags and leaves double quotes alone, which is correct there
    and wrong inside title="...". A creator name is external data: it is not this page's
    business whether HubSpot allows a quote in one. */
 function escA(s){return esc(s).replace(/"/g,"&quot;");}
+let PORTAL=null;
+fetch("/api/meta").then(function(r){return r.json();}).then(function(m){PORTAL={u:m.uiDomain,p:m.portalId};}).catch(function(){});
+function hsLink(id,txt){
+  if(!id)return esc(txt||"(no name)");
+  if(!PORTAL)return esc(txt||id);
+  return '<a href="https://'+PORTAL.u+'/contacts/'+PORTAL.p+'/record/0-1/'+id+'" target="_blank" rel="noopener">'+esc(txt||id)+' ↗</a>';
+}
+function dn(n,q){
+  if(!n)return String(n||0);
+  return '<a class="dn" data-q="'+escA(JSON.stringify(q))+'">'+(typeof n==="number"?n.toLocaleString("en-IN"):n)+'</a>';
+}
+async function openDrill(q){
+  document.getElementById("dmask").style.display="block";
+  document.getElementById("dbox").style.display="flex";
+  document.getElementById("dttl").textContent=q.ttl||"Underlying rows";
+  document.getElementById("dsub").textContent=" · loading…";
+  const body=document.getElementById("dbody");
+  body.innerHTML='<div class="load"><div class="spin"></div></div>';
+  try{
+    let out="";
+    if(q.t==="pay"){
+      const p=new URLSearchParams({creator:q.creator||"",source:q.source||"",segment:q.segment||"",pm:q.pm||"",cls:q.cls||"",kind:q.kind||"",agent:q.agent||"",cym:q.cym||""});
+      const r=await fetch("/api/payment-drill?"+p.toString());
+      const j=await r.json();
+      document.getElementById("dsub").textContent=" · "+j.total+" payments"+(j.total>j.rows.length?" (showing newest "+j.rows.length+")":"");
+      out='<table><tr><th style="text-align:left">Date</th><th style="text-align:left">Consumer</th><th style="text-align:left">Creator</th><th style="text-align:left">Agent</th><th>Amount</th><th style="text-align:left">Type</th><th style="text-align:left">Class</th><th style="text-align:left">Service</th></tr>'+
+        j.rows.map(function(x){return '<tr><td style="text-align:left">'+esc(x.date)+'</td><td style="text-align:left">'+(x.hsId?hsLink(x.hsId,x.name):esc(x.name||"(no name)"))+'</td><td style="text-align:left">'+esc(x.creator)+'</td><td style="text-align:left">'+esc(x.agent)+'</td><td>'+inr(x.price)+'</td><td style="text-align:left">'+(x.enrol?"Enrolment":"Balance")+(x.loan?" · Loan":"")+'</td><td style="text-align:left">'+esc(x.cls)+'</td><td style="text-align:left" class="mut">'+esc(x.service)+"</td></tr>";}).join("")+"</table>"+
+        (j.note?'<div class="mut" style="margin-top:8px;font-size:11px">'+esc(j.note)+"</div>":"");
+    }else{
+      const p=new URLSearchParams({creator:q.creator||"",agent:q.agent||"",cmonth:q.cmonth||"",segment:q.segment||"",createMonth:q.createMonth||"",pmonth:q.pmonth||"",intl:q.intl||"",src:q.src||"",metric:q.metric||"counselled",emonth:q.emonth||""});
+      const r=await fetch("/api/conversion-drill?"+p.toString());
+      const j=await r.json();
+      document.getElementById("dsub").textContent=" · "+j.total+" leads"+(j.total>j.rows.length?" (showing first "+j.rows.length+")":"");
+      out='<table><tr><th style="text-align:left">Lead</th><th style="text-align:left">Creator</th><th style="text-align:left">Owner</th><th style="text-align:left">Stage</th><th>Created</th><th>First counselled</th><th>Enrolled</th></tr>'+
+        j.rows.map(function(x){return '<tr><td style="text-align:left">'+hsLink(x.id,x.name)+'</td><td style="text-align:left">'+esc(x.creator)+'</td><td style="text-align:left">'+esc(x.owner)+'</td><td style="text-align:left">'+esc(x.stage)+'</td><td>'+esc(x.created)+'</td><td>'+esc(x.couns||"—")+'</td><td>'+esc(x.enrol||"—")+"</td></tr>";}).join("")+"</table>";
+    }
+    body.innerHTML=out;
+  }catch(e){body.innerHTML='<div class="warn">Could not load: '+esc(e.message||e)+"</div>";}
+}
+function closeDrill(){document.getElementById("dmask").style.display="none";document.getElementById("dbox").style.display="none";}
 function inr(n){return "₹"+Math.round(n||0).toLocaleString("en-IN");}
 function rupee(v){v=Math.round(v||0);return v>=1e7?(v/1e7).toFixed(2)+"Cr":v>=1e5?(v/1e5).toFixed(1)+"L":inr(v);}
 function mn(m){if(!m)return "";const d=new Date(m+"-15");return isNaN(d)?m:d.toLocaleString("en-IN",{month:"short",year:"2-digit"});}
@@ -187,7 +238,7 @@ function fill(sel,list,cur,labelFn){
   const el=document.getElementById(sel);const keep=el.options[0].outerHTML;
   el.innerHTML=keep+list.map(function(x){const v=typeof x==="string"?x:x.v,l=labelFn?labelFn(x):v;return '<option value="'+esc(v)+'"'+(cur===v?" selected":"")+">"+esc(l)+"</option>";}).join("");
 }
-function brk(o){return CLS.map(function(c){return "<td>"+(o[c]||0)+"</td>";}).join("");}
+function brk(o,base){return CLS.map(function(c){return "<td>"+(base?dn(o[c]||0,Object.assign({},base,{cls:c,ttl:(base.ttl?base.ttl+" · ":"")+c})):(o[c]||0))+"</td>";}).join("");}
 async function render(){
   const qs="?month="+encodeURIComponent(F.m)+"&creator="+encodeURIComponent(F.c)+"&source="+encodeURIComponent(F.s)+"&segment="+encodeURIComponent(F.g);
   const r=await fetch("/api/payment-analysis"+qs);
@@ -204,48 +255,52 @@ async function render(){
   const rows=F.m?j.byMonth.filter(function(x){return x.month===F.m;}):j.byMonth;
   const T=rows.reduce(function(t,x){["total","enrol","bal","revenue","enrolRev","balRev"].concat(CLS).forEach(function(k){t[k]=(t[k]||0)+(x[k]||0);});return t;},{});
   const matched=T.total-(T["Not in HubSpot"]||0);
+  function pq(extra){return Object.assign({t:"pay",creator:F.c,source:F.s,segment:F.g,pm:F.m},extra||{});}
   document.getElementById("cards").innerHTML=
-    card(T.total||0,"Payments")+card(T.enrol||0,"Enrolments","first payments")+card(T.bal||0,"Balance payments")+
+    card(dn(T.total||0,pq({ttl:"Payments"})),"Payments")+card(dn(T.enrol||0,pq({kind:"enrol",ttl:"Enrolments"})),"Enrolments","first payments")+card(dn(T.bal||0,pq({kind:"bal",ttl:"Balance payments"})),"Balance payments")+
     card(rupee(T.revenue),"Revenue","price_inr")+card(rupee(T.enrolRev),"Enrolment revenue")+card(rupee(T.balRev),"Balance revenue")+
     card(T.total?Math.round(100*matched/T.total)+"%":"–","Matched in HubSpot");
-  function tbl(id,arr,nameH){
+  function tbl(id,arr,nameH,dim){
     const tot=arr.reduce(function(t,x){["total","enrol","revenue"].concat(CLS).forEach(function(k){t[k]=(t[k]||0)+(x[k]||0);});return t;},{});
+    function ov(x){var e={};e[dim]=x.name;e.ttl=x.name;return e;}
     document.getElementById(id).innerHTML="<table><tr><th>"+nameH+"</th><th>Payments</th><th>Enrol</th><th>Revenue</th>"+CLS.map(function(c){return "<th>"+c.replace(" (Old Lead)","")+"</th>";}).join("")+"</tr>"+
-      arr.map(function(x){return "<tr><td>"+esc(x.name)+"</td><td>"+x.total+"</td><td>"+x.enrol+"</td><td>"+inr(x.revenue)+"</td>"+brk(x)+"</tr>";}).join("")+
-      '<tr class="tot"><td>TOTAL</td><td>'+(tot.total||0)+"</td><td>"+(tot.enrol||0)+"</td><td>"+inr(tot.revenue)+"</td>"+brk(tot)+"</tr></table>";
+      arr.map(function(x){return "<tr><td>"+esc(x.name)+"</td><td>"+dn(x.total,pq(ov(x)))+"</td><td>"+dn(x.enrol,pq(Object.assign(ov(x),{kind:"enrol"})))+"</td><td>"+inr(x.revenue)+"</td>"+brk(x,pq(ov(x)))+"</tr>";}).join("")+
+      '<tr class="tot"><td>TOTAL</td><td>'+dn(tot.total||0,pq({ttl:"All payments"}))+"</td><td>"+dn(tot.enrol||0,pq({kind:"enrol",ttl:"All enrolments"}))+"</td><td>"+inr(tot.revenue)+"</td>"+brk(tot,pq({ttl:"All"}))+"</tr></table>";
   }
   document.getElementById("tMonth").innerHTML="<table><tr><th>Month</th><th>Payments</th><th>Enrolments</th><th>Balances</th><th>Revenue</th><th>Enrol rev</th><th>Bal rev</th>"+CLS.map(function(c){return "<th>"+c+"</th>";}).join("")+"</tr>"+
-    j.byMonth.map(function(x){return "<tr"+(F.m===x.month?' style="background:#EEF2FF"':"")+"><td>"+mn(x.month)+"</td><td>"+x.total+"</td><td>"+x.enrol+"</td><td>"+x.bal+"</td><td>"+inr(x.revenue)+"</td><td>"+inr(x.enrolRev)+"</td><td>"+inr(x.balRev)+"</td>"+brk(x)+"</tr>";}).join("")+
-    '<tr class="tot"><td>TOTAL</td><td>'+j.byMonth.reduce(function(t,x){return t+x.total;},0)+"</td><td>"+j.byMonth.reduce(function(t,x){return t+x.enrol;},0)+"</td><td>"+j.byMonth.reduce(function(t,x){return t+x.bal;},0)+"</td><td>"+inr(j.byMonth.reduce(function(t,x){return t+x.revenue;},0))+"</td><td></td><td></td>"+brk(j.byMonth.reduce(function(t,x){CLS.forEach(function(c){t[c]=(t[c]||0)+(x[c]||0);});return t;},{}))+"</tr></table>";
+    j.byMonth.map(function(x){var b=pq({pm:x.month,ttl:mn(x.month)});return "<tr"+(F.m===x.month?' style="background:#EEF2FF"':"")+"><td>"+mn(x.month)+"</td><td>"+dn(x.total,b)+"</td><td>"+dn(x.enrol,Object.assign({},b,{kind:"enrol",ttl:"Enrolments "+mn(x.month)}))+"</td><td>"+dn(x.bal,Object.assign({},b,{kind:"bal",ttl:"Balances "+mn(x.month)}))+"</td><td>"+inr(x.revenue)+"</td><td>"+inr(x.enrolRev)+"</td><td>"+inr(x.balRev)+"</td>"+brk(x,b)+"</tr>";}).join("")+
+    '<tr class="tot"><td>TOTAL</td><td>'+dn(j.byMonth.reduce(function(t,x){return t+x.total;},0),pq({pm:"",ttl:"All payments"}))+"</td><td>"+dn(j.byMonth.reduce(function(t,x){return t+x.enrol;},0),pq({pm:"",kind:"enrol",ttl:"All enrolments"}))+"</td><td>"+dn(j.byMonth.reduce(function(t,x){return t+x.bal;},0),pq({pm:"",kind:"bal",ttl:"All balances"}))+"</td><td>"+inr(j.byMonth.reduce(function(t,x){return t+x.revenue;},0))+"</td><td></td><td></td>"+brk(j.byMonth.reduce(function(t,x){CLS.forEach(function(c){t[c]=(t[c]||0)+(x[c]||0);});return t;},{}),pq({pm:"",ttl:"All months"}))+"</tr></table>";
   const note=F.m?" · showing "+mn(F.m):" · all months";
   ["mNote1","mNote2","mNote3","mNote4"].forEach(function(id){document.getElementById(id).textContent=note;});
-  tbl("tSrc",j.bySrc,"Source");
-  tbl("tCr",j.byCreator,"Creator");
-  tbl("tAg",j.byAgent,"Sales agent");
+  tbl("tSrc",j.bySrc,"Source","source");
+  tbl("tCr",j.byCreator,"Creator","creator");
+  tbl("tAg",j.byAgent,"Sales agent","agent");
   (function(){
     const L=j.loanSplit||{byMonth:[],byCreator:[],byAgent:[],types:[]};
     function share(l,d){const t=l+d;return t?Math.round(100*l/t)+"%":"–";}
-    function lrow(x,label){
+    function lrow(x,label,dim){
       const nm=(label===false?mn(x.k):esc(x.k));
+      var e={ttl:(label===false?mn(x.k):x.k)};
+      if(label===false)e.pm=x.k;else e[dim]=x.k;
       return "<tr"+(label===false&&F.m===x.k?' style="background:#EEF2FF"':"")+
         '><td class="nm" title="'+escA(label===false?mn(x.k):x.k)+'">'+nm+"</td>"+
-        "<td>"+x.ln+"</td><td>"+inr(x.lr)+"</td><td>"+x.dn+"</td><td>"+inr(x.dr)+"</td>"+
+        "<td>"+dn(x.ln,pq(Object.assign({},e,{kind:"loan",ttl:e.ttl+" · loan"})))+"</td><td>"+inr(x.lr)+"</td><td>"+dn(x.dn,pq(Object.assign({},e,{kind:"direct",ttl:e.ttl+" · direct"})))+"</td><td>"+inr(x.dr)+"</td>"+
         '<td style="font-weight:700" class="'+(x.lr>x.dr?"ca":"")+'">'+share(x.lr,x.dr)+"</td></tr>";
     }
-    function ltbl(arr,hdr,isMonth){
+    function ltbl(arr,hdr,isMonth,dim){
       const T=arr.reduce(function(t,x){t.ln+=x.ln;t.lr+=x.lr;t.dn+=x.dn;t.dr+=x.dr;return t;},{ln:0,lr:0,dn:0,dr:0});
       /* Abbreviated so two of these tables fit side by side on a laptop. The full
          wording is on hover rather than deleted. */
       return "<table><tr><th>"+hdr+'</th><th title="Loan payments">Loan pays</th>'+
         '<th title="Loan revenue">Loan rev</th><th title="Direct payments">Direct pays</th>'+
         '<th title="Direct revenue">Direct rev</th><th title="Loan share of revenue">Loan %</th></tr>'+
-        arr.slice(0,isMonth?99:14).map(function(x){return lrow(x,isMonth?false:true);}).join("")+
-        '<tr class="tot"><td>TOTAL</td><td>'+T.ln+"</td><td>"+inr(T.lr)+"</td><td>"+T.dn+"</td><td>"+inr(T.dr)+"</td><td>"+share(T.lr,T.dr)+"</td></tr></table>";
+        arr.slice(0,isMonth?99:14).map(function(x){return lrow(x,isMonth?false:true,dim);}).join("")+
+        '<tr class="tot"><td>TOTAL</td><td>'+dn(T.ln,pq({kind:"loan",ttl:"Loan payments"}))+"</td><td>"+inr(T.lr)+"</td><td>"+dn(T.dn,pq({kind:"direct",ttl:"Direct payments"}))+"</td><td>"+inr(T.dr)+"</td><td>"+share(T.lr,T.dr)+"</td></tr></table>";
     }
     const chips=L.types.map(function(t){return '<span style="display:inline-block;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:999px;padding:2px 10px;font-size:10.5px;margin:2px 4px 2px 0">'+esc(t.t)+" · "+t.n+" · "+rupee(t.rev)+"</span>";}).join("");
     document.getElementById("tLoan").innerHTML=
       '<div style="margin-bottom:10px">'+ltbl(L.byMonth,"Month",true)+"</div>"+
-      '<div class="grid2"><div>'+ltbl(L.byCreator,"Creator"+(F.m?" ("+mn(F.m)+")":""))+"</div><div>"+ltbl(L.byAgent,"Sales agent"+(F.m?" ("+mn(F.m)+")":""))+"</div></div>"+
+      '<div class="grid2"><div>'+ltbl(L.byCreator,"Creator"+(F.m?" ("+mn(F.m)+")":""),false,"creator")+"</div><div>"+ltbl(L.byAgent,"Sales agent"+(F.m?" ("+mn(F.m)+")":""),false,"agent")+"</div></div>"+
       (L.types.length?'<div style="margin-top:10px;font-size:10.5px;color:#6B7280">Booking types in scope'+(F.m?" for "+mn(F.m):"")+": "+chips+"</div>":"");
     drawCharts(j,L,T);
   })();
@@ -256,18 +311,18 @@ async function render(){
     if(!n&&!b)return '<td class="mut">—</td>';
     const op=n?(0.10+0.55*n/mx):0;
     const pct=(r.hs&&n)?'<div style="font-size:9.5px;color:#374151">'+(100*n/r.hs).toFixed(2)+"%</div>":"";
-    const bal=b?'<div style="font-size:9.5px;color:#D97706;font-weight:700">+'+b+"</div>":"";
-    return '<td style="background:rgba(5,150,105,'+op.toFixed(2)+')"><div class="heat">'+(n||"—")+"</div>"+pct+bal+"</td>";
+    const bal=b?'<div style="font-size:9.5px;color:#D97706;font-weight:700">'+dn("+"+b,pq({kind:"bal",cym:r.cym,pm:p,ttl:"Balances · created "+mn(r.cym)+" · paid "+mn(p)}))+"</div>":"";
+    return '<td style="background:rgba(5,150,105,'+op.toFixed(2)+')"><div class="heat">'+(n?dn(n,pq({kind:"enrol",cym:r.cym,pm:p,ttl:"Enrolments · created "+mn(r.cym)+" · paid "+mn(p)})):"—")+"</div>"+pct+bal+"</td>";
   }
   const tot={hs:0,enrol:0,bal:0,cols:{},balCols:{}};
   j.cohort.forEach(function(r){tot.hs+=r.hs;tot.enrol+=r.enrol;tot.bal+=r.bal;pm.forEach(function(p){tot.cols[p]=(tot.cols[p]||0)+(r.cols[p]||0);tot.balCols[p]=(tot.balCols[p]||0)+(r.balCols[p]||0);});});
   document.getElementById("tCoh").innerHTML="<table><tr><th>Create month</th><th>HS leads</th><th class='cg'>Unique enr.</th><th>Conv %</th><th class='ca'>Balances</th>"+pm.map(function(p){return "<th>"+mn(p)+"</th>";}).join("")+"</tr>"+
     j.cohort.map(function(r){
-      return "<tr><td>"+mn(r.cym)+"</td><td>"+(r.hs?r.hs.toLocaleString("en-IN"):'<span class="mut">—</span>')+'</td><td class="cg" style="font-weight:700">'+r.enrol+"</td><td>"+(r.conv===null?'<span class="mut">—</span>':(r.conv>=2?'<span class="cg">':r.conv>=0.5?'<span class="ca">':'<span class="cr">')+r.conv+"%</span>")+'</td><td class="ca" style="font-weight:600">'+r.bal+"</td>"+
+      return "<tr><td>"+mn(r.cym)+"</td><td>"+(r.hs?r.hs.toLocaleString("en-IN"):'<span class="mut">—</span>')+'</td><td class="cg" style="font-weight:700">'+dn(r.enrol,pq({kind:"enrol",cym:r.cym,pm:"",ttl:"Enrolments · leads created "+mn(r.cym)}))+"</td><td>"+(r.conv===null?'<span class="mut">—</span>':(r.conv>=2?'<span class="cg">':r.conv>=0.5?'<span class="ca">':'<span class="cr">')+r.conv+"%</span>")+'</td><td class="ca" style="font-weight:600">'+dn(r.bal,pq({kind:"bal",cym:r.cym,pm:"",ttl:"Balances · leads created "+mn(r.cym)}))+"</td>"+
         pm.map(function(p){return cohCell(r,p);}).join("")+"</tr>";
     }).join("")+
     '<tr class="tot"><td>TOTAL</td><td>'+tot.hs.toLocaleString("en-IN")+'</td><td class="cg">'+tot.enrol+"</td><td>"+(tot.hs?(100*tot.enrol/tot.hs).toFixed(2)+"%":"—")+'</td><td class="ca">'+tot.bal+"</td>"+
-    pm.map(function(p){const n=tot.cols[p]||0,b=tot.balCols[p]||0;return "<td>"+(n||"—")+(b?' <span class="ca" style="font-size:9.5px">+'+b+"</span>":"")+"</td>";}).join("")+"</tr></table>"+
+    pm.map(function(p){const n=tot.cols[p]||0,b=tot.balCols[p]||0;return "<td>"+(n?dn(n,pq({kind:"enrol",pm:p,ttl:"Enrolments paid "+mn(p)})):"—")+(b?' <span class="ca" style="font-size:9.5px">'+dn("+"+b,pq({kind:"bal",pm:p,ttl:"Balances paid "+mn(p)}))+"</span>":"")+"</td>";}).join("")+"</tr></table>"+
     (j.notMatched?'<div style="font-size:10.5px;color:#9CA3AF;margin-top:7px">Note: '+j.notMatched+" payments from consumers not found in HubSpot are excluded from this matrix; they appear in the summary tables as Not in HubSpot.</div>":"");
   document.getElementById("load").style.display="none";
   document.getElementById("app").style.display="block";
@@ -356,7 +411,7 @@ function dayView(cv){
   function dd(x){if(!x)return '<span class="mut">not matched</span>';return x;}
   const rows=days.map(function(x,i){
     const detail=x.items.map(function(it){
-      return "<tr"+(it.bal?' style="opacity:.62"':"")+"><td>"+esc(it.name)+(it.bal?' <span class="pill" style="background:#FEF3C7;color:#92400E">balance</span>':"")+"</td><td>"+esc(it.creator)+"</td><td>"+esc(it.agent)+"</td><td>"+inr(it.price)+"</td>"+
+      return "<tr"+(it.bal?' style="opacity:.62"':"")+"><td>"+(it.hsId?hsLink(it.hsId,it.name):esc(it.name))+(it.bal?' <span class="pill" style="background:#FEF3C7;color:#92400E">balance</span>':"")+"</td><td>"+esc(it.creator)+"</td><td>"+esc(it.agent)+"</td><td>"+inr(it.price)+"</td>"+
         "<td>"+(it.created?it.created+' <span class="mut">('+it.lagC+"d before)</span>":'<span class="mut">not matched</span>')+"</td>"+
         "<td>"+(it.couns?it.couns+' <span class="mut">('+it.lagK+"d before)</span>":'<span class="mut">—</span>')+"</td></tr>";
     }).join("");
@@ -394,6 +449,7 @@ async function renderConv(){
         return '<option value="'+v+'"'+(cur===v?" selected":"")+">"+l+"</option>";
       }).join("")+"</select></label>";
     }
+    function cq(extra){return Object.assign({t:"conv",creator:PCV.c,agent:PCV.a,segment:PCV.g,createMonth:PCV.cm,cmonth:PCV.km,pmonth:PCV.pm,intl:PCV.i,src:PCV.s},extra||{});}
     const anyF=PCV.c||PCV.a||PCV.g||PCV.cm||PCV.km||PCV.pm||PCV.i||PCV.s;
     const fbar='<div class="fbar">'+
       sel("pcvKM","Counselled month",o.months,PCV.km,function(m){return mn(m);})+
@@ -406,47 +462,49 @@ async function renderConv(){
       sel("pcvS","Source",o.sources||[],PCV.s)+
       (anyF?'<button id="pcvClr">Clear</button>':"")+
       '<span class="mut" style="font-size:11px">history synced '+(cv.loadedAt?new Date(cv.loadedAt).toLocaleTimeString():"")+(cv.syncing?" · re-syncing":"")+"</span></div>";
-    function tbl(arr,hdr){
+    function tbl(arr,hdr,dim,keyName){
       const hasL2E=arr.length&&arr[0].leads!==undefined;
+      function ov(b){var e={ttl:b.label};if(dim)e[dim]=b[keyName||dim];return e;}
       return '<div class="sec" style="margin-bottom:0"><h3>'+hdr+'</h3><table><tr><th>'+hdr+"</th><th>Counselled</th><th>Converted</th><th>C2E %</th>"+(hasL2E?"<th>Leads</th><th>L2E %</th>":"")+"</tr>"+
         arr.slice(0,15).map(function(b){
           const c=b.conv>=15?"cg":(b.conv<5&&b.counselled>=20?"cr":"");
           const l=b.l2e>=2?"cg":(b.l2e<0.5&&b.leads>=100?"cr":"");
-          return "<tr><td>"+esc(b.label)+"</td><td>"+b.counselled+"</td><td>"+b.converted+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td>"+
-            (hasL2E?"<td>"+(b.leads||0).toLocaleString("en-IN")+'</td><td class="'+l+'" style="font-weight:700">'+b.l2e+"%</td>":"")+"</tr>";
+          return "<tr><td>"+esc(b.label)+"</td><td>"+dn(b.counselled,cq(Object.assign(ov(b),{metric:"counselled",ttl:b.label+" · counselled"})))+"</td><td>"+dn(b.converted,cq(Object.assign(ov(b),{metric:"converted",ttl:b.label+" · converted"})))+'</td><td class="'+c+'" style="font-weight:700">'+b.conv+"%</td>"+
+            (hasL2E?"<td>"+dn(b.leads||0,cq(Object.assign(ov(b),{metric:"leads",ttl:b.label+" · all leads"})))+'</td><td class="'+l+'" style="font-weight:700">'+b.l2e+"%</td>":"")+"</tr>";
         }).join("")+"</table></div>";
     }
-    function matrix(rows,rowHdr){
+    function matrix(rows,rowHdr,mKey){
       const ems=cv.enrolMonths||[];
       if(!rows.length)return '<div class="load">No counselled leads match these filters.</div>';
       const hasL2E=rows.length&&rows[0].leads!==undefined;
+      function ov(rw,extra){var e={};e[mKey]=rw.month;return cq(Object.assign(e,extra));}
       return '<div style="overflow-x:auto"><table><tr><th>'+rowHdr+'</th><th>Counselled</th><th>Converted</th><th>C2E %</th>'+(hasL2E?"<th>Leads</th><th>L2E %</th>":"")+
         ems.map(function(m){return "<th>Enr "+mn(m)+"</th>";}).join("")+"</tr>"+
         rows.map(function(rw){
-          const l2eCell=rw.leads!==undefined?"<td>"+(rw.leads||0).toLocaleString("en-IN")+'</td><td style="font-weight:700" class="'+(rw.l2e>=2?"cg":"")+'">'+rw.l2e+"%</td>":"";
-          return "<tr><td>"+mn(rw.month)+"</td><td>"+rw.counselled+"</td><td>"+rw.converted+'</td><td class="'+(rw.conv>=15?"cg":(rw.conv<5&&rw.counselled>=20?"cr":""))+'" style="font-weight:700">'+rw.conv+"%</td>"+l2eCell+
+          const l2eCell=rw.leads!==undefined?"<td>"+dn(rw.leads||0,ov(rw,{metric:"leads",ttl:mn(rw.month)+" · all leads"}))+'</td><td style="font-weight:700" class="'+(rw.l2e>=2?"cg":"")+'">'+rw.l2e+"%</td>":"";
+          return "<tr><td>"+mn(rw.month)+"</td><td>"+dn(rw.counselled,ov(rw,{metric:"counselled",ttl:mn(rw.month)+" · counselled"}))+"</td><td>"+dn(rw.converted,ov(rw,{metric:"converted",ttl:mn(rw.month)+" · converted"}))+'</td><td class="'+(rw.conv>=15?"cg":(rw.conv<5&&rw.counselled>=20?"cr":""))+'" style="font-weight:700">'+rw.conv+"%</td>"+l2eCell+
             ems.map(function(m){
               const n=(rw.cols&&rw.cols[m])||0;
               const same=m===rw.month;
-              return "<td"+(same&&n?' style="background:#EEF2FF;font-weight:700"':"")+">"+(n?n+' <span class="mut" style="font-size:9.5px">'+(100*n/rw.counselled).toFixed(1)+"%</span>":'<span class="mut">—</span>')+"</td>";
+              return "<td"+(same&&n?' style="background:#EEF2FF;font-weight:700"':"")+">"+(n?dn(n,ov(rw,{metric:"converted",emonth:m,ttl:mn(rw.month)+" → enrolled "+mn(m)}))+' <span class="mut" style="font-size:9.5px">'+(100*n/rw.counselled).toFixed(1)+"%</span>":'<span class="mut">—</span>')+"</td>";
             }).join("")+"</tr>";
         }).join("")+"</table></div>";
     }
     el.innerHTML=fbar+
       '<div class="cards">'+
-      '<div class="card"><div class="l">Counselled leads</div><div class="v">'+cv.totals.counselled.toLocaleString("en-IN")+'</div><div class="s">first entry into a counselled stage</div></div>'+
-      '<div class="card"><div class="l">Converted</div><div class="v cg">'+cv.totals.converted.toLocaleString("en-IN")+'</div><div class="s">matched enrolment in payment tracker'+(PCV.pm?" in "+mn(PCV.pm):"")+'</div></div>'+
+      '<div class="card"><div class="l">Counselled leads</div><div class="v">'+dn(cv.totals.counselled,cq({metric:"counselled",ttl:"Counselled leads"}))+'</div><div class="s">first entry into a counselled stage</div></div>'+
+      '<div class="card"><div class="l">Converted</div><div class="v cg">'+dn(cv.totals.converted,cq({metric:"converted",ttl:"Converted leads"}))+'</div><div class="s">matched enrolment in payment tracker'+(PCV.pm?" in "+mn(PCV.pm):"")+'</div></div>'+
       '<div class="card"><div class="l">C2E: Counselling → Enrolment</div><div class="v ci">'+cv.totals.conv+"%</div></div>"+
-      '<div class="card"><div class="l">Leads in scope</div><div class="v">'+cv.totals.leads.toLocaleString("en-IN")+'</div><div class="s">all owned staged leads (counselled-month filter n/a)</div></div>'+
-      '<div class="card"><div class="l">L2E: Lead → Enrolment</div><div class="v cg">'+cv.totals.l2e+"%</div><div class=\"s\">"+cv.totals.l2eConv+" enrolled of all leads</div></div>"+
+      '<div class="card"><div class="l">Leads in scope</div><div class="v">'+dn(cv.totals.leads,cq({metric:"leads",ttl:"Leads in scope"}))+'</div><div class="s">all owned staged leads (counselled-month filter n/a)</div></div>'+
+      '<div class="card"><div class="l">L2E: Lead → Enrolment</div><div class="v cg">'+cv.totals.l2e+"%</div><div class=\"s\">"+dn(cv.totals.l2eConv,cq({metric:"l2e",ttl:"Enrolled leads"}))+" enrolled of all leads</div></div>"+
       (function(){var ds=cv.days||[];var n=ds.reduce(function(t,x){return t+x.n;},0);var rv=ds.reduce(function(t,x){return t+x.rev;},0);
         return '<div class="card"><div class="l">Revenue (enrolments in scope)</div><div class="v">'+rupee(rv)+'</div></div>'+
         '<div class="card"><div class="l">Avg ticket size</div><div class="v ci">'+(n?inr(rv/n):"–")+'</div><div class="s">'+n+" enrolments</div></div>";})()+"</div>"+
-      '<div class="sec"><h3>Counselling cohort: counselled month → enrolment month</h3><div class="sub">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal highlighted = same-month conversion; recent cohorts are still maturing.</div>'+matrix(cv.byMonth,"Counselled month")+"</div>"+
-      '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month")+"</div>"+
+      '<div class="sec"><h3>Counselling cohort: counselled month → enrolment month</h3><div class="sub">Rows: leads first counselled that month. Columns: month of their first payment. Diagonal highlighted = same-month conversion; recent cohorts are still maturing.</div>'+matrix(cv.byMonth,"Counselled month","cmonth")+"</div>"+
+      '<div class="sec"><h3>Lead create month cohort</h3><div class="sub">Same view, but rows are the month the lead was created in HubSpot.</div>'+matrix(cv.byCreateMonth,"Create month","createMonth")+"</div>"+
       dayView(cv)+
-      '<div class="grid2">'+tbl(cv.byCreator,"Creator")+tbl(cv.byAgent,"Agent (current owner)")+"</div>"+
-      '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySource||[],"Lead source (actual_source)")+tbl(cv.bySegment,"Segment")+"</div>"+
+      '<div class="grid2">'+tbl(cv.byCreator,"Creator","creator","creator")+tbl(cv.byAgent,"Agent (current owner)","agent","id")+"</div>"+
+      '<div class="grid2" style="margin-top:14px">'+tbl(cv.bySource||[],"Lead source (actual_source)","src","source")+tbl(cv.bySegment,"Segment","segment","segment")+"</div>"+
       '<div class="grid2" style="margin-top:14px">'+
       '<div class="sec" style="margin-bottom:0"><h3>Definitions</h3><div class="sub" style="margin-bottom:0">Counselled = first entry into Discovery, Program pitched, Pricing pitched, Counselled, Payment prospect, Follow up, FU-DNP or FU-RCB (from stage history of owned staged leads). Converted = lead email/phone matches an enrolment (first payment per consumer per creator) in the payment tracker. Agent = current owner. Segment from tm_student_or_professional. All six filters combine.</div></div></div>';
   }catch(e){el.innerHTML='<div class="load">Conversion unavailable: '+esc(e.message||e)+"</div>";}
@@ -466,6 +524,9 @@ document.addEventListener("change",function(e){
   if(e.target.id==="pcvS"){PCV.s=e.target.value;renderConv();}
 });
 document.addEventListener("click",function(e){
+  const a=e.target.closest&&e.target.closest("a.dn");
+  if(a){try{openDrill(JSON.parse(a.dataset.q));}catch(err){}return;}
+  if(e.target.id==="dclose"||e.target.id==="dmask"){closeDrill();return;}
   if(e.target.id==="fClr"){F.m="";F.c="";F.s="";F.g="";render();}
   if(e.target.id==="ptPay")setPView("pay");
   if(e.target.id==="ptConv")setPView("conv");

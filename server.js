@@ -872,7 +872,7 @@ async function fetchCohortRange(creator, from, to, sink){
         "are_you_a_student_or_working_professional", "email", "phone"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after };
     const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify(body) });
-    (j.results || []).forEach(r => sink(r.properties));
+    (j.results || []).forEach(r => sink(Object.assign({ id: r.id }, r.properties)));
     after = j.paging && j.paging.next && j.paging.next.after;
     await sleep(120);
   } while (after);
@@ -895,7 +895,7 @@ async function syncCohorts(){
         if (!counts[cr][ym]) counts[cr][ym] = {};
         if (!counts[cr][ym][src]) counts[cr][ym][src] = {};
         counts[cr][ym][src][seg] = (counts[cr][ym][src][seg] || 0) + 1;
-        const rec = ym + "|" + src + "|" + seg + "|" + cr;
+        const rec = ym + "|" + src + "|" + seg + "|" + cr + "|" + (p.id || "");
         const em = (p.email || "").toLowerCase();
         if (em && !emails.has(em)) emails.set(em, rec);
         const ph = normPhone(p.phone);
@@ -1782,6 +1782,95 @@ app.get("/api/payment-analysis", (req, res) => {
   });
 });
 
+/* ---------- drill downs: the rows behind any number on the payment analysis page ---------- */
+app.get("/api/payment-drill", (req, res) => {
+  const q = req.query;
+  const fCreator = q.creator || "", fSource = q.source || "", fSegment = q.segment || "";
+  const pm = q.pm || "", cls = q.cls || "", kind = q.kind || "", agent = q.agent || "", cym = q.cym || "";
+  const seen = new Set();
+  const out = [];
+  let total = 0;
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const rec = (em && COHORT.emails.get(em)) || (ph && COHORT.phones.get(ph)) || "";
+    const parts = rec ? rec.split("|") : [];
+    const rcym = parts[0] || "", rsrc = parts[1] || "", rseg = parts[2] || "", hsId = parts[4] || "";
+    const pym = (r.date || "").slice(0, 7);
+    if (!pym) return;
+    let rcls = "Not in HubSpot";
+    if (rec) rcls = rcym === pym ? "New Lead" : (rcym < pym ? "Old Lead" : "Lead After Payment");
+    const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
+    const isEnrol = !seen.has(key); seen.add(key);
+    const bt = String(r.booking_type || "").toLowerCase(), st2 = String(r.status || "").toLowerCase();
+    const isLoan = bt.indexOf("loan") >= 0 || st2.indexOf("loan") >= 0;
+    const ragent = r.sales_rep || r.owner_email || "(none)";
+    if (fCreator && (r.creator_username || "(none)") !== fCreator) return;
+    if (fSource && (rec ? rsrc : "Not in HubSpot") !== fSource) return;
+    if (fSegment && (rec ? rseg : "Unknown") !== fSegment) return;
+    if (pm && pym !== pm) return;
+    if (cls && rcls !== cls) return;
+    if (agent && ragent !== agent) return;
+    if (cym && rcym !== cym) return;
+    if (kind === "enrol" && !isEnrol) return;
+    if (kind === "bal" && isEnrol) return;
+    if (kind === "loan" && !isLoan) return;
+    if (kind === "direct" && isLoan) return;
+    total++;
+    out.push({ date: (r.date || "").slice(0, 10), name: r.consumer_name || "", creator: r.creator_username || "",
+      agent: ragent, price: r.price, cls: rcls, enrol: isEnrol, loan: isLoan,
+      service: String(r.service_title || "").slice(0, 60), status: r.status || "", hsId: hsId });
+  });
+  out.sort((a, b) => (a.date < b.date ? 1 : -1));
+  res.json({ total: total, rows: out.slice(0, 300), portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID },
+    note: !COHORT.emails.size ? "HubSpot cohort match is still syncing; record links appear once it completes." : "" });
+});
+app.get("/api/conversion-drill", (req, res) => {
+  const fCreator = req.query.creator || "", fAgent = req.query.agent || "", fMonth = req.query.cmonth || "";
+  const fSegment = req.query.segment || "", fCreate = req.query.createMonth || "", fPay = req.query.pmonth || "";
+  const fIntl = req.query.intl || "", fSrc = req.query.src || "";
+  const metric = req.query.metric || "counselled", emonth = req.query.emonth || "";
+  // enrolment identity sets, same construction as /api/conversion
+  const seen = new Set(), eEmailDate = {}, ePhoneDate = {};
+  SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
+    const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (em && !eEmailDate[em]) eEmailDate[em] = r.date;
+    if (ph && !ePhoneDate[ph]) ePhoneDate[ph] = r.date;
+  });
+  const needCouns = metric === "counselled" || metric === "converted";
+  const out = [];
+  let total = 0;
+  CACHE.contacts.forEach(c => {
+    const kts = COUNSEL.byId[c.id] || 0;
+    if (needCouns && !kts) return;
+    if (fCreator && (c.topmate_username || "(no creator)") !== fCreator) return;
+    if (fAgent && c.hubspot_owner_id !== fAgent) return;
+    if (needCouns && fMonth && ymOf(kts) !== fMonth) return;
+    if (!intlMatch(c, fIntl)) return;
+    if (!srcMatch(c, fSrc)) return;
+    if (fSegment && segOf(spRawOf(c)) !== fSegment) return;
+    const crm = ymOf(c.createdate) || "(unknown)";
+    if (fCreate && crm !== fCreate) return;
+    const em = (c.email || "").toLowerCase(), ph = normPhone(c.phone);
+    const eDate = (em && eEmailDate[em]) || (ph && ePhoneDate[ph]) || "";
+    let converted = !!eDate;
+    if (fPay && (eDate ? String(eDate).slice(0, 7) : "") !== fPay) converted = false;
+    if (emonth && (eDate ? String(eDate).slice(0, 7) : "") !== emonth) converted = false;
+    if ((metric === "converted" || metric === "l2e") && !converted) return;
+    total++;
+    if (out.length < 300) {
+      const o = CACHE.owners[c.hubspot_owner_id] || {};
+      out.push({ id: c.id, name: ((c.firstname || "") + " " + (c.lastname || "")).trim() || ("Contact " + c.id),
+        creator: c.topmate_username || "", owner: o.name || "", stage: c.contact_engagement_stage || "",
+        created: ts(c.createdate) ? new Date(ts(c.createdate)).toISOString().slice(0, 10) : "",
+        couns: kts ? new Date(kts).toISOString().slice(0, 10) : "",
+        enrol: converted ? String(eDate).slice(0, 10) : "" });
+    }
+  });
+  res.json({ total: total, rows: out, portal: { uiDomain: UI_DOMAIN, portalId: PORTAL_ID } });
+});
 app.get("/api/conversion", (req, res) => {
   const fCreator = req.query.creator || "", fAgent = req.query.agent || "", fMonth = req.query.cmonth || "";
   const fSegment = req.query.segment || "", fCreate = req.query.createMonth || "", fPay = req.query.pmonth || "";
@@ -1889,7 +1978,7 @@ app.get("/api/conversion", (req, res) => {
     if (fCreate && crm !== fCreate) return;
     const kts = COUNSEL.byId[c.id] || 0;
     if (fMonth && ymOf(kts) !== fMonth) return;
-    const rec = { created: ts(c.createdate), couns: kts };
+    const rec = { created: ts(c.createdate), couns: kts, id: c.id };
     const em2 = (c.email || "").toLowerCase(); if (em2 && !contactBy.has(em2)) contactBy.set(em2, rec);
     const ph2 = normPhone(c.phone); if (ph2 && !contactBy.has(ph2)) contactBy.set(ph2, rec);
   });
@@ -1918,7 +2007,7 @@ app.get("/api/conversion", (req, res) => {
       dm.balN++; dm.balRev += r.price;
       if (dm.items.length < 25) dm.items.push({ name: r.consumer_name || "", creator: r.creator_username || "", agent: r.sales_rep || "", price: r.price,
         created: m && m.created ? new Date(m.created).toISOString().slice(0, 10) : "", couns: m && m.couns ? new Date(m.couns).toISOString().slice(0, 10) : "",
-        lagC, lagK, bal: 1 });
+        lagC, lagK, bal: 1, hsId: m ? (m.id || "") : "" });
       return;
     }
     dm.n++; dm.rev += r.price;
@@ -1929,7 +2018,7 @@ app.get("/api/conversion", (req, res) => {
     }
     if (dm.items.length < 25) dm.items.push({ name: r.consumer_name || "", creator: r.creator_username || "", agent: r.sales_rep || "", price: r.price,
       created: m && m.created ? new Date(m.created).toISOString().slice(0, 10) : "", couns: m && m.couns ? new Date(m.couns).toISOString().slice(0, 10) : "",
-      lagC, lagK });
+      lagC, lagK, hsId: m ? (m.id || "") : "" });
   });
   const days = Object.values(dayMap).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, 62).map(x => ({
     d: x.d, n: x.n, rev: x.rev, balN: x.balN, balRev: x.balRev, total: x.rev + x.balRev, totalN: x.n + x.balN, matched: x.matched,
