@@ -1885,3 +1885,42 @@ the team filter deploy was byte perfect, and this was a breakpoint rather than a
 Two of the three were only settled by measuring the live page rather than reading the code.
 When somebody says a page looks different, get the viewport width and the rendered geometry
 before touching anything.
+
+---
+
+## A grid child with no min-width:0 does not overflow, it overlaps
+
+29 September 2026. The payment analysis page pairs two tables per row with
+`.grid2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}`. At a 1246px window
+that gives two tracks of 577px. The widest of those tables measures **628px** of
+min-content: six columns of creator names and rupee amounts, every cell `white-space:
+nowrap`. So the table was 50px wider than the cell holding it, and it printed straight
+over the column beside it. `51%` and `Siddharth Dubey` rendered on top of each other and
+read as `5Siddharth Dubey`.
+
+**Two faults, and only one of them is the number.**
+
+420 was a guess and the content needs 628, so the floor was wrong. That is a number, and
+numbers drift as columns get added.
+
+The reason a wrong number became overlapping text rather than a scrollbar is separate and
+structural: **a grid item defaults to `min-width:auto`**, so it will not shrink below its
+content, and with no `overflow` set it has nowhere to put the excess except on top of its
+sibling. `min-width:0` lets the track win. `overflow-x:auto` gives the table its own
+scroller instead of its neighbour's space. With both, any column added to any of these
+tables in future is contained whatever the floor says.
+
+Both are now asserted separately in `page.test.js`, and each was proved by breaking it:
+restoring the 420 guess fails three checks, dropping `min-width:0` fails one.
+
+**The file had no `@media` rule at all.** Not a narrow one, not a wrong one: none. A phone
+got desktop padding, desktop type and tables running off the side of the screen, and it
+had been that way since the page was written. Measured at 375px the table overran its
+container by 207px. Worth grepping the other pages for the same absence rather than
+waiting to be told.
+
+**Measure the content, do not pick a breakpoint.** 628 came from rendering the real markup
+with the real CSS and the longest live values and reading min-content width, the same way
+the Call Now head band was settled two days earlier. A floor derived from content stacks
+at exactly the width where two tables stop fitting. A floor someone chose stacks wherever
+they guessed, and somebody sits at that width.

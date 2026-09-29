@@ -1406,5 +1406,47 @@ ok("the month picker and the page filters both reload it",
     band.indexOf("grid-template-columns") < 0, band.slice(0, 200));
 }
 
+/* Payment analysis: a table must never be able to paint over the one beside it.
+
+   .grid2 paired two tables at minmax(420px,1fr). 420 was a guess; the widest of those
+   tables measures 628px of min-content, six nowrap columns of creator names and rupee
+   amounts. At a 1246px window that produced two tracks of 577 holding tables of 627 and
+   606, and the left one ran 50px over the right, printing "5" and "Siddharth Dubey" on
+   top of each other. Measured, before: overlap at 1246 and 1100, and the table running
+   off its container by 105px at 600 and 207px at 375.
+
+   Two separate faults, so two separate guards. The floor being wrong is a number that
+   can drift. A grid child defaulting to min-width:auto with no overflow is what turns a
+   wrong number into overlapping text rather than a scrollbar, and that one is
+   structural: with min-width:0 and overflow-x set, any future column added to any of
+   these tables is contained, whatever the floor says. */
+{
+  const pa = fs.readFileSync(path.join(__dirname, "..", "public", "payment_analysis.html"), "utf8");
+  const css = pa.slice(pa.indexOf("<style>"), pa.indexOf("</style>"));
+
+  ok("a grid child can shrink and scrolls its own table",
+    /\.grid2>\*\{[^}]*min-width:0/.test(css) && /\.grid2>\*\{[^}]*overflow-x:auto/.test(css),
+    (css.match(/\.grid2>\*\{[^}]*\}/) || ["missing"])[0]);
+  /* Without min(), a floor wider than the viewport forces the track wider than the
+     container, which is overflow on a phone rather than a stack. */
+  ok("the pairing floor can never exceed the container",
+    /\.grid2\{[^}]*minmax\(min\(\d+px,100%\),1fr\)/.test(css),
+    (css.match(/\.grid2\{[^}]*\}/) || ["missing"])[0]);
+  ok("and the floor is at least the measured min-content of the widest table",
+    (function(){
+      const m = css.match(/\.grid2\{[^}]*minmax\(min\((\d+)px,100%\)/);
+      return !!m && Number(m[1]) >= 628;
+    })(), (css.match(/minmax\(min\(\d+px,100%\)/) || ["missing"])[0]);
+  ok("the guessed 420px floor is gone",
+    css.indexOf("minmax(420px,1fr)") < 0);
+  /* The file had no @media rule at all, so a phone got desktop padding and desktop
+     type and the tables ran off the screen. */
+  ok("the page has a narrow-screen layer at all",
+    (css.match(/@media[^{]*\(max-width:/g) || []).length >= 2,
+    String((css.match(/@media[^{]*\(max-width:/g) || []).length) + " media rules");
+  ok("and the filter bar gives each control a full line on a phone",
+    /@media \(max-width:480px\)\{[\s\S]*?\.fbar label\{[^}]*width:100%/.test(css));
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
