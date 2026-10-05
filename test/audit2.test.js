@@ -225,5 +225,33 @@ function chk(name,cond,extra){ if(cond)console.log("  ok   "+name); else {bad++;
     /cn2Teams\(\)\.forEach\(function\(t\)\{/.test(talk) && talk.indexOf("(ORG.teams || [])") < 0);
 }
 
+/* ---- 12. an agent cannot download the workbook ----------------------------------
+
+   The buttons are hidden for an agent (page.test.js), but a hidden button is not a rule.
+   /api/talktime/export.xlsx is a URL, the page is one view of it rather than its gate,
+   and the query string that drives it is plainly guessable from the range block above.
+
+   Asserted here rather than over HTTP for the same reason as section 11: the suite runs
+   with AUTH_ON off, where talkScope hands every request role "hr", so no endpoint test
+   in this repo can produce an agent scope to be refused. */
+{
+  const src = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
+  const h = src.split('app.get("/api/talktime/export.xlsx"')[1] || "";
+  const handler = h.slice(0, h.indexOf("\napp."));
+
+  chk("the export handler exists to audit", handler.length > 300, String(handler.length));
+  chk("the workbook refuses an agent",
+    /r\.scope\.role === "agent"/.test(handler) && /res\.status\(403\)/.test(handler),
+    (handler.match(/if \(r\.scope\.role[^\n]*/) || ["missing"])[0].trim());
+  /* Before any of the work, so a refusal is not also a HubSpot read. */
+  chk("and refuses before building anything",
+    handler.indexOf('r.scope.role === "agent"') < handler.indexOf("XLSX.build"),
+    "agent check at " + handler.indexOf('r.scope.role === "agent"') +
+      ", build at " + handler.indexOf("XLSX.build"));
+  /* The day and the span stay readable. Only the file is withheld. */
+  chk("the day itself is not withheld from an agent",
+    (src.split('app.get("/api/talktime"')[1] || "").slice(0, 1200).indexOf('role === "agent"') < 0);
+}
+
 console.log("\n"+(bad?bad+" failed":"all clear"));
 process.exit(bad?1:0);

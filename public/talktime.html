@@ -396,7 +396,10 @@ function draw(){
     "Editing a record afterwards cannot change the figure, and is recorded above." +
     "</div>";
   h += "<div style='margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
-    "<button class='btn' onclick='csv()'>Download CSV for this day</button>" +
+    /* No download for an agent. They can read their own day on this page and open any
+       call behind it, which is what the figures are for; a file of it is a thing that
+       leaves the building. */
+    (one ? "" : "<button class='btn' onclick='csv()'>Download CSV for this day</button>") +
     /* A lock stops the data being edited after the fact. It must not stop a bug in the
        arithmetic being corrected, so long as the correction is on the record. */
     (j.locked && j.you.role === "vp"
@@ -421,7 +424,9 @@ function draw(){
     "<span class='mut' style='font-size:13px'>to</span>" +
     "<input type='date' id='rt' value='" + esc(RTO || j.today) + "' max='" + esc(j.today) + "'>" +
     "<button class='btn' onclick='loadRange()'>Show</button>" +
-    "<button class='btn' id='xlbtn' onclick='workbook()'>Download Excel</button>" +
+    /* Same rule as the day above. The span itself stays: an agent asking how last week
+       went is a fair question and the figures are already theirs. */
+    (one ? "" : "<button class='btn' id='xlbtn' onclick='workbook()'>Download Excel</button>") +
     "<span class='mut' id='rmsg' style='font-size:13px'></span>" +
     "</div>" +
     "<div id='rangebox'></div>" +
@@ -474,6 +479,8 @@ function relock(){
     .catch(function(e){ done("<b style='color:#8C2126'>Could not re-lock: " + esc(e.message) + "</b>"); });
 }
 function csv(){
+  /* A hidden button is a hidden button, not a rule. */
+  if (T && T.you && T.you.role === "agent") return;
   var cols = [
     ["Agent", function(r){ return r.name; }], ["Team", function(r){ return r.team || ""; }],
     ["FreJunMinutes", function(r){ return Math.round(r.callMs/60000); }],
@@ -704,6 +711,7 @@ function drawRange(){
    already knows how to make, and a second implementation in the browser is a second set of
    numbers to keep in step. */
 function workbook(){
+  if (T && T.you && T.you.role === "agent") return;
   var f = document.getElementById("rf").value, t = document.getElementById("rt").value;
   if (!f || !t) { document.getElementById("rmsg").textContent = "Pick both dates."; return; }
   if (f > t) { document.getElementById("rmsg").textContent = "The start is after the end."; return; }

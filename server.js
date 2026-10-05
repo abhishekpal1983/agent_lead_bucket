@@ -8489,6 +8489,12 @@ app.get("/api/talktime/export.xlsx", async function(req, res){
   try {
     const r = await talkRange(req);
     if (r.status !== 200) return res.status(r.status).json({ error: r.error });
+    /* Agents read their day on the page; they do not take a file of it away. Enforced
+       here and not only by hiding the button, because a button is not a rule: the URL is
+       guessable and the page is one view of this endpoint, not its gate. */
+    if (r.scope.role === "agent") {
+      return res.status(403).json({ error: "the workbook is not available on an agent login" });
+    }
     const head = ["Agent", "Team", "FreJun minutes", "Calls", "Meeting minutes", "Meetings",
       "WhatsApp minutes declared", "WhatsApp calls", "WhatsApp calls with no length",
       "Total minutes"];

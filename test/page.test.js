@@ -1333,6 +1333,29 @@ ok("the month picker and the page filters both reload it",
   ok("and with both filters on it names both",
     bothEmpty.html.indexOf("that team and that agent") >= 0);
 
+  /* Downloads are a manager's. An agent reads their own day on the page and can open
+     any call behind it, which is what the figures are for. A file of it is a thing that
+     leaves the building, so it is not offered, and the hidden button is not the only
+     thing stopping it: both functions refuse an agent, and the workbook endpoint does
+     too (endpoints.test.js). A button is not a rule. */
+  {
+    const agentView = draw(mk({ you: { email: "a@topmate.io", role: "agent", scope: "you" } }));
+    const mgrView = draw(mk());
+    ok("an agent is offered no CSV download",
+      agentView.html.indexOf("Download CSV") < 0, "found the CSV button on an agent view");
+    ok("and no Excel download",
+      agentView.html.indexOf("Download Excel") < 0 && agentView.html.indexOf("xlbtn") < 0);
+    /* The span itself stays. Asking how last week went is a fair question and the
+       figures are already theirs. */
+    ok("but the range of days is still theirs to look at",
+      agentView.html.indexOf("A range of days") >= 0);
+    ok("a manager still gets both downloads",
+      mgrView.html.indexOf("Download CSV") >= 0 && mgrView.html.indexOf("Download Excel") >= 0);
+    ok("and neither function will run for an agent even if called directly",
+      /function csv\(\)\{\s*\/\*[\s\S]*?\*\/\s*if \(T && T\.you && T\.you\.role === "agent"\) return;/.test(tsrc) &&
+      /function workbook\(\)\{\s*if \(T && T\.you && T\.you\.role === "agent"\) return;/.test(tsrc));
+  }
+
   ok("an agent is not shown a team picker either",
     draw(mk({ you: { email: "a@topmate.io", role: "agent", scope: "you" } })).html
       .indexOf("teamwrap") < 0);
