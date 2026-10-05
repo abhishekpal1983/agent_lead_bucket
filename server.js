@@ -813,6 +813,15 @@ function ymOf(v){
   return "";
 }
 function normPhone(v){ const d = String(v || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; }
+function fqOf(ym){
+  // Indian fiscal quarters: QTR 1 = Apr May Jun. ym is "YYYY-MM".
+  if (!ym || ym.length < 7) return { id: "", label: "" };
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  const qi = m >= 4 ? Math.floor((m - 4) / 3) + 1 : 4;
+  const fy = m >= 4 ? y : y - 1;
+  return { id: "FY" + fy + "-Q" + qi,
+    label: "QTR " + qi + " (" + ["AMJ", "JAS", "OND", "JFM"][qi - 1] + ") FY" + String(fy).slice(2) + "-" + String(fy + 1).slice(2) };
+}
 function normSrc(v){
   const s = String(v || "").trim().toLowerCase();
   if (!s) return "unknown";
@@ -1698,8 +1707,8 @@ app.get("/api/payment-analysis", (req, res) => {
   const byMonth = {}, bySrc = {}, byCreator = {}, byAgent = {};
   pays.forEach(p => {
     if (!byMonth[p.pym]) byMonth[p.pym] = blank(); acc(byMonth[p.pym], p);
-    const mSel = req.query.month || "";
-    if (!mSel || p.pym === mSel) {
+    const mSel = req.query.month || "", qSel = req.query.qtr || "";
+    if ((!mSel || p.pym === mSel) && (!qSel || fqOf(p.pym).id === qSel)) {
       if (!bySrc[p.src]) bySrc[p.src] = blank(); acc(bySrc[p.src], p);
       if (!byCreator[p.creator]) byCreator[p.creator] = blank(); acc(byCreator[p.creator], p);
       if (!byAgent[p.agent]) byAgent[p.agent] = blank(); acc(byAgent[p.agent], p);
@@ -1731,7 +1740,7 @@ app.get("/api/payment-analysis", (req, res) => {
     });
   });
   // loan vs direct bifurcation, from the sales sheet only (booking_type / status contains "loan")
-  const mSel2 = req.query.month || "";
+  const mSel2 = req.query.month || "", qSel2 = req.query.qtr || "";
   const loanSplit = { byMonth: {}, byCreator: {}, byAgent: {}, types: {} };
   function lacc(m, k, p){
     if (!m[k]) m[k] = { k, ln: 0, lr: 0, dn: 0, dr: 0, lEnrol: 0, dEnrol: 0 };
@@ -1741,7 +1750,7 @@ app.get("/api/payment-analysis", (req, res) => {
   }
   pays.forEach(p => {
     lacc(loanSplit.byMonth, p.pym, p);
-    if (!mSel2 || p.pym === mSel2) {
+    if ((!mSel2 || p.pym === mSel2) && (!qSel2 || fqOf(p.pym).id === qSel2)) {
       lacc(loanSplit.byCreator, p.creator, p);
       lacc(loanSplit.byAgent, p.agent, p);
       if (!loanSplit.types[p.btype]) loanSplit.types[p.btype] = { t: p.btype, n: 0, rev: 0 };
@@ -1772,11 +1781,13 @@ app.get("/api/payment-analysis", (req, res) => {
   const notMatched = pays.filter(p => !p.cym).length;
 
   const srcOptions = Array.from(new Set(pays.map(p => p.src))).sort();
+  const qSeen = {}, qOptions = [];
+  payMonths.slice().reverse().forEach(m2 => { const q2 = fqOf(m2); if (q2.id && !qSeen[q2.id]) { qSeen[q2.id] = 1; qOptions.push({ id: q2.id, label: q2.label }); } });
   const crOptions = Array.from(new Set(SHEET.rows.map(r => r.creator_username).filter(Boolean))).sort();
   res.json({
     sheetLoadedAt: SHEET.loadedAt, cohortLoadedAt: COHORT.loadedAt, cohortSyncing: COHORT.syncing,
     sheetError: SHEET.error, cohortError: COHORT.error,
-    options: { months: payMonths.slice().reverse(), sources: srcOptions, creators: crOptions, segments: ["Student", "Professional", "Unknown"] },
+    options: { months: payMonths.slice().reverse(), quarters: qOptions, sources: srcOptions, creators: crOptions, segments: ["Student", "Professional", "Unknown"] },
     byMonth: payMonths.map(m => Object.assign({ month: m }, byMonth[m])),
     bySrc: Object.entries(bySrc).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
     byCreator: Object.entries(byCreator).map(([k, v]) => Object.assign({ name: k }, v)).sort((a, b) => b.revenue - a.revenue),
@@ -1790,6 +1801,7 @@ app.get("/api/payment-drill", (req, res) => {
   const q = req.query;
   const fCreator = q.creator || "", fSource = q.source || "", fSegment = q.segment || "";
   const pm = q.pm || "", cls = q.cls || "", kind = q.kind || "", agent = q.agent || "", cym = q.cym || "";
+  const qtr = q.qtr || "";
   const seen = new Set();
   const out = [];
   let total = 0;
@@ -1811,6 +1823,7 @@ app.get("/api/payment-drill", (req, res) => {
     if (fSource && (rec ? rsrc : "Not in HubSpot") !== fSource) return;
     if (fSegment && (rec ? rseg : "Unknown") !== fSegment) return;
     if (pm && pym !== pm) return;
+    if (qtr && fqOf(pym).id !== qtr) return;
     if (cls && rcls !== cls) return;
     if (agent && ragent !== agent) return;
     if (cym && rcym !== cym) return;

@@ -143,6 +143,7 @@ tr.tot td{background:#F9FAFB;font-weight:700}
     <div id="viewPay">
     <div class="fbar">
       <label>Month <select id="fM"><option value="">All</option></select></label>
+      <label>QTR <select id="fQ"><option value="">All</option></select></label>
       <label>Creator <select id="fC"><option value="">All</option></select></label>
       <label>Source <select id="fS"><option value="">All</option></select></label>
       <label>Segment <select id="fG"><option value="">All</option></select></label>
@@ -153,6 +154,10 @@ tr.tot td{background:#F9FAFB;font-weight:700}
     <div class="grid2">
       <div class="sec" style="margin-bottom:0"><h3>Revenue trend by month</h3><div class="sub">Enrolment vs balance revenue · click a bar to focus that month (click again to clear)</div><div class="chbox"><canvas id="chMonth"></canvas></div></div>
       <div class="sec" style="margin-bottom:0"><h3>Loan vs direct revenue by month</h3><div class="sub">From the sales sheet only · click a bar to focus that month</div><div class="chbox"><canvas id="chLoanM"></canvas></div></div>
+    </div>
+    <div class="grid2" style="margin:14px 0 0">
+      <div class="sec" style="margin-bottom:0"><h3>Quarter by quarter revenue</h3><div class="sub">Fiscal quarters, QTR 1 = Apr to Jun · enrolment vs balance revenue, QoQ growth on the right axis · click a bar to focus that quarter · * = quarter not yet complete</div><div class="chbox"><canvas id="chQtr"></canvas></div></div>
+      <div class="sec" style="margin-bottom:0"><h3>Quarter growth</h3><div class="sub">Change versus the previous quarter: revenue, payments, enrolments · red bars are declines</div><div class="chbox"><canvas id="chQtrG"></canvas></div></div>
     </div>
     <div class="grid2" style="margin:14px 0">
       <div class="sec" style="margin-bottom:0"><h3>Top creators by revenue</h3><div class="sub" id="chCrNote">Click a bar to filter that creator</div><div class="chbox"><canvas id="chCr"></canvas></div></div>
@@ -209,7 +214,7 @@ async function openDrill(q){
   try{
     let out="";
     if(q.t==="pay"){
-      const p=new URLSearchParams({creator:q.creator||"",source:q.source||"",segment:q.segment||"",pm:q.pm||"",cls:q.cls||"",kind:q.kind||"",agent:q.agent||"",cym:q.cym||""});
+      const p=new URLSearchParams({creator:q.creator||"",source:q.source||"",segment:q.segment||"",pm:q.pm||"",qtr:q.qtr||"",cls:q.cls||"",kind:q.kind||"",agent:q.agent||"",cym:q.cym||""});
       const r=await fetch("/api/payment-drill?"+p.toString());
       const j=await r.json();
       document.getElementById("dsub").textContent=" · "+j.total+" payments"+(j.total>j.rows.length?" (showing newest "+j.rows.length+")":"");
@@ -231,7 +236,14 @@ function closeDrill(){document.getElementById("dmask").style.display="none";docu
 function inr(n){return "₹"+Math.round(n||0).toLocaleString("en-IN");}
 function rupee(v){v=Math.round(v||0);return v>=1e7?(v/1e7).toFixed(2)+"Cr":v>=1e5?(v/1e5).toFixed(1)+"L":inr(v);}
 function mn(m){if(!m)return "";const d=new Date(m+"-15");return isNaN(d)?m:d.toLocaleString("en-IN",{month:"short",year:"2-digit"});}
-const F={m:"",c:"",s:"",g:""};
+function fq(m){
+  if(!m||m.length<7)return {id:"",label:""};
+  const y=+m.slice(0,4),mo=+m.slice(5,7);
+  const qi=mo>=4?Math.floor((mo-4)/3)+1:4;
+  const fy=mo>=4?y:y-1;
+  return {id:"FY"+fy+"-Q"+qi,label:"QTR "+qi+" ("+["AMJ","JAS","OND","JFM"][qi-1]+") FY"+String(fy).slice(2)+"-"+String(fy+1).slice(2)};
+}
+const F={m:"",c:"",s:"",g:"",q:""};
 const CLS=["New Lead","Old Lead","Lead After Payment","Not in HubSpot"];
 function card(v,l,s){return '<div class="card"><div class="l">'+l+'</div><div class="v">'+v+'</div>'+(s?'<div class="s">'+s+"</div>":"")+"</div>";}
 function fill(sel,list,cur,labelFn){
@@ -240,7 +252,7 @@ function fill(sel,list,cur,labelFn){
 }
 function brk(o,base){return CLS.map(function(c){return "<td>"+(base?dn(o[c]||0,Object.assign({},base,{cls:c,ttl:(base.ttl?base.ttl+" · ":"")+c})):(o[c]||0))+"</td>";}).join("");}
 async function render(){
-  const qs="?month="+encodeURIComponent(F.m)+"&creator="+encodeURIComponent(F.c)+"&source="+encodeURIComponent(F.s)+"&segment="+encodeURIComponent(F.g);
+  const qs="?month="+encodeURIComponent(F.m)+"&qtr="+encodeURIComponent(F.q)+"&creator="+encodeURIComponent(F.c)+"&source="+encodeURIComponent(F.s)+"&segment="+encodeURIComponent(F.g);
   const r=await fetch("/api/payment-analysis"+qs);
   const j=await r.json();
   const w=document.getElementById("warns");w.innerHTML="";
@@ -248,14 +260,15 @@ async function render(){
   if(j.cohortError)w.innerHTML+='<div class="warn">HubSpot cohort sync: '+esc(j.cohortError)+"</div>";
   if(!j.cohortLoadedAt)w.innerHTML+='<div class="warn">HubSpot cohort data is still syncing (first run takes several minutes). Payment classification and cohort denominators will fill in once done'+(j.cohortSyncing?" — sync in progress.":".")+"</div>";
   fill("fM",j.options.months.map(function(m){return{v:m};}),F.m,function(x){return mn(x.v);});
+  fill("fQ",(j.options.quarters||[]).map(function(x){return{v:x.id,l:x.label};}),F.q,function(x){return x.l;});
   fill("fC",j.options.creators.map(function(c){return{v:c};}),F.c);
   fill("fS",j.options.sources.map(function(s){return{v:s};}),F.s);
   fill("fG",j.options.segments.map(function(s){return{v:s};}),F.g);
   document.getElementById("syncinfo").textContent="sheet "+(j.sheetLoadedAt?new Date(j.sheetLoadedAt).toLocaleTimeString():"n/a")+" · hubspot "+(j.cohortLoadedAt?new Date(j.cohortLoadedAt).toLocaleTimeString():"syncing");
-  const rows=F.m?j.byMonth.filter(function(x){return x.month===F.m;}):j.byMonth;
+  const rows=j.byMonth.filter(function(x){return (!F.m||x.month===F.m)&&(!F.q||fq(x.month).id===F.q);});
   const T=rows.reduce(function(t,x){["total","enrol","bal","revenue","enrolRev","balRev"].concat(CLS).forEach(function(k){t[k]=(t[k]||0)+(x[k]||0);});return t;},{});
   const matched=T.total-(T["Not in HubSpot"]||0);
-  function pq(extra){return Object.assign({t:"pay",creator:F.c,source:F.s,segment:F.g,pm:F.m},extra||{});}
+  function pq(extra){return Object.assign({t:"pay",creator:F.c,source:F.s,segment:F.g,pm:F.m,qtr:F.q},extra||{});}
   document.getElementById("cards").innerHTML=
     card(dn(T.total||0,pq({ttl:"Payments"})),"Payments")+card(dn(T.enrol||0,pq({kind:"enrol",ttl:"Enrolments"})),"Enrolments","first payments")+card(dn(T.bal||0,pq({kind:"bal",ttl:"Balance payments"})),"Balance payments")+
     card(rupee(T.revenue),"Revenue","price_inr")+card(rupee(T.enrolRev),"Enrolment revenue")+card(rupee(T.balRev),"Balance revenue")+card(T.enrol?inr(T.revenue/T.enrol):"–","ASP","total collected per enrolment")+
@@ -268,9 +281,9 @@ async function render(){
       '<tr class="tot"><td>TOTAL</td><td>'+dn(tot.total||0,pq({ttl:"All payments"}))+"</td><td>"+dn(tot.enrol||0,pq({kind:"enrol",ttl:"All enrolments"}))+"</td><td>"+inr(tot.revenue)+"</td><td>"+inr(tot.enrolRev||0)+"</td><td>"+(tot.enrol?inr(tot.revenue/tot.enrol):"–")+"</td>"+brk(tot,pq({ttl:"All"}))+"</tr></table>";
   }
   document.getElementById("tMonth").innerHTML="<table><tr><th>Month</th><th>Payments</th><th>Enrolments</th><th>Balances</th><th>Revenue</th><th>Enrol rev</th><th>Bal rev</th><th title=\"Average selling price: revenue collected divided by enrolments\">ASP</th>"+CLS.map(function(c){return "<th>"+c+"</th>";}).join("")+"</tr>"+
-    j.byMonth.map(function(x){var b=pq({pm:x.month,ttl:mn(x.month)});return "<tr"+(F.m===x.month?' style="background:#EEF2FF"':"")+"><td>"+mn(x.month)+"</td><td>"+dn(x.total,b)+"</td><td>"+dn(x.enrol,Object.assign({},b,{kind:"enrol",ttl:"Enrolments "+mn(x.month)}))+"</td><td>"+dn(x.bal,Object.assign({},b,{kind:"bal",ttl:"Balances "+mn(x.month)}))+"</td><td>"+inr(x.revenue)+"</td><td>"+inr(x.enrolRev)+"</td><td>"+inr(x.balRev)+"</td><td>"+(x.enrol?inr(x.revenue/x.enrol):"–")+"</td>"+brk(x,b)+"</tr>";}).join("")+
+    j.byMonth.map(function(x){var b=pq({pm:x.month,ttl:mn(x.month)});return "<tr"+((F.m===x.month||(F.q&&fq(x.month).id===F.q))?' style="background:#EEF2FF"':"")+"><td>"+mn(x.month)+"</td><td>"+dn(x.total,b)+"</td><td>"+dn(x.enrol,Object.assign({},b,{kind:"enrol",ttl:"Enrolments "+mn(x.month)}))+"</td><td>"+dn(x.bal,Object.assign({},b,{kind:"bal",ttl:"Balances "+mn(x.month)}))+"</td><td>"+inr(x.revenue)+"</td><td>"+inr(x.enrolRev)+"</td><td>"+inr(x.balRev)+"</td><td>"+(x.enrol?inr(x.revenue/x.enrol):"–")+"</td>"+brk(x,b)+"</tr>";}).join("")+
     '<tr class="tot"><td>TOTAL</td><td>'+dn(j.byMonth.reduce(function(t,x){return t+x.total;},0),pq({pm:"",ttl:"All payments"}))+"</td><td>"+dn(j.byMonth.reduce(function(t,x){return t+x.enrol;},0),pq({pm:"",kind:"enrol",ttl:"All enrolments"}))+"</td><td>"+dn(j.byMonth.reduce(function(t,x){return t+x.bal;},0),pq({pm:"",kind:"bal",ttl:"All balances"}))+"</td><td>"+inr(j.byMonth.reduce(function(t,x){return t+x.revenue;},0))+"</td><td></td><td></td><td>"+(function(){var e=j.byMonth.reduce(function(t,x){return t+x.enrol;},0),rv=j.byMonth.reduce(function(t,x){return t+x.revenue;},0);return e?inr(rv/e):"–";})()+"</td>"+brk(j.byMonth.reduce(function(t,x){CLS.forEach(function(c){t[c]=(t[c]||0)+(x[c]||0);});return t;},{}),pq({pm:"",ttl:"All months"}))+"</tr></table>";
-  const note=F.m?" · showing "+mn(F.m):" · all months";
+  const note=F.m?" · showing "+mn(F.m):(F.q?" · showing "+((j.options.quarters||[]).filter(function(x){return x.id===F.q;})[0]||{label:F.q}).label:" · all months");
   ["mNote1","mNote2","mNote3","mNote4"].forEach(function(id){document.getElementById(id).textContent=note;});
   tbl("tSrc",j.bySrc,"Source","source");
   tbl("tCr",j.byCreator,"Creator","creator");
@@ -369,6 +382,52 @@ function drawCharts(j,L,T){
       ]},
     options:Object.assign(baseOpts(true),{onClick:function(e,els){
       if(els&&els.length){const m=L.byMonth[els[0].index].k;F.m=(F.m===m)?"":m;render();}}})});
+  // 2b. quarter by quarter: stacked revenue + QoQ growth line, plus growth bars
+  (function(){
+    const order=[],agg={};
+    j.byMonth.forEach(function(x){
+      const q2=fq(x.month);
+      if(!q2.id)return;
+      if(!agg[q2.id]){agg[q2.id]={label:q2.label,enrolRev:0,balRev:0,rev:0,total:0,enrol:0,months:0};order.push(q2.id);}
+      const a=agg[q2.id];
+      a.enrolRev+=x.enrolRev||0;a.balRev+=x.balRev||0;a.rev+=x.revenue||0;
+      a.total+=x.total||0;a.enrol+=x.enrol||0;a.months++;
+    });
+    const QA=order.map(function(id){return Object.assign({id:id},agg[id]);});
+    const labels=QA.map(function(x,i){return x.label+((i===QA.length-1&&x.months<3)?" *":"");});
+    function qAlpha(id){return !F.q||F.q===id?1:0.25;}
+    const growth=QA.map(function(x,i){
+      if(i===0)return {r:null,p:null,e:null};
+      const pv=QA[i-1];
+      return {r:pv.rev?+(100*(x.rev-pv.rev)/pv.rev).toFixed(1):null,
+        p:pv.total?+(100*(x.total-pv.total)/pv.total).toFixed(1):null,
+        e:pv.enrol?+(100*(x.enrol-pv.enrol)/pv.enrol).toFixed(1):null};
+    });
+    const qOpts=baseOpts(true);
+    qOpts.scales.y1={position:"right",grid:{display:false},ticks:{font:{size:10},callback:function(v){return v+"%";}}};
+    qOpts.plugins.tooltip={callbacks:{label:function(c){
+      if(c.dataset.yAxisID==="y1")return c.dataset.label+": "+(c.parsed.y===null?"n/a":c.parsed.y+"%");
+      return c.dataset.label+": "+inr(c.parsed.y);}}};
+    qOpts.onClick=function(e,els){if(els&&els.length){const id=QA[els[0].index].id;F.q=(F.q===id)?"":id;if(F.q)F.m="";render();}};
+    mkChart("chQtr",{type:"bar",
+      data:{labels:labels,datasets:[
+        {label:"Enrolment revenue",data:QA.map(function(x){return x.enrolRev;}),backgroundColor:QA.map(function(x){return fade("#4F46E5",qAlpha(x.id));}),stack:"r"},
+        {label:"Balance revenue",data:QA.map(function(x){return x.balRev;}),backgroundColor:QA.map(function(x){return fade("#D97706",qAlpha(x.id));}),stack:"r"},
+        {label:"QoQ revenue growth",type:"line",yAxisID:"y1",data:growth.map(function(g){return g.r;}),
+         borderColor:"#0891B2",backgroundColor:"#0891B2",tension:.25,spanGaps:true,pointRadius:4}
+      ]},options:qOpts});
+    const gOpts=baseOpts(false);
+    gOpts.scales={x:{ticks:{font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10},callback:function(v){return v+"%";}},grid:{color:"#F3F4F6"}}};
+    gOpts.plugins.tooltip={callbacks:{label:function(c){return c.dataset.label+": "+(c.parsed.y===null?"n/a":c.parsed.y+"%");}}};
+    gOpts.onClick=function(e,els){if(els&&els.length){const id=QA[els[0].index].id;F.q=(F.q===id)?"":id;if(F.q)F.m="";render();}};
+    function gcol(vals,hex){return vals.map(function(v){return v===null?fade(hex,.15):(v>=0?fade(hex,.9):fade("#DC2626",.85));});}
+    mkChart("chQtrG",{type:"bar",
+      data:{labels:labels,datasets:[
+        {label:"Revenue QoQ %",data:growth.map(function(g){return g.r;}),backgroundColor:gcol(growth.map(function(g){return g.r;}),"#4F46E5")},
+        {label:"Payments QoQ %",data:growth.map(function(g){return g.p;}),backgroundColor:gcol(growth.map(function(g){return g.p;}),"#059669")},
+        {label:"Enrolments QoQ %",data:growth.map(function(g){return g.e;}),backgroundColor:gcol(growth.map(function(g){return g.e;}),"#0891B2")}
+      ]},options:gOpts});
+  })();
   // 3. top creators horizontal bars, click = creator filter
   const crs=j.byCreator.slice(0,10);
   document.getElementById("chCrNote").textContent=(F.m?"Showing "+mn(F.m)+" · ":"All months · ")+(F.c?"filtered to "+F.c+" (click to clear)":"click a bar to filter that creator");
@@ -511,7 +570,8 @@ async function renderConv(){
   }catch(e){el.innerHTML='<div class="load">Conversion unavailable: '+esc(e.message||e)+"</div>";}
 }
 document.addEventListener("change",function(e){
-  if(e.target.id==="fM"){F.m=e.target.value;render();}
+  if(e.target.id==="fM"){F.m=e.target.value;if(F.m)F.q="";render();}
+  if(e.target.id==="fQ"){F.q=e.target.value;if(F.q)F.m="";render();}
   if(e.target.id==="fC"){F.c=e.target.value;render();}
   if(e.target.id==="fS"){F.s=e.target.value;render();}
   if(e.target.id==="fG"){F.g=e.target.value;render();}
@@ -528,7 +588,7 @@ document.addEventListener("click",function(e){
   const a=e.target.closest&&e.target.closest("a.dn");
   if(a){try{openDrill(JSON.parse(a.dataset.q));}catch(err){}return;}
   if(e.target.id==="dclose"||e.target.id==="dmask"){closeDrill();return;}
-  if(e.target.id==="fClr"){F.m="";F.c="";F.s="";F.g="";render();}
+  if(e.target.id==="fClr"){F.m="";F.q="";F.c="";F.s="";F.g="";render();}
   if(e.target.id==="ptPay")setPView("pay");
   if(e.target.id==="ptConv")setPView("conv");
   if(e.target.id==="pcvClr"){PCV={c:"",a:"",g:"",cm:"",km:"",pm:"",i:"",s:""};renderConv();}
