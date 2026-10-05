@@ -1712,9 +1712,10 @@ app.get("/api/payment-analysis", (req, res) => {
   pays.forEach(p => {
     if (!p.cym) return;
     const tgt = p.isEnrol ? cohortEnrol : cohortBal;
-    if (!tgt[p.cym]) tgt[p.cym] = { _n: 0 };
+    if (!tgt[p.cym]) tgt[p.cym] = { _n: 0, _rev: 0 };
     tgt[p.cym][p.pym] = (tgt[p.cym][p.pym] || 0) + 1;
     tgt[p.cym]._n++;
+    tgt[p.cym]._rev += p.price;
   });
   const hsByYm = {};
   Object.keys(COHORT.counts).forEach(cr => {
@@ -1758,6 +1759,8 @@ app.get("/api/payment-analysis", (req, res) => {
   const cohort = cohortMonths.map(cym => {
     const row = { cym, hs: hsByYm[cym] || 0,
       enrol: (cohortEnrol[cym] && cohortEnrol[cym]._n) || 0,
+      enrolRev: (cohortEnrol[cym] && cohortEnrol[cym]._rev) || 0,
+      balRev: (cohortBal[cym] && cohortBal[cym]._rev) || 0,
       bal: (cohortBal[cym] && cohortBal[cym]._n) || 0, cols: {}, balCols: {} };
     payMonths.forEach(pm => {
       row.cols[pm] = (cohortEnrol[cym] && cohortEnrol[cym][pm]) || 0;
@@ -1904,8 +1907,11 @@ app.get("/api/conversion", (req, res) => {
   };
   // enrolment identity sets from the payment tracker (first payment per consumer per creator)
   const seen = new Set(), eEmailDate = {}, ePhoneDate = {};
+  const eEmailAmt = {}, ePhoneAmt = {};
   SHEET.rows.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach(r => {
     const em = (r.consumer_email || "").toLowerCase(), ph = normPhone(r.consumer_phone);
+    if (em) eEmailAmt[em] = (eEmailAmt[em] || 0) + r.price;
+    if (ph) ePhoneAmt[ph] = (ePhoneAmt[ph] || 0) + r.price;
     const key = (r.creator_username || "") + "|" + (em || ph || (r.consumer_name || "").trim().toLowerCase() || ("row" + r._row));
     if (seen.has(key)) return;
     seen.add(key);
@@ -1914,7 +1920,7 @@ app.get("/api/conversion", (req, res) => {
   });
   const byAgent = {}, byCreator = {}, byMonth = {}, bySegment = {}, bySource = {}, byCreateMonth = {};
   const enrolMonthsSet = {};
-  let tot = 0, conv = 0;
+  let tot = 0, conv = 0, convRev = 0;
   CACHE.contacts.forEach(c => {
     const ts = COUNSEL.byId[c.id];
     if (!ts) return;
@@ -1933,8 +1939,9 @@ app.get("/api/conversion", (req, res) => {
     let converted = !!eDate;
     if (fPay && eMonth !== fPay) { converted = false; eMonth = ""; }
     if (eMonth) enrolMonthsSet[eMonth] = 1;
-    tot++; if (converted) conv++;
-    const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0, cols: {} }; m[k].counselled++; if (converted) { m[k].converted++; m[k].cols[eMonth] = (m[k].cols[eMonth] || 0) + 1; } };
+    const amt = converted ? ((em && eEmailAmt[em]) || (ph && ePhoneAmt[ph]) || 0) : 0;
+    tot++; if (converted) { conv++; convRev += amt; }
+    const add = (m, k) => { if (!m[k]) m[k] = { counselled: 0, converted: 0, rev: 0, cols: {} }; m[k].counselled++; if (converted) { m[k].converted++; m[k].rev += amt; m[k].cols[eMonth] = (m[k].cols[eMonth] || 0) + 1; } };
     add(byAgent, c.hubspot_owner_id);
     add(byCreator, c.topmate_username || "(no creator)");
     add(byMonth, ymOf(ts) || "(unknown)");
@@ -1959,7 +1966,8 @@ app.get("/api/conversion", (req, res) => {
     let converted = !!eDate;
     if (fPay && (eDate ? eDate.slice(0, 7) : "") !== fPay) converted = false;
     l2e.tot++; if (converted) l2e.conv++;
-    const bump = (m, k) => { if (!m[k]) m[k] = { n: 0, c: 0 }; m[k].n++; if (converted) m[k].c++; };
+    const amt2 = converted ? ((em && eEmailAmt[em]) || (ph && ePhoneAmt[ph]) || 0) : 0;
+    const bump = (m, k) => { if (!m[k]) m[k] = { n: 0, c: 0, rev: 0 }; m[k].n++; if (converted) { m[k].c++; m[k].rev += amt2; } };
     bump(l2e.byAgent, c.hubspot_owner_id);
     bump(l2e.byCreator, c.topmate_username || "(no creator)");
     bump(l2e.bySegment, seg);
@@ -2028,7 +2036,8 @@ app.get("/api/conversion", (req, res) => {
   }));
 
   const out = (m, keyName, labelFn, l2eMap) => Object.entries(m).map(([k, v]) => {
-    const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0, cols: v.cols };
+    const o = { counselled: v.counselled, converted: v.converted, conv: v.counselled ? +(100 * v.converted / v.counselled).toFixed(1) : 0, cols: v.cols,
+      rev: v.rev || 0, asp: v.converted ? Math.round((v.rev || 0) / v.converted) : 0 };
     o[keyName] = k; o.label = labelFn ? labelFn(k) : k;
     if (l2eMap) {
       const x = l2eMap[k] || { n: 0, c: 0 };
@@ -2039,6 +2048,7 @@ app.get("/api/conversion", (req, res) => {
   res.json({
     loadedAt: COUNSEL.loadedAt, syncing: COUNSEL.syncing, error: COUNSEL.error,
     totals: { counselled: tot, converted: conv, conv: tot ? +(100 * conv / tot).toFixed(1) : 0,
+      rev: convRev, asp: conv ? Math.round(convRev / conv) : 0,
       leads: l2e.tot, l2eConv: l2e.conv, l2e: l2e.tot ? +(100 * l2e.conv / l2e.tot).toFixed(2) : 0 },
     enrolMonths, options, days,
     byAgent: out(byAgent, "id", id => (CACHE.owners[id] || {}).name || ("Owner " + id), l2e.byAgent),
