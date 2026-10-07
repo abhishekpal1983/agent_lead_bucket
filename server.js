@@ -8380,6 +8380,7 @@ app.get("/api/talktime", async function(req, res){
       date: day, today: today, yesterday: TALKLOCK.prevDay(today), isToday: day === today,
       roster: d.roster, picked: pickedAgents(req.query.agents) || [],
       teams: d.teams, pickedTeams: pickedTeams(req.query.teams) || [],
+      floorMs: TALK_FLOOR_MS,
       you: { email: scope.email, role: scope.role, scope: scope.label },
       locked: d.locked, lockAt: TALK_LOCK_HM, persistent: !!TALK.persistent,
       totals: d.totals,
@@ -8403,6 +8404,15 @@ app.get("/api/talktime", async function(req, res){
    that are still open cost a HubSpot read, which in practice is today and nothing else.
    The cap is there because somebody will eventually ask for a year, and 365 ledger builds
    would take the floor's rate budget with it. */
+/* The day a floor is measured against, and the only definition of it.
+
+   Half a day's pay turns on this number, and two pages read it: the talktime report and
+   the agent's card on Call Now. Hard-coding it in both is how one gets changed and the
+   other does not, and the first anybody hears of it is an agent and their manager
+   looking at two different answers about the same day. It is sent in the payload so the
+   pages have nothing to keep in step. */
+const TALK_FLOOR_MS = 150 * 60000;   // 2h 30m
+
 const TALK_RANGE_MAX_DAYS = 92;
 function talkRangeDays(from, to){
   const out = [];
@@ -8460,6 +8470,7 @@ app.get("/api/talktime/range", async function(req, res){
       you: { email: r.scope.email, role: r.scope.role, scope: r.scope.label },
       roster: Object.values(rosterBy).sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }),
       picked: r.picked,
+      floorMs: TALK_FLOOR_MS,
       pickedTeams: r.teams,
       teams: (function(){
         const seen = {};

@@ -1017,6 +1017,29 @@ try { fs.unlinkSync(path.join("/tmp/cn2test", "talktime.json")); } catch (e) {}
         xlPick.body.toString("latin1").indexOf(String(one.name)) >= 0);
     }
 
+    /* ---- the 2h 30m floor travels with the day --------------------------------------
+
+       Half a day's pay turns on this number and two pages read it: the talktime report
+       and the agent's card on Call Now. It is defined once on the server and sent in the
+       payload so neither page keeps a copy that can drift.
+
+       Asserted over HTTP rather than by reading the source, because a source check for
+       "the server mentions floorMs" passes while the day endpoint has quietly stopped
+       sending it and only the range still does. That exact break was tried and the grep
+       did not notice. */
+    {
+      const d = await get("/api/talktime?date=" + LGDAY);
+      ok("the day carries the floor", d.body.floorMs === 150 * 60000,
+        "floorMs came back as " + JSON.stringify(d.body.floorMs));
+      const rg = await get("/api/talktime/range?from=2026-08-05&to=2026-08-06");
+      ok("and so does the span, so both views agree about it",
+        rg.body.floorMs === d.body.floorMs,
+        "day " + d.body.floorMs + " vs span " + rg.body.floorMs);
+      /* Marking nobody is the safe degradation. Marking everybody is not. */
+      ok("it is a number the page can compare against, not a string",
+        typeof d.body.floorMs === "number" && d.body.floorMs > 0);
+    }
+
     /* ---- picking teams ---------------------------------------------------------------
 
        Same rule as the agent pick, and the same reason for saying it out loud. A team

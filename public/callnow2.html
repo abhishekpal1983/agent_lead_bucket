@@ -1543,10 +1543,14 @@ function barTop(){
    agent ids:[their own owner id] and talkDay filters to it before anything else. So
    there is no second scoping implementation here and no way for this card to widen what
    it shows. The page picks the row out of what it was given; it does not choose it. */
-/* The floor a day is measured against. Named, not written as 9000000 three lines down,
-   because this is a number somebody will be asked to change and it must change in one
-   place. */
-var MT_FLOOR_MS=150*60000; // 2h 30m
+/* The floor comes from the payload, because the server is the only place it is written.
+
+   It was a constant here for one commit, which meant this page and the talktime report
+   each held their own copy of a number that costs half a day's pay. Two copies is how
+   one gets changed and the other does not, and the first anyone hears of it is an agent
+   and their manager reading the same day differently. A missing floor marks nobody
+   rather than marking everybody: an old payload degrades in the safe direction. */
+function mtFloor(){ return (MT&&MT.floorMs)||0; }
 function mtFmt(ms){
   ms=ms||0;
   if(!ms)return "0m";
@@ -1587,7 +1591,8 @@ function myTalktime(){
       "<div class='mtv'>"+val+"</div>"+
       (sub?"<div class='mts'>"+sub+"</div>":"")+"</div>";
   };
-  var short=r.talkMs<MT_FLOOR_MS;
+  var floor=mtFloor();
+  var short=!!floor&&r.talkMs<floor;
   h+="<div class='mtgrid'>"+
     cell("FreJun",mtFmt(r.callMs),fmt(r.calls||0)+" call"+((r.calls||0)===1?"":"s"))+
     cell("Meetings",mtFmt(r.meetMs),fmt(r.meetings||0)+" held")+
@@ -1604,8 +1609,8 @@ function myTalktime(){
   if(short){
     h+="<div class='mtlop'>"+
       (MT.locked
-        ? "0.5 LOP marked &middot; under 2h 30m on a closed day"
-        : mtFmt(MT_FLOOR_MS-r.talkMs)+" short of 2h 30m &middot; 0.5 LOP is marked if the day closes here")+
+        ? "0.5 LOP marked &middot; under "+mtFmt(floor)+" on a closed day"
+        : mtFmt(floor-r.talkMs)+" short of "+mtFmt(floor)+" &middot; 0.5 LOP is marked if the day closes here")+
       "</div>";
   }
   /* The untyped count is the one number an agent can act on today: it is their own

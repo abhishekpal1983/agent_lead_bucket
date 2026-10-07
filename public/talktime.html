@@ -35,6 +35,11 @@ tr:last-child td{border-bottom:0}
 .mut{color:#6B7A8A;font-size:11.5px}
 .zero{color:#C3CBD4}
 .hot{color:#B4232A;font-weight:700}
+/* Short of the floor. Tinted on the cell it concerns, not the whole row: everything else
+   on that row is still correct and still worth reading. */
+td.n.low{background:#FDECEA}
+td.n.low b{color:#A01B10}
+.lopmark{font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#A01B10;margin-top:1px}
 .amend{background:#FBECEC}
 .pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:600}
 .p-red{background:#B4232A;color:#fff}
@@ -114,6 +119,13 @@ function syncUrl(){
 function esc(s){ return String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
 function fmt(n){ return Math.round(n||0).toLocaleString("en-IN"); }
+/* The floor comes from the server, which is the only place it is written. Two pages read
+   it and a copy in either of them is a copy that can drift, which on a number costing
+   half a day's pay means an agent and their manager reading the same day differently.
+   The fallback marks nobody rather than marking everybody, so an old payload degrades
+   quietly in the safe direction. */
+function floorMs(){ return (T && T.floorMs) || 0; }
+function underFloor(r){ var f = floorMs(); return !!f && (r.talkMs || 0) < f; }
 function mins(ms){
   ms = ms || 0;
   if (!ms) return "0";
@@ -317,6 +329,17 @@ function draw(){
     tile(j.totals.waMissing ? "bad" : "", "No length given", fmt(j.totals.waMissing), "WhatsApp calls") +
     (one ? "" : tile(j.totals.amended ? "bad" : "", "Amended after lock",
       fmt(j.totals.amended), "changes")) +
+    /* Who is short, counted, so a manager does not read down the Total column doing the
+       arithmetic themselves. On a day still running it is a moving number and says so. */
+    (function(){
+      var f = floorMs();
+      if (!f) return "";
+      var n = rows.filter(underFloor).length;
+      return tile(n && j.locked ? "bad" : "", "Under " + mins(f),
+        fmt(n), one ? (j.locked ? "0.5 LOP" : "so far today")
+          : (j.locked ? (n === 1 ? "agent, 0.5 LOP" : "agents, 0.5 LOP each")
+                      : (n === 1 ? "agent so far" : "agents so far")));
+    })() +
     "</div>";
 
   h += "<div class='tw'><table><thead><tr>" +
@@ -358,7 +381,14 @@ function draw(){
           /* Worth seeing: time supplied without the call type set is the adoption gap. */
           (r.waCalls < r.declaredCalls ? ", " + fmt(r.declaredCalls - r.waCalls) + " untyped" : "") +
           "</div>" : "") + "</td>" +
-      "<td class='n'><b>" + mins(r.talkMs) + "</b></td>" +
+      /* The mark sits on the total it is about. A column of its own would be one more
+         thing to look up, and would read as unrelated to the number beside it. */
+      "<td class='n" + (underFloor(r) ? " low" : "") + "'><b>" + mins(r.talkMs) + "</b>" +
+        (underFloor(r)
+          ? "<div class='lopmark'>" + (j.locked
+              ? "0.5 LOP"
+              : mins(floorMs() - (r.talkMs || 0)) + " short") + "</div>"
+          : "") + "</td>" +
       "<td class='n " + (r.needLength > r.declaredCalls ? "hot" : "mut") + "'>" +
         (r.needLength ? r.declaredCalls + " of " + r.needLength : "&ndash;") + "</td>" +
       (one ? "<td>" + (can ? "<span class='mut'>" + (OPEN[r.id] ? "hide" : "show") +

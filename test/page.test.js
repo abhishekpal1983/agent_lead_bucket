@@ -1302,6 +1302,60 @@ ok("the month picker and the page filters both reload it",
   ok("typing in the search box rebuilds only the list, not the page",
     /function pickSearch\(v\)/.test(tsrc) && /querySelector\(".picklist"\)/.test(tsrc));
 
+  /* The floor, in the report a manager reads.
+
+     The agent sees it on their own card in Call Now. A manager seeing the same thing
+     means not reading down the Total column against 2h 30m in their head, which is work
+     a person does wrong on a Friday. The mark sits on the total it is about, and the
+     count sits in the tiles so nobody has to scan at all. */
+  {
+    const M = 60000;
+    const ag = function(id, name, ms){
+      return { id: id, name: name, team: "Anand", teamId: "t1", callMs: ms, meetMs: 0,
+        declaredMs: 0, talkMs: ms, calls: 10, waCalls: 0, waMissing: 0,
+        declaredCalls: 0, needLength: 0, meetings: 0 }; };
+    const floorPayload = function(locked, rows){
+      return mk({ locked: locked ? { at: "2026-10-07T18:29:00Z", late: false, lateMin: 0,
+          hm: "23:59", verified: true, verifyMoved: 0 } : null,
+        isToday: !locked, floorMs: 150 * M, rows: rows,
+        totals: Object.assign({}, mk().totals, { agents: rows.length,
+          talkMs: rows.reduce(function(t, r){ return t + r.talkMs; }, 0) }) }); };
+
+    const mixed = draw(floorPayload(true, [ag("1", "Anjali Kumari", 190*M),
+      ag("2", "Bibin Christopher", 63*M), ag("3", "Nikitha S", 149*M)]));
+    ok("a closed day marks every agent under the floor",
+      (mixed.html.match(/0\.5 LOP/g) || []).length === 3,
+      (mixed.html.match(/0\.5 LOP/g) || []).length + " marks, expected 2 rows plus the tile");
+    ok("and tints the total it is about, not the whole row",
+      /<td class='n low'/.test(mixed.html) && mixed.html.indexOf("tr class='low'") < 0);
+    ok("the tile counts them so nobody reads down the column",
+      mixed.html.indexOf("Under 2h 30m") >= 0 &&
+      mixed.html.indexOf("agents, 0.5 LOP each") >= 0);
+    ok("an agent over the floor is not marked",
+      mixed.html.indexOf("Anjali Kumari") >= 0 &&
+      (mixed.html.match(/lopmark/g) || []).length === 2);
+
+    /* Same rule as the card: a day still running is not a verdict. */
+    const open = draw(floorPayload(false, [ag("1", "Anjali Kumari", 45*M)]));
+    ok("a day still open says how short, not that it is marked",
+      open.html.indexOf("1h 45m short") >= 0 && open.html.indexOf("0.5 LOP") < 0,
+      "open day must not assert");
+    ok("and the tile says so far rather than LOP",
+      open.html.indexOf("agent so far") >= 0);
+
+    /* The boundary, either side of itself. */
+    const edge = draw(floorPayload(true, [ag("1", "At the floor", 150*M),
+      ag("2", "One under", 149*M)]));
+    ok("2h 30m exactly is not under the floor",
+      (edge.html.match(/lopmark/g) || []).length === 1, "only the 2h 29m row may be marked");
+
+    /* Degrade by marking nobody. */
+    const noFloor = draw(mk({ floorMs: undefined,
+      rows: [ag("1", "Anjali Kumari", 10*M)] }));
+    ok("with no floor in the payload, nobody is marked and no tile appears",
+      noFloor.html.indexOf("0.5 LOP") < 0 && noFloor.html.indexOf("Under ") < 0);
+  }
+
   console.log("\nThe team filter");
   const tclosed = draw(mk());
   ok("with no team chosen it says all teams", tclosed.html.indexOf("All teams") >= 0);
@@ -1510,9 +1564,13 @@ console.log("\nYour talktime in the band");
   const row = function(o){
     return Object.assign({ id: "205", name: "Danis Khan", callMs: 0, calls: 0, meetMs: 0,
       meetings: 0, declaredMs: 0, waCalls: 0, waMissing: 0 }, o); };
+  /* floorMs comes from the server now, so the fixture carries it the way a real payload
+     does. A fixture that leaves it out is testing the degraded path, which is its own
+     assertion further down and not the one most of these want. */
+  const FLOOR = 150 * M;
   const day = function(locked, o){
     const r = row(o); r.talkMs = r.callMs + r.meetMs + r.declaredMs;
-    return { date: "2026-10-07", locked: locked, rows: [r] }; };
+    return { date: "2026-10-07", locked: locked, floorMs: FLOOR, rows: [r] }; };
 
   const AG = { isVP: false, scoped: true, role: "agent" };
   const MG = { isVP: false, scoped: true, role: "manager" };
@@ -1557,13 +1615,33 @@ console.log("\nYour talktime in the band");
   ok("and still shows the total in red, because it is short", red(open));
 
   /* The floor is one named constant, not a number written wherever it is needed. */
-  /* Half a day's pay hangs off this number, so it lives in exactly one place. Asserted
-     as "the value appears once" rather than "the expanded literal never appears", which
-     was the first draft and which this file's own comment broke by mentioning it. */
-  ok("the floor is one named constant, written once",
-    /var MT_FLOOR_MS=150\*60000/.test(tsrcCn2) &&
-    (tsrcCn2.match(/150\*60000/g) || []).length === 1,
-    (tsrcCn2.match(/150\*60000/g) || []).length + " occurrences");
+  /* Half a day's pay hangs off this number and two pages read it, so it lives on the
+     server and travels in the payload. It was a constant in callnow2.html for exactly
+     one commit, which would have left this page and the talktime report each holding
+     their own copy: the way one gets changed and the other does not, and the first
+     anybody hears of it is an agent and their manager reading the same day differently. */
+  {
+    const srv = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    const tt  = fs.readFileSync(path.join(__dirname, "..", "public", "talktime.html"), "utf8");
+    ok("the floor is defined once, on the server",
+      /const TALK_FLOOR_MS = 150 \* 60000;/.test(srv) &&
+      (srv.match(/150 \* 60000/g) || []).length === 1);
+    ok("and it is sent to the page rather than restated in it",
+      /floorMs: TALK_FLOOR_MS/.test(srv) &&
+      /\(MT&&MT\.floorMs\)/.test(tsrcCn2) &&
+      /\(T && T\.floorMs\)/.test(tt));
+    ok("neither page keeps a copy of the number",
+      (tsrcCn2.match(/150\*60000|9000000/g) || []).length === 0 &&
+      (tt.match(/150\*60000|9000000/g) || []).length === 0);
+    /* Degrade by marking nobody, never by marking everybody. An old payload or a failed
+       read must not tell a floor full of agents their pay is docked. */
+    ok("a payload with no floor marks nobody",
+      (function(){
+        const h = see(AG, { date: "2026-10-07", locked: true,
+          rows: [Object.assign(row({ callMs: 10*M }), { talkMs: 10*M })] });
+        return h.indexOf("0.5 LOP") < 0 && h.indexOf("mtc low") < 0;
+      })());
+  }
 
   /* ---- it can only ever be their own day ------------------------------------------ */
   ok("nothing is shown at all if the payload holds more than one agent",

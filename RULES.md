@@ -1991,3 +1991,38 @@ asserted that the expanded literal `9000000` never appears in the file. The comm
 the constant mentions that number, in a sentence explaining why not to write it. The test
 failed on its own documentation. Assert the thing you want, once, rather than the absence
 of a thing you do not.
+
+---
+
+## One number, one place, even when two pages need it
+
+8 October 2026, an hour after the first version. The 2h 30m floor shipped as a constant
+inside `callnow2.html`. Then the same floor was wanted in the talktime report, so a
+manager could see who was short without reading down the Total column doing arithmetic in
+their head.
+
+The obvious move is to write `150*60000` in the second file too. That is how one of them
+gets changed and the other does not, and the first anybody hears about it is an agent and
+their manager looking at the same day and disagreeing about whether half a day's pay is
+gone.
+
+**So the floor lives in `server.js` as `TALK_FLOOR_MS` and travels in the payload.**
+Neither page holds the number. `page.test.js` fails if either file contains `150*60000` or
+its expanded form at all.
+
+**Degrade by marking nobody, never by marking everybody.** Both readers fall back to a
+floor of zero, which marks no one, rather than to a hard-coded default. An old cached
+page, a failed read or a trimmed payload must not tell a floor full of agents their pay is
+docked. Tested directly: a payload with no `floorMs` produces no marks and no tile.
+
+**A grep is not a test when the same string appears twice.** The first version of this
+check read the source for `floorMs: TALK_FLOOR_MS`. Deleting it from the day payload left
+the range payload still matching, so the grep passed while the thing both pages actually
+read had stopped being sent. It is now asserted over HTTP in `endpoints.test.js`: fetch
+the day, fetch the span, and compare the two. Breaking either one now fails. The earlier
+version was proved useless by trying exactly that break and watching nothing go red.
+
+**Where the mark sits matters.** It is on the Total cell, not on the row. The rest of that
+row is still correct and still worth reading, and a tinted row says "this agent is a
+problem" where a tinted number says "this number is below the line". The count is also in
+the tiles, because the first question a manager has is how many, not who.
