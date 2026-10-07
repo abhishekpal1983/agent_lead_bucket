@@ -1939,3 +1939,55 @@ you find out which piece of content is the one costing you the layout.
 `title="..."`. The truncated names needed a title, so `escA()` now exists for that. A
 creator name is external data and it is not this page's business whether HubSpot happens
 to allow a quote in one.
+
+---
+
+## A number that costs somebody half a day's pay
+
+8 October 2026. Call Now's head band is three columns: cards, filters, chips. An agent
+gets neither chip row, so their third column was empty. It now holds their own talktime
+for a chosen day, read from `/api/talktime`, which `talkScope` already narrows to that one
+agent before `talkDay` touches anything. **No second scoping implementation**, which is the
+rule this report has been held to since the team filter.
+
+On top of that the card refuses to display anything at all if the payload ever contains
+more than one row. It should be unreachable. If it is ever reached, showing nothing is
+right and showing the first row is a colleague's figures on somebody else's screen.
+
+**Under 2h 30m marks 0.5 LOP, and that changes how carefully the comparison has to be
+written.**
+
+The threshold is one named constant, `MT_FLOOR_MS`, and `page.test.js` fails if the value
+appears more than once in the file. A number with pay hanging off it does not get written
+in two places where one can be updated and the other forgotten.
+
+The boundary is asserted on both sides of itself: 2h 29m is marked, 2h 30m exactly is not,
+2h 31m is not. No rounding in the agent's favour and none against them. Changing `<` to
+`<=` fails two checks.
+
+**A day still running is not a verdict.** At nine in the morning every agent is under
+2h 30m. A closed day states the fact; an open day says how far short they are and what
+happens if it closes there. Telling someone their pay is docked when it is not is false,
+and a page that does that once is a page nobody opens again. Making the open day assert
+LOP as a fact fails two checks.
+
+**The two red lines are one story.** WhatsApp calls with no length on them are not in the
+total, so they may be the reason the total is short. When both are showing, the note says
+so and puts the fixable thing first.
+
+**Three smaller lessons from the same afternoon, all of them mine:**
+
+A preview harness that reads only the first `<style>` block shows an unstyled component
+and looks like a bug in the component. This page has two style blocks with the theme link
+between them, and the headband rules live in the second one precisely because the theme
+sets its rules with `!important`. Take all of them, in document order, or do not bother.
+
+`.bar{align-items:center}` plus an `!important` `flex:1 1 44%` on direct children collapses
+a nested grid to its own content width. The four cells came out stacked one per row in a
+column 190px wide. Both had to be overridden, not one.
+
+**A test that a comment can break is a bad test.** The first version of the floor check
+asserted that the expanded literal `9000000` never appears in the file. The comment above
+the constant mentions that number, in a sentence explaining why not to write it. The test
+failed on its own documentation. Assert the thing you want, once, rather than the absence
+of a thing you do not.

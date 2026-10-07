@@ -17,6 +17,7 @@ function ok(name, cond, extra){
 
 const fmtN = function(n){ return (n||0).toLocaleString('en-IN'); };
 const html = fs.readFileSync(path.join(__dirname, "..", "public", "callnow2.html"), "utf8");
+const tsrcCn2 = html;
 
 /* theme.css loads after the page's own styles and sets its rules with !important, so any
    density rule written before that link silently loses. This is not a detail: it is why a
@@ -413,8 +414,14 @@ console.log("\nRole specific things appear only where they should");
     vp.indexOf("class='headband'") >= 0 &&
     vp.indexOf("class='heroside'") < vp.indexOf("class='bar ctl'") &&
     vp.indexOf("class='bar ctl'") < vp.indexOf("class='bar chipbar ctl'"));
-  ok("and an agent, who gets no chips, keeps the full width",
-    agent.indexOf("class='headband solo'") >= 0);
+  /* An agent used to get a two column band, because the chips were the third column and
+     they get no chips. They now get their own talktime there instead, so the band is
+     three wide for everybody and an agent's page is no longer a narrower one with a hole
+     in it. "solo" is gone and must stay gone, or the card has nowhere to sit. */
+  ok("an agent gets three columns too, with their talktime where the chips would be",
+    agent.indexOf("class='headband'") >= 0 &&
+    agent.indexOf("class='headband solo'") < 0 &&
+    agent.indexOf("mtbar") >= 0 && agent.indexOf("chipbar") < 0);
   ok("the stage and owner chips are two labelled rows, not one row wrapping into itself",
     (vp.match(/class='chipset'/g) || []).length === 2 &&
     html.slice(html.indexOf('href="/theme.css"')).indexOf(".wrap .chipset + .chipset") >= 0);
@@ -1424,9 +1431,13 @@ ok("the month picker and the page filters both reload it",
   /* The whole point of the band: cards two up on the left, controls beside them. */
   ok("the cards stay two up inside their column",
     /\.wrap \.herorow\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(cn));
-  /* A grid template left behind would fight the flex rules and only show up at one width. */
-  ok("no leftover grid template on the band",
-    band.indexOf("grid-template-columns") < 0, band.slice(0, 200));
+  /* A grid template left behind would fight the flex rules and only show up at one
+     width. Checked on the .headband rule itself, not on every rule in the block: the
+     talktime card inside it is a grid on purpose, and reading the whole slice made this
+     fail for the one reason it should not. */
+  ok("no leftover grid template on the band itself",
+    (band.match(/\.wrap \.headband\{[^}]*\}/) || [""])[0].indexOf("grid-template-columns") < 0,
+    (band.match(/\.wrap \.headband\{[^}]*\}/) || ["missing"])[0]);
 }
 
 /* Payment analysis: a table must never be able to paint over the one beside it.
@@ -1482,6 +1493,101 @@ ok("the month picker and the page filters both reload it",
     String((css.match(/@media[^{]*\(max-width:/g) || []).length) + " media rules");
   ok("and the filter bar gives each control a full line on a phone",
     /@media \(max-width:480px\)\{[\s\S]*?\.fbar label\{[^}]*width:100%/.test(css));
+}
+
+/* Your talktime, in the band, for an agent only.
+
+   An agent gets neither chip row, so the third column of the head band was empty for
+   them. This is what goes in it: their own time on the phone for a chosen day, beside
+   the list they are working.
+
+   Two properties matter here and both are asserted. It must never show anybody else's
+   figures, and the 2h 30m floor must be read the same way every time, because what
+   hangs off it is half a day's pay. */
+console.log("\nYour talktime in the band");
+{
+  const M = 60000;
+  const row = function(o){
+    return Object.assign({ id: "205", name: "Danis Khan", callMs: 0, calls: 0, meetMs: 0,
+      meetings: 0, declaredMs: 0, waCalls: 0, waMissing: 0 }, o); };
+  const day = function(locked, o){
+    const r = row(o); r.talkMs = r.callMs + r.meetMs + r.declaredMs;
+    return { date: "2026-10-07", locked: locked, rows: [r] }; };
+
+  const AG = { isVP: false, scoped: true, role: "agent" };
+  const MG = { isVP: false, scoped: true, role: "manager" };
+  const see = function(role, MT, MTDAY, MTBUSY){
+    return render(role, { MT: MT, MTDAY: MTDAY || "2026-10-07", MTBUSY: !!MTBUSY }); };
+
+  const over = see(AG, day(true, { callMs: 78*M, calls: 143, meetMs: 68*M, meetings: 1,
+    declaredMs: 64*M, waCalls: 5 }));
+  ok("an agent gets the card where the chips would be",
+    over.indexOf("mtbar") >= 0 && over.indexOf("Your talktime") >= 0);
+  ok("and it carries their own figures for the day",
+    over.indexOf("3h 30m") >= 0 && over.indexOf("143 calls") >= 0, "totals missing");
+  ok("with a date picker beside it", /class='mtdate'/.test(over) || /class="mtdate"/.test(over));
+
+  /* The band is still three columns. An agent's page is not a narrower one with a hole. */
+  const mgr = render(MG);
+  ok("a manager still gets the stage and owner chips, not this",
+    mgr.indexOf("chipbar") >= 0 && mgr.indexOf("mtbar") < 0);
+  ok("and an agent does not get the chips",
+    over.indexOf("chipbar") < 0);
+
+  /* ---- the 2h 30m floor -----------------------------------------------------------
+     Half a day's pay hangs off this comparison, so the boundary is asserted on both
+     sides of itself rather than once in the middle. */
+  const lop = function(h){ return h.indexOf("0.5 LOP marked") >= 0; };
+  const red = function(h){ return h.indexOf("mtc low") >= 0; };
+  [[41, 22, true,  "1h 03m"],
+   [149, 0, true,  "2h 29m"],
+   [150, 0, false, "2h 30m exactly"],
+   [151, 0, false, "2h 31m"]].forEach(function(c){
+    const h = see(AG, day(true, { callMs: c[0]*M, declaredMs: c[1]*M }));
+    ok("closed at " + c[3] + (c[2] ? " is marked" : " is not marked"), lop(h) === c[2], h.indexOf("mtlop") >= 0 ? "banner shown" : "no banner");
+    /* The number and the consequence must not live in two different places. */
+    ok("  and the total itself is " + (c[2] ? "red" : "not red"), red(h) === c[2]);
+  });
+
+  /* A day still running is not a verdict. At nine in the morning everybody is under
+     2h 30m, and telling an agent their pay is docked when it is not is false. */
+  const open = see(AG, day(false, { callMs: 45*M }));
+  ok("a day still open warns rather than asserting", !lop(open) && open.indexOf("short of 2h 30m") >= 0);
+  ok("and says what happens if it closes there", open.indexOf("if the day closes here") >= 0);
+  ok("and still shows the total in red, because it is short", red(open));
+
+  /* The floor is one named constant, not a number written wherever it is needed. */
+  /* Half a day's pay hangs off this number, so it lives in exactly one place. Asserted
+     as "the value appears once" rather than "the expanded literal never appears", which
+     was the first draft and which this file's own comment broke by mentioning it. */
+  ok("the floor is one named constant, written once",
+    /var MT_FLOOR_MS=150\*60000/.test(tsrcCn2) &&
+    (tsrcCn2.match(/150\*60000/g) || []).length === 1,
+    (tsrcCn2.match(/150\*60000/g) || []).length + " occurrences");
+
+  /* ---- it can only ever be their own day ------------------------------------------ */
+  ok("nothing is shown at all if the payload holds more than one agent",
+    (function(){
+      const h = see(AG, { date: "2026-10-07", locked: true,
+        rows: [row({ callMs: 10*M }), row({ id: "206", name: "Someone else" })] });
+      return h.indexOf("should never do") >= 0 && h.indexOf("mtgrid") < 0;
+    })(), "a second row must hide the figures, not pick one");
+  ok("an empty day says so rather than showing four zeros",
+    see(AG, { date: "2026-10-04", locked: true, rows: [] }).indexOf("Nothing on the phone") >= 0);
+  ok("and it reads the day from the scoped endpoint, adding no filter of its own",
+    /fetch\("\/api\/talktime\?date="\+encodeURIComponent\(day\)\)/.test(tsrcCn2),
+    "the card must not pass an agent parameter it could get wrong");
+
+  /* One answer to "is this an agent", or the fetch and the render can drift apart and
+     the card ends up loading for somebody who never sees it. */
+  /* The band's own answer to "is this an agent" is shared by the render and the first
+     fetch. Other features keep their own checks and are not in scope here; what would
+     bite is the band deriving it twice and the card loading for somebody who never
+     sees it. */
+  ok("one definition of who this is for, used by both the render and the fetch",
+    /function mineOnlyNow\(\)/.test(tsrcCn2) &&
+    /var mineOnly=mineOnlyNow\(\);/.test(tsrcCn2) &&
+    /if\(mineOnlyNow\(\)&&MT===null/.test(tsrcCn2));
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

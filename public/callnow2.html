@@ -538,6 +538,38 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .headband .heroside > .herorow{margin-bottom:0 !important}
 /* The footnote sits at the bottom of its column, so all three columns end level. */
 .wrap .headband .heroside > .hnote{margin-top:auto !important;padding-top:6px}
+/* The agent's talktime card. Same shell as the filter bars beside it so the band reads
+   as one thing, with its own four-cell grid inside. */
+/* stretch, not the center .bar inherits, and the children opt out of the 44% basis the
+   filter bars want. Without both, the grid shrinks to its own content and the four cells
+   come out stacked one per row in a column 190px wide. */
+.wrap .headband .mtbar{display:flex !important;flex-direction:column !important;
+  gap:7px !important;align-items:stretch !important}
+.wrap .headband .mtbar > div{flex:0 0 auto !important;width:100% !important}
+.wrap .headband .mthead{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.wrap .headband .mthead .barlbl{margin:0}
+.wrap .headband .mtdate{border:1px solid #DCE4EC;border-radius:7px;padding:3px 7px;
+  font-size:11.5px;background:#fff;color:#16222E;min-width:0}
+/* auto-fit, so it is four across in the band and two across when the band stacks,
+   rather than a fixed four that squeezes to nothing. */
+.wrap .headband .mtgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));
+  gap:6px}
+.wrap .headband .mtc{background:#F7F9FC;border:1px solid #ECF1F6;border-radius:8px;
+  padding:6px 8px;min-width:0}
+.wrap .headband .mtl{font-size:9px;letter-spacing:.07em;text-transform:uppercase;
+  color:#8496A8;font-weight:700}
+.wrap .headband .mtv{font-size:16px;font-weight:700;color:#16222E;line-height:1.25}
+.wrap .headband .mts{font-size:9.5px;color:#8496A8}
+.wrap .headband .mtnote{font-size:10.5px;color:#8496A8;margin-top:auto}
+.wrap .headband .mtnote.bad{color:#B3261E}
+/* Loss of pay reads as a finding, not a footnote: its own tinted row rather than one
+   more grey line somebody scrolls past. */
+.wrap .headband .mtlop{background:#FDECEA;border:1px solid #F6C9C3;color:#A01B10;
+  border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;line-height:1.35}
+.wrap .headband .mtc.low{background:#FDECEA;border-color:#F6C9C3}
+.wrap .headband .mtc.low .mtv{color:#A01B10}
+.wrap .headband .mtc.low .mtl,.wrap .headband .mtc.low .mts{color:#B3685F}
+.wrap .headband .mtnote a{color:#4338CA;text-decoration:none}
 
 /* The view switch. It was one line, tabs then caption, which worked at three tabs and
    broke at five: the strip lives in a 330px column and the last tab was cut in half.
@@ -739,6 +771,10 @@ function drawMe(){
 var J=null,A=null,L=null,LOADING=false,LEADS=false,PICK=null,OPEN={},LQ="",VIEW="matrix",SEL="",SORT={k:"",d:1};
 var W=null,WFILT="uncalled",WOPEN={},WTHREAD={};
 var C=null,CMONTH="",CROWS="stage",CSP="",CROLE="";
+/* The agent's own talktime for one day, shown in the band beside their filters. MT is
+   the day as the server sent it, MTDAY the date being asked for, MTBUSY a guard so a
+   second click while one read is in flight does not race it. */
+var MT=null,MTDAY="",MTBUSY=false;
 var Q={team:"",agent:"",creator:"",source:"",ostate:"",intl:"",stages:"",segment:""};
 
 /* ---- links into this page ---------------------------------------------------------
@@ -1496,6 +1532,108 @@ function barTop(){
     freshness()+"</div>";
   return h+"</div>";}
 
+/* ---- the agent's own talktime, in the band -----------------------------------------
+
+   An agent gets neither chip row, so the third column of the band is empty for them.
+   This is what goes in it: the day's time on the phone, their own, beside the list they
+   are working. Asking them to open another page to see whether they are behind is how a
+   number stops being used.
+
+   Read from /api/talktime, which is already scoped on the server: talkScope gives an
+   agent ids:[their own owner id] and talkDay filters to it before anything else. So
+   there is no second scoping implementation here and no way for this card to widen what
+   it shows. The page picks the row out of what it was given; it does not choose it. */
+/* The floor a day is measured against. Named, not written as 9000000 three lines down,
+   because this is a number somebody will be asked to change and it must change in one
+   place. */
+var MT_FLOOR_MS=150*60000; // 2h 30m
+function mtFmt(ms){
+  ms=ms||0;
+  if(!ms)return "0m";
+  var m=Math.round(ms/60000);
+  return m>=60?Math.floor(m/60)+"h "+String(m%60).padStart(2,"0")+"m":m+"m";
+}
+/* One answer to "is this an agent", used by both the render and the first fetch. Two
+   copies of that question is two places for them to drift apart, which is how a card
+   ends up fetching for somebody who never sees it. */
+function mineOnlyNow(){ return !!(J&&J.scoped&&J.role==="agent"); }
+function myTalktime(){
+  var today=(J&&J.today)||new Date().toISOString().slice(0,10);
+  var day=MTDAY||today;
+  var h="<div class='bar ctl mtbar'>"+
+    "<div class='mthead'><span class='barlbl'>Your talktime</span>"+
+    "<input type='date' class='mtdate' value='"+esc(day)+"' max='"+esc(today)+"' "+
+      "onchange='mtLoad(this.value)'>"+
+    (day===today?"":"<button class='chipb' onclick='mtLoad(\""+esc(today)+"\")'>Today</button>")+
+    "</div>";
+
+  if(MTBUSY&&!MT)return h+"<div class='mtnote'>Reading your day...</div></div>";
+  if(MT&&MT.error)return h+"<div class='mtnote bad'>"+esc(MT.error)+"</div></div>";
+  if(!MT)return h+"<div class='mtnote'>&nbsp;</div></div>";
+
+  /* One row, because an agent is one row. If the server ever sent more than that
+     something is wrong with the scope and this says so rather than showing a figure
+     that might be somebody else's. */
+  var rows=MT.rows||[];
+  if(rows.length>1)
+    return h+"<div class='mtnote bad'>This is showing more than one agent, which it "+
+      "should never do. Nothing is displayed until that is looked at.</div></div>";
+  var r=rows[0];
+  if(!r)return h+"<div class='mtnote'>Nothing on the phone on this day yet. "+
+    "FreJun time appears here as calls are made.</div></div>";
+
+  var cell=function(label,val,sub,cls){
+    return "<div class='mtc"+(cls?" "+cls:"")+"'><div class='mtl'>"+label+"</div>"+
+      "<div class='mtv'>"+val+"</div>"+
+      (sub?"<div class='mts'>"+sub+"</div>":"")+"</div>";
+  };
+  var short=r.talkMs<MT_FLOOR_MS;
+  h+="<div class='mtgrid'>"+
+    cell("FreJun",mtFmt(r.callMs),fmt(r.calls||0)+" call"+((r.calls||0)===1?"":"s"))+
+    cell("Meetings",mtFmt(r.meetMs),fmt(r.meetings||0)+" held")+
+    cell("WhatsApp",mtFmt(r.declaredMs),fmt(r.waCalls||0)+" declared")+
+    cell("Total",mtFmt(r.talkMs),(MT.locked?"closed "+esc(MT.date):"still open"),short?"low":"")+
+    "</div>";
+
+  /* Loss of pay, under 2h 30m on the day.
+
+     A closed day states it, because by then it is a fact. A day still running says how
+     far short they are and what happens if it closes there, because at nine in the
+     morning everybody is under 2h 30m, and telling an agent their pay is docked when it
+     is not is both wrong and the kind of thing that stops a page being opened at all. */
+  if(short){
+    h+="<div class='mtlop'>"+
+      (MT.locked
+        ? "0.5 LOP marked &middot; under 2h 30m on a closed day"
+        : mtFmt(MT_FLOOR_MS-r.talkMs)+" short of 2h 30m &middot; 0.5 LOP is marked if the day closes here")+
+      "</div>";
+  }
+  /* The untyped count is the one number an agent can act on today: it is their own
+     WhatsApp calls with no length on them, which is why it is called out rather than
+     folded into the WhatsApp cell. */
+  if(r.waMissing)
+    h+="<div class='mtnote bad'>"+fmt(r.waMissing)+" WhatsApp call"+
+      (r.waMissing===1?" has":"s have")+" no length on them, so they are not in the total"+
+      (short?", which may be why it is short":"")+". "+
+      "<a href='/talktime.html?date="+esc(MT.date)+"' target='_blank'>open the day &nearr;</a></div>";
+  else
+    h+="<div class='mtnote'><a href='/talktime.html?date="+esc(MT.date)+
+      "' target='_blank'>open the full day &nearr;</a></div>";
+  return h+"</div>";
+}
+function mtLoad(day){
+  if(MTBUSY)return;
+  var today=(J&&J.today)||new Date().toISOString().slice(0,10);
+  day=String(day||today);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
+  if(day>today)day=today;
+  MTDAY=day; MTBUSY=true; MT=null; draw();
+  fetch("/api/talktime?date="+encodeURIComponent(day))
+    .then(function(r){ return r.ok?r.json():{error:"could not read that day"}; })
+    .then(function(j){ MT=j; MTBUSY=false; draw(); })
+    /* Chrome. It must never be the reason the calling floor fails to render. */
+    .catch(function(){ MT={error:"could not read that day"}; MTBUSY=false; draw(); });
+}
 function barChips(){
   // The same controls v1 puts under its dropdowns.
   var h="<div class='bar chipbar ctl'>";
@@ -2437,6 +2575,9 @@ function draw(){
   var nav=document.getElementById("vpnav");
   if(nav)nav.style.display=J.isVP?"flex":"none";
   drawMe();
+  /* First paint asks for today once. Without this the card sits empty until somebody
+     touches the date, which reads as broken rather than as not-yet-asked. */
+  if(mineOnlyNow()&&MT===null&&!MTBUSY&&MTDAY==="")mtLoad((J&&J.today)||"");
   // Four full width bars stacked on top of each other pushed the tables below the fold.
   // Two columns instead: controls on the left, the state of today's list on the right.
   // A VP gets the machinery: what the list is, what is held aside, how it compares to v1,
@@ -2470,7 +2611,7 @@ function draw(){
      An agent gets neither chip row: the matrix already is their stage filter, and they
      only ever hold their own leads, so the owner row filters on a question they cannot
      answer. Their controls take the full width on their own. */
-  var mineOnly=J.scoped&&J.role==="agent";
+  var mineOnly=mineOnlyNow();
   /* The view tabs sit under Call today, not under the filters. Choosing between matrix,
      queue and board is the first decision after reading the headline, and it was three
      blocks away on the far side of the band.
@@ -2483,10 +2624,13 @@ function draw(){
      always finished short and left a band of white under it. As siblings they stretch to
      one height and the band has no hole in it. */
   var h=shortList()+quality()+
-    "<div class='headband"+(mineOnly?" solo":"")+"'>"+
+    "<div class='headband'>"+
       "<div class='heroside'>"+hero()+viewTabs()+lockNote()+"</div>"+
       barTop()+
-      (mineOnly?"":barChips())+
+      /* The third column either filters somebody else's floor or reports your own day.
+         Nobody gets both, so the band is three wide for everyone and the agent's is not
+         a narrower page with a hole in it. */
+      (mineOnly?myTalktime():barChips())+
     "</div>"+segNote();
   var matrix="";
   SECS.forEach(function(s,i){
