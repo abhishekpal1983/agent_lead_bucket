@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Lead management</title>
+<style>
+:root{
+  --ink:#0A2540; --ink2:#4B5B6E; --ink3:#8593A3; --line:#DCE4EC; --line2:#EFF3F7;
+  --canvas:#F4F7FA; --surface:#fff; --navy:#0A2540; --navy2:#12304F; --accent:#0091AE;
+  --ok:#0E9F6E; --ok-bg:#E3F7EF; --ok-ink:#04624A;
+  --warn:#B45309; --warn-bg:#FEF4E4; --warn-ink:#7C3D06;
+  --bad:#E02D3C; --bad-bg:#FDECEE; --bad-ink:#9B1220;
+  --ahead:#4F46E5; --ahead-bg:#EEEDFE; --ahead-ink:#3730A3;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;background:var(--canvas);color:var(--ink);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:100vh}
+@media(max-width:900px){.detail{max-width:calc(100vw - 50px)}.shell{grid-template-columns:1fr}.nav{flex-direction:row!important;flex-wrap:wrap}}
+.nav{background:var(--navy);padding:16px 12px;display:flex;flex-direction:column;gap:3px}
+.nav h1{font-size:15px;font-weight:600;color:#fff;padding:0 8px 2px}
+.nav .who{font-size:11.5px;color:#7C93AD;padding:0 8px 12px}
+.nav button{display:block;width:100%;text-align:left;background:none;border:none;color:#A9BED2;font:inherit;font-weight:500;padding:8px 10px;border-radius:6px;cursor:pointer}
+.nav button:hover{background:var(--navy2);color:#fff}
+.nav button.on{background:var(--accent);color:#fff}
+.nav .cnt{float:right;font-size:11px;font-weight:600;background:#C2410C;color:#fff;padding:0 7px;border-radius:10px}
+.nav .tools{margin-top:14px;padding-top:10px;border-top:1px solid var(--navy2)}
+.nav .tools a{display:block;color:#A9BED2;font-size:13px;padding:6px 10px;text-decoration:none;border-radius:6px}
+.nav .tools a:hover{background:var(--navy2);color:#fff}
+.main{padding:18px 22px 60px;min-width:0}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.top h2{font-size:19px;font-weight:600;margin-right:auto}
+select,input[type=number],input[type=text]{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:#fff;color:var(--ink)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:none;background:none;font:inherit;font-size:12.5px;padding:5px 11px;cursor:pointer;color:var(--ink2)}
+.seg button.on{background:var(--navy);color:#fff}
+.btn{font:inherit;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:7px;padding:5px 11px;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{filter:brightness(.95);color:#fff}
+.sync{font-size:12px;color:var(--ink3)}
+.sync b{color:var(--ink2);font-weight:600}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tile .l{font-size:11.5px;color:var(--ink2);font-weight:500}
+.tile .v{font-size:21px;font-weight:650;letter-spacing:-.01em;margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .s{font-size:11.5px;color:var(--ink3);margin-top:2px}
+.sec{background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:14px;padding:14px 16px}
+.sec h3{font-size:14.5px;font-weight:600}
+.sec .sub{font-size:12.5px;color:var(--ink2);margin:2px 0 10px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);font-weight:600;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:#fff;position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+td{padding:7px 8px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}
+tr.tot td{font-weight:650;background:#F7F9FB;border-top:1px solid var(--line)}
+tr.row{cursor:pointer}
+tr.row:hover td{background:#F8FAFC}
+td.l{text-align:left}
+.n{cursor:pointer;border-bottom:1px dotted #9DB0C3}
+.n:hover{color:var(--accent);border-color:var(--accent)}
+.mut{color:var(--ink3)}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:10px;white-space:nowrap}
+.p-ahead{background:var(--ahead-bg);color:var(--ahead-ink)}
+.p-ok{background:var(--ok-bg);color:var(--ok-ink)}
+.p-slight{background:var(--warn-bg);color:var(--warn-ink)}
+.p-behind{background:var(--bad-bg);color:var(--bad-ink)}
+.p-none,.p-future{background:#EEF1F5;color:var(--ink2)}
+.al{display:inline-block;font-size:11px;padding:0 6px;border-radius:5px;margin:2px 3px 0 0;white-space:nowrap;font-weight:500}
+.al.bad{background:var(--bad-bg);color:var(--bad-ink)}
+.al.warn{background:var(--warn-bg);color:var(--warn-ink)}
+.bar{position:relative;height:6px;background:#EDF1F5;border-radius:4px;width:80px;display:inline-block;vertical-align:middle;margin-left:6px}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.good{color:var(--ok-ink)} .badt{color:var(--bad-ink)} .warnt{color:var(--warn-ink)}
+/* Heatmap */
+.hm td{padding:0;border:none}
+.hm td.l{padding:3px 10px 3px 0;font-size:12.5px}
+.hm .c{width:26px;height:24px;margin:1px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;cursor:pointer}
+.hm .c:hover{outline:2px solid var(--ink)}
+.hm .c.today{outline:2px dashed var(--ink)}
+.hm th{font-size:10px;padding:2px 0;text-align:center;position:static}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.detail{position:sticky;left:0;max-width:calc(100vw - 290px);background:#FAFBFD;border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin:6px 0 10px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.modal{position:fixed;inset:0;background:rgba(10,37,64,.45);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50}
+.modal.on{display:flex}
+.modal .box{background:#fff;border-radius:12px;width:min(1200px,100%);max-height:calc(100vh - 80px);display:flex;flex-direction:column}
+.modal .hd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.modal .hd h4{font-size:15px;margin-right:auto}
+.modal .bd{overflow:auto;padding:4px 16px 16px}
+.modal a{color:var(--accent);text-decoration:none;font-weight:500}
+.warnbox{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12.5px}
+.badbox{background:var(--bad-bg);color:var(--bad-ink);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12.5px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:16px;padding:3px 6px 3px 11px;margin:3px 4px 3px 0;font-size:12.5px;background:#fff}
+.chip button{border:none;background:#EEF1F5;border-radius:50%;width:18px;height:18px;cursor:pointer;color:var(--ink2);font-size:12px;line-height:18px}
+.chip button:hover{background:var(--bad-bg);color:var(--bad-ink)}
+input.tgt{width:90px;text-align:right}
+.hidden{display:none}
+table.wk td,table.wk th{padding:6px 7px;font-size:12.5px}
+table.wk th{font-size:10.5px}
+tr.grp th{color:var(--ink2);border-bottom:none;padding-bottom:0;font-size:10px}
+tr.grp + tr th{top:16px}
+.loading{padding:60px;text-align:center;color:var(--ink3)}
+.kv{font-size:12.5px;color:var(--ink2)}
+.kv b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav">
+    <h1>Lead management</h1>
+    <div class="who" id="who"></div>
+    <button data-v="inflow" class="on">Inflow vs target <span class="cnt hidden" id="lagcnt"></span></button>
+    <button data-v="daily">Daily inflow</button>
+    <button data-v="work">Lead work</button>
+    <button data-v="setup">Targets &amp; creators</button>
+    <div class="tools">
+      <a href="/vp.html">Overview</a>
+      <a href="/callnow.html">Call Now</a>
+      <a href="/">Dashboard</a>
+    </div>
+  </nav>
+  <main class="main">
+    <div class="top">
+      <h2 id="title">Inflow vs target</h2>
+      <select id="month"></select>
+      <div class="seg" id="intl">
+        <button data-v="" class="on">All</button><button data-v="no">National</button><button data-v="yes">International</button>
+      </div>
+      <span class="sync" id="sync"></span>
+      <button class="btn hidden" id="refresh" title="Pull every creator from HubSpot now">Refresh</button>
+    </div>
+    <div id="banner"></div>
+    <div id="view"><div class="loading">Loading lead data...</div></div>
+  </main>
+</div>
+
+<div class="modal" id="modal"><div class="box">
+  <div class="hd"><h4 id="mt"></h4><span class="mut" id="mc"></span><button class="btn" id="csv">Download CSV</button><button class="btn" id="mx">Close</button></div>
+  <div class="bd" id="mb"></div>
+</div></div>
+
+<script>
+var J = null, VIEW = "inflow", MONTH = "", INTL = "", OPEN = {}, LAST_LEADS = [], WORK_OPEN = {};
+var STAGE = { __fresh: "Fresh", rcb_requested_callback: "RCB", discovery: "Discovery", program_pitched: "Program pitched",
+  pricing_pitched: "Pricing pitched", counselled: "Counselled", "Follow up": "Follow up", FU_DNP: "FU DNP", FU_RCB: "FU RCB",
+  payment_prospect: "Payment prospect", dnp_did_not_pick: "DNP", ghosted: "Ghosted", ni_not_interested: "Not interested",
+  disqualified: "Disqualified", IFC: "IFC", deal_won: "Deal won" };
+var BUCKET = { fresh: "Fresh (untouched)", freshOld: "Fresh older than 24h", untouched: "Never touched", workable: "Workable",
+  churned: "Churned", ifc: "IFC", won: "Deal won", counselled: "Counselled", enrolled: "Enrolled", unassigned: "Unassigned",
+  noFu: "Workable with no follow-up set", overdueFu: "Workable with overdue follow-up",
+  dnp_did_not_pick: "DNP", ghosted: "Ghosted", ni_not_interested: "Not interested", disqualified: "Disqualified" };
+
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; }); }
+function fmt(n){ return n == null ? "-" : Math.round(n).toLocaleString("en-IN"); }
+function pct(x, d){ return x == null || isNaN(x) ? "-" : (x * 100).toFixed(d == null ? 0 : d) + "%"; }
+function inr(n){
+  if (!n) return "-";
+  if (n >= 1e7) return "₹" + (n / 1e7).toFixed(2) + " Cr";
+  if (n >= 1e5) return "₹" + (n / 1e5).toFixed(1) + " L";
+  return "₹" + Math.round(n).toLocaleString("en-IN");
+}
+function signed(x){ return x == null ? "-" : (x >= 0 ? "+" : "") + Math.round(x * 100) + "%"; }
+function dt(ms){ if (!ms) return ""; var d = new Date(ms); return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }); }
+function ago(iso){ if (!iso) return "never"; var m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + "h ago"; }
+function monthLabel(m){ var d = new Date(m + "-01T00:00:00"); return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }); }
+function dayKey(i){ return MONTH + "-" + String(i + 1).padStart(2, "0"); }
+function statusColor(s){ return { ahead: "var(--ahead)", ok: "var(--ok)", slight: "var(--warn)", behind: "var(--bad)" }[s] || "#B7C3D0"; }
+
+function api(url){
+  return fetch(url).then(function(r){
+    if (r.status === 401) { location.href = "/login.html?to=" + encodeURIComponent(location.pathname); return null; }
+    if (!r.ok) return r.text().then(function(t){ throw new Error("Server returned " + r.status + ": " + t.slice(0, 200)); });
+    return r.json();
+  });
+}
+function post(url, body){
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+    .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ("HTTP " + r.status)); return j; }); });
+}
+function qs(extra){
+  var p = ["month=" + encodeURIComponent(MONTH), "intl=" + encodeURIComponent(INTL)];
+  Object.keys(extra || {}).forEach(function(k){ if (extra[k] !== undefined && extra[k] !== null) p.push(k + "=" + encodeURIComponent(extra[k])); });
+  return p.join("&");
+}
+
+function load(){
+  return api("/api/leadplan?" + qs()).then(function(j){
+    if (!j) return;
+    J = j;
+    if (!MONTH) MONTH = j.month;
+    var sel = document.getElementById("month");
+    sel.innerHTML = j.months.map(function(m){ return "<option value='" + m + "'" + (m === j.month ? " selected" : "") + ">" + monthLabel(m) + "</option>"; }).join("");
+    document.getElementById("who").innerHTML = (j.me ? esc(j.me) + "<br>" : "") + (j.canEdit ? "Can edit targets" : "View only");
+    document.getElementById("refresh").classList.toggle("hidden", !j.canEdit);
+    var s = j.sync;
+    document.getElementById("sync").innerHTML = s.syncing && !s.loadedAt ? "<b>First sync running</b>, a few minutes" :
+      "Leads synced <b>" + ago(s.loadedAt) + "</b>" + (s.syncing ? " (refreshing)" : "") + " · every " + s.everyMinutes + " min";
+    var lag = j.creators.filter(function(c){ return c.status === "behind" || c.alerts.some(function(a){ return a.sev === "bad"; }); }).length;
+    var lc = document.getElementById("lagcnt");
+    lc.textContent = lag; lc.classList.toggle("hidden", !lag);
+    var b = "";
+    if (!j.persistent) b += "<div class='badbox'><b>Targets are not being saved.</b> No writable volume is mounted at the data directory, so targets and creator changes will reset on the next deploy.</div>";
+    var errs = Object.keys(s.errors || {});
+    if (errs.length) b += "<div class='warnbox'>Could not read " + errs.map(esc).join(", ") + " on the last sync. Showing the last good read where there is one.</div>";
+    if (!s.loadedAt) b += "<div class='warnbox'>The first lead sync since the last deploy is still running. Numbers will fill in when it finishes.</div>";
+    if (j.info.isCurrent && !j.targetsSet) b += "<div class='warnbox'>No lead targets set for " + monthLabel(j.month) + " yet. " + (j.canEdit ? "<a href='#' onclick=\"go('setup');return false\">Set them in Targets &amp; creators</a>." : "Ask a VP to set them.") + "</div>";
+    document.getElementById("banner").innerHTML = b;
+    render();
+  }).catch(function(e){
+    document.getElementById("view").innerHTML = "<div class='badbox'><b>Could not load.</b> " + esc(e.message) + "</div>";
+  });
+}
+
+function go(v){
+  VIEW = v;
+  document.querySelectorAll(".nav button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-v") === v); });
+  document.getElementById("title").textContent = { inflow: "Inflow vs target", daily: "Daily inflow", work: "Lead work", setup: "Targets & creators" }[v];
+  render();
+}
+function render(){
+  if (!J) return;
+  var v = document.getElementById("view");
+  if (VIEW === "inflow") v.innerHTML = tiles() + inflowTable();
+  else if (VIEW === "daily") v.innerHTML = heatmap();
+  else if (VIEW === "work") { v.innerHTML = workView(); Object.keys(WORK_OPEN).forEach(loadAgents); }
+  else v.innerHTML = setupView();
+}
+
+/* ---------- Inflow ---------- */
+function tiles(){
+  var t = J.totals, i = J.info;
+  var lag = J.creators.filter(function(c){ return c.status === "behind" || c.status === "slight"; }).length;
+  var dark = J.creators.filter(function(c){ return c.silentDays >= J.pace.silentDays; }).length;
+  var cls = t.pacePct == null ? "" : t.pacePct >= J.pace.onTrack ? "good" : t.pacePct >= J.pace.slight ? "warnt" : "badt";
+  return "<div class='tiles'>" +
+    tile("Leads this month", fmt(t.mtd), t.target ? "of " + fmt(t.target) + " target" : "no target set") +
+    tile("Pace vs plan", "<span class='" + cls + "'>" + pct(t.pacePct) + "</span>", t.target ? fmt(t.required) + " due by now" : "") +
+    tile("Projected month end", fmt(t.projected), t.target ? pct(t.projected / t.target) + " of target" : "at current run rate") +
+    (i.isCurrent ? tile("Today so far", fmt(t.today), "yesterday " + fmt(t.yesterday)) : "") +
+    tile("Vs last month", "<span class='" + (t.vsPrev == null ? "" : t.vsPrev >= 0 ? "good" : "badt") + "'>" + signed(t.vsPrev) + "</span>",
+      fmt(t.prevSameDay) + (i.isCurrent ? " by the same day" : " last month")) +
+    tile("Creators lagging", "<span class='" + (lag ? "badt" : "good") + "'>" + lag + "</span>", dark ? dark + " with no leads for " + J.pace.silentDays + "+ days" : "of " + J.creators.length + " tracked") +
+    "</div>";
+}
+function tile(l, v, s){ return "<div class='tile'><div class='l'>" + l + "</div><div class='v'>" + v + "</div><div class='s'>" + (s || "") + "</div></div>"; }
+
+function sortedCreators(){
+  var rank = { behind: 0, slight: 1, ok: 2, ahead: 3, future: 4, none: 5 };
+  return J.creators.slice().sort(function(a, b){
+    var ba = a.alerts.some(function(x){ return x.sev === "bad"; }) ? -5 : 0, bb = b.alerts.some(function(x){ return x.sev === "bad"; }) ? -5 : 0;
+    return (rank[a.status] + ba) - (rank[b.status] + bb) || (a.pacePct || 0) - (b.pacePct || 0) || b.mtd - a.mtd;
+  });
+}
+function inflowTable(){
+  var i = J.info, P = J.pace;
+  var h = "<div class='sec'><h3>Lead inflow by creator, " + monthLabel(J.month) + "</h3>" +
+    "<div class='sub'>Each monthly target is spread evenly over the month. <b>Due by now</b> is the share that should have arrived by this minute (" +
+    (i.isCurrent ? "day " + (i.todayIdx + 1) + " of " + i.days : i.isPast ? "month complete" : "not started") +
+    "). On track means at least " + Math.round(P.onTrack * 100) + "% of due, slight lag " + Math.round(P.slight * 100) + " to " + Math.round(P.onTrack * 100) +
+    "%, behind under " + Math.round(P.slight * 100) + "%. Click a creator for the daily chart and source split.</div><div class='tw'><table><thead><tr>" +
+    "<th>Creator</th><th>Status</th><th>Target</th><th>Leads</th><th>Due by now</th><th>Gap</th><th style='text-align:left'>Pace</th>" +
+    "<th>Projected</th>" + (i.isCurrent ? "<th>Need / day</th><th>Today</th>" : "") + "<th>Yesterday</th><th title='Average of the last three complete days, against the daily target'>Last 3d avg / need</th><th>Vs last month</th></tr></thead><tbody>";
+  sortedCreators().forEach(function(c){
+    var w = c.target ? Math.min(100, c.mtd / c.target * 100) : 0, mk = c.target ? Math.min(100, c.required / c.target * 100) : 0;
+    h += "<tr class='row' onclick=\"toggle('" + esc(c.creator) + "')\"><td style='white-space:normal;min-width:230px;max-width:300px'><b>" + esc(c.creator) + "</b>" + (c.loaded ? "" : " <span class='mut'>(syncing)</span>") +
+      (c.alerts.length ? "<div>" + c.alerts.map(function(a){ return "<span class='al " + a.sev + "'>" + esc(a.t) + "</span>"; }).join("") + "</div>" : "") + "</td>" +
+      "<td><span class='pill p-" + c.status + "'>" + c.label + "</span></td>" +
+      "<td>" + (c.target ? fmt(c.target) : "<span class='mut'>-</span>") + "</td>" +
+      "<td><span class='n' onclick=\"event.stopPropagation();drill({creator:'" + esc(c.creator) + "'})\">" + fmt(c.mtd) + "</span></td>" +
+      "<td>" + (c.target ? fmt(c.required) : "-") + "</td>" +
+      "<td class='" + (c.gap < 0 ? "badt" : "good") + "'>" + (c.target ? (c.gap > 0 ? "+" : "") + fmt(c.gap) : "-") + "</td>" +
+      "<td style='text-align:left'>" + (c.target ? pct(c.pacePct) + "<span class='bar' title='Filled: leads vs month target. Line: where you should be now'><i style='width:" + w + "%;background:" + statusColor(c.status) + "'></i><b style='left:" + mk + "%'></b></span>" : "<span class='mut'>no target</span>") + "</td>" +
+      "<td>" + fmt(c.projected) + (c.target ? " <span class='mut'>(" + pct(c.projectedPct) + ")</span>" : "") + "</td>" +
+      (i.isCurrent ? "<td>" + (c.needPerDay == null ? "-" : Math.ceil(c.needPerDay)) + "</td><td>" + cellN(c.today, c.creator, i.todayIdx) + "</td>" : "") +
+      "<td>" + (c.yesterday == null ? "-" : cellN(c.yesterday, c.creator, i.isCurrent ? i.todayIdx - 1 : i.days - 1)) + "</td>" +
+      "<td>" + (c.last3 == null ? "-" : c.last3.toFixed(1)) + (c.target ? " <span class='mut'>/ " + c.dailyTarget.toFixed(1) + "</span>" : "") + "</td>" +
+      "<td class='" + (c.vsPrev == null ? "" : c.vsPrev >= 0 ? "good" : "badt") + "'>" + signed(c.vsPrev) + "</td></tr>";
+    if (OPEN[c.creator]) h += "<tr><td colspan='16' style='white-space:normal'>" + creatorDetail(c) + "</td></tr>";
+  });
+  var t = J.totals;
+  h += "<tr class='tot'><td>All creators</td><td></td><td>" + fmt(t.target) + "</td><td>" + fmt(t.mtd) + "</td><td>" + fmt(t.required) + "</td><td>" +
+    (t.target ? fmt(t.mtd - t.required) : "-") + "</td><td style='text-align:left'>" + pct(t.pacePct) + "</td><td>" + fmt(t.projected) + "</td>" +
+    (i.isCurrent ? "<td></td><td>" + fmt(t.today) + "</td>" : "") + "<td>" + fmt(t.yesterday) + "</td><td></td><td>" + signed(t.vsPrev) + "</td></tr>";
+  return h + "</tbody></table></div></div>";
+}
+function cellN(n, creator, idx){
+  if (n == null) return "-";
+  if (idx < 0) return fmt(n);
+  return "<span class='n' onclick=\"event.stopPropagation();drill({creator:'" + esc(creator) + "',day:'" + dayKey(idx) + "'})\">" + fmt(n) + "</span>";
+}
+function toggle(c){ OPEN[c] = !OPEN[c]; render(); }
+
+function creatorDetail(c){
+  return "<div class='detail'><div class='grid2'><div><div class='kv' style='margin-bottom:6px'><b>Leads per day</b> vs daily target" +
+    (c.target ? " of " + c.dailyTarget.toFixed(1) : "") + ". Click a bar for those leads.</div>" + dailyChart(c) + "</div><div>" +
+    "<div class='kv' style='margin-bottom:6px'><b>By source</b> (actual_source), this month</div>" + sourceTable(c) + "</div></div></div>";
+}
+function dailyChart(c){
+  var W = 640, H = 170, padL = 28, padB = 20, n = c.daily.length;
+  var max = Math.max(4, c.dailyTarget * 1.3, Math.max.apply(null, c.daily));
+  var bw = (W - padL) / n, y = function(v){ return H - padB - v / max * (H - padB - 8); };
+  var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;height:auto;max-width:" + W + "px' role='img' aria-label='Leads per day for " + esc(c.creator) + "'>";
+  [0, max / 2, max].forEach(function(g){ s += "<line x1='" + padL + "' x2='" + W + "' y1='" + y(g) + "' y2='" + y(g) + "' stroke='#EFF3F7'/><text x='" + (padL - 4) + "' y='" + (y(g) + 3) + "' font-size='9' text-anchor='end' fill='#8593A3'>" + Math.round(g) + "</text>"; });
+  c.daily.forEach(function(v, i){
+    var future = J.info.isCurrent ? i > J.info.todayIdx : J.info.isFuture;
+    var isToday = J.info.isCurrent && i === J.info.todayIdx;
+    var col = future ? "#EEF1F5" : !c.target ? "#7FA7C9" : v >= c.dailyTarget ? "#3FBF8F" : v >= c.dailyTarget * J.pace.weakDay ? "#E7A33E" : "#E5626E";
+    var x = padL + i * bw + 1, hgt = Math.max(future ? 0 : 1, H - padB - y(v));
+    s += "<g style='cursor:pointer' onclick=\"drill({creator:'" + esc(c.creator) + "',day:'" + dayKey(i) + "'})\"><title>" + dayKey(i) + ": " + v + " leads" + (isToday ? " (today so far)" : "") + "</title>" +
+      "<rect x='" + x + "' y='" + (H - padB - hgt) + "' width='" + Math.max(1, bw - 2) + "' height='" + hgt + "' rx='2' fill='" + col + "'" + (isToday ? " opacity='.55'" : "") + "/></g>";
+    if (i % 3 === 0 || i === n - 1) s += "<text x='" + (x + bw / 2 - 1) + "' y='" + (H - 6) + "' font-size='9' text-anchor='middle' fill='#8593A3'>" + (i + 1) + "</text>";
+  });
+  if (c.target) s += "<line x1='" + padL + "' x2='" + W + "' y1='" + y(c.dailyTarget) + "' y2='" + y(c.dailyTarget) + "' stroke='#0A2540' stroke-dasharray='4 3' stroke-width='1.2'/>";
+  return s + "</svg>";
+}
+function sourceTable(c){
+  if (!c.sources.length) return "<div class='mut'>No leads this month.</div>";
+  var last3 = function(arr){
+    var end = J.info.isCurrent ? J.info.todayIdx : arr.length; var a = arr.slice(Math.max(0, end - 3), end);
+    return a.length ? (a.reduce(function(x, y){ return x + y; }, 0) / a.length).toFixed(1) : "-";
+  };
+  var h = "<table><thead><tr><th>Source</th><th>Leads</th><th>Share</th><th>Last 3d avg</th></tr></thead><tbody>";
+  c.sources.forEach(function(s){
+    h += "<tr><td class='l'>" + esc(s.source) + "</td><td>" + fmt(s.mtd) + "</td><td>" + pct(s.mtd / c.mtd) + "</td><td>" + last3(s.daily) + "</td></tr>";
+  });
+  return h + "</tbody></table>";
+}
+
+/* ---------- Daily heatmap ---------- */
+function heatmap(){
+  var i = J.info, days = i.days;
+  var h = "<div class='sec'><h3>Leads created per day, " + monthLabel(J.month) + "</h3><div class='sub'>Each cell is one creator's leads for one day (IST), coloured against that creator's daily target. Today is outlined and still filling up. Click a cell for the leads.</div><div class='tw'><table class='hm'><thead><tr><th></th>";
+  for (var d = 0; d < days; d++) h += "<th>" + (d + 1) + "</th>";
+  h += "<th style='padding-left:10px;text-align:right'>Total</th></tr></thead><tbody>";
+  sortedCreators().forEach(function(c){
+    h += "<tr><td class='l'><b>" + esc(c.creator) + "</b> <span class='pill p-" + c.status + "' style='margin-left:4px'>" + c.label + "</span></td>";
+    c.daily.forEach(function(v, d){
+      var future = i.isCurrent ? d > i.todayIdx : i.isFuture;
+      var bg, fg = "#fff";
+      if (future) { bg = "#F4F6F9"; fg = "#C5CED8"; }
+      else if (!c.target) { bg = v ? "#C9DAEA" : "#F4F6F9"; fg = v ? "#0A2540" : "#B0BAC6"; }
+      else {
+        var r = v / c.dailyTarget;
+        bg = r >= 1 ? (r >= 1.3 ? "#0E9F6E" : "#3FBF8F") : r >= J.pace.weakDay ? "#F2C46B" : r > 0 ? "#EE8B93" : "#E02D3C";
+        fg = r >= J.pace.weakDay && r < 1 ? "#5A3A06" : "#fff";
+      }
+      var today = i.isCurrent && d === i.todayIdx;
+      h += "<td><div class='c" + (today ? " today" : "") + "' style='background:" + bg + ";color:" + fg + "' title='" + esc(c.creator) + ", " + dayKey(d) + ": " + v + " leads" + (c.target ? " (target " + c.dailyTarget.toFixed(1) + ")" : "") + "'" +
+        (future ? "" : " onclick=\"drill({creator:'" + esc(c.creator) + "',day:'" + dayKey(d) + "'})\"") + ">" + (future ? "" : v) + "</div></td>";
+    });
+    h += "<td style='padding-left:10px;text-align:right;font-weight:600'>" + fmt(c.mtd) + "</td></tr>";
+  });
+  h += "<tr><td class='l' style='padding-top:6px'><b>All</b></td>";
+  J.totals.daily.forEach(function(v, d){
+    var future = i.isCurrent ? d > i.todayIdx : i.isFuture;
+    h += "<td><div class='c' style='background:#EEF1F5;color:#0A2540;font-size:9.5px;cursor:default'>" + (future ? "" : v) + "</div></td>";
+  });
+  h += "<td style='padding-left:10px;text-align:right;font-weight:700'>" + fmt(J.totals.mtd) + "</td></tr></tbody></table></div>" +
+    "<div class='legend'><span><i style='background:#0E9F6E'></i>130%+ of daily target</span><span><i style='background:#3FBF8F'></i>100 to 130%</span>" +
+    "<span><i style='background:#F2C46B'></i>" + Math.round(J.pace.weakDay * 100) + " to 100%</span><span><i style='background:#EE8B93'></i>under " + Math.round(J.pace.weakDay * 100) + "%</span>" +
+    "<span><i style='background:#E02D3C'></i>zero leads</span><span><i style='background:#C9DAEA'></i>no target set</span></div></div>";
+  return h;
+}
+
+/* ---------- Lead work ---------- */
+function workView(){
+  var t = J.totals.funnel;
+  var h = "<div class='tiles'>" +
+    tile("Leads created", fmt(t.total), monthLabel(J.month) + " cohort") +
+    tile("Never touched", "<span class='" + (t.freshOld ? "badt" : "") + "'>" + fmt(t.fresh) + "</span>", fmt(t.freshOld) + " older than 24h") +
+    tile("First touch within 24h", pct(t.touched24Pct), fmt(t.touched24) + " leads") +
+    tile("Churned", pct(t.churnPct), fmt(t.churned) + " of " + fmt(t.staged) + " worked") +
+    tile("Counselled", fmt(t.counselled), "L2C " + pct(t.l2c, 1)) +
+    tile("Enrolled", fmt(t.enrolled), "C2E " + pct(t.c2e, 1) + " · L2E " + pct(t.l2e, 1)) +
+    tile("Revenue from cohort", inr(t.revenue), "all payments by these leads") +
+    "</div>";
+  h += "<div class='sec'><h3>What happened to the leads created in " + monthLabel(J.month) + "</h3>" +
+    "<div class='sub'>Every lead created this month for each creator, whoever holds it, and where it is now. Counselled means the stage history ever entered a counselling stage. Enrolled means a first payment for that creator in the payment tracker. Rates are cohort rates, so the latest days always look weaker until they have had time to convert. Click any number for the leads, or a creator row for the per-agent split.</div>" +
+    "<div class='tw'><table class='wk'>" + workHead("Creator") + "<tbody>";
+  J.creators.slice().sort(function(a, b){ return b.funnel.total - a.funnel.total; }).forEach(function(c){
+    h += workRow(c.creator, c.funnel, true);
+    if (WORK_OPEN[c.creator]) h += "<tr><td colspan='20' style='white-space:normal'><div class='detail' id='ag-" + esc(c.creator) + "'><span class='mut'>Loading agents...</span></div></td></tr>";
+  });
+  h += workRow("", t, false);
+  return h + "</tbody></table></div></div>";
+}
+function workHead(first){
+  return "<thead><tr class='grp'><th></th><th></th><th colspan='4' style='text-align:center'>Outcome</th><th colspan='5' style='text-align:center'>Speed and coverage</th>" +
+    "<th colspan='3' style='text-align:center'>Workable pipeline</th><th colspan='6' style='text-align:center'>Churn and parked</th></tr><tr>" +
+    "<th>" + first + "</th><th>Leads</th>" +
+    "<th title='Stage history ever entered a counselling stage. Share is of all leads (L2C)'>Counselled · L2C</th><th title='First payment for this creator. Share is of counselled leads (C2E)'>Enrolled · C2E</th><th title='Enrolled of all leads'>L2E</th><th>Revenue</th>" +
+    "<th>Unassigned</th><th title='No stage, no call, no logged engagement'>Never touched</th><th>of which &gt;24h old</th><th title='Owner first engaged within 24 hours of the lead being created'>Touch &le;24h</th><th title='Median hours from lead creation to the owner first engaging'>Median hrs</th>" +
+    "<th>Workable</th><th>No FU set</th><th title='Follow-up date passed more than a day ago'>Overdue FU</th>" +
+    "<th title='Share of worked (staged) leads now in a churn stage'>Churned · %</th><th>DNP</th><th>Ghosted</th><th title='Not interested before / after counselling'>NI pre / post</th><th>DQ</th><th>IFC</th></tr></thead>";
+}
+function workRow(creator, f, clickable, owner){
+  var args = function(bucket){ return "{creator:'" + esc(creator) + "',bucket:'" + bucket + "'" + (owner !== undefined ? ",owner:'" + esc(owner || "none") + "'" : "") + "}"; };
+  var link = function(n, bucket, txt){ return n ? "<span class='n' onclick=\"event.stopPropagation();drill(" + args(bucket) + ")\">" + (txt || fmt(n)) + "</span>" : "<span class='mut'>0</span>"; };
+  var d = function(n, bucket, cls){ return "<td class='" + (cls || "") + "'>" + link(n, bucket) + "</td>"; };
+  var sub = function(x, d){ return x == null ? "" : " <span class='mut'>" + pct(x, d) + "</span>"; };
+  var name = owner !== undefined ? esc(f.name) : creator ? "<b>" + esc(creator) + "</b>" : "All creators";
+  var cls = owner !== undefined ? "" : creator ? "row" : "tot";
+  var hi = function(x, lim){ return x != null && x > lim ? "badt" : ""; };
+  return "<tr class='" + cls + "'" + (clickable ? " onclick=\"toggleWork('" + esc(creator) + "')\"" : "") + "><td>" + name + "</td>" +
+    d(f.total, "") +
+    "<td>" + link(f.counselled, "counselled") + sub(f.l2c, 1) + "</td>" +
+    "<td class='" + (f.enrolled ? "good" : "") + "'>" + link(f.enrolled, "enrolled") + sub(f.c2e, 1) + "</td>" +
+    "<td>" + pct(f.l2e, 1) + "</td><td>" + inr(f.revenue) + "</td>" +
+    d(f.unassigned, "unassigned", f.unassigned ? "warnt" : "") + d(f.fresh, "fresh") + d(f.freshOld, "freshOld", f.freshOld ? "badt" : "") +
+    "<td>" + pct(f.touched24Pct) + "</td><td>" + (f.ttfMedianH == null ? "-" : f.ttfMedianH < 10 ? f.ttfMedianH.toFixed(1) : Math.round(f.ttfMedianH)) + "</td>" +
+    d(f.workable, "workable") + d(f.noFu, "noFu", hi(f.workable ? f.noFu / f.workable : 0, 0.4)) + d(f.overdueFu, "overdueFu", hi(f.workable ? f.overdueFu / f.workable : 0, 0.4)) +
+    "<td class='" + hi(f.churnPct, 0.6) + "'>" + link(f.churned, "churned") + sub(f.churnPct) + "</td>" +
+    d(f.dnp, "dnp_did_not_pick") + d(f.ghosted, "ghosted") +
+    "<td>" + link(f.ni, "ni_not_interested", fmt(f.niPre) + " / " + fmt(f.niPost)) + "</td>" +
+    d(f.dq, "disqualified") + d(f.ifc, "ifc") + "</tr>";
+}
+function toggleWork(c){ WORK_OPEN[c] = !WORK_OPEN[c]; if (!WORK_OPEN[c]) delete WORK_OPEN[c]; render(); }
+function loadAgents(creator){
+  api("/api/leadplan/agents?" + qs({ creator: creator })).then(function(j){
+    var el = document.getElementById("ag-" + creator);
+    if (!el || !j) return;
+    if (!j.rows.length) { el.innerHTML = "<span class='mut'>No leads.</span>"; return; }
+    var h = "<div class='kv' style='margin-bottom:6px'><b>" + esc(creator) + "</b> leads by current owner</div><div class='tw'><table class='wk'>" + workHead("Agent") + "<tbody>";
+    j.rows.forEach(function(r){ h += workRow(creator, r, false, r.ownerId); });
+    el.innerHTML = h + "</tbody></table></div>";
+  });
+}
+
+/* ---------- Setup ---------- */
+function setupView(){
+  var ed = J.canEdit, dis = ed ? "" : " disabled";
+  var h = "<div class='sec'><h3>Monthly lead targets, " + monthLabel(J.month) + "</h3><div class='sub'>Leads you expect each creator to bring in this month, all sources. The page spreads it evenly by day. " +
+    (ed ? "Change any number and press Save." : "Only a VP can change targets.") + "</div>" +
+    (ed ? "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px'><button class='btn' onclick='fillFromLast(0)'>Fill blanks from last month's actuals</button>" +
+      "<button class='btn' onclick='fillFromLast(0.1)'>Last month's actuals +10%</button><button class='btn' onclick='fillFromLast(0.2)'>+20%</button></div>" : "") +
+    "<div class='tw'><table><thead><tr><th>Creator</th><th>Last month leads</th><th>This month so far</th><th>Target</th><th>Per day</th></tr></thead><tbody>";
+  J.creators.forEach(function(c){
+    h += "<tr><td><b>" + esc(c.creator) + "</b></td><td>" + fmt(c.prevTotal) + "</td><td>" + fmt(c.mtd) + "</td>" +
+      "<td><input class='tgt' type='number' min='0' step='10' data-c='" + esc(c.creator) + "' data-prev='" + c.prevTotal + "' value='" + (c.target || "") + "'" + dis + " oninput='perDay(this)'></td>" +
+      "<td class='mut' id='pd-" + esc(c.creator) + "'>" + (c.target ? (c.target / J.info.days).toFixed(1) : "-") + "</td></tr>";
+  });
+  h += "</tbody></table></div>" + (ed ? "<div style='margin-top:10px;display:flex;gap:10px;align-items:center'><button class='btn pri' onclick='saveTargets()'>Save targets</button><span id='saved' class='mut'></span></div>" : "") + "</div>";
+
+  h += "<div class='sec'><h3>Creators on this page</h3><div class='sub'>Use the HubSpot topmate_username exactly. A misspelt name reads as zero leads, which looks just like a real lag, so new names are checked against HubSpot before they are added. This list is separate from the Call Now tracked list.</div><div>";
+  J.creators.forEach(function(c){ h += "<span class='chip'>" + esc(c.creator) + (ed ? "<button title='Remove' onclick=\"removeCreator('" + esc(c.creator) + "')\">×</button>" : "") + "</span>"; });
+  h += "</div>" + (ed ? "<div style='margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'><input type='text' id='newc' placeholder='topmate_username' style='width:240px'><button class='btn' onclick='checkCreator()'>Check</button><button class='btn pri' onclick='addCreator()'>Add</button><span id='chk' class='kv'></span></div>" : "") + "</div>";
+  return h;
+}
+function perDay(el){ var v = Number(el.value) || 0; document.getElementById("pd-" + el.getAttribute("data-c")).textContent = v ? (v / J.info.days).toFixed(1) : "-"; }
+function fillFromLast(up){
+  document.querySelectorAll("input.tgt").forEach(function(el){
+    var prev = Number(el.getAttribute("data-prev")) || 0;
+    if (up === 0 && el.value) return;
+    if (!prev) return;
+    el.value = Math.round(prev * (1 + up) / 10) * 10; perDay(el);
+  });
+}
+function saveTargets(){
+  var t = {};
+  document.querySelectorAll("input.tgt").forEach(function(el){ t[el.getAttribute("data-c")] = Number(el.value) || 0; });
+  document.getElementById("saved").textContent = "Saving...";
+  post("/api/leadplan/targets", { month: J.month, targets: t }).then(function(r){
+    document.getElementById("saved").textContent = r.persistent ? "Saved." : "Saved for now, but NOT persistent (no volume).";
+    load();
+  }).catch(function(e){ document.getElementById("saved").textContent = e.message; });
+}
+function checkCreator(){
+  var u = document.getElementById("newc").value.trim(), out = document.getElementById("chk");
+  if (!u) return Promise.resolve(null);
+  out.textContent = "Checking...";
+  return api("/api/leadplan/check-creator?u=" + encodeURIComponent(u)).then(function(j){
+    if (j.total == null) { out.textContent = "Cannot check without HubSpot access."; return j; }
+    out.innerHTML = j.total ? "<span class='good'>Found " + fmt(j.total) + " leads, " + fmt(j.recent) + " in the last 30 days.</span>" :
+      "<span class='badt'>No leads in HubSpot with that username. Check the spelling.</span>";
+    return j;
+  });
+}
+function addCreator(){
+  checkCreator().then(function(j){
+    if (!j) return;
+    if (j.total === 0 && !confirmInline()) return;
+    return post("/api/leadplan/creators", { add: j.u }).then(function(){ document.getElementById("newc").value = ""; load(); });
+  }).catch(function(e){ document.getElementById("chk").textContent = e.message; });
+}
+var FORCE = false;
+function confirmInline(){
+  if (FORCE) { FORCE = false; return true; }
+  FORCE = true;
+  document.getElementById("chk").innerHTML += " <span class='badt'>Press Add again to add it anyway.</span>";
+  return false;
+}
+function removeCreator(c){
+  var chip = event.target;
+  if (chip.getAttribute("data-sure") !== "1") { chip.setAttribute("data-sure", "1"); chip.textContent = "?"; chip.title = "Click again to remove " + c; return; }
+  post("/api/leadplan/creators", { remove: c }).then(load);
+}
+
+/* ---------- Drill ---------- */
+function drill(f){
+  var label = [f.creator || "All creators", f.day ? f.day : monthLabel(J.month), f.bucket ? (BUCKET[f.bucket] || STAGE[f.bucket] || f.bucket) : "all leads"].join(" · ");
+  document.getElementById("mt").textContent = label;
+  document.getElementById("mc").textContent = "";
+  document.getElementById("mb").innerHTML = "<div class='loading'>Loading...</div>";
+  document.getElementById("modal").classList.add("on");
+  api("/api/leadplan/leads?" + qs(f)).then(function(j){
+    if (!j) return;
+    LAST_LEADS = j.rows;
+    document.getElementById("mc").textContent = j.total + " leads" + (j.shown < j.total ? ", first " + j.shown + " shown" : "");
+    var h = "<table><thead><tr><th>Lead</th><th>Creator</th><th>Created</th><th style='text-align:left'>Stage</th><th style='text-align:left'>Owner</th><th style='text-align:left'>Source</th><th>First touch</th><th>Last call</th><th>Follow-up</th><th>Counselled</th><th>Enrolled</th></tr></thead><tbody>";
+    var now = Date.now();
+    j.rows.forEach(function(r){
+      var od = r.fu && r.fu < now - 86400000 && r.bucket === "workable";
+      h += "<tr><td class='l'><a href='" + esc(r.url) + "' target='_blank' rel='noopener'>" + esc(r.name) + "</a>" + (r.intl ? " <span class='pill p-none'>Intl</span>" : "") + "</td>" +
+        "<td>" + esc(r.creator) + "</td><td>" + dt(r.created) + "</td><td class='l'>" + esc(STAGE[r.stage] || r.stage) + "</td><td class='l'>" + esc(r.owner) + "</td><td class='l'>" + esc(r.source) + "</td>" +
+        "<td>" + (dt(r.firstTouch) || "<span class='badt'>none</span>") + "</td><td>" + dt(r.lastCall) + "</td><td class='" + (od ? "badt" : "") + "'>" + dt(r.fu) + "</td>" +
+        "<td>" + dt(r.counselledAt) + "</td><td>" + (r.enrolled ? "<span class='good'>" + inr(r.revenue) + "</span>" : "") + "</td></tr>";
+    });
+    document.getElementById("mb").innerHTML = j.rows.length ? h + "</tbody></table>" : "<div class='loading'>No leads.</div>";
+  }).catch(function(e){ document.getElementById("mb").innerHTML = "<div class='badbox'>" + esc(e.message) + "</div>"; });
+}
+function csv(){
+  var cols = ["id", "name", "creator", "created", "stage", "owner", "source", "intl", "firstTouch", "lastCall", "fu", "counselledAt", "enrolled", "revenue", "url"];
+  var iso = function(v){ return v ? new Date(v).toISOString() : ""; };
+  var rows = [cols.join(",")].concat(LAST_LEADS.map(function(r){
+    return cols.map(function(k){
+      var v = ["created", "firstTouch", "lastCall", "fu", "counselledAt"].indexOf(k) >= 0 ? iso(r[k]) : r[k];
+      v = String(v == null ? "" : v);
+      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }).join(",");
+  }));
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
+  a.download = "leads_" + (document.getElementById("mt").textContent.replace(/[^a-z0-9]+/gi, "_")) + ".csv";
+  a.click();
+}
+
+document.querySelectorAll(".nav button").forEach(function(b){ b.onclick = function(){ go(b.getAttribute("data-v")); }; });
+document.querySelectorAll("#intl button").forEach(function(b){
+  b.onclick = function(){
+    INTL = b.getAttribute("data-v");
+    document.querySelectorAll("#intl button").forEach(function(x){ x.classList.toggle("on", x === b); });
+    load();
+  };
+});
+document.getElementById("month").onchange = function(){ MONTH = this.value; load(); };
+document.getElementById("mx").onclick = function(){ document.getElementById("modal").classList.remove("on"); };
+document.getElementById("modal").onclick = function(e){ if (e.target === this) this.classList.remove("on"); };
+document.getElementById("csv").onclick = csv;
+document.getElementById("refresh").onclick = function(){
+  var b = this; b.textContent = "Refreshing..."; b.disabled = true;
+  post("/api/leadplan/refresh").then(function(){ setTimeout(function(){ b.textContent = "Refresh"; b.disabled = false; load(); }, 4000); });
+};
+document.addEventListener("keydown", function(e){ if (e.key === "Escape") document.getElementById("modal").classList.remove("on"); });
+load();
+setInterval(function(){ if (!document.getElementById("modal").classList.contains("on")) load(); }, 5 * 60 * 1000);
+</script>
+</body>
+</html>

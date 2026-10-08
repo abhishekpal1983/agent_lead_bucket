@@ -376,6 +376,7 @@ function drawNav(){
   // The manager dashboard is a VP surface, so managers get the working tools only.
   // v2 now serves /callnow.html. The old page stays reachable for a side by side check.
   if (J.isVP) tools.splice(1, 0, ["/callnow-v1.html", "Call Now v1 (old)", false]);
+  tools.push(["/leads.html", "Lead management", false]);
   if (J.isVP) tools.push(["/", "Dashboard", false]);
   document.getElementById("tools").className = "tools";
   document.getElementById("tools").innerHTML = "<div class='lbl'>Tools</div>" + tools.map(function(t){

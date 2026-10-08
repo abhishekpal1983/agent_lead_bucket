@@ -1238,7 +1238,7 @@ function agentMetrics(rows){
 }
 
 /* ---------- API ---------- */
-const REQUIRED_ROUTES = ["/api/meta", "/api/agents", "/api/callnow", "/api/callnow/leads", "/api/vp", "/api/payment-analysis", "/api/me"];
+const REQUIRED_ROUTES = ["/api/meta", "/api/leadplan", "/api/agents", "/api/callnow", "/api/callnow/leads", "/api/vp", "/api/payment-analysis", "/api/me"];
 /* What is actually running.
 
    The deployment header said one commit, main said another, and there was no way to tell
@@ -8674,6 +8674,393 @@ app.post("/api/vp/benchmark", express.json(), function(req, res){
   res.json({ ok: true, persistent: ORG_PERSISTENT, benchmarks: ORG.benchmarks });
 });
 
+/* ---------- Lead management: per creator lead targets, daily inflow, and lead work ----------
+
+   Its own creator list and its own targets, both in the org store, so adding a creator
+   here never changes who Call Now tracks, and the other way round. The arithmetic lives in
+   lib/leadplan.js; this block is the sync and the routes.
+
+   The sync pulls every contact CREATED since the first of last month for each creator on
+   the list, whoever owns it and whatever its stage, because the question is "did the leads
+   arrive and what happened to them", not "what is in an agent's bucket". ~20k rows. */
+const LP = require("./lib/leadplan");
+const LP_DEFAULT_CREATORS = ["ayush_singh13", "kartikkapoorconsultation", "payalineurope", "simrankhokha",
+  "wanderess_priyanka", "ankita_gulati", "technomanagers", "sachin_sharma", "theaipmcoach",
+  "digital_girl_dubai", "vijaychandola", "ajay_shenoy", "saurav_chaudhary_1"];
+const LP_MINUTES = parseInt(process.env.LEADPLAN_MINUTES || "15", 10);
+const LP_PROPS = ["createdate", "topmate_username", "contact_engagement_stage", "previous_engagement_stage",
+  "counselling_done", "hubspot_owner_id", "actual_source", "international_number", "email", "phone",
+  "firstname", "lastname", "last_call_date_and_time", "follow_up_date_and_time", "hs_sa_first_engagement_date"];
+let LPS = { rows: [], byCreator: {}, loadedAt: null, syncing: false, error: null, errors: {}, ms: 0 };
+// First counselling timestamp per contact, from stage history. Keyed with the stage it was
+// read at, so a lead is re-read only when its stage has moved and it has not been counselled.
+const LP_HIST = {};
+
+function lpPlan(){
+  ORG.leadPlan = ORG.leadPlan || {};
+  if (!Array.isArray(ORG.leadPlan.creators)) ORG.leadPlan.creators = LP_DEFAULT_CREATORS.slice();
+  ORG.leadPlan.targets = ORG.leadPlan.targets || {};
+  return ORG.leadPlan;
+}
+
+async function lpFetchCreator(creator, from, to, sink, depth){
+  const filters = [{ propertyName: "topmate_username", operator: "EQ", value: creator },
+    { propertyName: "createdate", operator: "GTE", value: hsMs(from, "lead plan window") },
+    { propertyName: "createdate", operator: "LT", value: hsMs(to, "lead plan window") }];
+  const probe = await hs("/crm/v3/objects/contacts/search", { method: "POST",
+    body: JSON.stringify({ filterGroups: [{ filters }], properties: ["createdate"], limit: 1 }) });
+  const total = probe.total || 0;
+  if (!total) return;
+  if (total > 9500 && (to - from) > 3600000 && (depth || 0) < 10) {
+    const mid = Math.floor((from + to) / 2);
+    await lpFetchCreator(creator, from, mid, sink, (depth || 0) + 1);
+    await lpFetchCreator(creator, mid, to, sink, (depth || 0) + 1);
+    return;
+  }
+  let after;
+  do {
+    const j = await hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters }], properties: LP_PROPS,
+      sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }], limit: 100, after }) });
+    (j.results || []).forEach(function(r){ sink(Object.assign({ id: r.id }, r.properties)); });
+    after = j.paging && j.paging.next && j.paging.next.after;
+    await sleep(110);
+  } while (after);
+}
+
+async function lpReadHistory(rows){
+  const need = rows.filter(function(r){
+    const st = r.contact_engagement_stage || "";
+    if (!st) return false;
+    if (COUNSEL.byId[r.id]) return false;           // the main sync already knows
+    const h = LP_HIST[r.id];
+    return !h || (!h.first && h.stage !== st);
+  });
+  for (let i = 0; i < need.length; i += 50) {
+    const batch = need.slice(i, i + 50);
+    try {
+      const j = await hs("/crm/v3/objects/contacts/batch/read", { method: "POST", body: JSON.stringify({
+        propertiesWithHistory: ["contact_engagement_stage"], properties: ["contact_engagement_stage"],
+        inputs: batch.map(function(r){ return { id: r.id }; }) }) });
+      (j.results || []).forEach(function(r){
+        const h = (r.propertiesWithHistory && r.propertiesWithHistory.contact_engagement_stage) || [];
+        let first = 0;
+        h.forEach(function(e){
+          const t = Date.parse(e.timestamp);
+          if (t && COUNSELLED_SET.indexOf(e.value) >= 0 && (!first || t < first)) first = t;
+        });
+        LP_HIST[r.id] = { stage: (r.properties && r.properties.contact_engagement_stage) || "", first: first };
+      });
+    } catch (e) { console.error("lead plan history @" + i + ": " + e.message); }
+    await sleep(120);
+  }
+  return need.length;
+}
+
+async function syncLeadPlan(onlyCreator){
+  if (!TOKEN || LPS.syncing) return;
+  LPS.syncing = true;
+  const t0 = Date.now();
+  try {
+    const plan = lpPlan();
+    const now = Date.now();
+    const cur = LP.istMonth(now);
+    const from = LP.monthStartMs(LP.prevMonth(cur));
+    const list = onlyCreator ? [onlyCreator] : plan.creators.slice();
+    const byCreator = onlyCreator ? Object.assign({}, LPS.byCreator) : {};
+    const errors = onlyCreator ? Object.assign({}, LPS.errors) : {};
+    for (const cr of list) {
+      const rows = [];
+      try {
+        await lpFetchCreator(cr, from, now + 3600000, function(r){ rows.push(r); });
+        byCreator[cr] = rows;
+        delete errors[cr];
+      } catch (e) {
+        errors[cr] = e.message;
+        console.error("lead plan " + cr + ": " + e.message);
+        if (LPS.byCreator[cr]) byCreator[cr] = LPS.byCreator[cr];   // keep the last good read
+      }
+    }
+    const all = [];
+    Object.keys(byCreator).forEach(function(k){ (byCreator[k] || []).forEach(function(r){ all.push(r); }); });
+    LPS = { rows: all, byCreator: byCreator, loadedAt: LPS.loadedAt, syncing: true, error: null, errors: errors, ms: 0 };
+    const read = await lpReadHistory(all);
+    LPS.loadedAt = new Date().toISOString();
+    LPS.ms = Date.now() - t0;
+    console.log("Lead plan synced: " + all.length + " leads across " + Object.keys(byCreator).length +
+      " creators, " + read + " histories read, " + LPS.ms + "ms");
+  } catch (e) {
+    LPS.error = e.message;
+    console.error("Lead plan sync failed: " + e.message);
+  } finally { LPS.syncing = false; }
+}
+
+function lpCounselAt(r){
+  return COUNSEL.byId[r.id] || (LP_HIST[r.id] && LP_HIST[r.id].first) || 0;
+}
+function lpIntlOk(r, intl){
+  if (intl === "yes") return String(r.international_number) === "true";
+  if (intl === "no") return String(r.international_number) !== "true";
+  return true;
+}
+let LP_ENROL = { at: null, idx: null };
+function lpEnrol(){
+  if (LP_ENROL.at !== SHEET.loadedAt || !LP_ENROL.idx) LP_ENROL = { at: SHEET.loadedAt, idx: LP.enrolIndex(SHEET.rows) };
+  return LP_ENROL.idx;
+}
+function lpOwnerName(id){
+  if (!id) return "Unassigned";
+  const o = CACHE.owners[id];
+  return o ? (o.name || o.email || id) + (o.active === false ? " (left)" : "") : "Owner " + id;
+}
+
+/* Everything the page needs for one month, in one payload. */
+function lpBuild(month, intl){
+  const plan = lpPlan();
+  const now = Date.now();
+  const info = LP.monthInfo(month, now);
+  const pm = LP.prevMonth(month);
+  const pinfo = LP.monthInfo(pm, now);
+  const targets = plan.targets[month] || {};
+  const idx = lpEnrol();
+  const ctx = { now: now, counselAt: lpCounselAt,
+    enrol: function(r){ return idx.find(r.topmate_username || "", r.email, r.phone); } };
+  const sameDayCut = info.isCurrent ? pinfo.start + (now - info.start) : pinfo.end;
+  const creators = plan.creators.map(function(cr){
+    const daily = new Array(info.days).fill(0);
+    const srcDaily = {};
+    const f = LP.emptyFunnel();
+    let prevSameDay = 0, prevTotal = 0;
+    (LPS.byCreator[cr] || []).forEach(function(r){
+      if (!lpIntlOk(r, intl)) return;
+      const t = LP.tsOf(r.createdate);
+      if (t >= info.start && t < info.end) {
+        const d = Math.floor((t - info.start) / 86400000);
+        daily[d]++;
+        const src = normSrc(r.actual_source);
+        if (!srcDaily[src]) srcDaily[src] = new Array(info.days).fill(0);
+        srcDaily[src][d]++;
+        LP.addLead(f, r, ctx);
+      } else if (t >= pinfo.start && t < pinfo.end) {
+        prevTotal++;
+        if (t < sameDayCut) prevSameDay++;
+      }
+    });
+    const p = LP.pace(targets[cr] || 0, daily, info);
+    const sources = Object.keys(srcDaily).map(function(s){
+      return { source: s, daily: srcDaily[s], mtd: srcDaily[s].reduce(function(a, b){ return a + b; }, 0) };
+    }).sort(function(a, b){ return b.mtd - a.mtd; });
+    return Object.assign({ creator: cr, daily: daily, sources: sources, prevSameDay: prevSameDay, prevTotal: prevTotal,
+      vsPrev: prevSameDay ? p.mtd / prevSameDay - 1 : null, funnel: LP.finishFunnel(f),
+      loaded: !!LPS.byCreator[cr], error: LPS.errors[cr] || null }, p);
+  });
+  // Totals: the sum of each creator's own numbers, never re-derived.
+  const tot = { target: 0, mtd: 0, required: 0, today: 0, yesterday: 0, prevSameDay: 0, daily: new Array(info.days).fill(0) };
+  creators.forEach(function(c){
+    tot.target += c.target; tot.mtd += c.mtd; tot.required += c.required; tot.prevSameDay += c.prevSameDay;
+    tot.today += c.today || 0; tot.yesterday += c.yesterday || 0;
+    c.daily.forEach(function(n, i){ tot.daily[i] += n; });
+  });
+  tot.pacePct = tot.required ? tot.mtd / tot.required : null;
+  tot.projected = info.elapsedDays > 0 ? Math.round(tot.mtd / info.elapsedDays * info.days) : 0;
+  tot.vsPrev = tot.prevSameDay ? tot.mtd / tot.prevSameDay - 1 : null;
+  const tf = LP.emptyFunnel();
+  creators.forEach(function(c){
+    const f = c.funnel;
+    ["total","fresh","freshOld","workable","churned","ifc","won","other","dnp","ghosted","ni","niPre","niPost","dq",
+     "unassigned","touched","touched24","counselled","enrolled","enrolledCounselled","revenue","overdueFu","noFu"]
+      .forEach(function(k){ tf[k] += f[k] || 0; });
+  });
+  tot.funnel = LP.finishFunnel(tf);
+  tot.funnel.ttfMedianH = null;
+  // Last month for comparison, this month, and next month so targets can be set ahead.
+  const nm = (function(m){ const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
+    return mo === 12 ? (y + 1) + "-01" : y + "-" + String(mo + 1).padStart(2, "0"); })(LP.istMonth(now));
+  const months = [LP.prevMonth(LP.istMonth(now)), LP.istMonth(now), nm];
+  return { month: month, months: months, info: info, pace: LP.PACE, creators: creators, totals: tot,
+    targetsSet: Object.keys(targets).length, intl: intl || "",
+    sync: { loadedAt: LPS.loadedAt, syncing: LPS.syncing, error: LPS.error, errors: LPS.errors, ms: LPS.ms,
+      everyMinutes: LP_MINUTES, sheetAt: SHEET.loadedAt, counselAt: COUNSEL.loadedAt },
+    canEdit: false, persistent: ORG_PERSISTENT };
+}
+
+/* LEADPLAN_DEMO=1 fills the page with made-up leads, for checking the layout locally with no
+   HubSpot token. Never set it on Railway. */
+if (String(process.env.LEADPLAN_DEMO || "") === "1") {
+  (function(){
+    let seed = 7;
+    const rnd = function(){ seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const now = Date.now(), cur = LP.istMonth(now), from = LP.monthStartMs(LP.prevMonth(cur));
+    const stages = ["", "", "", "rcb_requested_callback", "discovery", "counselled", "Follow up", "FU_DNP",
+      "dnp_did_not_pick", "dnp_did_not_pick", "ghosted", "ni_not_interested", "disqualified", "payment_prospect", "IFC"];
+    const srcs = ["import", "forms", "digital product", "marketing webinar", "revspot"];
+    const plan = lpPlan(), by = {}, rows = [];
+    plan.targets[cur] = plan.targets[cur] || {};
+    plan.creators.forEach(function(cr, ci){
+      const rate = ci === 11 ? 0 : 5 + Math.round(rnd() * 60);
+      if (!plan.targets[cur][cr] && ci !== 12) plan.targets[cur][cr] = Math.round(rate * 31 * (0.8 + rnd() * 0.5));
+      by[cr] = [];
+      for (let t = from; t < now; t += 86400000) {
+        const dryUp = ci === 4 && now - t < 3 * 86400000;
+        const n = dryUp ? 0 : Math.round(rate * (0.5 + rnd()));
+        for (let i = 0; i < n; i++) {
+          const ct = Math.min(now - 1000, t + Math.floor(rnd() * 86400000));
+          const st = stages[Math.floor(rnd() * stages.length)];
+          const r = { id: String(100000 + rows.length), createdate: new Date(ct).toISOString(), topmate_username: cr,
+            contact_engagement_stage: st, hubspot_owner_id: rnd() < 0.08 ? "" : String(1 + Math.floor(rnd() * 6)),
+            actual_source: srcs[Math.floor(rnd() * srcs.length)], international_number: rnd() < 0.1 ? "true" : "false",
+            firstname: "Lead", lastname: String(rows.length), email: "", phone: "",
+            hs_sa_first_engagement_date: st ? new Date(ct + rnd() * 50 * 3600000).toISOString() : "",
+            follow_up_date_and_time: rnd() < 0.5 ? new Date(now + (rnd() - 0.6) * 5 * 86400000).toISOString() : "" };
+          if (["discovery", "counselled", "Follow up", "FU_DNP", "payment_prospect"].indexOf(st) >= 0) LP_HIST[r.id] = { stage: st, first: ct + 86400000 };
+          rows.push(r); by[cr].push(r);
+        }
+      }
+    });
+    LPS = { rows: rows, byCreator: by, loadedAt: new Date().toISOString(), syncing: false, error: null, errors: {}, ms: 0 };
+    console.log("Lead plan DEMO data: " + rows.length + " leads");
+  })();
+}
+
+app.get("/api/leadplan", function(req, res){
+  const month = /^\d{4}-\d{2}$/.test(String(req.query.month || "")) ? String(req.query.month) : LP.istMonth(Date.now());
+  const out = lpBuild(month, String(req.query.intl || ""));
+  out.canEdit = isVP(req);
+  out.me = whoami(req);
+  res.json(out);
+});
+
+/* Per agent for one creator's month cohort, or for all creators. */
+app.get("/api/leadplan/agents", function(req, res){
+  const month = /^\d{4}-\d{2}$/.test(String(req.query.month || "")) ? String(req.query.month) : LP.istMonth(Date.now());
+  const creator = String(req.query.creator || ""), intl = String(req.query.intl || "");
+  const info = LP.monthInfo(month, Date.now());
+  const idx = lpEnrol();
+  const ctx = { now: Date.now(), counselAt: lpCounselAt,
+    enrol: function(r){ return idx.find(r.topmate_username || "", r.email, r.phone); } };
+  const by = {};
+  LPS.rows.forEach(function(r){
+    if (creator && r.topmate_username !== creator) return;
+    if (!lpIntlOk(r, intl)) return;
+    const t = LP.tsOf(r.createdate);
+    if (t < info.start || t >= info.end) return;
+    const k = String(r.hubspot_owner_id || "");
+    if (!by[k]) by[k] = LP.emptyFunnel();
+    LP.addLead(by[k], r, ctx);
+  });
+  const rows = Object.keys(by).map(function(k){
+    return Object.assign({ ownerId: k, name: lpOwnerName(k) }, LP.finishFunnel(by[k]));
+  }).sort(function(a, b){ return b.total - a.total; });
+  res.json({ month: month, creator: creator, rows: rows });
+});
+
+/* Lead rows behind any number on the page. */
+app.get("/api/leadplan/leads", function(req, res){
+  const q = req.query;
+  const month = /^\d{4}-\d{2}$/.test(String(q.month || "")) ? String(q.month) : LP.istMonth(Date.now());
+  const info = LP.monthInfo(month, Date.now());
+  const idx = lpEnrol();
+  const now = Date.now();
+  const want = String(q.bucket || "");
+  const out = [];
+  let total = 0;
+  LPS.rows.forEach(function(r){
+    if (q.creator && r.topmate_username !== String(q.creator)) return;
+    if (!lpIntlOk(r, String(q.intl || ""))) return;
+    if (q.owner !== undefined && q.owner !== "" && String(r.hubspot_owner_id || "") !== String(q.owner === "none" ? "" : q.owner)) return;
+    const t = LP.tsOf(r.createdate);
+    if (t < info.start || t >= info.end) return;
+    if (q.day && LP.istDay(t) !== String(q.day)) return;
+    const st = r.contact_engagement_stage || "";
+    const b = LP.bucketOf(st);
+    const cAt = lpCounselAt(r);
+    const e = idx.find(r.topmate_username || "", r.email, r.phone);
+    const fe = LP.tsOf(r.hs_sa_first_engagement_date);
+    const fu = LP.tsOf(r.follow_up_date_and_time);
+    const match = !want || want === b ||
+      (want === "freshOld" && b === "fresh" && now - t > 86400000) ||
+      (want === "untouched" && !fe && !LP.tsOf(r.last_call_date_and_time) && !st) ||
+      (want === "counselled" && cAt) || (want === "enrolled" && e) ||
+      (want === "unassigned" && !r.hubspot_owner_id) ||
+      (want === "noFu" && b === "workable" && !fu) ||
+      (want === "overdueFu" && b === "workable" && fu && fu < now - 86400000) ||
+      (want === st);
+    if (!match) return;
+    total++;
+    if (out.length >= 3000) return;
+    out.push({ id: r.id, name: [r.firstname, r.lastname].filter(Boolean).join(" ") || "(no name)",
+      creator: r.topmate_username, created: t, stage: st || "__fresh", bucket: b,
+      owner: lpOwnerName(String(r.hubspot_owner_id || "")), ownerId: String(r.hubspot_owner_id || ""),
+      source: r.actual_source || "", intl: String(r.international_number) === "true",
+      firstTouch: fe || null, lastCall: LP.tsOf(r.last_call_date_and_time) || null, fu: fu || null,
+      counselledAt: cAt || null, enrolled: !!e, revenue: e ? e.revenue : 0,
+      url: "https://" + (process.env.HS_UI_DOMAIN || "app-na2.hubspot.com") + "/contacts/" +
+        (process.env.HS_PORTAL_ID || "244132076") + "/record/0-1/" + r.id });
+  });
+  out.sort(function(a, b){ return b.created - a.created; });
+  res.json({ total: total, shown: out.length, rows: out });
+});
+
+app.post("/api/leadplan/targets", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Only a VP can change targets" });
+  const b = req.body || {};
+  const month = String(b.month || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "month must be YYYY-MM" });
+  const plan = lpPlan();
+  plan.targets[month] = plan.targets[month] || {};
+  const t = b.targets || {};
+  Object.keys(t).forEach(function(cr){
+    const n = Math.max(0, Math.round(num(t[cr])));
+    if (n) plan.targets[month][cr] = n; else delete plan.targets[month][cr];
+  });
+  const saved = orgSave("leadplan.targets", month + " " + JSON.stringify(t), whoami(req));
+  res.json({ ok: true, persistent: ORG_PERSISTENT, saved: saved, targets: plan.targets[month] });
+});
+
+app.post("/api/leadplan/creators", express.json(), function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "Only a VP can change the creator list" });
+  const b = req.body || {};
+  const plan = lpPlan();
+  const add = String(b.add || "").trim(), remove = String(b.remove || "").trim();
+  if (add) {
+    if (!/^[A-Za-z0-9_.\-]{2,80}$/.test(add)) return res.status(400).json({ error: "That does not look like a topmate username" });
+    if (plan.creators.indexOf(add) < 0) plan.creators.push(add);
+    orgSave("leadplan.creator.add", add, whoami(req));
+    // Pull this creator now rather than waiting for the next cycle.
+    setTimeout(guard("leadplan add", function(){ return syncLeadPlan(add); }), 200);
+  }
+  if (remove) {
+    plan.creators = plan.creators.filter(function(c){ return c !== remove; });
+    delete LPS.byCreator[remove];
+    LPS.rows = LPS.rows.filter(function(r){ return r.topmate_username !== remove; });
+    orgSave("leadplan.creator.remove", remove, whoami(req));
+  }
+  res.json({ ok: true, persistent: ORG_PERSISTENT, creators: plan.creators });
+});
+
+/* Does this username exist, and how many leads has it had. Asked before adding, because a
+   misspelt creator silently reads as zero inflow, which looks exactly like a real lag. */
+app.get("/api/leadplan/check-creator", async function(req, res, next){
+  try {
+    const u = String(req.query.u || "").trim();
+    if (!u) return res.json({ ok: false });
+    if (!TOKEN) return res.json({ ok: true, u: u, total: null, recent: null });
+    const mk = function(extra){ return hs("/crm/v3/objects/contacts/search", { method: "POST", body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "topmate_username", operator: "EQ", value: u }].concat(extra || []) }],
+      properties: ["createdate"], limit: 1 }) }); };
+    const all = await mk();
+    const rec = await mk([{ propertyName: "createdate", operator: "GTE", value: String(Date.now() - 30 * 86400000) }]);
+    res.json({ ok: true, u: u, total: all.total || 0, recent: rec.total || 0 });
+  } catch (e) { next(e); }
+});
+
+app.post("/api/leadplan/refresh", function(req, res){
+  if (!isVP(req)) return res.status(403).json({ error: "VP access only" });
+  setTimeout(guard("leadplan", function(){ return syncLeadPlan(); }), 50);
+  res.json({ ok: true, started: !LPS.syncing });
+});
+
+
 /* The creator planner was removed on 31 August 2026 at the user's request: the pages
    creator_plan.html, plan_summary.html and plan_tracking.html, their routes, the
    /api/creator-plan, /api/plan-tracking and /api/plan-prefs endpoints, the adminOnly gate
@@ -8825,4 +9212,7 @@ SERVER = app.listen(PORT, () => {
   setTimeout(guard("forms", function(){ return syncForms(); }), 15 * 1000);
   setTimeout(runChain, 150 * 1000);
   setInterval(runChain, COHORT_MINUTES * 60 * 1000);
+  // Lead management: creator inflow against target, and what happened to those leads.
+  setTimeout(guard("leadplan", function(){ return syncLeadPlan(); }), 45 * 1000);
+  setInterval(guard("leadplan", function(){ return syncLeadPlan(); }), Math.max(5, LP_MINUTES) * 60 * 1000);
 });
