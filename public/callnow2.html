@@ -540,12 +540,27 @@ tr.rowlink.on td:first-child{background:#DCEDF6;border-left:3px solid #0091AE}
 .wrap .headband .heroside > .hnote{margin-top:auto !important;padding-top:6px}
 /* The agent's talktime card. Same shell as the filter bars beside it so the band reads
    as one thing, with its own four-cell grid inside. */
-/* stretch, not the center .bar inherits, and the children opt out of the 44% basis the
-   filter bars want. Without both, the grid shrinks to its own content and the four cells
-   come out stacked one per row in a column 190px wide. */
-.wrap .headband .mtbar{display:flex !important;flex-direction:column !important;
-  gap:7px !important;align-items:stretch !important}
-.wrap .headband .mtbar > div{flex:0 0 auto !important;width:100% !important}
+/* A column, and every part of being a column has to be said out loud.
+
+   .bar sets flex-wrap:wrap for the filter bars, which is right for a row and wrong for a
+   column: a wrapping column puts anything taller than the container into a SECOND column
+   beside it. The LOP line and the link went out of the card, past the filters, and off
+   the right of the window. nowrap is the fix and it is not optional.
+
+   The child rule has to out-specify `.wrap .headband .bar.ctl > div`, which is (0,4,1)
+   and sets flex:1 1 44%. Naming .bar.ctl.mtbar makes this (0,5,1) so it actually wins;
+   the earlier version was less specific and silently lost, which is how a basis meant
+   for two-up filter fields ended up on a stacked card.
+
+   align-items:stretch rather than the center .bar inherits, or the grid shrinks to its
+   own content and the four cells come out one per row in a column 190px wide. */
+.wrap .headband .bar.ctl.mtbar{display:flex !important;flex-direction:column !important;
+  flex-wrap:nowrap !important;gap:7px !important;align-items:stretch !important;
+  overflow:hidden}
+.wrap .headband .bar.ctl.mtbar > div{flex:0 0 auto !important;width:100% !important;
+  min-width:0 !important}
+/* Long words in a narrow column break rather than widen it. */
+.wrap .headband .mtlop,.wrap .headband .mtnote{overflow-wrap:anywhere}
 .wrap .headband .mthead{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .wrap .headband .mthead .barlbl{margin:0}
 .wrap .headband .mtdate{border:1px solid #DCE4EC;border-radius:7px;padding:3px 7px;

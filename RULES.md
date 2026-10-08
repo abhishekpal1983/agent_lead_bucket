@@ -2026,3 +2026,40 @@ version was proved useless by trying exactly that break and watching nothing go 
 row is still correct and still worth reading, and a tinted row says "this agent is a
 problem" where a tinted number says "this number is below the line". The count is also in
 the tiles, because the first question a manager has is how many, not who.
+
+---
+
+## A wrapping column puts the overflow beside you, not below you
+
+8 October 2026, an hour after the card shipped. The agent's talktime card left the band,
+crossed the filters and went off the right of the window. The LOP line and the link were
+the parts that escaped.
+
+`.bar` is written for the filter bars and sets `flex-wrap:wrap`. The card reuses `.bar`
+for its shell and sets `flex-direction:column`. **A wrapping column does not push overflow
+downwards, it starts a second column beside the first.** Anything taller than the band
+goes sideways. Measured against the deployed CSS: at a 1600px window the link's right edge
+sat **1009px past the card's**, and the page overflowed by 986px.
+
+`flex-direction:column` on something that inherits `flex-wrap:wrap` is incomplete. Say
+`nowrap` or do not say column.
+
+**The second half was a specificity loss nothing reported.** The child rule was
+`.wrap .headband .mtbar > div`, which is (0,3,1). It was competing with
+`.wrap .headband .bar.ctl > div`, which is (0,4,1) and sets `flex:1 1 44%` so two filter
+fields sit side by side. Both carried `!important`, so the more specific one won and the
+card's children quietly took a basis meant for a two-up row. Naming `.bar.ctl.mtbar`
+makes it (0,5,1) and it wins. **`!important` does not mean "mine wins", it means "mine is
+in the important cascade", and specificity still decides inside it.**
+
+**The lesson that generalises past this card.** Reusing a class for its look means
+inheriting its layout, and the layout was written for a different shape. `.bar` gave the
+card its border, radius, padding and background, all wanted, and `flex-wrap:wrap`,
+`align-items:center` and a child basis, none of which were. Three overrides were needed
+and only two were written. When borrowing a shell, list what the shell sets and decide
+about every line of it, rather than fixing the ones that happen to show.
+
+**And the thing that caught it was measurement, not looking.** The card looked correct in
+a 400px preview column, because at that width the content was shorter than the container
+and had no reason to wrap. It only broke in the band, at a real window width, with the
+real neighbours beside it. Overflow checks belong at several widths and in place.

@@ -1658,6 +1658,34 @@ console.log("\nYour talktime in the band");
 
   /* One answer to "is this an agent", or the fetch and the render can drift apart and
      the card ends up loading for somebody who never sees it. */
+  /* The card is a column, and every part of being a column has to be said out loud.
+
+     .bar sets flex-wrap:wrap, which is right for the filter bars it was written for and
+     wrong here: a wrapping COLUMN puts anything taller than the container into a second
+     column beside it. Shipped without nowrap, the LOP line and the link left the card,
+     crossed the filters and went off the right of the window. Measured on the deployed
+     CSS: the link's right edge sat 1009px past the card's at a 1600px window, and the
+     page itself overflowed by 986px.
+
+     The child rule also has to out-specify `.wrap .headband .bar.ctl > div`, which is
+     (0,4,1) and sets flex:1 1 44% for two-up filter fields. Naming .bar.ctl.mtbar makes
+     it (0,5,1). The first version was (0,3,1) and lost silently. */
+  {
+    const band = tsrcCn2.slice(tsrcCn2.indexOf(".wrap .headband .bar.ctl.mtbar{"),
+                               tsrcCn2.indexOf(".wrap .headband .mthead{"));
+    ok("the card does not wrap into a second column",
+      /flex-wrap:nowrap !important/.test(band), band.slice(0, 160) || "rule missing");
+    ok("and its children out-specify the filter bar's 44% basis",
+      /\.wrap \.headband \.bar\.ctl\.mtbar > div\{[^}]*flex:0 0 auto !important/.test(tsrcCn2),
+      (tsrcCn2.match(/\.wrap \.headband[^{]*mtbar > div\{[^}]*\}/) || ["missing"])[0]);
+    ok("the children are given the full width of the card, and may shrink",
+      /\.wrap \.headband \.bar\.ctl\.mtbar > div\{[^}]*width:100% !important/.test(tsrcCn2) &&
+      /\.wrap \.headband \.bar\.ctl\.mtbar > div\{[^}]*min-width:0 !important/.test(tsrcCn2));
+    /* A long word must break the line, not widen the column. */
+    ok("long text breaks rather than widening the card",
+      /\.wrap \.headband \.mtlop,\.wrap \.headband \.mtnote\{overflow-wrap:anywhere\}/.test(tsrcCn2));
+  }
+
   /* The band's own answer to "is this an agent" is shared by the render and the first
      fetch. Other features keep their own checks and are not in scope here; what would
      bite is the band deriving it twice and the card loading for somebody who never
